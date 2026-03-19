@@ -1,0 +1,273 @@
+/* ===========================
+   Voice Input Button Styles
+   =========================== */
+
+.voice-input-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.voice-input-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #374151;
+}
+
+.voice-input-button:hover:not(:disabled) {
+  background: rgba(240, 249, 255, 0.95);
+  border-color: #0ea5e9;
+  color: #0ea5e9;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.voice-input-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Listening state */
+.voice-input-button.voice-input-listening {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+  animation: pulse-listening 1.5s ease-in-out infinite;
+}
+
+.voice-input-button.voice-input-listening:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+/* Processing state */
+.voice-input-button.voice-input-processing {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+/* Error state */
+.voice-input-button.voice-input-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Unsupported state */
+.voice-input-button.voice-input-unsupported {
+  opacity: 0.6;
+}
+
+/* Needs setup state - model not downloaded */
+.voice-input-button.voice-input-needs-setup {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #d97706;
+}
+
+.voice-input-button.voice-input-needs-setup:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #d97706;
+  color: #b45309;
+}
+
+/* Icon */
+.voice-input-icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+}
+
+.voice-input-button:hover:not(:disabled) .voice-input-icon {
+  transform: scale(1.1);
+}
+
+/* Audio wave animations */
+.voice-wave {
+  transform-origin: center;
+  animation: voice-wave-pulse 1.2s ease-out infinite;
+}
+
+.voice-wave-1 {
+  animation-delay: 0s;
+}
+
+.voice-wave-2 {
+  animation-delay: 0.3s;
+}
+
+@keyframes voice-wave-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+/* Pulse animation for listening state */
+@keyframes pulse-listening {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Processing spinner */
+.voice-input-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Tooltips */
+.voice-input-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  z-index: 1000;
+  animation: tooltip-fade-in 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.voice-input-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+}
+
+.voice-input-tooltip-error {
+  background: #dc2626;
+  max-width: 250px;
+  white-space: normal;
+  text-align: center;
+}
+
+.voice-input-tooltip-error::after {
+  border-top-color: #dc2626;
+}
+
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .voice-input-tooltip {
+    white-space: normal;
+    max-width: 200px;
+    text-align: center;
+  }
+}
+
+/* Whisper method indicator */
+.voice-input-button.voice-input-whisper {
+  position: relative;
+}
+
+.voice-input-method-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  background: #8b5cf6;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  border: 1.5px solid white;
+}
+
+.voice-input-button.voice-input-listening .voice-input-method-badge {
+  background: #ef4444;
+}
+
+.voice-input-button.voice-input-processing .voice-input-method-badge {
+  background: #3b82f6;
+}
+
+/* Setup required badge */
+.voice-input-setup-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  background: #f59e0b;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  border: 1.5px solid white;
+}
+
+/* Experiment tag positioned at top-right of button */
+.voice-input-exp-tag {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  border: 1px solid white;
+}

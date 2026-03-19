@@ -1,0 +1,342 @@
+/* DropdownMenu unified styles - with LeftNavigation style consistent */
+/* all has AppLayout in 's dropdown menu share this styles */
+
+/* ===== generic dropdown menu container ===== */
+.dropdown-menu-container {
+ position: relative;
+}
+
+/* ===== trigger button styles ===== */
+.dropdown-menu-trigger {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 20px;
+ height: 20px;
+ 
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ 
+ /* transition effects */
+ transition: opacity 0.2s ease, transform 0.2s ease;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 0;
+ flex-grow: 0;
+}
+
+.dropdown-menu-trigger:hover {
+ opacity: 0.8;
+ transform: scale(1.1);
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 4px;
+}
+
+.dropdown-menu-trigger:hover svg path {
+ fill: #000000;
+}
+
+.dropdown-menu-trigger:active {
+ transform: scale(0.95);
+}
+
+.dropdown-menu-trigger:focus-visible {
+ outline: 2px solid rgba(0, 0, 0, 0.2);
+ outline-offset: 2px;
+ border-radius: 4px;
+}
+
+/* ===== dropdown menu popup layer ===== */
+/* base dropdown menu - in AppLayout layer level hover */
+.dropdown-menu {
+ /* positioning - set by specific usage scenarios via inline styles or modifier classes */
+ position: fixed;
+ z-index: 1000;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 4px;
+ gap: 2px;
+ 
+ /* dimensions */
+ min-width: 160px;
+ 
+ /* background and border */
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 8px;
+ 
+ /* shadow - slightly deeper than avatar, more layered */
+ box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15), 
+ 0px 0px 1px rgba(0, 0, 0, 0.1);
+ 
+ /* animation */
+ animation: dropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+ from {
+ opacity: 0;
+ transform: translateY(-4px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+/* ===== menu item button ===== */
+.dropdown-menu-item {
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ text-align: left;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 8px 12px;
+ gap: 8px;
+ 
+ /* dimensions */
+ width: 100%;
+ min-height: 36px;
+ 
+ /* border-radius */
+ border-radius: 6px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ 
+ /* transition effects */
+ transition: background 0.2s ease;
+}
+
+.dropdown-menu-item:hover {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+.dropdown-menu-item:active {
+ background: rgba(0, 0, 0, 0.08);
+}
+
+.dropdown-menu-item:focus-visible {
+ outline: 2px solid rgba(0, 0, 0, 0.2);
+ outline-offset: -2px;
+}
+
+/* ===== menu item icon ===== */
+.dropdown-menu-item-icon {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 20px;
+ height: 20px;
+ 
+ /* font */
+ font-size: 16px;
+ line-height: 20px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 0;
+ flex-grow: 0;
+}
+
+/* ===== menu item text ===== */
+.dropdown-menu-item-text {
+ /* .Semantic/Label/Control */
+ font-style: normal;
+ font-weight: 410;
+ font-size: 14px;
+ line-height: 20px;
+ 
+ color: #272320;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 1;
+ flex-grow: 1;
+ 
+ /* Text overflow */
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+/* ===== disabled state styles ===== */
+.dropdown-menu-item.disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ pointer-events: none;
+}
+
+.dropdown-menu-item.disabled:hover {
+ background: none;
+}
+
+.dropdown-menu-item.disabled .dropdown-menu-item-text {
+ color: rgba(39, 35, 32, 0.5);
+}
+
+/* ===== danger action styles (delete etc.) ===== */
+.dropdown-menu-item.danger:hover,
+.dropdown-menu-item.dropdown-menu-item-danger:hover {
+ background: rgba(220, 38, 38, 0.08);
+}
+
+.dropdown-menu-item.danger .dropdown-menu-item-text,
+.dropdown-menu-item.dropdown-menu-item-danger .dropdown-menu-item-text {
+ color: #DC2626;
+}
+
+.dropdown-menu-item.danger .dropdown-menu-item-icon,
+.dropdown-menu-item.dropdown-menu-item-danger .dropdown-menu-item-icon {
+ color: #DC2626;
+}
+
+.dropdown-menu-item.danger:active,
+.dropdown-menu-item.dropdown-menu-item-danger:active {
+ background: rgba(220, 38, 38, 0.12);
+}
+
+/* ===== divider ===== */
+.dropdown-menu-divider {
+ width: 100%;
+ height: 1px;
+ background: rgba(0, 0, 0, 0.08);
+ margin: 2px 0;
+ flex: none;
+ align-self: stretch;
+}
+
+/* ===== positioning modifiers for specific scenarios ===== */
+/* Agent dropdown menu - to the right of navigation item */
+.agent-dropdown-menu {
+ /* inherits base styles, only overrides positioning */
+ /* position dynamically calculated and set via JavaScript */
+}
+
+/* user dropdown menu - below user avatar */
+.user-dropdown-menu {
+ /* inherits base styles, only overrides positioning */
+ position: fixed;
+ bottom: 60px;
+ left: 24px;
+ z-index: 1000;
+}
+
+/* ===== ChatSession related styles ===== */
+/* ChatSession item styles */
+.chat-session-item {
+ position: relative;
+}
+
+.chat-session-item.menu-open {
+ background-color: #F5F5F7 !important;
+}
+
+/* ChatSession More button styles - with .dropdown-menu-trigger consistent */
+.chat-session-more-btn {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 20px;
+ height: 20px;
+ 
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ 
+ /* transition effects */
+ transition: opacity 0.2s ease, transform 0.2s ease;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+ flex-shrink: 0;
+}
+
+.chat-session-more-btn:hover {
+ opacity: 0.8;
+ transform: scale(1.1);
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 4px;
+}
+
+.chat-session-more-btn:hover svg path {
+ fill: #000000;
+}
+
+.chat-session-more-btn:active {
+ transform: scale(0.95);
+}
+
+.chat-session-more-btn:focus-visible {
+ outline: 2px solid rgba(0, 0, 0, 0.2);
+ outline-offset: 2px;
+ border-radius: 4px;
+}
+
+/* ChatSession dropdown menu - in ChatSession item right side */
+.chat-session-dropdown-menu {
+ /* inherits base styles, only overrides positioning */
+ position: absolute;
+ top: 100%;
+ right: 8px;
+ z-index: 1000;
+ margin-top: 4px;
+ min-width: 160px;
+ 
+ /* background and border */
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 8px;
+ 
+ /* shadow */
+ box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15),
+ 0px 0px 1px rgba(0, 0, 0, 0.1);
+ 
+ /* animation */
+ animation: dropdownFadeIn 0.15s ease-out;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 4px;
+ gap: 2px;
+}
+
+/* ChatSession scroll list styles */
+.chat-sessions-list {
+ scrollbar-width: none; /* Firefox */
+ -ms-overflow-style: none; /* IE/Edge */
+}
+
+.chat-sessions-list::-webkit-scrollbar {
+ display: none; /* Chrome/Safari/Edge */
+}

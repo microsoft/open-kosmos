@@ -1,0 +1,23 @@
+{
+  "updaterVersion": "",
+  "nativeServerVersion": "",
+  "runtimeEnvironment": {
+    "mode": "internal",
+    "bunVersion": "1.3.6",
+    "uvVersion": "0.6.17",
+    "pinnedPythonVersion": "3.10.12"
+  },
+  "voiceInput": {
+    "voiceInputEnabled": false,
+    "whisperModelSelected": "",
+    "recognitionLanguage": "",
+    "gpuAcceleration": false
+  },
+  "screenshotSettings": {
+    "enabled": true,
+    "shortcut": "CommandOrControl+Shift+S",
+    "shortcutEnabled": false,
+    "savePath": "",
+    "freRejected": false
+  }
+}

@@ -1,0 +1,97 @@
+/* Content Container */
+.content-view-container {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ padding: 24px 24px;
+ background: #FFFFFF;
+ height: 100%;
+ overflow: auto;
+}
+
+/* ChatContentView specific wrapper - support sidepane layout */
+.chat-content-wrapper {
+ padding: 0;
+ background: #FFFFFF;
+ height: 100%;
+ display: flex;
+ flex-direction: row; /* Changed to horizontal layout to support sidepane */
+ overflow: hidden;
+}
+
+/* Chat Content main area */
+.chat-content-wrapper .chat-content {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ padding: 24px;
+ overflow: hidden;
+ min-width: 0; /* Prevent flex child overflow */
+}
+
+/* Main content area max-width constraint: fits exactly 5 cards, side margins adapt to window/sidepane
+ * Calculation: 5x240px(cards) + 4x20px(gaps) + 2x24px(chat-zero-states padding) = 1328px */
+.chat-content-wrapper .chat-content .chat-container-reverse,
+.chat-content-wrapper .chat-content .chat-input-container {
+ max-width: 1328px;
+ width: 100%;
+ margin-left: auto;
+ margin-right: auto;
+}
+
+/* Zero States container syncs max-width */
+.chat-content-wrapper .chat-content.with-zero-states .chat-zero-states {
+ max-width: 1328px;
+ margin-left: auto;
+ margin-right: auto;
+}
+
+/* empty state layout - ChatInput vertically centered */
+.chat-content-wrapper .chat-content.empty-chat {
+ justify-content: center; /* vertically centered */
+ align-items: center; /* horizontally centered */
+}
+
+/* with has Zero States 's empty state layout */
+.chat-content-wrapper .chat-content.empty-chat.with-zero-states {
+ justify-content: flex-end; /* content aligned to bottom */
+ align-items: stretch; /* allow child element via margin:auto centered */
+ padding-bottom: 24px;
+}
+
+/* empty state when hidden ChatContainer */
+.chat-content-wrapper .chat-content.empty-chat .chat-container-reverse {
+ display: none;
+}
+
+/* ChatInput keeps smaller width in empty state (without Zero States) */
+.chat-content-wrapper .chat-content.empty-chat .chat-input-container {
+ max-width: 800px;
+ padding: 16px;
+}
+
+/* When empty state has Zero States, ChatInput restores full width and original padding, ensuring consistency with non-empty state width and alignment with sidepane bottom */
+.chat-content-wrapper .chat-content.empty-chat.with-zero-states .chat-input-container {
+ max-width: 1328px;
+ padding: 16px 24px 0 24px; /* Override .empty-chat padding: 16px, restore ChatInput.css original values */
+}
+
+/* McpContentView */
+.mcp-content-view {
+ padding: 24px 24px;
+ background: #FFFFFF;
+ flex: 1;
+ min-height: 0;
+ display: flex;
+ gap: 16px;
+ box-sizing: border-box;
+ overflow: hidden;
+}
+
+/* MemoryContentView - applies to sidepane-content */
+.sidepane-content {
+ padding: 24px 24px;
+ background: #FFFFFF;
+ height: 100%;
+ overflow-y: auto;
+}

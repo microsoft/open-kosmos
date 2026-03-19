@@ -1,0 +1,113 @@
+/* ===========================
+ SignInPage component styles
+ =========================== */
+
+.signin-page {
+ height: 100%; /* Changed from min-height: 100vh to work with WindowsTitleBar */
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ background: linear-gradient(135deg, #FFFBF8 0%, #FFFFFF 50%, #F8F4F1 100%);
+ padding: 24px;
+ position: relative;
+ overflow: hidden;
+}
+
+/* ===========================
+ card container
+ =========================== */
+
+.signin-card-container {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 24px;
+ height: 100%; /* Changed from min-height: 100vh to work with WindowsTitleBar */
+}
+
+.signin-card {
+ width: 100%;
+ max-width: 448px;
+ border-radius: 20px;
+}
+
+/* ===========================
+ card header
+ =========================== */
+
+.signin-card-header {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+.signin-icon-container {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ margin-bottom: 24px;
+}
+
+.signin-icon-wrapper {
+ width: 48px;
+ height: 48px;
+ background: rgba(255, 255, 255, 0.95);
+ backdrop-filter: blur(8px);
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 12px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+.signin-icon {
+ width: 32px;
+ height: 32px;
+ color: #0ea5e9;
+}
+
+.signin-card-title {
+ font-size: 24px;
+ text-align: center;
+ font-weight: 600;
+}
+
+.signin-card-description {
+ text-align: center;
+ color: #6b7280;
+}
+
+/* ===========================
+ loading state (Generating Code)
+ =========================== */
+
+.signin-loading-icon {
+ width: 32px;
+ height: 32px;
+ color: #0ea5e9;
+ animation: spin 1s linear infinite;
+}
+
+/* ===========================
+ animation
+ =========================== */
+
+@keyframes spin {
+ from {
+ transform: rotate(0deg);
+ }
+ to {
+ transform: rotate(360deg);
+ }
+}
+
+@keyframes pulse {
+ 0%, 100% {
+ opacity: 1;
+ transform: scale(1);
+ }
+ 50% {
+ opacity: 0.7;
+ transform: scale(1.1);
+ }
+}

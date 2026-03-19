@@ -1,0 +1,75 @@
+{
+  "version": "2.0.0",
+  "createdAt": "2026-01-26T15:12:16.405Z",
+  "updatedAt": "2026-01-27T14:26:14.96Z",
+  "alias": "yanhu_microsoft",
+  "freDone": true,
+  "primaryAgent": "Kobi",
+  "mcp_servers": [
+    {
+      "name": "studio-design-mcp",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "studio-design-mcp"
+      ],
+      "env": {
+        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/design-agent"
+      },
+      "url": "",
+      "in_use": true,
+      "version": "1.0.1",
+      "remoteVersion": "1.0.1",
+      "source": "IN-LIBRARY"
+    }
+  ],
+  "skills": [],
+  "chats": [
+    {
+      "chat_id": "chat_1769440336405_ih2pzc459",
+      "chat_type": "single_agent",
+      "agent": {
+        "role": "Default Assistant",
+        "emoji": "🐬",
+        "avatar": "",
+        "name": "Kobi",
+        "model": "claude-opus-4.6",
+        "workspace": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459",
+        "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459/knowledge",
+        "version": "1.0.0",
+        "remoteVersion": "",
+        "source": "ON-DEVICE",
+        "mcp_servers": [
+          {
+            "name": "builtin-tools",
+            "tools": []
+          }
+        ],
+        "system_prompt": "You are a highly capable AI assistant designed to help users with a wide variety of tasks. Your core capabilities include:\n\n**Communication & Analysis:**\n- Provide clear, accurate, and helpful responses to questions\n- Analyze complex problems and break them down into manageable parts\n- Adapt your communication style to match the user's needs and expertise level\n\n**Technical Assistance:**\n- Help with programming, debugging, and code review across multiple languages\n- Assist with data analysis, research, and information synthesis\n- Provide guidance on best practices and technical decision-making\n\n**Creative & Productive Support:**\n- Generate creative content including writing, brainstorming, and ideation\n- Help with planning, organization, and project management\n- Assist with document creation, editing, and formatting\n\n**Interaction Guidelines:**\n- Always strive for accuracy and cite sources when appropriate\n- Ask clarifying questions when requirements are unclear\n- Provide step-by-step explanations for complex procedures\n- Respect user privacy and maintain confidentiality\n- Be honest about limitations and uncertainties\n\n**Tools & Integration:**\n- Leverage available MCP servers and tools to enhance capabilities\n- Use web browsing, file operations, and data processing tools when beneficial\n- Integrate multiple information sources to provide comprehensive responses\n\nYour goal is to be a reliable, knowledgeable, and adaptable assistant that helps users accomplish their objectives efficiently and effectively.",
+        "context_enhancement": {
+          "search_memory": {
+            "enabled": false,
+            "semantic_similarity_threshold": 0,
+            "semantic_top_n": 5
+          },
+          "generate_memory": {
+            "enabled": false
+          }
+        },
+        "skills": [],
+        "zero_states": {
+          "greeting": "",
+          "quick_starts": []
+        }
+      }
+    }
+  ],
+  "toolBarSettings": {
+    "enabled": false,
+    "alwaysOnTop": false,
+    "autoHide": true,
+    "shortcut": "CommandOrControl+Shift+Space",
+    "visibleAgents": []
+  }
+}
+

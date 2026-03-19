@@ -1,0 +1,377 @@
+/* UserInputModal.css - User input modal styles
+   Follows system unified design specification, consistent with Modal.css and Common.css */
+
+/* ===========================
+   Modal container size overrides
+   =========================== */
+
+.user-input-modal {
+  /* Use Modal.css standard size - 900px, 90% */
+  height: auto;
+  max-height: 80vh;
+}
+
+/* ===========================
+   Content area layout
+   =========================== */
+
+.user-input-modal .modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  background: #FFFFFF;
+}
+
+.modal-description {
+  /* Text styles consistent with system */
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 410;
+  line-height: 20px;
+  color: #6B7280;
+  margin-bottom: 24px;
+  font-variation-settings: 'opsz' 10.5;
+}
+
+.contact-link {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.contact-link:hover {
+  color: #1D4ED8;
+  text-decoration: underline;
+  background: rgba(37, 99, 235, 0.15);
+  transform: translateY(-1px);
+}
+
+.user-input-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ===========================
+   Form field styles
+   =========================== */
+
+.user-input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-input-label {
+  /* Label styles consistent with system */
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  color: #374151;
+  font-variation-settings: 'opsz' 10.5;
+}
+
+.required-asterisk {
+  color: #DC2626;
+  margin-left: 2px;
+}
+
+/* ===========================
+   Input control styles - consistent with form-input
+   =========================== */
+
+.user-input-control {
+  /* Base styles - consistent with Common.css form-input */
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #FFFFFF;
+  color: #374151;
+  transition: all 0.2s ease;
+  font-variation-settings: 'opsz' 10.5;
+  box-sizing: border-box;
+}
+
+.user-input-control:hover:not(:disabled):not([readonly]) {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.user-input-control:focus {
+  outline: none;
+  border-color: #272320;
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.1);
+}
+
+.user-input-control.error {
+  border-color: #DC2626;
+}
+
+.user-input-control.error:focus {
+  border-color: #DC2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+
+.user-input-control:disabled {
+  background: rgba(243, 244, 246, 0.95);
+  color: #9CA3AF;
+  cursor: not-allowed;
+}
+
+.input-error {
+  /* Error message styles */
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 410;
+  color: #DC2626;
+  margin-top: 4px;
+  font-variation-settings: 'opsz' 10.5;
+}
+
+/* ===========================
+   Special input control styles
+   =========================== */
+
+/* Folder selector */
+.folder-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.folder-input {
+  flex: 1;
+  cursor: pointer;
+}
+
+.folder-select-btn {
+  /* Button styles consistent with system btn-secondary */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #6B7280;
+  font-size: 14px;
+  font-weight: 410;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-variation-settings: 'opsz' 10.5;
+  box-sizing: border-box;
+}
+
+.folder-select-btn:hover {
+  background: rgba(39, 35, 32, 0.05);
+  border-color: rgba(0, 0, 0, 0.2);
+  color: #374151;
+}
+
+.folder-select-btn:active {
+  background: rgba(39, 35, 32, 0.1);
+  transform: translateY(1px);
+}
+
+/* Email input */
+.email-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.email-icon {
+  position: absolute;
+  left: 12px;
+  color: #9CA3AF;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.email-input {
+  padding-left: 40px;
+}
+
+/* Boolean select */
+.boolean-select {
+  cursor: pointer;
+}
+
+.boolean-select option {
+  background: #FFFFFF;
+  color: #374151;
+}
+
+/* ===========================
+   Bottom button styles
+   =========================== */
+
+.user-input-modal .modal-footer {
+  /* Use standard modal-footer styles */
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px 24px;
+  gap: 12px;
+  min-height: 52px;
+  background: #FFFFFF;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  flex: none;
+  align-self: stretch;
+  flex-grow: 0;
+  box-sizing: border-box;
+}
+
+.user-input-modal .btn-secondary {
+  /* Secondary button styles - consistent with system */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  min-height: 40px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-variation-settings: 'opsz' 10.5;
+  box-sizing: border-box;
+}
+
+.user-input-modal .btn-secondary:hover:not(:disabled) {
+  background: rgba(39, 35, 32, 0.05);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.user-input-modal .btn-secondary:active:not(:disabled) {
+  background: rgba(39, 35, 32, 0.1);
+  transform: translateY(1px);
+}
+
+.user-input-modal .btn-secondary:disabled {
+  color: #9CA3AF;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.user-input-modal .btn-primary {
+  /* Primary button styles - consistent with system */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  min-height: 40px;
+  border: 1px solid #272320;
+  border-radius: 8px;
+  background: #272320;
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-variation-settings: 'opsz' 10.5;
+  box-sizing: border-box;
+}
+
+.user-input-modal .btn-primary:hover:not(:disabled) {
+  background: rgba(39, 35, 32, 0.8);
+  border-color: rgba(39, 35, 32, 0.8);
+}
+
+.user-input-modal .btn-primary:active:not(:disabled) {
+  background: rgba(39, 35, 32, 0.9);
+  border-color: rgba(39, 35, 32, 0.9);
+  transform: translateY(1px);
+}
+
+.user-input-modal .btn-primary:disabled {
+  background: #9CA3AF;
+  border-color: #9CA3AF;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ===========================
+   Dark mode support
+   =========================== */
+
+/* ===========================
+   Responsive design
+   =========================== */
+
+@media (max-width: 768px) {
+  .user-input-modal {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+  }
+  
+  .user-input-modal .modal-body {
+    padding: 20px 16px;
+  }
+  
+  .user-input-modal .modal-footer {
+    padding: 16px;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  
+  .user-input-modal .btn-primary,
+  .user-input-modal .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .folder-input-wrapper {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .folder-select-btn {
+    width: 100%;
+  }
+}
+
+/* ===========================
+   Accessibility enhancements
+   =========================== */
+
+@media (prefers-contrast: high) {
+  .user-input-control,
+  .folder-select-btn {
+    border-width: 2px;
+  }
+  
+  .user-input-modal .btn-primary,
+  .user-input-modal .btn-secondary {
+    border-width: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-input-control,
+  .folder-select-btn,
+  .user-input-modal .btn-primary,
+  .user-input-modal .btn-secondary {
+    transition: none;
+  }
+  
+  .folder-select-btn:active,
+  .user-input-modal .btn-primary:active,
+  .user-input-modal .btn-secondary:active {
+    transform: none;
+  }
+}

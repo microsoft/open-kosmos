@@ -1,0 +1,104 @@
+/* ===========================
+ StreamingMessage component styles
+ streaming text optimization
+ =========================== */
+
+/* StreamingV2Message responsive fix */
+.streaming-v2-message {
+ min-width: 0; /* allow shrink */
+ width: 100%;
+ max-width: 100%;
+}
+
+.streaming-v2-message .message-content {
+ min-width: 0;
+ word-wrap: break-word;
+ overflow-wrap: break-word;
+}
+
+.streaming-text-container {
+ contain: layout style paint;
+ will-change: contents;
+ display: flex;
+ flex-direction: column;
+ min-width: 0; /* allow shrink */
+}
+
+.streaming-completed-content {
+ contain: layout style;
+ min-width: 0; /* allow shrink */
+}
+
+.streaming-line {
+ display: inline;
+ contain: layout style;
+}
+
+.streaming-content {
+ contain: layout style;
+ backface-visibility: hidden;
+ transform: translateZ(0);
+ white-space: pre-wrap;
+ word-wrap: break-word;
+ display: inline;
+}
+
+/* 🔥 hidden by default cursor - none cursor output mode */
+.streaming-cursor {
+ display: none;
+ width: 2px;
+ height: 1.2em;
+ background-color: #0ea5e9;
+ vertical-align: baseline;
+ transform: translateZ(0);
+ animation: streamingBlink 1s ease-in-out infinite;
+}
+
+/* only display when explicitly needed */
+.streaming-cursor.visible {
+ display: inline-block;
+ opacity: 1;
+}
+
+.streaming-cursor.hidden {
+ display: none;
+ opacity: 0;
+}
+
+@keyframes streamingBlink {
+ 0%, 50% {
+ opacity: 1;
+ transform: translateZ(0) scaleY(1);
+ }
+ 51%, 100% {
+ opacity: 0;
+ transform: translateZ(0) scaleY(0.8);
+ }
+}
+
+/* Optimize message content for streaming */
+.message-content.streaming {
+ contain: layout style paint;
+ will-change: contents;
+}
+
+.message-content.streaming .streaming-text-container {
+ transition: none;
+}
+
+/* ===========================
+ responsive and accessibility
+ =========================== */
+
+@media (prefers-reduced-motion: reduce) {
+ .streaming-cursor {
+ animation: none;
+ opacity: 1;
+ }
+}
+
+@media (prefers-contrast: high) {
+ .streaming-cursor {
+ background-color: #000;
+ }
+}

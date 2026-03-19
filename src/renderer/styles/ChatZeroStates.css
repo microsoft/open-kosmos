@@ -1,0 +1,149 @@
+/**
+ * ChatZeroStates styles
+ * chat initial experience component styles
+ */
+
+/* Container */
+.chat-zero-states {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start; /* align left */
+ gap: 20px;
+ width: 100%;
+ padding: 0 24px; /* left right 24px padding */
+ margin-bottom: 20px; /* with ChatInput between 's spacing */
+}
+
+/* Greeting */
+.chat-zero-states-greeting {
+ color: var(--Theme-Color-Foreground-Primary-750, #322D29);
+ font-feature-settings: 'calt' off;
+ font-size: 20px;
+ font-style: normal;
+ font-weight: 400;
+ line-height: normal;
+ text-align: left;
+}
+
+/* Quick Start List */
+.quick-start-list {
+ display: flex;
+ flex-direction: row;
+ gap: 20px;
+ justify-content: flex-start; /* align left */
+ flex-wrap: nowrap; /* no wrapping */
+ width: 100%;
+ overflow-x: auto; /* horizontal scroll */
+ overflow-y: hidden; /* no vertical scroll */
+ padding-top: 4px; /* leave space for hover upward shift animation */
+ padding-bottom: 8px; /* leave space for scrollbar */
+ margin-top: -4px; /* offset visual impact of padding-top */
+ scrollbar-width: thin; /* Firefox scrollbar width */
+ scrollbar-color: rgba(0, 0, 0, 0.2) transparent; /* Firefox scrollbar color */
+}
+
+/* Webkit browser scrollbar styles */
+.quick-start-list::-webkit-scrollbar {
+ height: 6px;
+}
+
+.quick-start-list::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.quick-start-list::-webkit-scrollbar-thumb {
+ background-color: rgba(0, 0, 0, 0.2);
+ border-radius: 3px;
+}
+
+.quick-start-list::-webkit-scrollbar-thumb:hover {
+ background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Quick Start Card */
+.quick-start-card {
+ display: flex;
+ width: 240px;
+ min-width: 240px; /* prevent card from being compressed */
+ padding: 12px 12px 20px 12px;
+ flex-direction: column;
+ align-items: center;
+ gap: 12px;
+ 
+ border-radius: 36px;
+ border: 1px solid var(--stroke-card-onPrimary-rest, rgba(0, 0, 0, 0.12));
+ background: var(--Background_0, #FFF);
+ 
+ cursor: pointer;
+ transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+ flex-shrink: 0; /* prevent card from being compressed */
+}
+
+.quick-start-card:hover {
+ border-color: var(--stroke-card-onPrimary-hover, rgba(0, 0, 0, 0.2));
+ box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+ transform: translateY(-2px);
+}
+
+.quick-start-card:focus {
+ outline: none;
+ border-color: var(--stroke-card-onPrimary-focus, #0078D4);
+ box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+}
+
+.quick-start-card:active {
+ transform: translateY(0);
+ box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* Quick Start Card Image */
+.quick-start-card-image {
+ height: 120px;
+ align-self: stretch;
+ 
+ border-radius: 24px;
+ background-color: lightgray;
+ background-position: 50%;
+ background-size: cover;
+ background-repeat: no-repeat;
+}
+
+.quick-start-card-image-placeholder {
+ background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+}
+
+/* Quick Start Card Title */
+.quick-start-card-title {
+ align-self: stretch;
+ 
+ color: var(--foreground-ctrl-neutral-primary-rest, #272320);
+ 
+ /* Semantic/Ramp/Item header */
+ font-size: var(--text-ramp-itemHeader-fontSize, 14px);
+ font-style: normal;
+ font-weight: var(--text-style-default-header-weight, 620);
+ line-height: var(--text-ramp-itemHeader-lineHeight, 20px); /* 142.857% */
+ letter-spacing: var(--text-style-default-header-letterSpacing, 0);
+}
+
+/* Quick Start Card Description */
+.quick-start-card-description {
+ align-self: stretch;
+ 
+ color: #6B6561;
+ 
+ /* Semantic/Label/Control */
+ font-size: var(--text-ramp-itemBody-fontSize, 14px);
+ font-style: normal;
+ font-weight: var(--text-ctrl-weight-default, 410);
+ line-height: var(--text-ramp-itemBody-lineHeight, 20px); /* 142.857% */
+ letter-spacing: var(--text-style-default-regular-letterSpacing, 0);
+ 
+ /* Limit to 3 lines with ellipsis */
+ display: -webkit-box;
+ -webkit-line-clamp: 3;
+ line-clamp: 3;
+ -webkit-box-orient: vertical;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}

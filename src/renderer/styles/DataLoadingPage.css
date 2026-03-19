@@ -1,0 +1,192 @@
+/* ===========================
+ DataLoadingPage component styles
+ =========================== */
+
+.data-loading-page {
+ height: 100%; /* Changed from 100vh to work with WindowsTitleBar */
+ display: flex;
+ flex-direction: column;
+ background: linear-gradient(135deg, #FFFBF8 0%, #FFFFFF 50%, #F8F4F1 100%);
+}
+
+/* ===========================
+ content container
+ =========================== */
+
+.data-loading-content {
+ flex: 1;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+.data-loading-card {
+ text-align: center;
+ background: rgba(255, 255, 255, 0.95);
+ backdrop-filter: blur(16px);
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 20px;
+ padding: 48px;
+ max-width: 512px;
+ margin: 0 auto;
+ box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+}
+
+/* ===========================
+ user avatar and welcome message
+ =========================== */
+
+.data-loading-user-section {
+ margin-bottom: 32px;
+}
+
+.data-loading-avatar {
+ width: 80px;
+ height: 80px;
+ margin: 0 auto 16px;
+ background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+.data-loading-avatar img {
+ width: 80px;
+ height: 80px;
+ border-radius: 50%;
+}
+
+.data-loading-avatar-text {
+ color: white;
+ font-size: 24px;
+ font-weight: 700;
+}
+
+.data-loading-welcome {
+ font-size: 24px;
+ font-weight: 700;
+ color: #1f2937;
+ margin-bottom: 8px;
+}
+
+.data-loading-subtitle {
+ color: #6b7280;
+ font-size: 16px;
+}
+
+/* ===========================
+ progress bar
+ =========================== */
+
+.data-loading-progress-section {
+ margin-bottom: 32px;
+}
+
+.data-loading-progress-bar {
+ width: 100%;
+ background: rgba(203, 213, 225, 0.3);
+ border-radius: 999px;
+ height: 12px;
+ margin-bottom: 16px;
+}
+
+.data-loading-progress-fill {
+ background: linear-gradient(90deg, #0ea5e9 0%, #0284c7 100%);
+ height: 12px;
+ border-radius: 999px;
+ transition: width 0.3s ease-out;
+}
+
+.data-loading-progress-text-container {
+ text-align: center;
+}
+
+.data-loading-progress-title {
+ font-size: 18px;
+ font-weight: 500;
+ color: #374151;
+ margin-bottom: 8px;
+}
+
+.data-loading-progress-message {
+ font-size: 14px;
+ color: #9ca3af;
+}
+
+/* ===========================
+ loading details list
+ =========================== */
+
+.data-loading-details {
+ display: flex;
+ flex-direction: column;
+ gap: 12px;
+ text-align: left;
+}
+
+.data-loading-detail-item {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+}
+
+.data-loading-detail-indicator {
+ width: 12px;
+ height: 12px;
+ border-radius: 50%;
+ transition: background 0.3s ease;
+ flex-shrink: 0;
+}
+
+.data-loading-detail-indicator.loading {
+ background: #0ea5e9;
+ animation: pulse 2s ease-in-out infinite;
+}
+
+.data-loading-detail-indicator.completed {
+ background: #10b981;
+}
+
+.data-loading-detail-text {
+ font-size: 14px;
+ transition: color 0.3s ease;
+}
+
+.data-loading-detail-text.loading {
+ color: #6b7280;
+}
+
+.data-loading-detail-text.completed {
+ color: #059669;
+}
+
+/* ===========================
+ time indicator
+ =========================== */
+
+.data-loading-time-section {
+ margin-top: 32px;
+ padding-top: 24px;
+ border-top: 1px solid rgba(203, 213, 225, 0.3);
+}
+
+.data-loading-time-text {
+ font-size: 12px;
+ color: #9ca3af;
+}
+
+/* ===========================
+ animation
+ =========================== */
+
+@keyframes pulse {
+ 0%, 100% {
+ opacity: 1;
+ transform: scale(1);
+ }
+ 50% {
+ opacity: 0.7;
+ transform: scale(1.1);
+ }
+}

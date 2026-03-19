@@ -1,0 +1,19 @@
+# Local development environment configuration - force building native modules from source
+# Usage: cp .npmrc.local .npmrc
+
+# Electron Builder Configuration
+electron_mirror=https://npmmirror.com/mirrors/electron/
+electron_builder_binaries_mirror=https://npmmirror.com/mirrors/electron-builder-binaries/
+
+# ⚠️ Local development: force build from source to ensure architecture match
+build_from_source=true
+
+# better-sqlite3 - build from source
+npm_config_build_from_source=true
+
+# Sharp - allow building from source
+sharp_binary_host=
+sharp_libvips_binary_host=
+
+# Skip native builds for optional dependencies
+node_gyp_force_process_config=0

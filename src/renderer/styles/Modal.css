@@ -1,0 +1,585 @@
+/* ===========================
+ unified 's Modal styles system
+ with Sidepane.css keep design consistency
+ =========================== */
+
+/* ===========================
+ Modal overlay and container
+ =========================== */
+
+/* modal overlay */
+.modal-overlay {
+ position: fixed;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: rgba(0, 0, 0, 0.4);
+ backdrop-filter: blur(8px);
+ z-index: 100;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 24px;
+ animation: fadeIn 0.2s ease-out;
+}
+
+/* high z-index overlay (such as emoji picker) */
+.modal-overlay.high-z {
+ z-index: 1100;
+}
+
+/* very high z-index overlay (e.g., tool viewer) */
+.modal-overlay.ultra-z {
+ z-index: 1000;
+}
+
+/* common modal container - inherit chat-sidepane 's base styles */
+.modal-container {
+ /* default dimensions - from agent-chat-editor-modal inherit */
+ width: min(900px, 90%);
+ height: min(720px, 90%);
+ 
+ /* layout mode */
+ display: flex;
+ flex-direction: column;
+ 
+ /* appearance - with chat-sidepane consistent */
+ background: #FFFFFF;
+ backdrop-filter: blur(16px);
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+ 
+ /* other */
+ overflow: hidden;
+ animation: slideIn 0.3s ease-out;
+ box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+ box-sizing: border-box;
+}
+
+/* ===========================
+ Modal header styles
+ =========================== */
+
+/* modal header - with sidepane-header consistent */
+.modal-header {
+ /* layout - with sidepane-header consistent */
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 16px 12px;
+ gap: 12px;
+ 
+ /* dimensions - with sidepane-header consistent */
+ height: 52px;
+ 
+ /* appearance - with sidepane-header consistent */
+ background: #FFFFFF;
+ border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+ 
+ /* layout properties */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ box-sizing: border-box;
+}
+
+/* modal title */
+.modal-title {
+ font-size: 14px;
+ font-weight: 600;
+ color: #374151;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ flex: 1;
+}
+
+/* modal close button - with sidepane-close-btn consistent */
+.model-btn-close {
+ /* Icon container */
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px;
+ height: 32px;
+ 
+ /* styles */
+ border: none;
+ background: transparent;
+ cursor: pointer;
+ padding: 0;
+ border-radius: 8px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+ 
+ /* interaction */
+ transition: all 0.2s ease;
+}
+
+.model-btn-close:hover {
+ background: rgba(0, 0, 0, 0.05);
+ border-radius: 8px;
+}
+
+.model-btn-close:active {
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 8px;
+}
+
+.model-btn-close svg {
+ width: 12px;
+ height: 12px;
+ display: block;
+}
+
+/* ===========================
+ Modal content and bottom styles
+ =========================== */
+
+/* modal content area */
+.modal-content {
+ flex: 1;
+ overflow-y: auto;
+ padding: 24px;
+ min-height: 0;
+ background: transparent;
+ box-sizing: border-box;
+}
+
+/* modal bottom - dynamic height adaptation button size */
+.modal-footer {
+ /* layout */
+ display: flex;
+ justify-content: flex-end;
+ align-items: center;
+ padding: 8px 12px;
+ gap: 12px;
+ 
+ /* dimensions - dynamic height, min-height ensures aesthetics */
+ min-height: 40px;
+ 
+ /* appearance - with modal-header consistent */
+ background: #FFFFFF;
+ border-top: 1px solid rgba(0, 0, 0, 0.1);
+ 
+ /* layout properties */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ box-sizing: border-box;
+}
+
+/* Footer button container */
+.model-footer-btn-secondary,
+.model-footer-btn-primary {
+ display: flex;
+ align-items: center;
+}
+
+/* ===========================
+ specific Modal type dimensions override
+ =========================== */
+
+/* Agent Chat Editor Modal - use default dimensions */
+.agent-chat-editor-modal {
+ /* inherit modal-container 's default dimensions */
+}
+
+/* VSCode MCP Importer Modal */
+.vscode-mcp-importer-modal {
+ width: min(800px, 90%);
+ height: min(85vh, 90%);
+ max-width: 800px;
+ max-height: 85vh;
+}
+
+/* Add Server Selection Modal (MCP Editor) */
+.add-server-selection {
+ width: min(600px, 90%);
+ height: auto;
+ max-height: 80vh;
+}
+
+/* ===========================
+ Agent Chat Editor special layout
+ =========================== */
+
+/* Agent Chat Editor content area needs horizontal layout */
+.agent-chat-editor-modal .modal-content {
+ padding: 0; /* remove default padding */
+ display: flex;
+ flex-direction: row;
+}
+
+/* left navigation - with LeftNavigation consistent */
+.modal-left-navigation {
+ width: 190px;
+ background: #FFFBF8;
+ border-right: 1px solid rgba(0, 0, 0, 0.1);
+ padding: 12px;
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+ flex-shrink: 0;
+ box-sizing: border-box;
+}
+
+/* navigation tab - with NavItem consistent */
+.modal-left-navigation .nav-tab {
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ 
+ /* layout styles - with NavItem consistent */
+ box-sizing: border-box;
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px 0px 0px 10px;
+ gap: 2px;
+ 
+ width: 100%;
+ height: 40px;
+ min-height: 40px;
+ 
+ border-radius: 12px;
+ 
+ /* layout properties */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ 
+ /* text styles */
+ font-style: normal;
+ font-weight: 410;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ /* text alignment and overflow handling */
+ text-align: left;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ 
+ /* transition effects */
+ transition: background 0.2s ease;
+}
+
+/* Hover state - with NavItem consistent */
+.modal-left-navigation .nav-tab:hover:not(.disabled) {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+/* Active/Selected state - with NavItem consistent */
+.modal-left-navigation .nav-tab.active {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+/* Disabled state */
+.modal-left-navigation .nav-tab.disabled {
+ cursor: not-allowed;
+ opacity: 0.5;
+}
+
+/* modification indicator */
+.modal-left-navigation .nav-tab .change-indicator {
+ display: inline-block;
+ margin-left: 8px;
+ color: #2563eb;
+ font-size: 12px;
+ font-weight: bold;
+ animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.5; }
+}
+
+/* right side content */
+.modal-right-content {
+ flex: 1;
+ overflow: hidden;
+ background: rgba(255, 255, 255, 0.95);
+ position: relative;
+ box-sizing: border-box;
+}
+
+/* ===========================
+ animation effects
+ =========================== */
+
+@keyframes fadeIn {
+ from { opacity: 0; }
+ to { opacity: 1; }
+}
+
+@keyframes slideIn {
+ from {
+ opacity: 0;
+ transform: translateY(-20px) scale(0.95);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0) scale(1);
+ }
+}
+
+/* ===========================
+ responsive and accessibility
+ =========================== */
+
+@media (prefers-contrast: high) {
+ .modal-container {
+ border-color: #000;
+ }
+ 
+ .modal-header,
+ .modal-footer {
+ border-color: #000;
+ }
+}
+
+@media (prefers-reduced-motion: reduce) {
+ .modal-overlay,
+ .modal-container,
+ .model-btn-close {
+ animation: none;
+ transition: none;
+ }
+}
+
+/* mobile adaptation */
+@media (max-width: 768px) {
+ .modal-overlay {
+ padding: 16px;
+ }
+ 
+ .modal-container {
+ width: 100%;
+ height: 100%;
+ max-width: none;
+ max-height: none;
+ }
+ 
+ .agent-chat-editor-modal .modal-content {
+ flex-direction: column;
+ }
+ 
+ .modal-left-navigation {
+ width: 100%;
+ height: auto;
+ border-right: none;
+ border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+ flex-direction: row;
+ overflow-x: auto;
+ }
+}
+
+/* ===========================
+ Delete Confirmation Dialog
+ =========================== */
+
+.delete-confirm-overlay {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: rgba(0, 0, 0, 0.4);
+ backdrop-filter: blur(12px);
+ z-index: 200;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 24px;
+ animation: fadeIn 0.3s ease-out;
+ pointer-events: auto;
+}
+
+.delete-confirm-modal {
+ width: min(450px, 90%);
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(16px);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 12px;
+ overflow: hidden;
+ box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+ display: flex;
+ flex-direction: column;
+ animation: slideIn 0.2s ease-out;
+ margin: 0 auto;
+}
+
+.delete-confirm-modal .modal-header {
+ height: 60px;
+ padding: 20px 24px;
+ border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+ display: flex;
+ align-items: center;
+ background: rgba(241, 245, 249, 0.95);
+ backdrop-filter: blur(8px);
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.delete-confirm-modal .modal-header h2 {
+ margin: 0;
+ font-size: 18px;
+ font-weight: 600;
+ color: #dc2626;
+}
+
+.delete-confirm-modal .modal-content {
+ padding: 24px;
+ background: rgba(255, 255, 255, 0.95);
+}
+
+.delete-confirm-modal .modal-content p {
+ margin: 0 0 12px 0;
+ font-size: 14px;
+ color: #374151;
+ line-height: 1.5;
+}
+
+.delete-confirm-modal .modal-content p:last-child {
+ margin-bottom: 0;
+}
+
+.delete-confirm-modal .warning-text {
+ color: #dc2626 !important;
+ font-size: 13px !important;
+ font-weight: 500;
+}
+
+.delete-confirm-modal .modal-actions {
+ padding: 20px 24px;
+ border-top: 1px solid rgba(203, 213, 225, 0.3);
+ display: flex;
+ gap: 12px;
+ justify-content: flex-end;
+ background: rgba(241, 245, 249, 0.95);
+ backdrop-filter: blur(8px);
+}
+
+.delete-confirm-modal .btn-cancel {
+ padding: 8px 20px;
+ min-height: 36px;
+ border: 1px solid #d1d5db;
+ border-radius: 8px;
+ background: #ffffff;
+ color: #374151;
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.delete-confirm-modal .btn-cancel:hover {
+ background: #f9fafb;
+ border-color: #9ca3af;
+}
+
+.delete-confirm-modal .btn-delete {
+ padding: 8px 20px;
+ min-height: 36px;
+ border: 1px solid #dc2626;
+ border-radius: 8px;
+ background: #dc2626;
+ color: white;
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.delete-confirm-modal .btn-delete:hover {
+ background: #b91c1c;
+ border-color: #b91c1c;
+}
+
+/* Primary button style for duplicate dialog */
+.delete-confirm-modal .btn-primary {
+ padding: 8px 20px;
+ min-height: 36px;
+ border: 1px solid #2563eb;
+ border-radius: 8px;
+ background: #2563eb;
+ color: white;
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.delete-confirm-modal .btn-primary:hover:not(:disabled) {
+ background: #1d4ed8;
+ border-color: #1d4ed8;
+}
+
+.delete-confirm-modal .btn-primary:disabled {
+ background: #93c5fd;
+ border-color: #93c5fd;
+ cursor: not-allowed;
+ opacity: 0.7;
+}
+
+/* Input style for duplicate dialog */
+.delete-confirm-modal .duplicate-agent-input {
+ width: 100%;
+ padding: 10px 12px;
+ margin-top: 12px;
+ border: 1px solid #d1d5db;
+ border-radius: 8px;
+ font-size: 14px;
+ color: #374151;
+ background: #ffffff;
+ transition: border-color 0.2s ease, box-shadow 0.2s ease;
+ box-sizing: border-box;
+}
+
+.delete-confirm-modal .duplicate-agent-input:focus {
+ outline: none;
+ border-color: #2563eb;
+ box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.delete-confirm-modal .duplicate-agent-input::placeholder {
+ color: #9ca3af;
+}
+
+/* Input warning state - matching AgentBasicTab style */
+.delete-confirm-modal .duplicate-agent-input.warning {
+ border-color: #f59e0b;
+ background: rgba(254, 243, 199, 0.1);
+}
+
+.delete-confirm-modal .duplicate-agent-input.warning:focus {
+ border-color: #f59e0b;
+ box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+/* Warning message - matching AgentBasicTab style */
+.delete-confirm-modal .warning-message {
+ background: rgba(254, 243, 199, 0.9);
+ border-left: 4px solid #f59e0b;
+ color: #78350f;
+ padding: 8px 12px;
+ margin-top: 8px;
+ border-radius: 6px;
+ font-size: 13px;
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+/* Duplicate agent modal - override header color */
+.delete-confirm-modal.duplicate-agent-modal .modal-header h2 {
+ color: #374151;
+}

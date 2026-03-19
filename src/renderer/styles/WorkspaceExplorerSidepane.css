@@ -1,0 +1,696 @@
+/* ===========================
+ Workspace Explorer Sidepane dedicated styles
+ =========================== */
+
+/* File Explorer Sidepane - dual section container */
+.file-explorer-sidepane {
+ display: flex;
+ flex-direction: column;
+ gap: 12px;
+ overflow-y: auto;
+ overflow-x: hidden;
+ padding: 0px 0px;
+}
+
+.file-explorer-sidepane::-webkit-scrollbar {
+ width: 6px;
+}
+
+.file-explorer-sidepane::-webkit-scrollbar-track {
+ background: rgba(241, 245, 249, 0.5);
+ border-radius: 3px;
+}
+
+.file-explorer-sidepane::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+ border-radius: 3px;
+}
+
+.file-explorer-sidepane::-webkit-scrollbar-thumb:hover {
+ background: rgba(156, 163, 175, 0.9);
+}
+
+/* File Explorer Section - each section 's common styles */
+.file-explorer-section {
+ display: flex;
+ flex-direction: column;
+ gap: 2px;
+ flex: 1;
+ min-height: 120px;
+ width: 100%;
+ position: relative;
+ overflow: hidden;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+}
+
+.file-explorer-section.collapsed {
+ flex: 0 0 auto;
+ min-height: auto;
+}
+
+/* Section Header */
+.sidepane-section-header {
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 10px 12px;
+ gap: 8px;
+ height: 40px;
+ background: #F8F4F1;
+ border-radius: 8px 8px 0 0;
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ cursor: pointer;
+ user-select: none;
+ border-bottom: none;
+ width: auto;
+ box-sizing: border-box;
+}
+
+.sidepane-section-header:hover {
+ background: #F0EAE5;
+}
+
+.sidepane-section-header-title {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ flex: 1;
+ min-width: 0;
+}
+
+.sidepane-section-collapse-icon {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ color: #6b7280;
+ flex-shrink: 0;
+}
+
+.sidepane-section-title-text {
+ font-size: 13px;
+ font-weight: 600;
+ color: #374151;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.sidepane-section-header-actions {
+ display: flex;
+ align-items: center;
+ gap: 4px;
+ flex-shrink: 0;
+}
+
+/* Section Body */
+.sidepane-section-body {
+ flex: 1;
+ overflow-y: auto;
+ overflow-x: hidden;
+ padding: 0;
+ width: 100%;
+ box-sizing: border-box;
+ background: transparent;
+ position: relative;
+}
+
+.sidepane-section-body::-webkit-scrollbar {
+ width: 6px;
+}
+
+.sidepane-section-body::-webkit-scrollbar-track {
+ background: rgba(241, 245, 249, 0.5);
+ border-radius: 3px;
+}
+
+.sidepane-section-body::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+ border-radius: 3px;
+}
+
+.sidepane-section-body::-webkit-scrollbar-thumb:hover {
+ background: rgba(156, 163, 175, 0.9);
+}
+
+/* Knowledge Explorer Section - 70% height */
+.knowledge-explorer-sidepane-section {
+ flex: 7;
+ min-height: 200px;
+}
+
+/* Chat Session File Explorer Section - 30% height */
+.chat-session-file-explorer-sidepane-section {
+ flex: 3;
+ min-height: 120px;
+}
+
+/* Legacy support */
+.workspace-explorer-sidepane {
+ /* inherit chat-sidepane 's base styles */
+ position: relative;
+}
+
+/* back button styles - reference McpToolDetailView 's fallback button */
+.workspace-back-btn {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px;
+ height: 32px;
+ background: transparent;
+ border: none;
+ cursor: pointer;
+ padding: 0;
+ margin-right: 4px;
+ flex: none;
+ flex-shrink: 0;
+ border-radius: 8px;
+ transition: all 0.2s ease;
+}
+
+.workspace-back-btn:hover {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+.workspace-back-btn:active {
+ background: rgba(0, 0, 0, 0.08);
+}
+
+.workspace-back-btn svg {
+ width: 20px;
+ height: 20px;
+ display: block;
+}
+
+/* drag and drop upload styles */
+.workspace-explorer-sidepane.dragging-over,
+.file-explorer-section.dragging-over {
+ background-color: rgba(59, 130, 246, 0.05);
+ border: 2px dashed rgba(59, 130, 246, 0.5);
+ border-radius: 12px;
+}
+
+.workspace-explorer-sidepane .drop-overlay,
+.file-explorer-section .drop-overlay {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background-color: rgba(59, 130, 246, 0.1);
+ backdrop-filter: blur(2px);
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ z-index: 1000;
+ pointer-events: none;
+}
+
+.workspace-explorer-sidepane .drop-overlay-content,
+.file-explorer-section .drop-overlay-content {
+ text-align: center;
+ padding: 32px;
+ background-color: rgba(255, 255, 255, 0.95);
+ border-radius: 12px;
+ border: 2px dashed #3b82f6;
+ box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.workspace-explorer-sidepane .drop-overlay .drop-icon,
+.file-explorer-section .drop-overlay .drop-icon {
+ font-size: 64px;
+ margin-bottom: 16px;
+ animation: bounce 1s ease-in-out infinite;
+}
+
+.workspace-explorer-sidepane .drop-overlay p,
+.file-explorer-section .drop-overlay p {
+ margin: 0;
+ font-size: 16px;
+ font-weight: 500;
+ color: #3b82f6;
+}
+
+@keyframes bounce {
+ 0%, 100% {
+ transform: translateY(0);
+ }
+ 50% {
+ transform: translateY(-10px);
+ }
+}
+
+/* ========================================
+ Sidepane Workspace Empty State
+ ======================================== */
+.sidepane-workspace-empty-state {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 100%;
+ height: 100%;
+ min-height: 200px;
+ padding: 24px;
+ box-sizing: border-box;
+}
+
+.sidepane-workspace-empty-content {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ gap: 12px;
+ text-align: center;
+ max-width: 280px;
+}
+
+.sidepane-workspace-empty-icon {
+ color: #9ca3af;
+ margin-bottom: 4px;
+}
+
+.sidepane-workspace-empty-text {
+ margin: 0;
+ font-size: 14px;
+ font-weight: 600;
+ line-height: 1.5;
+ color: #374151;
+}
+
+.sidepane-workspace-empty-subtext {
+ margin: 0;
+ font-size: 13px;
+ font-weight: 400;
+ line-height: 1.5;
+ color: #6b7280;
+}
+
+.sidepane-workspace-empty-actions {
+ display: flex;
+ flex-direction: column;
+ gap: 10px;
+ align-items: center;
+ margin-top: 12px;
+ width: 100%;
+ max-width: 200px;
+}
+
+.sidepane-workspace-empty-btn {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ gap: 6px;
+ padding: 8px 16px;
+ font-size: 13px;
+ font-weight: 600;
+ line-height: 18px;
+ border-radius: 8px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ white-space: nowrap;
+ width: 100%;
+}
+
+.sidepane-workspace-empty-btn.primary {
+ background: #272320;
+ color: #FFFFFF;
+ border: 1px solid #272320;
+}
+
+.sidepane-workspace-empty-btn.primary:hover {
+ background: #3d3935;
+ border-color: #3d3935;
+}
+
+.sidepane-workspace-empty-btn.primary:active {
+ background: #1a1715;
+ border-color: #1a1715;
+ transform: scale(0.98);
+}
+
+.sidepane-workspace-empty-btn.secondary {
+ background: #FFFFFF;
+ color: #272320;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.sidepane-workspace-empty-btn.secondary:hover {
+ background: #F8F4F1;
+ border-color: rgba(0, 0, 0, 0.2);
+}
+
+.sidepane-workspace-empty-btn.secondary:active {
+ background: #F0EAE5;
+ border-color: rgba(0, 0, 0, 0.24);
+ transform: scale(0.98);
+}
+
+.sidepane-workspace-empty-btn svg {
+ flex-shrink: 0;
+}
+
+/* Dark mode support for sidepane workspace empty state */
+/* Workspace Menu Styles */
+.workspace-menu-container {
+ position: relative;
+}
+
+.workspace-menu-dropdown {
+ position: fixed;
+ background: white;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+ box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+ z-index: 10001;
+ min-width: 200px;
+ overflow: hidden;
+ animation: fadeIn 0.15s ease-out;
+}
+
+.workspace-menu-dropdown .menu-item {
+ width: 100%;
+ padding: 10px 16px;
+ border: none;
+ background: transparent;
+ text-align: left;
+ cursor: pointer;
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ transition: all 0.15s ease;
+ font-family: inherit;
+ font-size: 14px;
+ color: #374151;
+}
+
+.workspace-menu-dropdown .menu-item:hover {
+ background: rgba(240, 249, 255, 0.8);
+}
+
+.workspace-menu-dropdown .menu-item .menu-icon {
+ font-size: 16px;
+ width: 20px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+.workspace-menu-dropdown .menu-item span:not(.menu-icon) {
+ flex: 1;
+}
+
+@keyframes fadeIn {
+ from {
+ opacity: 0;
+ transform: translateY(-4px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+/* file tree Explorer */
+.file-tree-explorer {
+ user-select: none;
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ overflow: auto;
+}
+
+.file-tree-explorer.empty {
+ padding: 0;
+}
+
+/* Tree View content container */
+.tree-content {
+ display: flex;
+ flex-direction: column;
+ min-width: min-content;
+ overflow-x: auto;
+ overflow-y: auto;
+}
+
+/* breadcrumb navigation view */
+.file-tree-explorer.breadcrumb-view {
+ gap: 0;
+}
+
+/* breadcrumb navigation bar */
+.breadcrumb-navigation {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ padding: 8px;
+ background: rgba(241, 245, 249, 0.4);
+ border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+ border-radius: 8px;
+ flex-shrink: 0;
+ min-height: 40px;
+ box-sizing: border-box;
+}
+
+.breadcrumb-back-btn {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 28px;
+ height: 28px;
+ padding: 0;
+ border: none;
+ border-radius: 6px;
+ background: rgba(255, 255, 255, 0.8);
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 18px;
+ color: #6b7280;
+ flex-shrink: 0;
+}
+
+.breadcrumb-back-btn:hover {
+ background: rgba(59, 130, 246, 0.1);
+ color: #3b82f6;
+ transform: translateX(-2px);
+}
+
+.breadcrumb-path {
+ display: flex;
+ align-items: center;
+ gap: 4px;
+ flex: 1;
+ min-width: 0;
+ overflow-x: auto;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+}
+
+.breadcrumb-path::-webkit-scrollbar {
+ display: none;
+}
+
+.breadcrumb-item {
+ padding: 4px 8px;
+ border: none;
+ border-radius: 4px;
+ background: transparent;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 13px;
+ color: #6b7280;
+ white-space: nowrap;
+ flex-shrink: 0;
+}
+
+.breadcrumb-item:hover:not(.active) {
+ background: rgba(59, 130, 246, 0.1);
+ color: #3b82f6;
+}
+
+.breadcrumb-item.active {
+ color: #374151;
+ font-weight: 600;
+ cursor: default;
+}
+
+.breadcrumb-separator {
+ color: #9ca3af;
+ font-size: 12px;
+ flex-shrink: 0;
+}
+
+/* directory content area - with sessions-list consistent */
+.directory-content {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ overflow-x: auto;
+ overflow-y: auto;
+}
+
+/* empty directory state */
+.empty-directory {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 40px 20px;
+ text-align: center;
+ color: #9ca3af;
+}
+
+.empty-directory .empty-icon {
+ font-size: 48px;
+ margin-bottom: 12px;
+ opacity: 0.5;
+}
+
+.empty-directory p {
+ margin: 0;
+ font-size: 13px;
+ color: #6b7280;
+}
+
+/* file tree node - with session-card consistent */
+.file-tree-node {
+ position: relative;
+ min-width: max-content;
+}
+
+/* file tree child nodes container */
+.file-tree-children {
+ display: flex;
+ flex-direction: column;
+}
+
+.file-tree-node-content {
+ /* box model */
+ box-sizing: border-box;
+ 
+ /* layout - Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ 
+ /* spacing */
+ padding: 0px 12px;
+ gap: 8px;
+ 
+ /* dimensions */
+ height: 40px;
+ 
+ /* appearance - Normal State */
+ background: #FFFFFF;
+ border-radius: 12px;
+ border: none;
+ 
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ 
+ /* interaction */
+ cursor: pointer;
+ transition: all 0.2s ease;
+ 
+ /* other */
+ position: relative;
+}
+
+.file-tree-node-content:hover {
+ /* Hover State */
+ background: rgba(0, 0, 0, 0.05);
+ transform: none;
+ box-shadow: none;
+}
+
+.file-tree-node-content:active {
+ background: rgba(0, 0, 0, 0.08);
+ transform: none;
+ box-shadow: none;
+}
+
+/* node icon */
+.node-icon {
+ display: inline-flex;
+ align-items: center;
+ font-size: 18px;
+ line-height: 1;
+ flex-shrink: 0;
+ width: 20px;
+ justify-content: center;
+}
+
+/* node name */
+.node-name {
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ font-size: 14px;
+ font-weight: 500;
+ color: #374151;
+ line-height: 1.4;
+}
+
+/* directory arrow indicator */
+.directory-arrow {
+ display: inline-flex;
+ align-items: center;
+ font-size: 14px;
+ color: #9ca3af;
+ flex-shrink: 0;
+ transition: color 0.2s ease;
+ opacity: 0;
+}
+
+.file-tree-node-content:hover .directory-arrow {
+ opacity: 1;
+ color: #6b7280;
+}
+
+/* file node styles */
+.file-tree-node-content.file .node-name {
+ color: #374151;
+ font-weight: 500;
+}
+
+/* folder node styles */
+.file-tree-node-content.directory .node-name {
+ font-weight: 500;
+ color: #374151;
+}
+
+/* child nodes container (removed, no longer needed) */
+/* indentation guide line (removed, no longer needed) */
+
+/* responsive design */
+@media (max-width: 768px) {
+ .file-tree-node-content {
+ padding: 0px 12px;
+ height: 40px;
+ }
+}
+
+/* accessibility */
+.workspace-explorer-sidepane *:focus-visible {
+ outline: 2px solid #3b82f6;
+ outline-offset: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+ .breadcrumb-back-btn,
+ .breadcrumb-item,
+ .file-tree-node-content,
+ .directory-arrow,
+ .workspace-menu-dropdown,
+ .drop-overlay .drop-icon {
+ transition: none;
+ animation: none;
+ }
+}

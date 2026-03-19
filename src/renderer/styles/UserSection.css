@@ -1,0 +1,130 @@
+/* UserSection component styles */
+
+.user-section {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px 0px 10px 10px;
+ gap: 16px;
+ min-width: 264px;
+ max-width: 364px;
+ width: 100%;
+}
+
+/* Install Update Button */
+.restart-update-button {
+ box-sizing: border-box;
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px 8px;
+ gap: 8px;
+ width: 156px;
+ height: 36px;
+ background: #FFE6D3;
+ border: none;
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.restart-update-button:hover {
+ background: #ffd9bf;
+}
+
+.restart-update-button:active {
+ background: #ffccab;
+}
+
+.restart-update-button:focus-visible {
+ outline: 2px solid #FFE6D3;
+ outline-offset: 2px;
+}
+
+.restart-update-icon {
+ width: 16px;
+ height: 16px;
+ color: #333;
+ flex-shrink: 0;
+}
+
+.restart-update-text {
+ font-size: 13px;
+ font-weight: 500;
+ color: #333;
+ white-space: nowrap;
+}
+
+/* Collapsed state for left navigation */
+.left-navigation.collapsed .restart-update-button {
+ width: 36px;
+ padding: 0px;
+ justify-content: center;
+}
+
+.left-navigation.collapsed .restart-update-text {
+ display: none;
+}
+
+/* Profile Icon Button */
+.profile-icon-button {
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ padding: 0px;
+ 
+ /* Avatar */
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 0px;
+ isolation: isolate;
+ 
+ width: 40px;
+ height: 40px;
+ 
+ /* Shadows/Avatar */
+ filter: drop-shadow(0px 1px 3px rgba(0, 0, 0, 0.15));
+ 
+ /* transition effects */
+ transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.profile-icon-button:hover {
+ transform: scale(1.05);
+ filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.profile-icon-button:active {
+ transform: scale(0.95);
+}
+
+.profile-icon-button:focus-visible {
+ outline: 2px solid rgba(0, 0, 0, 0.2);
+ outline-offset: 2px;
+ border-radius: 50%;
+}
+
+/* Profile Avatar Image */
+.profile-avatar {
+ width: 40px;
+ height: 40px;
+ border-radius: 50%;
+ object-fit: cover;
+ display: block;
+}
+
+/* Profile Fallback Icon */
+.profile-fallback {
+ width: 40px;
+ height: 40px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ font-size: 24px;
+ border-radius: 50%;
+ background: rgba(0, 0, 0, 0.05);
+}

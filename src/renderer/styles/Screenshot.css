@@ -1,0 +1,106 @@
+/* Screenshot window dedicated styles - only keep Tailwind cannot express 's complex styles */
+
+/* screenshot container */
+.screenshot-container {
+ position: fixed;
+ inset: 0;
+ overflow: hidden;
+ cursor: crosshair;
+ -webkit-app-region: no-drag;
+ background: transparent;
+}
+
+/* selection area border - box-shadow mask effect cannot apply Tailwind implement now */
+.selection-rect {
+ position: absolute;
+ border: 2px solid #1890ff;
+ background-color: transparent;
+ box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+ pointer-events: none;
+}
+
+/* selection dimensions hint */
+.selection-size-hint {
+ position: absolute;
+ background-color: rgba(0, 0, 0, 0.75);
+ color: white;
+ padding: 4px 8px;
+ border-radius: 4px;
+ font-size: 12px;
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+ white-space: nowrap;
+ pointer-events: none;
+ z-index: 1000;
+}
+
+/* hint message */
+.screenshot-hint {
+ position: fixed;
+ top: 20px;
+ left: 50%;
+ transform: translateX(-50%);
+ background-color: rgba(0, 0, 0, 0.75);
+ color: white;
+ padding: 8px 16px;
+ border-radius: 6px;
+ font-size: 14px;
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+ pointer-events: none;
+ z-index: 1002;
+}
+
+/* adjust size 's handle - base styles */
+.resize-handle {
+ position: absolute;
+ width: 8px;
+ height: 8px;
+ background-color: #1890ff;
+ border: 1px solid white;
+ border-radius: 2px;
+}
+
+.resize-handle-nw { top: -4px; left: -4px; cursor: nw-resize; }
+.resize-handle-ne { top: -4px; right: -4px; cursor: ne-resize; }
+.resize-handle-sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+.resize-handle-se { bottom: -4px; right: -4px; cursor: se-resize; }
+.resize-handle-n { top: -4px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+.resize-handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+.resize-handle-w { left: -4px; top: 50%; transform: translateY(-50%); cursor: w-resize; }
+.resize-handle-e { right: -4px; top: 50%; transform: translateY(-50%); cursor: e-resize; }
+
+/* Toast notification - needs animation */
+.screenshot-toast {
+ position: fixed;
+ bottom: 40px;
+ left: 50%;
+ transform: translateX(-50%);
+ background-color: rgba(0, 0, 0, 0.85);
+ color: white;
+ padding: 10px 20px;
+ border-radius: 8px;
+ font-size: 14px;
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+ z-index: 1003;
+ animation: fadeInUp 0.2s ease;
+}
+
+.screenshot-toast.success {
+ background-color: rgba(82, 196, 26, 0.9);
+}
+
+.screenshot-toast.error {
+ background-color: rgba(255, 77, 79, 0.9);
+}
+
+/* animation definition */
+@keyframes fadeInUp {
+ from {
+ opacity: 0;
+ transform: translateX(-50%) translateY(10px);
+ }
+ to {
+ opacity: 1;
+ transform: translateX(-50%) translateY(0);
+ }
+}
+

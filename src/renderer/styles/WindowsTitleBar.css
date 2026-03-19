@@ -1,0 +1,102 @@
+.windows-title-bar {
+  height: 40px;
+  width: 100%;
+  background: linear-gradient(to bottom, #FFE6D3, #fff8f3); /* Warm orange to light gradient - matches system theme */
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Space between title and controls */
+  z-index: 50;
+  -webkit-app-region: drag;
+  padding-left: 12px;
+  pointer-events: auto; /* Ensure container is interactive */
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Remove the overlay since we use custom buttons */
+.windows-title-bar::after {
+  display: none;
+}
+
+.app-title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.app-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.app-title {
+  font-size: 12px;
+  color: #64748b; /* Slate 500 */
+  font-weight: 500;
+  pointer-events: auto;
+}
+
+.title-bar-right-section {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: no-drag; /* Make buttons interactive */
+}
+
+.menu-button {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  position: static; /* Reset absolute positioning */
+  height: 100%;
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  border-radius: 0;
+}
+
+.menu-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #1e293b;
+}
+
+.menu-button:active {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+}
+
+.window-control-button {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  transition: background-color 0.2s, color 0.2s;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #1e293b;
+}
+
+.window-control-button.close:hover {
+  background-color: #e81123; /* Windows standard red */
+  color: white;
+}
+

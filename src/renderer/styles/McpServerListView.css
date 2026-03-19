@@ -1,0 +1,43 @@
+/* ===========================
+ MCP Server List View styles
+ =========================== */
+
+.mcp-server-list-container {
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ overflow: hidden;
+ max-height: 100%;
+}
+
+.mcp-server-list-container > :first-child {
+ flex: 1;
+ overflow-y: auto;
+ padding: 0 0 3rem 0;
+ min-height: 0;
+}
+
+.mcp-server-list-container > :first-child::-webkit-scrollbar {
+ width: 6px;
+}
+
+.mcp-server-list-container > :first-child::-webkit-scrollbar-track {
+ background: rgba(203, 213, 225, 0.3);
+ border-radius: 3px;
+}
+
+.mcp-server-list-container > :first-child::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.6);
+ border-radius: 3px;
+ transition: background 0.2s ease;
+}
+
+.mcp-server-list-container > :first-child::-webkit-scrollbar-thumb:hover {
+ background: rgba(203, 213, 225, 0.8);
+}
+
+.server-cards {
+ display: flex;
+ flex-direction: column;
+ gap: 12px;
+}

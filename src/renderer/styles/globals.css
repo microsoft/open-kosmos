@@ -1,0 +1,1592 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================
+ Kosmos App Global Styles
+ 
+ Architecture:
+ - globals.css (this file): Base styles, layout system, app-specific styles
+ - components.css: Reusable UI components (buttons, modals, forms, etc.)
+ - Domain-specific: agent.css, mcp.css, chat.css, memory.css
+ 
+ Import order in components:
+ 1. globals.css (base)
+ 2. components.css (if using shared components)
+ 3. domain.css (specific functionality)
+ =========================== */
+
+/* ===========================
+ Brand new modern base style system
+ Simple, clean, fresh, frosted glass effect
+ Light Mode Only
+ =========================== */
+
+/* ===========================
+ Layout System Variables
+ =========================== */
+
+:root {
+ /* ===========================
+ unified font system
+ =========================== */
+ /* main interface font - use system native font */
+ --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+ /* code/monospace font */
+ --font-mono: 'Cascadia Code', 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+
+ /* Layout dimensions - remove window-header related variable, use system standard title bar */
+ --layout-left-panel-width: 350px; /* Updated to match agent-area width */
+ --layout-left-panel-collapsed-width: 60px;
+ --layout-content-padding: 24px;
+ 
+ /* Phase 1: New layout dimensions */
+ /* --left-panel-logo-height: 80px; */ /* Removed for Slack-style navigation */
+ --left-panel-user-min-height: 80px;
+ --left-panel-user-max-height: 200px;
+ --chat-header-height: 60px;
+ 
+ /* Desktop-only design */
+ --desktop-left-panel-width: 350px; /* Updated to match agent-area width */
+ 
+ /* Layout colors */
+ --layout-border-color: rgba(203, 213, 225, 0.3);
+ --layout-bg-primary: rgba(255, 255, 255, 0.95);
+ --layout-bg-secondary: rgba(248, 250, 252, 0.95);
+ --layout-nav-bg: rgba(241, 245, 249, 0.98);
+ 
+ /* Phase 1: New layout colors */
+ --left-panel-bg: rgba(226, 232, 240, 0.98);
+ --left-panel-border: rgba(203, 213, 225, 0.3);
+ --chat-header-bg: rgba(255, 255, 255, 0.95);
+ 
+ /* Navigation colors */
+ --nav-item-bg: rgba(255, 255, 255, 0.8);
+ --nav-item-bg-hover: rgba(240, 249, 255, 0.9);
+ --nav-item-bg-active: rgba(240, 249, 255, 0.95);
+ --nav-item-border: rgba(212, 212, 212, 0.6);
+ --nav-item-border-active: rgba(14, 165, 233, 0.6);
+ --nav-item-color: #525252;
+ --nav-item-color-active: #0ea5e9;
+ 
+ /* Phase 1: Button colors */
+ --new-chat-btn-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+ --logout-btn-bg: rgba(254, 226, 226, 0.8);
+ --logout-btn-text: #991b1b;
+ 
+ /* New Slack-style Navigation Variables */
+ --nav-item-size: 60px;
+ --nav-icon-size: 36px;
+ --nav-label-size: 11px;
+ --user-avatar-size: 36px;
+ --user-button-size: 44px;
+ 
+ /* New Navigation Colors */
+ --nav-hover-bg: rgba(0, 0, 0, 0.05);
+ --nav-active-bg: var(--nav-item-color-active);
+ --nav-active-color: white;
+ --user-hover-border: rgba(0, 0, 0, 0.1);
+ --user-hover-bg: rgba(0, 0, 0, 0.02);
+ 
+ /* Transitions */
+ --transition-duration: 0.2s;
+ --transition-easing: ease;
+}
+
+@layer base {
+ * {
+ margin: 0;
+ padding: 0;
+ box-sizing: border-box;
+ }
+
+ html {
+ font-family: var(--font-sans);
+ font-feature-settings: 'cv11', 'ss01';
+ font-variation-settings: 'opsz' 32;
+ scroll-behavior: smooth;
+ }
+ 
+ body {
+ background: linear-gradient(135deg, #fafafa 0%, #ffffff 50%, #f5f5f5 100%);
+ color: #1a1a1a;
+ font-weight: 400;
+ line-height: 1.6;
+ -webkit-font-smoothing: antialiased;
+ -moz-osx-font-smoothing: grayscale;
+ text-rendering: optimizeLegibility;
+ min-height: 100vh;
+ }
+
+}
+
+/* ===========================
+ Frosted glass effect component system
+ =========================== */
+
+@layer components {
+ /* Frosted glass container base class - improved contrast */
+ .glass-container {
+ background: rgba(255, 255, 255, 0.95);
+ backdrop-filter: blur(12px);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+ }
+
+ .glass-panel {
+ background: rgba(248, 250, 252, 0.95);
+ backdrop-filter: blur(16px);
+ border: 1px solid rgba(203, 213, 225, 0.9);
+ box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+ }
+
+ .glass-card {
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(8px);
+ border: 1px solid rgba(203, 213, 225, 0.6);
+ box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+ border-radius: 20px;
+ }
+
+ .glass-surface {
+ background: rgba(241, 245, 249, 0.95);
+ backdrop-filter: blur(6px);
+ border: 1px solid rgba(203, 213, 225, 0.7);
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+ }
+
+ /* ===========================
+ Chat interface redesign
+ =========================== */
+
+ /* Chat container styles moved to styles2/ChatContainer.css */
+
+
+ /* ===========================
+ Input box and button styles
+ =========================== */
+
+ .input-container {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+ padding: 16px;
+ background: linear-gradient(135deg, #fafafa 0%, #ffffff 50%, #f5f5f5 100%);
+ backdrop-filter: blur(12px);
+ }
+
+ .chat-input {
+ flex: 1;
+ resize: none;
+ border-radius: 8px;
+ border: 1px solid rgba(148, 163, 184, 0.8);
+ padding: 10px 16px;
+ font-size: 14px;
+ background: rgba(255, 255, 255, 0.95);
+ backdrop-filter: blur(4px);
+ color: #1a1a1a;
+ transition: all 0.2s ease;
+ max-height: 120px;
+ height: 44px;
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+ }
+
+ .chat-input::placeholder {
+ color: #a3a3a3;
+ }
+
+ .chat-input:focus {
+ outline: none;
+ border-color: #0ea5e9;
+ box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+ background: rgba(255, 255, 255, 0.95);
+ }
+
+ .chat-input:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ }
+
+ .send-btn {
+ display: inline-flex;
+ align-items: center;
+ height: 44px;
+ padding: 0 16px;
+ background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+ color: white;
+ font-size: 14px;
+ font-weight: 500;
+ border-radius: 8px;
+ border: 1px solid rgba(3, 105, 161, 0.6);
+ cursor: pointer;
+ transition: all 0.2s ease;
+ backdrop-filter: blur(8px);
+ box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+ }
+
+ .send-btn:hover:not(:disabled) {
+ background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+ transform: translateY(-1px);
+ box-shadow: 0 6px 16px rgba(14, 165, 233, 0.35);
+ border-color: rgba(3, 105, 161, 0.8);
+ }
+
+ .send-btn:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+ box-shadow: none;
+ }
+
+ /* ===========================
+ Terminal styles
+ =========================== */
+
+ .terminal-wrapper {
+ height: 100%;
+ }
+
+ .terminal-output {
+ height: 100%;
+ overflow-y: auto;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+ background: rgba(15, 23, 42, 0.98);
+ backdrop-filter: blur(8px);
+ border: 1px solid rgba(51, 65, 85, 0.8);
+ box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+ }
+
+ .terminal-output::-webkit-scrollbar {
+ display: none;
+ }
+
+ .terminal-line {
+ line-height: 1.6;
+ }
+
+ .terminal-input-container {
+ display: flex;
+ align-items: center;
+ border-top: 1px solid rgba(55, 65, 81, 0.5);
+ }
+
+ .terminal-prompt {
+ color: #60a5fa;
+ font-weight: 600;
+ }
+
+ .terminal-input {
+ background: transparent;
+ color: #10b981;
+ }
+
+ .terminal-input::placeholder {
+ color: #6b7280;
+ }
+
+ /* ===========================
+ Input indicator
+ =========================== */
+
+ .typing-indicator {
+ display: flex;
+ align-items: center;
+ gap: 4px;
+ }
+
+ .dots {
+ display: flex;
+ gap: 4px;
+ }
+
+ .dots span {
+ width: 8px;
+ height: 8px;
+ background: #a3a3a3;
+ border-radius: 50%;
+ animation: pulse 1.4s ease-in-out infinite;
+ }
+
+ .dots span:nth-child(1) {
+ animation-delay: 0ms;
+ }
+
+ .dots span:nth-child(2) {
+ animation-delay: 160ms;
+ }
+
+ .dots span:nth-child(3) {
+ animation-delay: 320ms;
+ }
+
+ /* ===========================
+ Electron drag region
+ =========================== */
+
+ .drag-region {
+ -webkit-app-region: drag;
+ }
+
+ .no-drag-region {
+ -webkit-app-region: no-drag;
+ }
+
+ /* Inline code styles moved to styles2/Message.css */
+}
+
+/* ===========================
+ Utility classes
+ =========================== */
+
+@layer utilities {
+ .animate-pulse-slow {
+ animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+ }
+
+ .text-shadow {
+ text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+ }
+
+ .text-shadow-lg {
+ text-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+ }
+}
+
+/* ===========================
+ Custom animations
+ =========================== */
+
+/* Note: fadeIn and slideIn animations also defined in components.css for reusable components */
+@keyframes fadeIn {
+ from {
+ opacity: 0;
+ transform: translateY(10px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+@keyframes slideIn {
+ from {
+ opacity: 0;
+ transform: translateX(20px);
+ }
+ to {
+ opacity: 1;
+ transform: translateX(0);
+ }
+}
+
+.animate-fadeIn {
+ animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideIn {
+ animation: slideIn 0.2s ease-out;
+}
+
+/* Markdown content styles moved to styles2/Message.css */
+
+/* ===========================
+ Global scrollbar styles
+ =========================== */
+
+::-webkit-scrollbar {
+ width: 6px !important;
+ height: 6px !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+::-webkit-scrollbar-track {
+ background: transparent !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8) !important;
+ border-radius: 3px;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+/* completely disable hover effect, keep scrollbar styles constant */
+::-webkit-scrollbar-thumb:hover {
+ background: rgba(203, 213, 225, 0.8) !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+/* ===========================
+ Selection styles
+ =========================== */
+
+::selection {
+ background-color: rgba(14, 165, 233, 0.2);
+ color: #0c4a6e;
+}
+
+::-moz-selection {
+ background-color: rgba(14, 165, 233, 0.2);
+ color: #0c4a6e;
+}
+
+/* Streaming text optimization moved to styles2/StreamingMessage.css */
+
+/* ===========================
+ New Layout System Styles
+ =========================== */
+
+/* App Layout */
+.app-layout {
+ height: 100%; /* Changed from 100vh to work with WindowsTitleBar in App.tsx */
+ display: flex;
+ flex-direction: column;
+ background: var(--layout-bg-primary);
+ overflow: hidden;
+}
+
+.app-body {
+ flex: 1;
+ display: flex;
+ overflow: hidden;
+ /* use system standard title bar, no need for reserve custom header height */
+ /* height: 100vh; - Removed to allow flex: 1 to work correctly with custom title bar */
+ /* ensure user dropdown menu can span child components */
+ position: relative;
+}
+
+/* Left Navigation - styles migrated to LeftNavigation.css */
+.left-navigation.collapsed {
+ width: var(--layout-left-panel-collapsed-width);
+}
+
+.nav-items {
+ display: flex;
+ flex-direction: column;
+ gap: 2px; /* compact navigation item spacing */
+ align-items: center; /* ensure nav-item in container inside horizontally centered */
+ width: 100%; /* ensure container fills parent width */
+}
+
+.nav-section-divider {
+ height: 1px;
+ background: var(--layout-border-color);
+ margin: 20px 0;
+ opacity: 0.5;
+}
+
+.nav-footer {
+ margin-top: auto;
+ padding-top: 20px;
+}
+
+/* Navigation Items - styles migrated to NavItem.css */
+
+/* Content Container */
+.content-container {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ overflow: hidden;
+ background: var(--layout-bg-primary);
+ position: relative;
+}
+
+.content-wrapper {
+ flex: 1;
+ overflow: hidden;
+ display: flex;
+ flex-direction: column;
+}
+
+/* View-specific layouts */
+.chat-view {
+ height: 100%;
+ display: flex;
+ flex-direction: column;
+ padding: 0;
+}
+
+.model-view,
+.mcp-view,
+.toolbar-settings-view {
+ height: 100%;
+ overflow: hidden;
+ display: flex;
+ flex-direction: column;
+}
+
+.model-view .config-sidepane,
+.mcp-view .config-sidepane {
+ position: relative;
+ width: 100% !important;
+ height: 100%;
+ right: auto;
+ top: auto;
+ border-left: none;
+ box-shadow: none;
+ max-width: none;
+}
+
+/* Enhanced responsive behavior for sidepanes in full-screen mode */
+.model-view,
+.mcp-view {
+ width: 100%;
+ overflow-x: hidden;
+}
+
+.model-view .config-sidepane,
+.mcp-view .config-sidepane {
+ min-width: 100%;
+ flex: 1;
+}
+
+
+.empty-view {
+ flex: 1;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 40px;
+}
+
+.empty-content {
+ text-align: center;
+ max-width: 400px;
+}
+
+.empty-content h2 {
+ font-size: 24px;
+ font-weight: 600;
+ color: #374151;
+ margin-bottom: 12px;
+}
+
+.empty-content p {
+ font-size: 16px;
+ color: #6b7280;
+ line-height: 1.5;
+}
+
+/* Responsive Design - Phase 3 Implementation */
+
+/* Desktop-only design - simplified layout */
+:root {
+ --layout-left-panel-width: var(--desktop-left-panel-width);
+}
+
+/* Left navigation width is now controlled by LeftNavigation.css */
+
+.status-badges {
+ display: flex;
+ gap: 12px;
+ align-items: center;
+ flex-wrap: nowrap;
+}
+
+/* moved to styles2/Sidepane.css - avoid conflict */
+/*
+.sidepane-header {
+ flex-direction: row;
+ height: 80px;
+ padding: 24px;
+}
+
+.sidepane-header h3 {
+ font-size: 18px;
+}
+*/
+
+.chat-view-header .header-content {
+ margin-left: 24px;
+}
+
+/* Animations */
+@keyframes slideInLeft {
+ from {
+ opacity: 0;
+ transform: translateX(-20px);
+ }
+ to {
+ opacity: 1;
+ transform: translateX(0);
+ }
+}
+
+.content-wrapper > * {
+ animation: fadeIn 0.3s ease-out;
+}
+
+/* ===========================
+ Phase 1: Three-Section Left Navigation
+ =========================== */
+
+/* Left Navigation - styles migrated to LeftNavigation.css */
+
+/* Logo Section - Removed for Slack-style navigation */
+/*
+.logo-section {
+ height: var(--left-panel-logo-height);
+ display: flex;
+ align-items: center;
+ justify-content: flex-start;
+ border-bottom: 1px solid var(--left-panel-border);
+ padding: 0 16px;
+ background: var(--left-panel-bg);
+}
+
+.logo-container {
+ display: flex;
+ align-items: center;
+ gap: 16px;
+}
+*/
+
+/* Agent Navigation Section */
+.agent-navi-section {
+ flex: 0 0 auto;
+ display: flex;
+ flex-direction: column;
+ background: var(--layout-bg-secondary);
+ border-bottom: 1px solid var(--layout-border-color);
+ min-height: 200px;
+ max-height: 40%;
+ overflow: hidden;
+}
+
+.agent-navi-section .agent-content {
+ flex: 1;
+ overflow-y: auto;
+ overflow-x: hidden;
+}
+
+/* Navigation Section - styles already migrated to each component own CSS file */
+
+/* User Section - styles already migrated to each component own CSS file */
+
+.user-profile-button {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: var(--user-button-size);
+ height: var(--user-button-size);
+ padding: 0;
+ background: transparent;
+ border: 2px solid transparent;
+ border-radius: 50%;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ /* Ensure button is not compressed */
+ flex-shrink: 0;
+}
+
+.user-profile-button:hover {
+ border-color: var(--user-hover-border);
+ background: var(--user-hover-bg);
+}
+
+.user-avatar {
+ width: var(--user-avatar-size);
+ height: var(--user-avatar-size);
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ background: rgba(14, 165, 233, 0.1);
+ flex-shrink: 0;
+}
+
+.user-name {
+ display: none; /* Hidden for Slack-style circular avatar button */
+}
+
+/* global user dropdown menu - in app-body layer level, span boundary */
+.app-body .user-dropdown-menu {
+ position: absolute;
+ /* menu start position: 56px, adjacent to user button */
+ left: 56px;
+ bottom: 24px;
+ width: 200px; /* adjust width is 200px */
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(12px);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 8px;
+ box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+ z-index: 10000;
+ overflow: visible; /* ensure menu content is not clipped */
+ /* ensure menu is not clipped by parent container */
+ clip-path: none;
+ /* add animation effects */
+ animation: slideInUp 0.2s ease-out;
+}
+
+/* keep original UserSection internal menu styles, just in case */
+.user-section .user-dropdown-menu {
+ position: fixed;
+ bottom: auto;
+ top: auto;
+ left: 56px; /* menu start position: 56px */
+ bottom: 24px;
+ width: 200px; /* adjust width is 200px */
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(12px);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 8px;
+ box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+ z-index: 10000;
+ overflow: visible;
+ clip-path: none;
+ /* add animation effects */
+ animation: slideInUp 0.2s ease-out;
+}
+
+@keyframes slideInUp {
+ from {
+ opacity: 0;
+ transform: translateY(10px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+.dropdown-menu-item {
+ display: flex;
+ align-items: center;
+ gap: 3px; /* adjust is 3px spacing */
+ width: 100%;
+ padding: 8px 12px; /* reduce padding for compactness */
+ min-height: 36px;
+ background: transparent;
+ border: none;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ color: var(--nav-item-color);
+ font-size: 14px;
+ font-weight: 500;
+}
+
+.dropdown-menu-item:hover {
+ background: rgba(14, 165, 233, 0.05);
+ color: var(--nav-item-color-active);
+}
+
+.logout-item:hover {
+ background: rgba(220, 38, 38, 0.05);
+ color: #991b1b;
+}
+
+/* Update Button Styles */
+.update-to-date-button {
+ min-height: 36px;
+ height: 36px;
+ margin-bottom: 8px;
+ /* Ensure update button is not compressed */
+ flex-shrink: 0;
+ /* Ensure button text is centered */
+ display: flex !important;
+ align-items: center;
+ justify-content: center;
+ /* Ensure button has sufficient padding */
+ padding: 8px 12px !important;
+ /* Ensure text does not wrap */
+ white-space: nowrap;
+}
+
+.update-to-date-button span {
+ flex-shrink: 0;
+}
+
+.user-info {
+ flex: 1;
+ display: flex;
+ align-items: flex-start;
+}
+
+.logout-button {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ width: 100%;
+ padding: 8px 16px;
+ min-height: 36px;
+ background: var(--logout-btn-bg);
+ border: 1px solid rgba(254, 202, 202, 0.6);
+ border-radius: 6px;
+ color: var(--logout-btn-text);
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ backdrop-filter: blur(4px);
+}
+
+.logout-button:hover {
+ background: rgba(254, 226, 226, 0.9);
+ border-color: rgba(254, 202, 202, 0.8);
+ transform: translateY(-1px);
+ box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2);
+}
+
+/* moved to styles2/Sidepane.css - avoid conflict */
+/* Consistent Sidepane Header for all three components */
+/*
+.sidepane-header {
+ height: 80px;
+ padding: 24px;
+ border-bottom: 1px solid rgba(229, 229, 229, 0.3);
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ background: rgba(241, 245, 249, 0.95);
+ backdrop-filter: blur(8px);
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.sidepane-header h3 {
+ margin: 0;
+ font-size: 18px;
+ font-weight: 600;
+ color: #262626;
+}
+*/
+
+.header-title {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 3px;
+}
+
+.header-actions {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+}
+
+.status-badges {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+}
+
+.mcp-status-badges {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+.model-status-badges {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+
+.new-chat-button {
+ background: var(--new-chat-btn-bg);
+ color: white;
+ border: none;
+ border-radius: 8px;
+ padding: 8px 16px;
+ min-height: 36px;
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+}
+
+.new-chat-button:hover {
+ background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+ transform: translateY(-1px);
+ box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.new-chat-button:active {
+ transform: translateY(0);
+}
+
+.new-chat-button:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+/* Updated Chat View Layout */
+.chat-view {
+ height: 100%;
+ display: flex;
+ flex-direction: column;
+ padding: 0;
+ position: relative;
+}
+
+.chat-content {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ overflow: hidden;
+}
+
+/* Left Navigation collapsed state */
+.left-navigation.collapsed {
+ width: var(--layout-left-panel-collapsed-width);
+}
+
+
+/* ChatInput styles moved to styles2/ChatInput.css */
+
+/* ===========================
+ Agent Area & Chat View Layout Styles
+ =========================== */
+
+/* Chat View Layout */
+.chat-view-layout {
+ display: flex;
+ height: 100%;
+ overflow: hidden;
+ position: relative; /* ensure child component absolute positioning relative to this container */
+}
+
+/* Agent Area */
+.agent-area {
+ display: flex;
+ flex-direction: column;
+ background: var(--layout-bg-secondary);
+ border-right: 1px solid var(--layout-border-color);
+ min-width: 350px;
+ max-width: 50%;
+ flex-shrink: 0;
+ backdrop-filter: blur(8px);
+}
+
+.agent-content {
+ flex: 1;
+ overflow: hidden;
+ display: flex;
+ flex-direction: column;
+}
+
+/* Agent Header - inherits from sidepane-header */
+
+.new-agent-button {
+ /* Inherit all styles from new-chat-button */
+ background: var(--new-chat-btn-bg);
+ color: white;
+ border: none;
+ border-radius: 8px;
+ padding: 8px 16px;
+ min-height: 36px;
+ font-size: 14px;
+ font-weight: 500;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+}
+
+.new-agent-button:hover {
+ background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+ transform: translateY(-1px);
+ box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.new-agent-button:active {
+ transform: translateY(0);
+}
+
+/* Icon button styles for AgentHeader and ChatViewHeader */
+.new-agent-button.icon-button {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 36px;
+ height: 36px;
+ padding: 0;
+ border-radius: 8px;
+ min-width: auto;
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ cursor: pointer;
+ transition: all 0.2s ease;
+ backdrop-filter: blur(4px);
+ color: #6b7280;
+}
+
+.new-agent-button.icon-button:hover:not(:disabled) {
+ background: rgba(240, 249, 255, 0.95);
+ border-color: #0ea5e9;
+ color: #0ea5e9;
+ transform: translateY(-1px);
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.new-agent-button.icon-button:active {
+ transform: translateY(0);
+ box-shadow: 0 1px 4px rgba(14, 165, 233, 0.2);
+}
+
+.new-agent-button.icon-button:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+ box-shadow: none;
+}
+
+.new-agent-button.icon-button svg {
+ flex-shrink: 0;
+}
+
+/* Agent List */
+.agent-list {
+ flex: 1;
+ overflow-y: auto;
+ padding: 16px;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+}
+
+.agent-list::-webkit-scrollbar {
+ display: none;
+}
+
+.agent-list-empty {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ height: 100%;
+ text-align: center;
+ color: #6b7280;
+ gap: 8px;
+}
+
+.agent-list-empty p {
+ margin: 0;
+}
+
+.agent-list-hint {
+ font-size: 14px;
+ opacity: 0.8;
+}
+
+.agent-list-items {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+.agent-list-item {
+ padding: 12px 16px;
+ border-radius: 8px;
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.6);
+ cursor: pointer;
+ transition: all 0.2s ease;
+ backdrop-filter: blur(4px);
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.agent-list-item:hover {
+ background: rgba(240, 249, 255, 0.95);
+ border-color: rgba(14, 165, 233, 0.4);
+ transform: translateY(-1px);
+ box-shadow: 0 4px 8px rgba(14, 165, 233, 0.1);
+}
+
+.agent-list-item.active {
+ background: rgba(240, 249, 255, 0.98);
+ border-color: #0ea5e9;
+ color: #0ea5e9;
+ box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+}
+
+.agent-info {
+ display: flex;
+ flex-direction: column;
+ gap: 4px;
+}
+
+.agent-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-bottom: 4px;
+}
+
+.agent-emoji {
+ font-size: 16px;
+ flex-shrink: 0;
+}
+
+.agent-name {
+ margin: 0;
+ font-size: 14px;
+ font-weight: 500;
+ color: inherit;
+}
+
+.agent-role {
+ font-size: 14px;
+ font-weight: 500;
+ color: inherit;
+}
+
+.agent-model {
+ margin: 0;
+ font-size: 12px;
+ color: #6b7280;
+ font-weight: 500;
+ opacity: 0.8;
+}
+
+.agent-list-item.active .agent-model {
+ color: rgba(14, 165, 233, 0.7);
+}
+
+.agent-description {
+ margin: 0;
+ font-size: 12px;
+ color: #6b7280;
+ line-height: 1.4;
+}
+
+.agent-list-item.active .agent-description {
+ color: rgba(14, 165, 233, 0.8);
+}
+
+/* Resizable Divider */
+.resizable-divider {
+ width: 4px;
+ background: transparent;
+ cursor: col-resize;
+ position: relative;
+ flex-shrink: 0;
+ user-select: none;
+}
+
+.resizable-divider:hover,
+.resizable-divider.dragging {
+ background: rgba(14, 165, 233, 0.3);
+}
+
+.divider-handle {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: transparent;
+ transition: all 0.2s ease;
+}
+
+.resizable-divider:hover .divider-handle,
+.resizable-divider.dragging .divider-handle {
+ background: rgba(14, 165, 233, 0.5);
+}
+
+.agent-chat-divider {
+ background: rgba(203, 213, 225, 0.3);
+}
+
+.agent-chat-divider:hover,
+.agent-chat-divider.dragging {
+ background: rgba(14, 165, 233, 0.5);
+}
+
+/* Chat Area in New Layout */
+.chat-view-layout .chat-area {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ overflow: hidden;
+ min-width: 0; /* Allow flex shrinking */
+}
+
+.chat-view-layout .chat-area .chat-content {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ overflow: hidden;
+}
+
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+ .agent-list-item {
+ border-color: #000;
+ }
+ 
+ .agent-list-item.active {
+ border-color: #000;
+ background: rgba(14, 165, 233, 0.2);
+ }
+ 
+ .resizable-divider {
+ background: rgba(0, 0, 0, 0.5);
+ }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+ .agent-list-item,
+ .new-agent-button,
+ .divider-handle {
+ transition: none;
+ }
+ 
+ .agent-list-item:hover,
+ .new-agent-button:hover {
+ transform: none;
+ }
+}
+
+/* ===========================
+ Message.tsx unified attachment system styles
+ =========================== */
+
+/* attachment container */
+.message-attachments {
+ margin-top: 12px;
+ margin-bottom: 8px;
+}
+
+/* attachment grid layout */
+.attachments-grid {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 8px;
+ align-items: flex-start;
+}
+
+.attachments-grid.single-attachment {
+ max-width: 200px;
+}
+
+.attachments-grid.multiple-attachments {
+ max-width: 100%;
+}
+
+/* unified attachment card styles */
+.attachment-card {
+ display: flex;
+ flex-direction: column;
+ background: rgba(248, 249, 250, 0.8);
+ border: 1px solid rgba(203, 213, 225, 0.5);
+ border-radius: 8px;
+ overflow: hidden;
+ transition: all 0.2s ease;
+ cursor: pointer;
+}
+
+.attachment-card:hover {
+ border-color: rgba(59, 130, 246, 0.5);
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+ transform: translateY(-1px);
+}
+
+/* single attachment styles */
+.single-attachment .attachment-card {
+ width: 200px;
+}
+
+.single-attachment .attachment-preview {
+ height: 120px;
+}
+
+.single-attachment .attachment-info {
+ height: 40px;
+ padding: 8px;
+}
+
+.single-attachment .attachment-name {
+ font-size: 13px;
+ text-align: center;
+}
+
+.single-attachment .file-icon {
+ font-size: 48px;
+}
+
+/* image attachment special styles - preview area fills entire card */
+.single-attachment .image-attachment {
+ height: 160px; /* total height = preview area height */
+}
+
+.single-attachment .image-preview-full {
+ height: 160px; /* fills entire card */
+}
+
+.multiple-attachments .image-attachment {
+ height: 50px; /* total height = preview area height */
+}
+
+.multiple-attachments .image-preview-full {
+ height: 50px; /* fills entire card */
+}
+
+/* multi-attachment styles */
+.multiple-attachments .attachment-card {
+ width: 50px; /* single attachment 's 1/4 */
+}
+
+/* multi-attachment file type preview and info area */
+.multiple-attachments .file-attachment .attachment-preview {
+ height: 30px;
+}
+
+.multiple-attachments .file-attachment .attachment-info {
+ height: 20px;
+ padding: 4px 2px;
+}
+
+.multiple-attachments .attachment-name {
+ font-size: 9px;
+ text-align: center;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ line-height: 1.1;
+}
+
+.multiple-attachments .file-icon {
+ font-size: 16px;
+}
+
+/* attachment preview area */
+.attachment-preview {
+ width: 100%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ background: rgba(243, 244, 246, 0.8);
+ position: relative;
+ overflow: hidden;
+}
+
+/* image attachment preview */
+.attachment-image {
+ max-width: 100%;
+ max-height: 100%;
+ object-fit: cover;
+}
+
+/* file icon */
+.file-icon {
+ opacity: 0.8;
+ transition: all 0.2s ease;
+}
+
+.attachment-card:hover .file-icon {
+ opacity: 1;
+ transform: scale(1.05);
+}
+
+/* attachment info area */
+.attachment-info {
+ width: 100%;
+ border-top: 1px solid rgba(229, 231, 235, 0.6);
+ background: rgba(255, 255, 255, 0.9);
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+/* attachment name */
+.attachment-name {
+ color: rgba(75, 85, 99, 0.9);
+ font-weight: 500;
+ line-height: 1.2;
+}
+
+/* responsive design */
+@media (max-width: 768px) {
+ .single-attachment .attachment-card {
+ width: 160px;
+ }
+ 
+ .single-attachment .attachment-preview {
+ height: 100px;
+ }
+ 
+ .single-attachment .attachment-info {
+ height: 36px;
+ padding: 6px;
+ }
+ 
+ .single-attachment .attachment-name {
+ font-size: 12px;
+ }
+ 
+ .single-attachment .file-icon {
+ font-size: 40px;
+ }
+ 
+ /* mobile image attachment special styles */
+ .single-attachment .image-attachment {
+ height: 136px; /* total height = preview area height */
+ }
+ 
+ .single-attachment .image-preview-full {
+ height: 136px; /* fills entire card */
+ }
+ 
+ .multiple-attachments .attachment-card {
+ width: 42px;
+ }
+ 
+ /* mobile multi-attachment file type preview and info area */
+ .multiple-attachments .file-attachment .attachment-preview {
+ height: 26px;
+ }
+ 
+ .multiple-attachments .file-attachment .attachment-info {
+ height: 16px;
+ padding: 2px 1px;
+ }
+ 
+ .multiple-attachments .attachment-name {
+ font-size: 8px;
+ }
+ 
+ .multiple-attachments .file-icon {
+ font-size: 14px;
+ }
+ 
+ /* mobile multi-attachment image styles */
+ .multiple-attachments .image-attachment {
+ height: 42px; /* total height = preview area height */
+ }
+ 
+ .multiple-attachments .image-preview-full {
+ height: 42px; /* fills entire card */
+ }
+}
+
+/* dark theme */
+/* high contrast mode */
+@media (prefers-contrast: high) {
+ .attachment-card {
+ border-color: #000;
+ }
+ 
+ .attachment-card:hover {
+ border-color: #0066cc;
+ box-shadow: 0 0 0 2px #0066cc;
+ }
+}
+
+/* reduced animation mode */
+@media (prefers-reduced-motion: reduce) {
+ .attachment-card,
+ .file-icon {
+ transition: none;
+ }
+ 
+ .attachment-card:hover {
+ transform: none;
+ }
+ 
+ .attachment-card:hover .file-icon {
+ transform: none;
+ }
+}
+
+/* Table styles now defined in markdown-render.css (.markdown-body table) */
+
+/* ===========================
+ Global Minimal Mode Styles for AppLayout
+ =========================== */
+
+/* global minimal mode styles - ensure in minimal mode bottom layout correctly */
+.app-layout.minimal-mode .app-body {
+ /* in minimal mode, let content area fill entire width */
+ padding-left: 0;
+}
+
+.app-layout.minimal-mode .content-container {
+ /* ensure content container fills width in minimal mode */
+ width: 100%;
+ max-width: 100%;
+ margin-left: 0;
+}
+
+/* ensure no left margin in minimal mode */
+.app-layout.minimal-mode .left-navigation {
+ display: none !important;
+}
+
+/* minimal mode content area style adjustments */
+.app-layout.minimal-mode .chat-view {
+ width: 100%;
+}
+
+.app-layout.minimal-mode .chat-view-layout {
+ width: 100%;
+}
+
+/* ===========================
+ Settings View Styles
+ =========================== */
+
+/* Settings page scroll support */
+.settings-page-view {
+ height: 100%;
+ overflow-y: auto;
+}
+
+/* text truncation utility class */
+.line-clamp-2 {
+ overflow: hidden;
+ display: -webkit-box;
+ -webkit-box-orient: vertical;
+ -webkit-line-clamp: 2;
+ line-clamp: 2;
+}
+
+.line-clamp-3 {
+ overflow: hidden;
+ display: -webkit-box;
+ -webkit-box-orient: vertical;
+ -webkit-line-clamp: 3;
+ line-clamp: 3;
+}
+
+/* custom scrollbar styles - disabled dynamic effect */
+.custom-scrollbar {
+ scrollbar-width: thin;
+ scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+ width: 6px !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+ background: transparent !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+ background-color: rgba(156, 163, 175, 0.3) !important;
+ border-radius: 3px;
+ /* disable all transitions and animations */
+ transition: none !important;
+}
+
+/* completely disable hover effect, keep scrollbar styles constant */
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+ background-color: rgba(156, 163, 175, 0.3) !important;
+ /* disable all transitions and animations */
+ transition: none !important;
+}

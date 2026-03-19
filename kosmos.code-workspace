@@ -1,0 +1,45 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "github.copilot.enable": {
+      "*": true,
+      "yaml": true,
+      "plaintext": true,
+      "markdown": true
+    },
+    "github.copilot.chat.localeOverride": "zh-CN",
+    "github.copilot.chat.welcomeMessage": "never",
+    "github.copilot.chat.useInstructionFiles": true,
+    "github.copilot.chat.instructionFile": ".vscode/copilot-instructions.md",
+    "github.copilot.chat.autoApprove": true,
+    "github.copilot.chat.autoContinue": true,
+    "github.copilot.chat.autoExecute": true,
+    "github.copilot.chat.confirmations": false,
+    "github.copilot.editor.enableAutoCompletions": true,
+    "github.copilot.editor.enableCodeActions": true,
+    "github.copilot.editor.acceptSuggestionOnCommitCharacter": true,
+    "github.copilot.editor.acceptSuggestionOnEnter": "on",
+    "github.copilot.editor.tabCompletion": "on",
+    "github.copilot.advanced": {
+      "debug.overrideEngine": "codex",
+      "inlineSuggestCount": 3,
+      "listCount": 10
+    },
+    "files.associations": {
+      "*.prompt.md": "markdown"
+    },
+    "markdown.suggest.paths.enabled": true,
+    "markdown.preview.breaks": true
+  },
+  "extensions": {
+    "recommendations": [
+      "github.copilot",
+      "github.copilot-chat",
+      "ms-vscode.vscode-typescript-next"
+    ]
+  }
+}

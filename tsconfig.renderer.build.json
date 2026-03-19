@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.renderer.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true
+  }
+}

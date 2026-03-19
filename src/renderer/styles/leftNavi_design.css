@@ -1,0 +1,49 @@
+/* Navi item normal styles*/
+
+box-sizing: border-box;
+
+/* Auto layout */
+display: flex;
+flex-direction: row;
+align-items: center;
+padding: 0px 0px 0px 10px;
+gap: 2px;
+isolation: isolate;
+
+width: 264px;
+height: 40px;
+min-height: 40px;
+
+border-radius: 12px;
+
+/* Inside auto layout */
+flex: none;
+order: 3;
+align-self: stretch;
+flex-grow: 0;
+
+=================================
+/* Navi item hover & selected styles */
+
+box-sizing: border-box;
+
+/* Auto layout */
+display: flex;
+flex-direction: row;
+align-items: center;
+padding: 0px 0px 0px 10px;
+gap: 2px;
+isolation: isolate;
+
+width: 264px;
+height: 40px;
+min-height: 40px;
+
+background: rgba(0, 0, 0, 0.05);
+border-radius: 12px;
+
+/* Inside auto layout */
+flex: none;
+order: 0;
+align-self: stretch;
+flex-grow: 0;
