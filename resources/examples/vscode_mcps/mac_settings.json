@@ -1,0 +1,56 @@
+{
+    "[python]": {
+        "editor.formatOnType": true
+    },
+    "C_Cpp.updateChannel": "Insiders",
+    "azure.authenticationLibrary": "MSAL",
+    "workbench.iconTheme": "vscode-icons",
+    "gitlens.gitCommands.skipConfirmations": [
+        "fetch:command"
+    ],
+    "github.copilot.editor.enableAutoCompletions": true,
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.arguments": [
+        "-header-insertion=never"
+    ],
+    "cline.vsCodeLmModelSelector": {},
+    "git.enableSmartCommit": true,
+    "mcp": {
+        "servers": {
+            "fetch": {
+                "type": "stdio",
+                "command": "uvx",
+                "args": [
+                    "mcp-server-fetch"
+                ]
+            },
+            "haystack-search": {
+                "url": "http://localhost:13135/mcp/sse"
+            },
+            "file-reader": {
+                "type": "stdio",
+                "command": "python",
+                "args": [
+                    "/Users/pumpedgechina/repos/mcp.servers/servers/file_reader/file_reader_server.py"
+                ]
+            },
+            "chrome-mcp": {
+                "url": "http://127.0.0.1:12306/mcp"
+            }
+        }
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "editor.largeFileOptimizations": false,
+    "roo-cline.allowedCommands": [
+        "npm test",
+        "npm install",
+        "tsc",
+        "git log",
+        "git diff",
+        "git show"
+    ],
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "explorer.confirmDelete": false
+}

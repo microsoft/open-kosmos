@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexedDB Test</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9fafb;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .button:hover {
+            background-color: #2563eb;
+        }
+        .button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .input {
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .status.success {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+        .status.error {
+            background-color: #fef2f2;
+            color: #dc2626;
+        }
+        .status.info {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center; color: #1f2937; margin-bottom: 30px;">
+            IndexedDB Database Test
+        </h1>
+        
+        <div class="card">
+            <h2>System Status</h2>
+            <div id="system-status">
+                <div class="status info">System not initialized</div>
+            </div>
+            <button class="button" onclick="initializeSystem()">Initialize System</button>
+            <button class="button" onclick="importSampleData()">Import Sample Data</button>
+            <button class="button" onclick="resetSystem()">Reset System</button>
+        </div>
+
+        <div class="card">
+            <h2>User Management</h2>
+            <div>
+                <input class="input" type="text" id="userAlias" placeholder="User alias">
+                <input class="input" type="text" id="displayName" placeholder="Display name">
+                <button class="button" onclick="createUser()">Create User</button>
+            </div>
+            <div>
+                <input class="input" type="text" id="loginAlias" placeholder="Login alias">
+                <button class="button" onclick="loginUser()">Login</button>
+                <button class="button" onclick="logoutUser()">Logout</button>
+            </div>
+            <div id="users-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>MCP Template Management</h2>
+            <div>
+                <input class="input" type="text" id="templateName" placeholder="Template name">
+                <input class="input" type="text" id="templateCommand" placeholder="Command">
+                <input class="input" type="text" id="templateDescription" placeholder="Description">
+                <button class="button" onclick="createTemplate()">Create Template</button>
+            </div>
+            <div id="templates-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>User Configuration</h2>
+            <div>
+                <input class="input" type="text" id="apiKey" placeholder="API Key">
+                <input class="input" type="text" id="endpoint" placeholder="API Endpoint">
+                <input class="input" type="text" id="model" placeholder="Model">
+                <button class="button" onclick="updateLlmSettings()">Update LLM Settings</button>
+            </div>
+            <div id="profile-info"></div>
+        </div>
+
+        <div class="card">
+            <h2>Test Log</h2>
+            <div id="test-log" style="height: 200px; overflow-y: auto; background-color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let systemInitialized = false;
+        let currentUser = null;
+        let users = [];
+        let templates = [];
+
+        // Utility functions
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('test-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.style.color = type === 'error' ? '#dc2626' : type === 'success' ? '#166534' : '#1f2937';
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        function updateSystemStatus() {
+            const statusElement = document.getElementById('system-status');
+            if (systemInitialized) {
+                statusElement.innerHTML = `
+                    <div class="status success">System initialized</div>
+                    ${currentUser ? `<div class="status info">Current user: ${currentUser.alias} (${currentUser.display_name})</div>` : ''}
+                `;
+            } else {
+                statusElement.innerHTML = '<div class="status info">System not initialized</div>';
+            }
+        }
+
+        function updateUsersList() {
+            const usersElement = document.getElementById('users-list');
+            usersElement.innerHTML = `
+                <h3>User List (${users.length})</h3>
+                ${users.map(user => `
+                    <div style="background: #f3f4f6; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                        <strong>${user.alias}</strong> - ${user.display_name}
+                        <button class="button" onclick="deleteUser('${user.alias}')" style="margin-left: 10px;">Delete</button>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        function updateTemplatesList() {
+            const templatesElement = document.getElementById('templates-list');
+            templatesElement.innerHTML = `
+                <h3>Template List (${templates.length})</h3>
+                ${templates.map(template => `
+                    <div style="background: #f3f4f6; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                        <strong>${template.name}</strong> - ${template.description}
+                        <button class="button" onclick="deleteTemplate('${template.name}')" style="margin-left: 10px;">Delete</button>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        // Simulated IndexedDB operations
+        async function initializeSystem() {
+            try {
+                log('Initializing system...');
+                
+                // Simulate system initialization
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                systemInitialized = true;
+                log('System initialized successfully', 'success');
+                updateSystemStatus();
+                
+                // Load user list
+                await loadUsers();
+                await loadTemplates();
+                
+            } catch (error) {
+                log(`System initialization failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function importSampleData() {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            try {
+                log('Importing sample data...');
+                
+                // Simulate data import
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Add sample users
+                users.push(
+                    { alias: 'demo1', display_name: 'Demo User 1', created_at: new Date() },
+                    { alias: 'demo2', display_name: 'Demo User 2', created_at: new Date() }
+                );
+                
+                // Add sample templates
+                templates.push(
+                    { name: 'fetch-template', description: 'Web scraping template', created_at: new Date() },
+                    { name: 'filesystem-template', description: 'File system template', created_at: new Date() }
+                );
+                
+                log('Sample data imported successfully', 'success');
+                updateUsersList();
+                updateTemplatesList();
+                
+            } catch (error) {
+                log(`Data import failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function resetSystem() {
+            try {
+                log('Resetting system...');
+                
+                // Simulate system reset
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                systemInitialized = false;
+                currentUser = null;
+                users = [];
+                templates = [];
+                
+                log('System reset complete', 'success');
+                updateSystemStatus();
+                updateUsersList();
+                updateTemplatesList();
+                
+            } catch (error) {
+                log(`System reset failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function createUser() {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            const alias = document.getElementById('userAlias').value.trim();
+            const displayName = document.getElementById('displayName').value.trim();
+            
+            if (!alias) {
+                log('Please enter a user alias', 'error');
+                return;
+            }
+
+            try {
+                log(`Creating user: ${alias}...`);
+                
+                // Check if user already exists
+                if (users.find(u => u.alias === alias)) {
+                    log('User already exists', 'error');
+                    return;
+                }
+                
+                // Simulate user creation
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                const newUser = {
+                    alias,
+                    display_name: displayName || alias,
+                    created_at: new Date()
+                };
+                
+                users.push(newUser);
+                
+                log(`User ${alias} created successfully`, 'success');
+                updateUsersList();
+                
+                // Clear input fields
+                document.getElementById('userAlias').value = '';
+                document.getElementById('displayName').value = '';
+                
+            } catch (error) {
+                log(`User creation failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function loginUser() {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            const alias = document.getElementById('loginAlias').value.trim();
+            
+            if (!alias) {
+                log('Please enter a login alias', 'error');
+                return;
+            }
+
+            try {
+                log(`Logging in user: ${alias}...`);
+                
+                // Find user
+                const user = users.find(u => u.alias === alias);
+                if (!user) {
+                    log('User does not exist', 'error');
+                    return;
+                }
+                
+                // Simulate user login
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                currentUser = user;
+                
+                log(`User ${alias} logged in successfully`, 'success');
+                updateSystemStatus();
+                
+                // Clear input field
+                document.getElementById('loginAlias').value = '';
+                
+            } catch (error) {
+                log(`User login failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function logoutUser() {
+            if (!currentUser) {
+                log('No user is logged in', 'error');
+                return;
+            }
+
+            try {
+                log(`Logging out user: ${currentUser.alias}...`);
+                
+                // Simulate user logout
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                currentUser = null;
+                
+                log('User logged out successfully', 'success');
+                updateSystemStatus();
+                
+            } catch (error) {
+                log(`User logout failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteUser(alias) {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            try {
+                log(`Deleting user: ${alias}...`);
+                
+                // Simulate user deletion
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                users = users.filter(u => u.alias !== alias);
+                
+                // If the deleted user is the current user, log out
+                if (currentUser && currentUser.alias === alias) {
+                    currentUser = null;
+                    updateSystemStatus();
+                }
+                
+                log(`User ${alias} deleted successfully`, 'success');
+                updateUsersList();
+                
+            } catch (error) {
+                log(`User deletion failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function createTemplate() {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            const name = document.getElementById('templateName').value.trim();
+            const command = document.getElementById('templateCommand').value.trim();
+            const description = document.getElementById('templateDescription').value.trim();
+            
+            if (!name) {
+                log('Please enter a template name', 'error');
+                return;
+            }
+
+            try {
+                log(`Creating template: ${name}...`);
+                
+                // Check if template already exists
+                if (templates.find(t => t.name === name)) {
+                    log('Template already exists', 'error');
+                    return;
+                }
+                
+                // Simulate template creation
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                const newTemplate = {
+                    name,
+                    server_json: JSON.stringify({ command: command || 'echo', args: ['test'] }),
+                    description: description || 'Test template',
+                    created_at: new Date(),
+                    updated_at: new Date()
+                };
+                
+                templates.push(newTemplate);
+                
+                log(`Template ${name} created successfully`, 'success');
+                updateTemplatesList();
+                
+                // Clear input fields
+                document.getElementById('templateName').value = '';
+                document.getElementById('templateCommand').value = '';
+                document.getElementById('templateDescription').value = '';
+                
+            } catch (error) {
+                log(`Template creation failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteTemplate(name) {
+            if (!systemInitialized) {
+                log('Please initialize the system first', 'error');
+                return;
+            }
+
+            try {
+                log(`Deleting template: ${name}...`);
+                
+                // Simulate template deletion
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                templates = templates.filter(t => t.name !== name);
+                
+                log(`Template ${name} deleted successfully`, 'success');
+                updateTemplatesList();
+                
+            } catch (error) {
+                log(`Template deletion failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateLlmSettings() {
+            if (!currentUser) {
+                log('Please log in first', 'error');
+                return;
+            }
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const endpoint = document.getElementById('endpoint').value.trim();
+            const model = document.getElementById('model').value.trim();
+
+            try {
+                log(`Updating LLM settings for user ${currentUser.alias}...`);
+                
+                // Simulate settings update
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                const settings = {
+                    apiKey: apiKey || 'test-key',
+                    endpoint: endpoint || 'https://api.example.com',
+                    model: model || 'gpt-4'
+                };
+                
+                log(`LLM settings updated successfully: ${JSON.stringify(settings)}`, 'success');
+                
+                // Update configuration display
+                document.getElementById('profile-info').innerHTML = `
+                    <h3>Current User Configuration</h3>
+                    <div style="background: #f3f4f6; padding: 10px; border-radius: 4px;">
+                        <strong>User:</strong> ${currentUser.alias}<br>
+                        <strong>API Key:</strong> ${settings.apiKey}<br>
+                        <strong>Endpoint:</strong> ${settings.endpoint}<br>
+                        <strong>Model:</strong> ${settings.model}
+                    </div>
+                `;
+                
+            } catch (error) {
+                log(`LLM settings update failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                log('Loading user list...');
+                
+                // Simulate loading users
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                updateUsersList();
+                log('User list loaded successfully', 'success');
+                
+            } catch (error) {
+                log(`User list loading failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadTemplates() {
+            try {
+                log('Loading template list...');
+                
+                // Simulate loading templates
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                updateTemplatesList();
+                log('Template list loaded successfully', 'success');
+                
+            } catch (error) {
+                log(`Template list loading failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            log('IndexedDB test page loaded');
+            updateSystemStatus();
+            updateUsersList();
+            updateTemplatesList();
+        });
+    </script>
+</body>
+</html>

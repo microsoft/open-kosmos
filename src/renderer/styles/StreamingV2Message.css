@@ -1,0 +1,237 @@
+/* StreamingV2Message component styles - smooth typewriter effect optimization */
+
+.streaming-v2-message {
+ position: relative;
+ overflow-wrap: break-word;
+ word-wrap: break-word;
+ /* optimize rendering performance */
+ contain: layout style paint;
+}
+
+.streaming-v2-message .message-content {
+ /* ensure layout is stable during progressive content display */
+ line-height: 1.6;
+ position: relative;
+ /* 🔥 fix: use transition smooth handle min-height change, avoid jumping */
+ transition: min-height 0.2s ease-out;
+}
+
+/* 🔥 fix: when content is empty, remove min-height, avoid taking extra space */
+.streaming-v2-message .message-content:empty {
+ min-height: 0;
+}
+
+/* 🔥 no cursor mode: cursor hidden by default */
+/* if needed enabled cursor, in streamingConfig.ts in set showCursor: true */
+
+/* inline cursor implement now - only when has with-inline-cursor class when display */
+.streaming-v2-message .message-content.with-inline-cursor::after {
+ content: '';
+ display: inline;
+ width: 2px;
+ height: 1em;
+ background-color: currentColor;
+ margin-left: 2px;
+ vertical-align: baseline;
+ animation: blink 1.2s infinite;
+ opacity: 1;
+}
+
+/* let cursor appear at the end of the last paragraph, list item or other text element */
+.streaming-v2-message .message-content.with-inline-cursor > *:last-child::after {
+ content: '';
+ display: inline;
+ border-right: 2px solid currentColor;
+ animation: blink 1.2s infinite;
+ opacity: 1;
+}
+
+/* ensure container itself does not show cursor, only the last child shows it */
+.streaming-v2-message .message-content.with-inline-cursor::after {
+ content: none;
+}
+
+/* 🔥 ensure cursor is completely hidden when without with-inline-cursor class */
+.streaming-v2-message .message-content:not(.with-inline-cursor)::after,
+.streaming-v2-message .message-content:not(.with-inline-cursor) > *:last-child::after {
+ content: none !important;
+ display: none !important;
+}
+
+/* cursor animation variant - support different cursor styles */
+.streaming-v2-message .message-content.with-inline-cursor.cursor-pulse > *:last-child::after {
+ animation: pulse 1.5s infinite;
+}
+
+.streaming-v2-message .message-content.with-inline-cursor.cursor-fade > *:last-child::after {
+ animation: fade 2s infinite;
+}
+
+.streaming-v2-message .message-content.with-inline-cursor.cursor-smooth > *:last-child::after {
+ animation: smooth-blink 1s infinite;
+}
+
+.streaming-v2-message .message-content.with-inline-cursor.cursor-none > *:last-child::after {
+ animation: none;
+ opacity: 1;
+}
+
+/* inline cursor styles during typing */
+.streaming-v2-message.typing .message-content.with-inline-cursor > *:last-child::after {
+ background-color: #007bff;
+ box-shadow: 0 0 2px rgba(0, 123, 255, 0.5);
+ opacity: 1;
+}
+
+/* typewriter cursor animation */
+.streaming-cursor {
+ animation: blink 1.2s infinite;
+ transition: opacity 0.2s ease-in-out;
+}
+
+.streaming-cursor.pulse {
+ animation: pulse 1.5s infinite;
+}
+
+.streaming-cursor.fade {
+ animation: fade 2s infinite;
+}
+
+.streaming-cursor.smooth {
+ animation: smooth-blink 1s infinite;
+}
+
+/* cursor animation keyframes */
+@keyframes blink {
+ 0%, 50% { opacity: 1; }
+ 51%, 100% { opacity: 0; }
+}
+
+@keyframes pulse {
+ 0%, 100% { opacity: 1; transform: scaleY(1); }
+ 50% { opacity: 0.6; transform: scaleY(0.8); }
+}
+
+@keyframes fade {
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.3; }
+}
+
+@keyframes smooth-blink {
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.2; }
+}
+
+/* special styles during typing */
+.streaming-v2-message.typing {
+ /* subtle glow effect while typing */
+ box-shadow: 0 0 0 1px rgba(0, 123, 255, 0.1);
+ transition: box-shadow 0.3s ease;
+}
+
+.streaming-v2-message.typing .streaming-cursor {
+ /* cursor more prominent while typing */
+ background-color: #007bff;
+ box-shadow: 0 0 2px rgba(0, 123, 255, 0.5);
+}
+
+/* Markdown content styles - migrated to markdown-render.css
+ new 's Markdown styles by .markdown-body class control
+ below only keeps streaming rendering related transition effects */
+
+/* streaming rendering transition animation */
+.streaming-v2-message .message-content.markdown-body * {
+ transition: opacity 0.1s ease-out;
+}
+
+/* code block styles - migrated to code-styles.css for unified management */
+/* here only keeps streaming rendering specific transition effects */
+.streaming-v2-message .code-block-wrapper {
+ transition: opacity 0.1s ease-out;
+}
+
+/* performance metrics display optimization */
+.streaming-metrics {
+ transition: all 0.2s ease-in-out;
+ backdrop-filter: blur(4px);
+ border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.streaming-metrics:hover {
+ background-color: #ebebeb !important;
+ transform: translateY(-1px);
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* completion indicator animation */
+.streaming-complete-indicator {
+ animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+ from {
+ opacity: 0;
+ transform: translateY(10px);
+ }
+ to {
+ opacity: 0.7;
+ transform: translateY(0);
+ }
+}
+
+/* responsive optimize */
+@media (max-width: 768px) {
+ .streaming-v2-message {
+ font-size: 0.95rem;
+ }
+ 
+ .streaming-cursor {
+ width: 1.5px;
+ }
+ 
+ .streaming-metrics {
+ font-size: 0.7rem !important;
+ padding: 0.2rem 0.4rem !important;
+ }
+}
+
+/* dark theme adaptation */
+/* high contrast mode support */
+@media (prefers-contrast: high) {
+ .streaming-cursor {
+ background-color: currentColor;
+ box-shadow: none;
+ }
+ 
+ .streaming-v2-message .message-content.with-inline-cursor > *:last-child::after {
+ background-color: currentColor;
+ box-shadow: none;
+ }
+ 
+ .streaming-v2-message.typing {
+ box-shadow: 0 0 0 2px currentColor;
+ }
+}
+
+/* reduced animation preference support */
+@media (prefers-reduced-motion: reduce) {
+ .streaming-cursor {
+ animation: none;
+ opacity: 1;
+ }
+ 
+ .streaming-v2-message .message-content.with-inline-cursor > *:last-child::after {
+ animation: none;
+ opacity: 1;
+ }
+ 
+ .streaming-v2-message,
+ .streaming-v2-message * {
+ transition: none !important;
+ animation: none !important;
+ }
+ 
+ .streaming-complete-indicator {
+ animation: none;
+ }
+}

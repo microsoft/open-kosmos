@@ -1,0 +1,236 @@
+/* ===========================
+ unified Header styles
+ applicable to all page header components
+ =========================== */
+
+.unified-header {
+ box-sizing: border-box;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 12px 24px;
+ 
+ height: 64px;
+ 
+ background: #FFFFFF;
+ border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Header left side title area */
+.unified-header .header-title {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px;
+ gap: 8px;
+ 
+ height: 24px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+}
+
+/* Header icon */
+.unified-header .header-icon {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 24px;
+ height: 24px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+}
+
+/* Header title text */
+.unified-header .header-name {
+ height: 26px;
+ 
+ /* Semantic/Ramp/Subsection header */
+ font-style: normal;
+ font-weight: 650;
+ font-size: 17px;
+ line-height: 26px;
+ /* identical to box height, or 153% */
+ 
+ color: #000000;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+}
+
+/* Header right side action area */
+.unified-header .header-actions {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ gap: 8px;
+ flex-shrink: 0;
+}
+
+/* status badge container */
+.unified-header .status-badges-container {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ gap: 8px;
+ flex-wrap: wrap;
+}
+
+/* MCP status badge */
+.unified-header .mcp-status-badges {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ gap: 6px;
+ flex-wrap: wrap;
+}
+
+/* ===========================
+ unified Badge styles
+ =========================== */
+
+/* Badge / Medium - unified tool badge styles (normal state) */
+.unified-badge-normal {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px 8px;
+ gap: 4px;
+ 
+ /* background and border */
+ background: rgba(224, 158, 102, 0.3);
+ border-radius: 8px;
+ 
+ /* text styles */
+ font-style: normal;
+ font-weight: 600;
+ font-size: 12px;
+ line-height: 16px;
+ color: #6B3900;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ /* layout */
+ flex: none;
+ align-self: flex-start;
+ white-space: nowrap;
+ 
+ /* remove shadow */
+ box-shadow: none;
+}
+
+/* Button / Medium / Subtle - unified 's Header action button styles */
+.unified-header .btn-action {
+ box-sizing: border-box;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px 8px;
+ isolation: isolate;
+ 
+ width: 40px;
+ min-width: 40px;
+ height: 40px;
+ min-height: 40px;
+ 
+ border-radius: 12px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+ 
+ /* default styles - none border */
+ background: transparent;
+ border: none;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ color: #000000;
+}
+
+.unified-header .btn-action:hover {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+.unified-header .btn-action.active {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+/* Disabled state styles */
+.unified-header .btn-action:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ background: transparent;
+}
+
+.unified-header .btn-action:disabled:hover {
+ background: transparent;
+}
+
+/* Icon Mask - btn-action internal SVG icon styles */
+.unified-header .btn-action svg {
+ width: 24px;
+ height: 24px;
+}
+
+/* ===========================
+ Update Agent Button styles
+ with UserSection 's restart-update-button consistent
+ =========================== */
+
+.unified-header .update-agent-button {
+ box-sizing: border-box;
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px 8px;
+ gap: 8px;
+ height: 36px;
+ background: #FFE6D3;
+ border: none;
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.unified-header .update-agent-button:hover {
+ background: #ffd9bf;
+}
+
+.unified-header .update-agent-button:active {
+ background: #ffccab;
+}
+
+.unified-header .update-agent-button:focus-visible {
+ outline: 2px solid #FFE6D3;
+ outline-offset: 2px;
+}
+
+.unified-header .update-agent-icon {
+ width: 16px;
+ height: 16px;
+ color: #333;
+ flex-shrink: 0;
+}
+
+.unified-header .update-agent-text {
+ font-size: 13px;
+ font-weight: 500;
+ color: #333;
+ white-space: nowrap;
+}

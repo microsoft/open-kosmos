@@ -1,0 +1,36 @@
+/* ===========================
+   Experiment Tag Styles
+   =========================== */
+
+.experiment-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #3b82f6; /* Blue-500 */
+  color: white;
+  font-weight: 600;
+  border-radius: 4px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Small variant - for use on buttons */
+.experiment-tag-small {
+  font-size: 8px;
+  padding: 1px 3px;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+}
+
+/* Normal variant - for use in settings pages */
+.experiment-tag-normal {
+  font-size: 11px;
+  padding: 2px 8px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+}
+
+/* Hover effect */
+.experiment-tag:hover {
+  background-color: #2563eb; /* Blue-600 */
+}

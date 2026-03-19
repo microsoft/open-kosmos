@@ -1,0 +1,300 @@
+/* ===========================
+ ChatContainer component styles
+ =========================== */
+
+.chat-container {
+ flex: 1;
+ overflow-y: auto;
+ padding: 24px;
+ display: flex;
+ flex-direction: column;
+ gap: 12px;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+}
+
+.chat-container::-webkit-scrollbar {
+ display: none;
+}
+
+/* Reverse layout container for upward expansion */
+.chat-container-reverse {
+ flex: 1;
+ overflow-y: auto;
+ padding: 24px;
+ display: flex;
+ flex-direction: column-reverse;
+ /* Ensure newest messages (at bottom of reversed container) stay visible */
+ justify-content: flex-start;
+ /* Remove background, use parent component background color */
+ backdrop-filter: blur(12px);
+ /* scrollbar styles - hidden by default */
+ scrollbar-width: thin;
+ scrollbar-color: transparent transparent;
+ transition: scrollbar-color 0.3s ease;
+}
+
+/* Webkit browser scrollbar styles - hidden by default */
+.chat-container-reverse::-webkit-scrollbar {
+ width: 6px;
+}
+
+.chat-container-reverse::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.chat-container-reverse::-webkit-scrollbar-thumb {
+ background: transparent;
+ border-radius: 3px;
+ transition: background 0.3s ease;
+}
+
+/* Hover show scrollbar on hover */
+.chat-container-reverse:hover {
+ scrollbar-color: rgba(203, 213, 225, 0.8) transparent;
+}
+
+.chat-container-reverse:hover::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+}
+
+.chat-container-reverse:hover::-webkit-scrollbar-thumb:hover {
+ background: rgba(148, 163, 184, 0.9);
+}
+
+/* Chat View specific styles */
+.chat-view .chat-container-reverse {
+ flex: 1;
+}
+
+/* ===========================
+ Minimal Mode styles
+ =========================== */
+
+/* Minimal mode styles */
+.chat-view.minimal-mode .chat-view-layout {
+ display: flex;
+ flex-direction: column;
+}
+
+.chat-view.minimal-mode .chat-area {
+ width: 100% !important;
+ flex: 1;
+}
+
+.chat-view.minimal-mode .chat-content {
+ height: 100%; /* Changed from calc(100vh - 60px) to work with WindowsTitleBar */
+ display: flex;
+ flex-direction: column;
+}
+
+.chat-view.minimal-mode .chat-content > * {
+ flex-shrink: 0;
+}
+
+.chat-view.minimal-mode .chat-content .chat-container {
+ flex: 1;
+ overflow-y: auto;
+}
+
+/* Chat content wrapper layout */
+.chat-content-wrapper {
+ display: flex;
+ flex: 1;
+ height: 100%; /* Changed from calc(100vh - 60px) to work with WindowsTitleBar */
+ overflow: hidden;
+}
+
+.chat-content-wrapper .chat-content {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ overflow: hidden;
+}
+
+.chat-content-wrapper .chat-content .chat-container {
+ flex: 1;
+ overflow-y: auto;
+}
+
+.chat-content-wrapper .chat-content .chat-input {
+ flex-shrink: 0;
+}
+
+/* Minimal mode adjustments for wrapper */
+.chat-view.minimal-mode .chat-content-wrapper {
+ flex-direction: column;
+}
+
+.chat-view.minimal-mode .chat-content-wrapper .chat-content {
+ flex: 1;
+}
+
+/* ===========================
+ fixed boundary container - core design to prevent flickering
+ =========================== */
+
+/* 🔥 new design: message boundary container - as is loading message and new message 's fixed reference line */
+.message-boundary-container {
+ /* 🔥 fix: default state take up no space, height is 0 */
+ height: 0;
+ overflow: hidden;
+ position: relative;
+ /* ensure boundary container does not cause layout shift due to content changes */
+ contain: layout style;
+ /* 🔥 default state: not take up space */
+ margin-bottom: 0;
+ opacity: 0;
+ pointer-events: none;
+ /* smooth transition */
+ transition: height 0.2s ease-out, opacity 0.2s ease-out, margin-bottom 0.2s ease-out;
+}
+
+/* 🔥 has loading message when, container becomes visible and takes up space */
+.message-boundary-container:has(.loading-message) {
+ height: 88px; /* standard message card 's height: padding(16*2) + content(~56) */
+ margin-bottom: 80px; /* sufficient bottom margin to ensure loading message fully visible */
+ overflow: visible;
+ opacity: 1 !important;
+ pointer-events: auto;
+}
+
+/* 🔥 CSS compatibility: if not supported:has(), control via class name */
+.message-boundary-container.has-loading {
+ height: 88px;
+ margin-bottom: 80px;
+ overflow: visible;
+ opacity: 1 !important;
+ pointer-events: auto;
+ /* 🔥 fix: ensure container remains visible after window restore */
+ display: block;
+ visibility: visible;
+}
+
+/* 🔥 fixed boundary 's loading message */
+.loading-message.fixed-boundary {
+ /* use absolute positioning, ensure fixed position */
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ /* remove original margin, avoid affecting layout calculation */
+ margin: 0;
+ /* keep background and styles */
+ background: rgba(248, 250, 252, 0.95);
+ backdrop-filter: blur(6px);
+ padding: 16px 20px;
+ border-radius: 20px;
+ /* ensure z-index appropriate */
+ z-index: 1;
+ /* add smooth transition animation */
+ transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+ /* restore pointer events */
+ pointer-events: auto;
+}
+
+/* 🔥 when loading message animation state when about to disappear */
+.loading-message.fixed-boundary.fading-out {
+ opacity: 0;
+ transform: translateY(-10px);
+}
+
+/* ===========================
+ Loading Message styles
+ =========================== */
+
+/* Loading text with inline typing indicator */
+.loading-text {
+ display: flex;
+ align-items: center;
+ font-size: 14px;
+ color: #a3a3a3; /* same as original typing indicator dots color */
+ font-weight: 500;
+ font-style: normal; /* ensure not italic */
+ min-height: 22px; /* ensure matches standalone typing indicator height consistency */
+}
+
+/* ensure single standalone 's typing indicator have same min height */
+.loading-message .typing-indicator:not(.inline) {
+ min-height: 22px; /* with loading-text 's minimum height consistency */
+ display: flex;
+ align-items: center;
+ font-size: 14px; /* ensure consistent font size, avoid height differences */
+}
+
+/* Inline typing indicator for compression status - maintain same as original typing indicator same size */
+.typing-indicator.inline {
+ display: inline-flex;
+ align-items: center;
+ margin-left: 8px; /* increase spacing from text */
+}
+
+.typing-indicator.inline .dots {
+ display: flex;
+ gap: 4px; /* same as original typing indicator same spacing */
+}
+
+.typing-indicator.inline .dots span {
+ width: 8px; /* same as original typing indicator same size */
+ height: 8px; /* same as original typing indicator same size */
+ background-color: #a3a3a3; /* same as original typing indicator same color */
+ border-radius: 50%;
+ animation: pulse 1.4s ease-in-out infinite; /* using same as original pulse animation */
+}
+
+.typing-indicator.inline .dots span:nth-child(1) {
+ animation-delay: 0ms; /* same as original typing indicator same delay */
+}
+
+.typing-indicator.inline .dots span:nth-child(2) {
+ animation-delay: 160ms; /* same as original typing indicator same delay */
+}
+
+.typing-indicator.inline .dots span:nth-child(3) {
+ animation-delay: 320ms; /* same as original typing indicator same delay */
+}
+
+/* 🔥 added: define pulse animation (if not defined globally) */
+@keyframes pulse {
+ 0%, 80%, 100% {
+ opacity: 0.3;
+ transform: scale(0.8);
+ }
+ 40% {
+ opacity: 1;
+ transform: scale(1);
+ }
+}
+
+/* 🔥 ensure regular typing indicator also has the same styles */
+.typing-indicator:not(.inline) {
+ display: flex;
+ align-items: center;
+ justify-content: flex-start;
+ min-height: 22px;
+}
+
+.typing-indicator:not(.inline) .dots {
+ display: flex;
+ gap: 4px;
+}
+
+.typing-indicator:not(.inline) .dots span {
+ width: 8px;
+ height: 8px;
+ background-color: #a3a3a3;
+ border-radius: 50%;
+ animation: pulse 1.4s ease-in-out infinite;
+}
+
+.typing-indicator:not(.inline) .dots span:nth-child(1) {
+ animation-delay: 0ms;
+}
+
+.typing-indicator:not(.inline) .dots span:nth-child(2) {
+ animation-delay: 160ms;
+}
+
+.typing-indicator:not(.inline) .dots span:nth-child(3) {
+ animation-delay: 320ms;
+}

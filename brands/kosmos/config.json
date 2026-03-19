@@ -1,0 +1,24 @@
+{
+  "_comment": "Kosmos Brand Configuration - See electron-builder.config.js for full documentation",
+  "_paths_windows": {
+    "_install_dir": "C:\\Users\\<user>\\AppData\\Local\\Programs\\kosmos",
+    "_user_data": "C:\\Users\\<user>\\AppData\\Roaming\\kosmos-app",
+    "_executable": "KOSMOS.exe"
+  },
+  "_paths_macos": {
+    "_install_dir": "/Applications/KOSMOS.app",
+    "_user_data": "~/Library/Application Support/kosmos-app"
+  },
+  
+  "appId": "com.kosmos.app",
+  "productName": "KOSMOS",
+  "userDataName": "kosmos-app",
+  "description": "KOSMOS.APP - AI Studio",
+  "copyright": "Copyright © 2025-2026 KOSMOS Team",
+  "author": "KOSMOS Team",
+  "homepage": "https://www.kosmos-ai.com",
+  "feedbackLink": "https://github.com/ai-microsoft/openKosmos/issues",
+  "filenamePrefix": "KOSMOS",
+  "shortcutName": "KOSMOS",
+  "windowTitle": "KOSMOS AI Studio"
+}

@@ -1,0 +1,363 @@
+{
+  "name": "kosmos-app",
+  "version": "1.0.0",
+  "description": "KOSMOS AI STUDIO",
+  "author": "KOSMOS Team",
+  "homepage": "./",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "cross-env BRAND=$npm_config_brand webpack serve --config webpack.renderer.config.js --mode development",
+    "dev:main": "cross-env BRAND=$npm_config_brand webpack --config webpack.main.config.js --mode development --watch",
+    "dev:full": "cross-env BRAND=$npm_config_brand concurrently \"npm run dev:main\" \"npm run dev\" \"npm run dev:electron\"",
+    "dev:electron": "wait-on http://localhost:3000 && wait-on dist/main/main.js && cross-env BRAND=$npm_config_brand electron . --dev --inspect=9229 --disable-gpu-sandbox --no-sandbox",
+    "build": "cross-env BRAND=$npm_config_brand npm run build:main && npm run build:renderer",
+    "build:main": "cross-env BRAND=$npm_config_brand webpack --config webpack.main.config.js --mode production",
+    "build:renderer": "cross-env BRAND=$npm_config_brand webpack --config webpack.renderer.config.js --mode production",
+    "build:renderer:dev": "cross-env BRAND=$npm_config_brand webpack --config webpack.renderer.config.js --mode development",
+    "start": "npm run build && cross-env BRAND=$npm_config_brand electron . --disable-gpu-sandbox --no-sandbox",
+    "start:prod": "npm run build && cross-env BRAND=$npm_config_brand electron . --disable-gpu-sandbox --no-sandbox",
+    "electron": "cross-env BRAND=$npm_config_brand electron . --disable-gpu-sandbox --no-sandbox",
+    "electron:dev": "npm run build:main && npm run build:renderer:dev && cross-env BRAND=$npm_config_brand electron . --dev",
+    "test": "jest",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "pack": "cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --dir",
+    "dist": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js",
+    "dist:all": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac --win",
+    "dist:win": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --win",
+    "dist:win:x64": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --win --x64",
+    "dist:win:arm64": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --win --arm64",
+    "dist:mac": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac",
+    "dist:mac:x64": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac --x64",
+    "dist:mac:arm64": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac --arm64",
+    "dist:mac:universal": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac --universal",
+    "dist:linux": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --linux",
+    "pack:all": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --dir --mac --win",
+    "test:sandbox": "node test-sandbox-fix.js",
+    "test:commands": "node test-all-commands.js",
+    "diagnose": "./scripts/diagnose-sandbox.sh",
+    "dist:publish": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --publish always",
+    "dist:publish:win": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --win --publish always",
+    "dist:publish:mac": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --config electron-builder.config.js --mac --publish always",
+    "test:cdn-update": "node scripts/test-cdn-update.js",
+    "debug:update": "node scripts/debug-update-check.js",
+    "debug:update-verbose": "DEBUG=* node scripts/debug-update-check.js",
+    "prepare:release": "node scripts/prepare-release.js",
+    "prepare:release:patch": "node scripts/prepare-release.js patch",
+    "prepare:release:minor": "node scripts/prepare-release.js minor",
+    "prepare:release:major": "node scripts/prepare-release.js major",
+    "test:build": "npm run build && cross-env BRAND=$npm_config_brand electron-builder --mac --config electron-builder.test.yml",
+    "test:build:verify": "npm run test:build && bash scripts/verify-build.sh",
+    "rebuild": "node scripts/rebuild-native.js && node scripts/fix-whisper-addon.js",
+    "postinstall": "node scripts/rebuild-native.js && node scripts/fix-whisper-addon.js",
+    "generate-mac-icons-with-padding": "cross-env BRAND=$npm_config_brand node scripts/generate-mac-icons-with-padding.js",
+    "generate-icons": "cross-env BRAND=$npm_config_brand node scripts/generate-icons.js",
+    "build:visual-updater": "node scripts/build-visual-updater.js",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report tests/e2e/report",
+    "pretest:e2e": "cross-env DOTENV_CONFIG_PATH=.env.test npm run build"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "0.2.14",
+    "@google/generative-ai": "^0.1.3",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@radix-ui/react-alert-dialog": "^1.0.5",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-slider": "^1.1.2",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@tailwindcss/typography": "^0.5.16",
+    "@types/node-fetch": "^2.6.12",
+    "@types/react-window": "^1.8.8",
+    "@vscode/ripgrep": "^1.15.14",
+    "ai": "^5.0.52",
+    "better-sqlite3": "^11.10.0",
+    "caniuse-lite": "^1.0.30001757",
+    "chokidar": "^4.0.3",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "cohere-ai": "^7.19.0",
+    "electron-log": "^5.4.2",
+    "immer": "^11.1.3",
+    "js-tiktoken": "^1.0.21",
+    "jsdom": "^27.0.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.525.0",
+    "mammoth": "^1.11.0",
+    "micromatch": "^4.0.8",
+    "neo4j-driver": "^5.28.2",
+    "node-cron": "^4.2.1",
+    "node-fetch": "^2.7.0",
+    "node-html-parser": "^7.0.1",
+    "node-screenshots": "^0.2.8",
+    "node-stream-zip": "^1.15.0",
+    "ollama": "^0.5.18",
+    "openai": "^4.28.0",
+    "pdfreader": "^3.0.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.30.3",
+    "react-syntax-highlighter": "^16.1.0",
+    "react-window": "^1.8.11",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "selection-hook": "^1.0.12",
+    "sharp": "^0.34.5",
+    "sqlite-vec": "^0.1.6",
+    "stylis": "^4.3.6",
+    "sudo-prompt": "^9.2.1",
+    "tailwind-merge": "^2.6.0",
+    "tar": "^7.5.11",
+    "unbzip2-stream": "^1.4.3",
+    "uuid": "^11.1.0",
+    "zod": "^3.25.76"
+  },
+  "optionalDependencies": {
+    "@kutalia/whisper-node-addon": "^1.1.0",
+    "sherpa-onnx": "^1.12.24"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/preset-react": "^7.27.1",
+    "@babel/preset-typescript": "^7.27.1",
+    "@electron/notarize": "^2.2.1",
+    "@electron/rebuild": "^4.0.3",
+    "@playwright/test": "^1.58.2",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/jest": "^29.5.14",
+    "@types/lodash": "^4.17.23",
+    "@types/micromatch": "^4.0.9",
+    "@types/node": "^20.19.9",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/stylis": "^4.2.7",
+    "@types/uuid": "^9.0.8",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "autoprefixer": "^10.4.16",
+    "babel-loader": "^10.0.0",
+    "buffer": "^6.0.3",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "crypto-browserify": "^3.12.1",
+    "css-loader": "^6.11.0",
+    "dotenv": "^17.2.0",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.7.0",
+    "electron-reload": "^2.0.0-alpha.1",
+    "eslint": "^9.39.2",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "events": "^3.3.0",
+    "html-webpack-plugin": "^5.6.0",
+    "jest": "^29.7.0",
+    "mermaid": "^11.12.2",
+    "monaco-editor": "^0.55.1",
+    "monaco-editor-webpack-plugin": "^7.1.1",
+    "node-loader": "^2.1.0",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
+    "playwright": "^1.58.0",
+    "png-to-ico": "^3.0.1",
+    "postcss": "^8.4.32",
+    "postcss-loader": "^7.3.4",
+    "process": "^0.11.10",
+    "react-refresh": "^0.18.0",
+    "serve": "^14.2.5",
+    "stream-browserify": "^3.0.0",
+    "style-loader": "^3.3.4",
+    "tailwindcss": "^3.4.17",
+    "terser-webpack-plugin": "^5.3.17",
+    "to-ico": "^1.1.5",
+    "ts-jest": "^29.1.1",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "util": "^0.12.5",
+    "wait-on": "^9.0.1",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "overrides": {
+    "lodash-es": "^4.17.23"
+  },
+  "build": {
+    "appId": "com.yanhu.kosmos-ai-studio",
+    "productName": "KOSMOS",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "resources/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/*.ts",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/node_modules/playwright*/.local-browsers/**"
+    ],
+    "asarUnpack": [
+      "node_modules/@vscode/ripgrep/**",
+      "node_modules/sqlite-vec/**",
+      "node_modules/sqlite-vec-darwin-arm64/**",
+      "node_modules/sqlite-vec-darwin-x64/**",
+      "node_modules/sqlite-vec-linux-x64/**",
+      "node_modules/sqlite-vec-linux-arm64/**",
+      "node_modules/sqlite-vec-windows-x64/**"
+    ],
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "compression": "maximum",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ai-microsoft",
+        "repo": "openKosmos",
+        "private": false,
+        "protocol": "https",
+        "releaseType": "release",
+        "publishAutoUpdate": true
+      }
+    ],
+    "releaseInfo": {
+      "releaseNotes": "See CHANGELOG.md for details",
+      "releaseName": "${version}"
+    },
+    "generateUpdatesFilesForAllChannels": false,
+    "afterSign": "scripts/notarize.js",
+    "mac": {
+      "icon": "resources/icons_all_sizes_mac/Kosmos.icns",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "type": "distribution",
+      "artifactName": "KOSMOS-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "This app needs to access Apple Events to run external programs.",
+        "NSSystemAdministrationUsageDescription": "This app needs system administration access to run MCP servers.",
+        "NSFileProviderPresenceUsageDescription": "This app needs file system access to manage MCP server files.",
+        "LSEnvironment": {
+          "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        }
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": "arm64"
+        },
+        {
+          "target": "zip",
+          "arch": "arm64"
+        }
+      ],
+      "notarize": false
+    },
+    "win": {
+      "icon": "resources/icons_all_sizes_win/kosmos_icon.ico",
+      "artifactName": "KOSMOS-${version}-win-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        },
+        {
+          "target": "nsis",
+          "arch": "arm64"
+        },
+        {
+          "target": "zip",
+          "arch": "x64"
+        },
+        {
+          "target": "zip",
+          "arch": "arm64"
+        }
+      ],
+      "forceCodeSigning": false,
+      "extraResources": [
+        {
+          "from": "node_modules/sharp/build/Release",
+          "to": "app/node_modules/sharp/build/Release",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/dll",
+          "to": "dll",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "resources/icons_all_sizes_win/icon_round_512x512.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KOSMOS",
+      "displayLanguageSelector": false,
+      "multiLanguageInstaller": false,
+      "allowElevation": false,
+      "perMachine": false,
+      "artifactName": "KOSMOS-${version}-win-${arch}.${ext}",
+      "differentialPackage": true
+    },
+    "dmg": {
+      "iconSize": 100,
+      "contents": [
+        {
+          "x": 380,
+          "y": 280,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 110,
+          "y": 280,
+          "type": "file"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  }
+}

@@ -1,0 +1,304 @@
+/* ===========================
+ Memory domain dedicated styles
+ integrated MemoryView, MemoryCard, MemoryContentView related styles
+ =========================== */
+
+/* ===========================
+ Memory View layout
+ =========================== */
+
+.memory-view {
+ width: 100%;
+ height: 100%;
+ display: flex;
+ background: rgba(248, 250, 252, 0.95);
+ overflow: hidden;
+}
+
+.memory-view .config-sidepane {
+ position: relative;
+ width: 100%;
+ height: 100%;
+ background: rgba(248, 250, 252, 0.98);
+ backdrop-filter: blur(16px);
+ overflow: hidden;
+ display: flex;
+ flex-direction: column;
+}
+
+/* ===========================
+ Memory Content View
+ =========================== */
+
+/* Sidepane content area - enabled scroll */
+.memory-view .sidepane-content {
+ flex: 1;
+ overflow-y: auto;
+ overflow-x: hidden;
+ height: 100%;
+ display: flex;
+ flex-direction: column;
+ scrollbar-width: thin;
+ scrollbar-color: rgba(203, 213, 225, 0.8) transparent;
+}
+
+.memory-view .sidepane-content::-webkit-scrollbar {
+ width: 6px;
+}
+
+.memory-view .sidepane-content::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.memory-view .sidepane-content::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+ border-radius: 3px;
+}
+
+.memory-view .sidepane-content::-webkit-scrollbar-thumb:hover {
+ background: rgba(148, 163, 184, 0.9);
+}
+
+/* loading state */
+.memory-loading {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 80px 24px;
+ gap: 16px;
+}
+
+.memory-loading .loading-spinner {
+ width: 32px;
+ height: 32px;
+ border: 3px solid rgba(203, 213, 225, 0.3);
+ border-top-color: rgb(59, 130, 246);
+ border-radius: 50%;
+ animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+ to { transform: rotate(360deg); }
+}
+
+.memory-loading .loading-text {
+ margin: 0;
+ color: rgb(107, 114, 128);
+ font-size: 14px;
+ font-weight: 500;
+}
+
+/* empty state */
+.memory-empty {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 80px 24px;
+ text-align: center;
+}
+
+.memory-empty .empty-icon {
+ font-size: 48px;
+ margin-bottom: 16px;
+ opacity: 0.6;
+}
+
+.memory-empty .empty-title {
+ margin: 0 0 8px 0;
+ color: rgb(55, 65, 81);
+ font-size: 16px;
+ font-weight: 600;
+}
+
+.memory-empty .empty-hint {
+ margin: 0;
+ color: rgb(156, 163, 175);
+ font-size: 14px;
+}
+
+/* memory card container */
+.memory-view .server-cards {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ flex-wrap: wrap;
+ align-items: flex-start;
+ align-content: flex-start;
+ padding: 0px;
+ gap: 16px;
+}
+
+/* load more indicator */
+.load-more-indicator {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 24px;
+ gap: 12px;
+}
+
+.load-more-indicator .loading-spinner-small {
+ width: 24px;
+ height: 24px;
+ border: 2px solid rgba(203, 213, 225, 0.3);
+ border-top-color: rgb(59, 130, 246);
+ border-radius: 50%;
+ animation: spin 0.8s linear infinite;
+}
+
+.load-more-indicator .loading-more-text {
+ margin: 0;
+ color: rgb(107, 114, 128);
+ font-size: 13px;
+ font-weight: 500;
+}
+
+/* all loaded indicator */
+.all-loaded-indicator {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 20px;
+}
+
+.all-loaded-indicator .all-loaded-text {
+ margin: 0;
+ color: rgb(156, 163, 175);
+ font-size: 12px;
+ font-weight: 500;
+ opacity: 0.7;
+}
+
+/* ===========================
+ Memory Card
+ =========================== */
+
+.memory-card {
+ /* Frame 2147233349 */
+ box-sizing: border-box;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 16px 20px;
+ gap: 16px;
+ 
+ /* Background_0 */
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+ 
+ /* Keep existing functional styles */
+ overflow: hidden;
+ transition: all 0.2s ease;
+ width: fit-content;
+ max-width: 100%;
+}
+
+.memory-card:hover {
+ background: #FFFFFF;
+ border-color: rgba(0, 0, 0, 0.24);
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+ transform: translateY(-1px);
+}
+
+.memory-info {
+ flex: 1;
+ min-width: 0;
+ display: flex;
+ align-items: center;
+}
+
+.memory-text {
+ margin: 0;
+ font-size: 0.9375rem;
+ line-height: 1.5;
+ color: rgb(55, 65, 81);
+ word-break: break-word;
+ font-weight: 500;
+}
+
+.memory-time {
+ margin: 0.375rem 0 0 0;
+ font-size: 0.75rem;
+ color: rgb(156, 163, 175);
+ font-weight: 400;
+}
+
+.memory-actions {
+ display: flex;
+ gap: 0.5rem;
+ flex-shrink: 0;
+}
+
+.memory-actions .action-btn {
+ width: 40px;
+ min-width: 40px;
+ height: 40px;
+ min-height: 40px;
+ background: rgba(255, 255, 255, 0.9);
+ backdrop-filter: blur(8px);
+ border: none;
+ border-radius: 12px;
+ cursor: pointer;
+ padding: 0;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ transition: all 0.2s ease;
+ box-shadow: none;
+}
+
+.memory-actions .action-btn svg {
+ width: 24px;
+ height: 24px;
+ flex-shrink: 0;
+}
+
+.memory-actions .action-btn:hover:not(:disabled) {
+ background: rgba(255, 255, 255, 1);
+ transform: translateY(-1px);
+ box-shadow: none;
+}
+
+.memory-actions .action-btn:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+}
+
+.memory-actions .delete-btn:hover:not(:disabled) {
+ background: rgba(239, 68, 68, 0.1);
+ color: rgb(220, 38, 38);
+ box-shadow: none;
+}
+
+/* ===========================
+ responsive and accessibility
+ =========================== */
+
+@media (prefers-contrast: high) {
+ .memory-card {
+ border-color: #000;
+ }
+}
+
+@media (prefers-reduced-motion: reduce) {
+ .memory-card,
+ .memory-actions .action-btn {
+ transition: none;
+ }
+ 
+ .memory-card:hover {
+ transform: none;
+ }
+ 
+ .memory-loading .loading-spinner,
+ .load-more-indicator .loading-spinner-small {
+ animation: none;
+ }
+}

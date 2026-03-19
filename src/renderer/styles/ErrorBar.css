@@ -1,0 +1,93 @@
+/* ===========================
+ error bar styles (ErrorBar)
+ Embedded directly above ChatInput, using normal flow layout
+ =========================== */
+
+.error-bar {
+ background: linear-gradient(135deg, rgba(254, 226, 226, 0.98) 0%, rgba(254, 202, 202, 0.98) 100%);
+ backdrop-filter: blur(12px);
+ border: 1px solid rgba(239, 68, 68, 0.4);
+ border-radius: 8px;
+ box-shadow: 0 2px 12px rgba(239, 68, 68, 0.15);
+ animation: errorSlideDown 0.3s ease-out;
+ padding: 10px 14px;
+ margin: 0 16px 8px 16px; /* Aligned with ChatInput left and right, 8px spacing at bottom */
+}
+
+@keyframes errorSlideDown {
+ from {
+ transform: translateY(-20px);
+ opacity: 0;
+ }
+ to {
+ transform: translateY(0);
+ opacity: 1;
+ }
+}
+
+/* error bar content layout */
+.error-bar-content {
+ display: flex;
+ align-items: flex-start;
+ gap: 10px;
+}
+
+.error-bar-icon {
+ font-size: 16px;
+ flex-shrink: 0;
+ line-height: 1.4;
+}
+
+.error-bar-message {
+ flex: 1;
+ font-size: 13px;
+ line-height: 1.5;
+ color: #7f1d1d;
+ font-weight: 500;
+ white-space: pre-wrap;
+ word-break: break-word;
+}
+
+/* fix suggestion hint */
+.error-bar-fix-suggestion {
+ margin-top: 6px;
+ padding: 6px 10px;
+ background: rgba(254, 243, 199, 0.8);
+ border: 1px solid rgba(217, 119, 6, 0.3);
+ border-radius: 6px;
+ font-size: 12px;
+ font-weight: 400;
+ color: #92400e;
+ line-height: 1.5;
+}
+
+/* Retry button */
+.error-bar-btn.retry {
+ flex-shrink: 0;
+ padding: 6px 14px;
+ font-size: 12px;
+ font-weight: 600;
+ border-radius: 6px;
+ cursor: pointer;
+ transition: all 0.15s ease;
+ border: none;
+ background: #dc2626;
+ color: white;
+}
+
+.error-bar-btn.retry:hover {
+ background: #b91c1c;
+ transform: translateY(-1px);
+ box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.error-bar-btn.retry:active {
+ transform: translateY(0);
+ box-shadow: none;
+}
+
+/* ===========================
+ Dark Mode support
+ =========================== */
+
+/* Dark mode via class */

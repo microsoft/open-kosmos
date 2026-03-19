@@ -1,0 +1,263 @@
+/* ===========================
+ unified 's Sidepane base styles
+ for WorkspaceExplorerSidepane
+ 
+ design specification: Frame 2147233364
+ - box-sizing: border-box
+ - display: flex
+ - flex-direction: column
+ - align-items: flex-start
+ - padding: 0px 8px
+ - border: 1px solid rgba(0, 0, 0, 0.12)
+ - border-radius: 12px
+ =========================== */
+
+.chat-sidepane {
+ /* box model */
+ box-sizing: border-box;
+ width: 350px;
+ height: calc(100% - 48px); /* minus top bottom margin */
+ 
+ /* layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ 
+ /* spacing */
+ margin: 24px 24px 24px 0; /* top/right/bottom/left - right margin 24px with chat-content 's padding consistent */
+ 
+ /* appearance */
+ background: transparent; /* remove background, keep transparent */
+ backdrop-filter: blur(16px);
+ border: none; /* border migrated to file-explorer-section */
+ border-radius: 12px;
+ 
+ /* font */
+ 
+ /* other */
+ flex-shrink: 0;
+}
+
+/* Sidepane Header - unified layout 
+ design specification: Frame 2147233361
+*/
+.sidepane-header {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 16px 12px;
+ gap: 12px;
+ 
+ /* dimensions */
+ height: 52px;
+ 
+ /* Background_0 */
+ background: #FFFFFF;
+ border-radius: 12px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ 
+ /* remove old styles */
+ border-bottom: none;
+ width: auto;
+ box-sizing: border-box;
+}
+
+/* Header Title - left alignment */
+.sidepane-header-title {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ flex: 1;
+ min-width: 0;
+}
+
+.sidepane-title-icon {
+ font-size: 18px;
+ line-height: 1;
+ flex-shrink: 0;
+ display: none; /* hidden icon */
+}
+
+.sidepane-title-text {
+ font-size: 14px;
+ font-weight: 600;
+ color: #374151;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+/* Header Actions - right alignment, only show icon */
+.sidepane-header-actions {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ flex-shrink: 0;
+}
+
+.sidepane-action-btn {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px;
+ height: 32px;
+ padding: 0;
+ border: none;
+ border-radius: 8px;
+ background: transparent;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 16px;
+ color: #6b7280;
+}
+
+.sidepane-action-btn:hover:not(:disabled) {
+ background: rgba(0, 0, 0, 0.05);
+ border-radius: 8px;
+}
+
+.sidepane-action-btn:active:not(:disabled) {
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 8px;
+}
+
+.sidepane-action-btn:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+}
+
+/* Sidepane Close Button - Dismiss icon */
+.sidepane-close-btn {
+ /* Icon container */
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px;
+ height: 32px;
+ 
+ /* styles */
+ border: none;
+ background: transparent;
+ cursor: pointer;
+ padding: 0;
+ border-radius: 8px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ flex-grow: 0;
+ 
+ /* interaction */
+ transition: all 0.2s ease;
+}
+
+.sidepane-close-btn:hover {
+ background: rgba(0, 0, 0, 0.05);
+ border-radius: 8px;
+}
+
+.sidepane-close-btn:active {
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 8px;
+}
+
+.sidepane-close-btn svg {
+ width: 12px;
+ height: 12px;
+ display: block;
+}
+
+/* Sidepane Body - scrollable content area */
+.sidepane-body {
+ flex: 1;
+ overflow-y: auto;
+ overflow-x: hidden;
+ padding: 0;
+ width: 100%;
+ box-sizing: border-box;
+ background: transparent; /* remove background, use transparent */
+}
+
+/* Sidepane scrollbar styles */
+.sidepane-body::-webkit-scrollbar {
+ width: 6px;
+}
+
+.sidepane-body::-webkit-scrollbar-track {
+ background: rgba(241, 245, 249, 0.5);
+ border-radius: 3px;
+}
+
+.sidepane-body::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+ border-radius: 3px;
+}
+
+.sidepane-body::-webkit-scrollbar-thumb:hover {
+ background: rgba(156, 163, 175, 0.9);
+}
+
+/* empty state and loading state */
+.empty-state,
+.loading-state {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 40px 20px;
+ text-align: center;
+ color: #6b7280;
+}
+
+.empty-icon,
+.loading-spinner {
+ font-size: 48px;
+ margin-bottom: 16px;
+ opacity: 0.6;
+}
+
+.loading-spinner {
+ animation: spin 1s linear infinite;
+}
+
+.empty-state p,
+.loading-state p {
+ margin: 0 0 8px 0;
+ font-size: 14px;
+ font-weight: 500;
+ color: #374151;
+}
+
+.empty-state small {
+ font-size: 12px;
+ color: #6b7280;
+}
+
+@keyframes spin {
+ from {
+ transform: rotate(0deg);
+ }
+ to {
+ transform: rotate(360deg);
+ }
+}
+
+/* responsive and accessibility */
+@media (prefers-contrast: high) {
+ .chat-sidepane {
+ border-left-color: #000;
+ }
+}
+
+@media (prefers-reduced-motion: reduce) {
+ .sidepane-action-btn,
+ .loading-spinner {
+ transition: none;
+ animation: none;
+ }
+}

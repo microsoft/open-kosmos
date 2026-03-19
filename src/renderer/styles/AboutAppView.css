@@ -1,0 +1,100 @@
+/* ===========================
+ About App page styles
+ =========================== */
+
+/* spin animation (spinner) */
+@keyframes about-spin {
+ from { transform: rotate(0deg); }
+ to { transform: rotate(360deg); }
+}
+
+.about-spinner {
+ animation: about-spin 1s linear infinite;
+ display: block;
+ flex-shrink: 0;
+}
+
+/* brand row: icon + name + link */
+.about-brand-row {
+ display: flex;
+ align-items: center;
+ gap: 16px;
+ padding: 12px 4px;
+}
+
+.about-brand-text {
+ display: flex;
+ flex-direction: column;
+ gap: 2px;
+}
+
+.about-brand-name {
+ font-size: 16px;
+ font-weight: 600;
+ color: var(--smtc-foreground-content-neutral-primary, #000000db);
+}
+
+/* hyperlink */
+.about-link {
+ color: var(--smtc-foreground-content-brand-primary, #0067b8);
+ text-decoration: none;
+ font-size: 13px;
+ cursor: pointer;
+}
+
+.about-link:hover {
+ text-decoration: underline;
+}
+
+/* version status row */
+.about-version-status {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+.about-version-status-text {
+ font-size: 13px;
+ color: var(--smtc-foreground-content-neutral-primary, #000000db);
+}
+
+/* version detail fine print */
+.about-version-detail {
+ margin-top: 4px;
+ font-size: 12px;
+ color: var(--smtc-foreground-content-neutral-secondary, rgba(0, 0, 0, 0.56));
+}
+
+/* "Install Update Now" button */
+.about-update-btn {
+ box-sizing: border-box;
+ display: inline-flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ margin-left: 8px;
+ padding: 0 8px;
+ gap: 8px;
+ height: 32px;
+ background: #FFE6D3;
+ border: none;
+ border-radius: 12px;
+ cursor: pointer;
+ transition: background 0.2s ease;
+ font-size: 13px;
+ font-weight: 500;
+ color: #333;
+ white-space: nowrap;
+ flex-shrink: 0;
+}
+
+.about-update-btn:hover {
+ background: #ffd9bf;
+}
+
+/* copyright / legal text row */
+.about-legal-text {
+ font-size: 13px;
+ color: var(--smtc-foreground-content-neutral-primary, #000000db);
+ line-height: 1.5;
+}

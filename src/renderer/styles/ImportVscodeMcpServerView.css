@@ -1,0 +1,501 @@
+/* ===========================
+ ImportVscodeMcpServerView dedicated styles
+ conforms to application design system
+ =========================== */
+
+/* Main content container - follows ContentView layout */
+.vscode-importer-content {
+ flex: 1;
+ padding: 24px;
+ overflow-y: auto;
+ background: #FFFFFF;
+}
+
+/* Section containers - unified spacing */
+.vscode-importer-content .detection-section {
+ margin-bottom: 24px;
+}
+
+.vscode-importer-content .server-selection {
+ margin-bottom: 24px;
+}
+
+.vscode-importer-content .import-options {
+ margin-bottom: 24px;
+}
+
+.vscode-importer-content .status-section {
+ margin-bottom: 24px;
+ padding: 32px;
+ text-align: center;
+ color: #8E8E93;
+ background: #F2F2F7;
+ border-radius: 12px;
+}
+
+/* Detection Status - follows application state styles */
+.vscode-importer-content .scanning-status {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+ padding: 16px;
+ background: rgba(255, 251, 248, 0.8);
+ border: 1px solid rgba(255, 251, 248, 0.9);
+ border-radius: 8px;
+ color: #8E8E93;
+ font-size: 14px;
+ line-height: 20px;
+}
+
+.vscode-importer-content .spinner {
+ font-size: 18px;
+ animation: vscode-importer-spin 1s linear infinite;
+}
+
+@keyframes vscode-importer-spin {
+ from { transform: rotate(0deg); }
+ to { transform: rotate(360deg); }
+}
+
+.vscode-importer-content .detection-result {
+ padding: 16px;
+ border-radius: 8px;
+ border: 1px solid;
+}
+
+.vscode-importer-content .detection-result.success {
+ background: rgba(52, 199, 89, 0.1);
+ border-color: rgba(52, 199, 89, 0.2);
+}
+
+.vscode-importer-content .detection-result.error {
+ background: rgba(255, 59, 48, 0.1);
+ border-color: rgba(255, 59, 48, 0.2);
+}
+
+.vscode-importer-content .success-message {
+ color: #34C759;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ margin-bottom: 8px;
+}
+
+.vscode-importer-content .warning-message {
+ color: #FF9500;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ margin-bottom: 8px;
+}
+
+.vscode-importer-content .error-message {
+ color: #FF3B30;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ margin-bottom: 8px;
+}
+
+.vscode-importer-content .detection-path {
+ font-size: 12px;
+ line-height: 16px;
+ color: #8E8E93;
+ margin-top: 8px;
+ word-break: break-all;
+ background: #F2F2F7;
+ padding: 8px 12px;
+ border-radius: 6px;
+}
+
+.vscode-importer-content .help-message {
+ margin-top: 12px;
+ font-size: 13px;
+ line-height: 18px;
+ color: #8E8E93;
+}
+
+.vscode-importer-content .help-message h4 {
+ margin: 0 0 8px 0;
+ font-size: 14px;
+ font-weight: 600;
+ color: #272320;
+}
+
+.vscode-importer-content .help-message ul {
+ margin: 0;
+ padding-left: 20px;
+}
+
+.vscode-importer-content .help-message li {
+ margin-bottom: 4px;
+}
+
+/* Section Headers - follows form-label styles */
+.vscode-importer-content .selection-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-bottom: 12px;
+}
+
+.vscode-importer-content .selection-header h3 {
+ margin: 0;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+}
+
+.vscode-importer-content .import-options h3 {
+ margin: 0 0 12px 0;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+}
+
+.vscode-importer-content .selection-controls {
+ display: flex;
+ gap: 8px;
+}
+
+/* Server List - follows application list styles */
+.vscode-importer-content .server-list {
+ max-height: 320px;
+ overflow-y: auto;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 8px;
+ background: #FFFFFF;
+}
+
+.vscode-importer-content .server-item {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 12px 16px;
+ border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+ transition: background-color 0.2s ease;
+ cursor: pointer;
+}
+
+.vscode-importer-content .server-item:last-child {
+ border-bottom: none;
+}
+
+.vscode-importer-content .server-item:hover {
+ background: rgba(255, 251, 248, 0.5);
+}
+
+.vscode-importer-content .server-item.selected {
+ background: rgba(255, 251, 248, 0.8);
+ border-left: 3px solid #FFFBF8;
+}
+
+.vscode-importer-content .server-item.conflict {
+ background: rgba(255, 149, 0, 0.1);
+ border-left: 3px solid #FF9500;
+}
+
+/* Server Item Content */
+.vscode-importer-content .server-checkbox {
+ display: flex;
+ align-items: center;
+ gap: 12px;
+ cursor: pointer;
+ flex: 1;
+}
+
+.vscode-importer-content .server-checkbox input[type="checkbox"] {
+ cursor: pointer;
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+ accent-color: #000000;
+}
+
+.vscode-importer-content .server-info {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ flex: 1;
+}
+
+.vscode-importer-content .server-name {
+ font-weight: 500;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+}
+
+.vscode-importer-content .server-transport {
+ font-size: 12px;
+ line-height: 16px;
+ color: #8E8E93;
+ background: #F2F2F7;
+ padding: 2px 6px;
+ border-radius: 4px;
+}
+
+.vscode-importer-content .conflict-badge {
+ font-size: 11px;
+ font-weight: 600;
+ padding: 2px 6px;
+ background: rgba(255, 149, 0, 0.2);
+ color: #FF9500;
+ border-radius: 4px;
+}
+
+/* Info Tooltip */
+.vscode-importer-content .server-info-icon {
+ position: relative;
+ display: flex;
+ align-items: center;
+ margin-left: 8px;
+}
+
+.vscode-importer-content .info-icon {
+ color: #8E8E93;
+ cursor: help;
+ transition: color 0.2s ease;
+ flex-shrink: 0;
+}
+
+.vscode-importer-content .info-icon:hover {
+ color: #636366;
+}
+
+/* Fixed tooltip rendered outside server-list to avoid overflow clipping */
+.info-tooltip-fixed {
+ min-width: 300px;
+ max-width: 480px;
+ padding: 12px;
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 8px;
+ box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+ pointer-events: none;
+}
+
+.vscode-importer-content .tooltip-header {
+ font-size: 12px;
+ font-weight: 600;
+ color: #8E8E93;
+ margin-bottom: 8px;
+ text-transform: uppercase;
+ letter-spacing: 0.5px;
+}
+
+.vscode-importer-content .tooltip-json-preview {
+ font-size: 11px;
+ line-height: 1.4;
+ background: #1D1D1F;
+ color: #F2F2F7;
+ padding: 12px;
+ border-radius: 6px;
+ overflow-x: auto;
+ margin: 0;
+ max-height: 200px;
+ overflow-y: auto;
+}
+
+/* Import Options */
+.vscode-importer-content .option-group {
+ margin-bottom: 16px;
+}
+
+.vscode-importer-content .option-group:last-child {
+ margin-bottom: 0;
+}
+
+.vscode-importer-content .option-group h4 {
+ margin: 0 0 8px 0;
+ font-size: 13px;
+ font-weight: 500;
+ color: #8E8E93;
+}
+
+.vscode-importer-content .radio-group {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+ padding: 8px 0;
+}
+
+.vscode-importer-content .radio-group label {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+ cursor: pointer;
+ padding: 4px 0;
+}
+
+.vscode-importer-content .radio-group input[type="radio"] {
+ cursor: pointer;
+ accent-color: #000000;
+}
+
+.vscode-importer-content .checkbox-label {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+ cursor: pointer;
+ padding: 8px 0;
+}
+
+.vscode-importer-content .checkbox-label input[type="checkbox"] {
+ cursor: pointer;
+ accent-color: #000000;
+}
+
+/* Status Section */
+.vscode-importer-content .status-section h3 {
+ margin: 0 0 8px 0;
+ font-size: 16px;
+ font-weight: 600;
+ color: #272320;
+}
+
+.vscode-importer-content .status-section p {
+ margin: 0;
+ font-size: 14px;
+ line-height: 20px;
+}
+
+/* Import Actions - follows AddNewMcpServerView 's button styles */
+.vscode-importer-content .import-actions {
+ display: flex;
+ gap: 12px;
+ justify-content: flex-end;
+ margin-top: 32px;
+ padding-top: 24px;
+ border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.vscode-importer-content .btn-primary {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 10px 20px;
+ font-weight: 600;
+ font-size: 14px;
+ line-height: 20px;
+ color: #FFFFFF;
+ background: #000000;
+ border: none;
+ border-radius: 8px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ outline: none;
+ text-decoration: none;
+ white-space: nowrap;
+}
+
+.vscode-importer-content .btn-primary:hover:not(:disabled) {
+ background: rgba(0, 0, 0, 0.8);
+}
+
+.vscode-importer-content .btn-primary:active:not(:disabled) {
+ background: rgba(0, 0, 0, 0.9);
+ transform: translateY(1px);
+}
+
+.vscode-importer-content .btn-primary:disabled {
+ background: #C7C7CC;
+ color: #8E8E93;
+ cursor: not-allowed;
+}
+
+.vscode-importer-content .btn-secondary {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 6px 12px;
+ font-weight: 600;
+ font-size: 13px;
+ line-height: 18px;
+ color: #272320;
+ background: #FFFFFF;
+ border: 1px solid #272320;
+ border-radius: 6px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ outline: none;
+ text-decoration: none;
+ white-space: nowrap;
+}
+
+.vscode-importer-content .btn-secondary:hover:not(:disabled) {
+ background: rgba(39, 35, 32, 0.05) !important;
+ border-color: #272320 !important;
+ color: #272320 !important;
+}
+
+.vscode-importer-content .btn-secondary:active:not(:disabled) {
+ background: rgba(39, 35, 32, 0.1);
+ transform: translateY(1px);
+}
+
+.vscode-importer-content .btn-secondary:disabled {
+ color: #C7C7CC;
+ border-color: #C7C7CC;
+ cursor: not-allowed;
+}
+
+/* ===========================
+ responsive design
+ =========================== */
+
+@media (max-width: 768px) {
+ .vscode-importer-content {
+ padding: 16px;
+ }
+ 
+ .vscode-importer-content .selection-header {
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 12px;
+ }
+ 
+ .vscode-importer-content .import-actions {
+ flex-direction: column-reverse;
+ }
+ 
+ .vscode-importer-content .btn-primary,
+ .vscode-importer-content .btn-secondary {
+ width: 100%;
+ justify-content: center;
+ }
+ 
+ .vscode-importer-content .server-item {
+ padding: 16px 12px;
+ }
+ 
+ .info-tooltip-fixed {
+ left: 12px;
+ right: 12px !important;
+ width: auto;
+ min-width: auto !important;
+ max-width: none !important;
+ }
+}
+
+/* ===========================
+ accessibility
+ =========================== */
+
+@media (prefers-reduced-motion: reduce) {
+ .vscode-importer-content .spinner {
+ animation: none;
+ }
+ 
+ .vscode-importer-content * {
+ transition: none !important;
+ }
+}

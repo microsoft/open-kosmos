@@ -1,0 +1,49 @@
+/* LeftNavigation layout styles */
+
+.left-navigation {
+ box-sizing: border-box;
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ min-width: 288px;
+ max-width: 388px;
+ width: fit-content;
+ left: 0px;
+ top: 0px;
+ gap: 32px;
+ padding: 12px;
+ background: #FFFBF8;
+ border-right: 1px solid rgba(0, 0, 0, 0.1);
+ opacity: 1;
+}
+
+/* NavigationSection - nth 1 child element, contains AgentList, New Agent, Divider */
+.left-navigation > *:nth-child(1) {
+ flex: 1 1 auto;
+ overflow-y: hidden; /* changed to hidden, scroll by internal AgentList handle */
+ overflow-x: hidden;
+ min-height: 0;
+ display: flex;
+ flex-direction: column;
+}
+
+/* UserSection - nth 2 child element, bottom, fixed height */
+.left-navigation > *:nth-child(2) {
+ flex: 0 0 auto;
+}
+
+/* AgentList scroll container styles */
+.agent-list-scroll-container {
+ /* hidden scroll bar - WebKit (Chrome, Safari, Edge) */
+ scrollbar-width: none; /* Firefox */
+ -ms-overflow-style: none; /* IE/Edge */
+}
+
+.agent-list-scroll-container::-webkit-scrollbar {
+ display: none; /* Chrome, Safari, Edge */
+}
+
+/* collapse state */
+.left-navigation.collapsed {
+ /* optional: add collapse state 's styles */
+}

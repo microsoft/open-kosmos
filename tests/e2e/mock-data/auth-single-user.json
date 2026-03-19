@@ -1,0 +1,31 @@
+{
+  "version": "3.0.0",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "authProvider": "ghc",
+  "ghcAuth": {
+    "alias": "e2e-testuser",
+    "user": {
+      "id": "12345",
+      "login": "e2e-testuser",
+      "email": "test@example.com",
+      "name": "E2E Test User",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/12345",
+      "copilotPlan": "individual"
+    },
+    "gitHubTokens": {
+      "timestamp": "2025-01-01T00:00:00.000Z",
+      "api_url": "https://github.com/login/oauth/access_token",
+      "access_token": "gho_mock_github_token_e2e_12345",
+      "token_type": "bearer",
+      "scope": "read:user,user:email"
+    },
+    "copilotTokens": {
+      "timestamp": "2025-01-01T00:00:00.000Z",
+      "api_url": "https://api.github.com/copilot_internal/v2/token",
+      "expires_at": 4102444800,
+      "token": "tid=mock_copilot_token_e2e_abcde"
+    },
+    "capabilities": ["chat", "completion", "inline_completion"]
+  }
+}

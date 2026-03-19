@@ -1,0 +1,58 @@
+NOTICE
+
+Kosmos Studio
+Copyright (c) 2026 Microsoft Corporation
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+===============================================================================
+Third-Party Software Notices
+===============================================================================
+
+This project includes or depends on the following third-party software:
+
+-------------------------------------------------------------------------------
+sharp (https://github.com/lovell/sharp)
+License: Apache-2.0
+-------------------------------------------------------------------------------
+
+sharp is used for image compression and resizing in the main process
+(src/main/lib/utilities/imageStorageCompression.ts).
+
+sharp depends on libvips, which is licensed under LGPL-3.0-or-later.
+The libvips library is distributed as pre-built binaries by the sharp project
+and is dynamically linked at runtime. No modifications have been made to
+libvips. In accordance with the LGPL-3.0, users retain the ability to replace
+the libvips binary with their own version.
+
+Related packages:
+  - @img/sharp-libvips-*: LGPL-3.0-or-later (pre-built libvips binaries)
+  - @img/sharp-win32-*:   Apache-2.0 AND LGPL-3.0-or-later
+  - @img/sharp-wasm32:    Apache-2.0 AND LGPL-3.0-or-later AND MIT
+
+-------------------------------------------------------------------------------
+jszip (https://github.com/Stuk/jszip)
+License: MIT OR GPL-3.0-or-later (dual-licensed)
+-------------------------------------------------------------------------------
+
+Used under the MIT license.
+
+-------------------------------------------------------------------------------
+DOMPurify (https://github.com/cure53/DOMPurify)
+License: MPL-2.0 OR Apache-2.0 (dual-licensed)
+-------------------------------------------------------------------------------
+
+Used under the Apache-2.0 license.
+
+-------------------------------------------------------------------------------
+Monaco Editor (https://github.com/microsoft/monaco-editor)
+License: MIT
+-------------------------------------------------------------------------------
+
+Includes a bundled copy of DOMPurify (MPL-2.0 OR Apache-2.0), used under
+the Apache-2.0 license.
+
+===============================================================================
+
+For the complete list of dependencies and their licenses, run:
+  npx license-checker --summary

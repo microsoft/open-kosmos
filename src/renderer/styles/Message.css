@@ -1,0 +1,2709 @@
+/* ===========================
+ Message component styles
+ =========================== */
+
+/* message container - added 's outer container */
+.message-container {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+ /* ensure container can responsive shrink */
+ min-width: 0;
+}
+
+/* message base styles */
+.message {
+ padding: 16px 20px;
+ border-radius: 20px;
+ animation: fadeIn 0.3s ease-out;
+ /* ensure message container can responsive shrink */
+ min-width: 0;
+ /* 🔥 key: set max-width, ensure content will not expand infinitely */
+ max-width: 100%;
+ /* margin-bottom remove, by message-container unified management */
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+ /* 🔥 not set overflow, let children control */
+}
+
+@keyframes fadeIn {
+ from {
+ opacity: 0;
+ transform: translateY(10px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+/* message-container 's type variant */
+.message-container.user-message-container {
+ align-items: flex-end;
+}
+
+.message-container.assistant-message-container {
+ align-items: flex-start;
+ margin-bottom: 28px;
+}
+
+.message-container.assistant-message-container.has-tool-calls {
+ /* keep empty 's, no need for special handle */
+}
+
+.message-container.system-message-container {
+ align-items: flex-start;
+}
+
+.message-container.tool-system-message-container {
+ align-items: flex-start;
+}
+
+.message-container.loading-message-container {
+ align-items: flex-start;
+ /* 🔥 fix flickering: keep min-height to avoid layout jumping */
+ min-height: 60px;
+}
+
+/* message styles - width/height/padding/background/border keep unchanged */
+.user-message {
+ background: #F8F4F1;
+ /* user message width based on content auto-fit, set min and max width */
+ width: fit-content;
+ min-width: 100px;
+ max-width: 800px;
+ /* 🔥 fix: force long text to wrap, prevent exceeding max-width */
+ word-wrap: break-word;
+ overflow-wrap: break-word;
+ word-break: break-word;
+ /* 🔥 remove white-space: pre-wrap changed to normal, let ReactMarkdown normal handle wrap row
+ pre-wrap will keep source code line breaks causing excessive line spacing */
+ white-space: normal;
+}
+
+.assistant-message {
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(8px);
+ padding: 0;
+ /* 🔥 key: limit assistant message 's max-width */
+ max-width: 100%;
+ width: 100%;
+}
+
+.system-message {
+ background: rgba(240, 249, 255, 0.95);
+ backdrop-filter: blur(6px);
+ font-size: 14px;
+}
+
+.tool-system-message {
+ background: rgba(220, 252, 231, 0.95);
+ backdrop-filter: blur(6px);
+ font-size: 14px;
+}
+
+.loading-message {
+ background: rgba(248, 250, 252, 0.95);
+ backdrop-filter: blur(6px);
+ margin-left: 20px;
+ margin-right: 20px;
+ /* 🔥 fix flickering: keep min-height to avoid layout jumping */
+ min-height: 60px;
+}
+
+/* 🔥 added: smooth transition class, prevent Loading Message disappear when 's flickering */
+.loading-message.smooth-transition {
+ /* use with assistant-message same 's height calculation method */
+ transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+ /* keep height stable, avoid layout jumping */
+ min-height: 60px;
+}
+
+/* 🔥 when Loading Message about to be replaces when 's state */
+.loading-message.smooth-transition.fading-out {
+ opacity: 0;
+ transform: translateY(-5px);
+ /* keep height, does not affect layout */
+ height: auto;
+ min-height: 60px;
+}
+
+.tool-message {
+ /* tool message styles inherit custom .message */
+}
+
+/* message content area */
+.message-content {
+ max-width: 100%;
+ font-size: 15px;
+ line-height: 1.7;
+ /* ensure content container can freely wrap and shrink */
+ min-width: 0;
+ word-wrap: break-word;
+ overflow-wrap: break-word;
+ position: relative;
+ display: flex;
+ flex-direction: column;
+ /* remove gap, paragraph spacing by Markdown component 's mb-2 class control */
+ gap: 0;
+ /* 🔥 fix: not set overflow, let children control */
+}
+
+/* 🔥 when message-content content is empty when (only has empty 's flex container), not take up space */
+/* :has() detect message-content whether inside has actual text content */
+/* 🔥 fix: add .message-attachments and .attachments-grid exclude has attachment 's case */
+.message-content:has(.flex-1:empty):not(:has(.message-attachments, .attachments-grid)),
+.message-content:not(:has(p, code, pre, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, table, img, .streaming-text, .image-gallery-new, .message-attachments, .attachments-grid)) {
+ display: none;
+}
+
+/* 🔥 fallback: when assistant-message only has tool-calls-section when, remove gap */
+.assistant-message:has(.tool-calls-section):not(:has(.message-content p, .message-content code, .message-content pre)) {
+ gap: 0;
+}
+
+.message-content.streaming {
+ contain: layout style paint;
+ will-change: contents;
+}
+
+/* ===========================
+ Message responsive layout fix
+ =========================== */
+
+/* fix Message component in 's flex container, ensure content can responsively wrap */
+.message-content .flex {
+ min-width: 0; /* allow flex container shrink */
+ max-width: 100%;
+}
+
+.message-content .flex-1 {
+ min-width: 0; /* allow flex-1 child element shrink and wrap row */
+ flex: 1 1 0%; /* ensure correctly 's flex row is */
+}
+
+/* ensure ReactMarkdown content can correctly wrap row */
+.message-content p,
+.message-content div,
+.message-content span {
+ word-wrap: break-word;
+ overflow-wrap: break-word;
+}
+
+/* ===========================
+ code block styles - migrated to code-styles.css for unified management
+ =========================== */
+
+/* ensure overflow-x-auto container can responsive shrink */
+.message-content .overflow-x-auto {
+ max-width: 100%;
+ min-width: 0;
+ overflow: hidden;
+}
+
+/* ===========================
+ Markdown content styles - migrated to markdown-render.css
+ new 's Markdown styles by .markdown-body class control
+ =========================== */
+
+/* ===========================
+ Message Metadata area layout (renamed is message-metadata)
+ =========================== */
+
+.message-metadata {
+ font-size: 12px;
+ color: #737373;
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 8px;
+ /* from message internal move out, now in with message same level */
+}
+
+/* keep old .message-meta for compatibility now has code */
+.message-meta {
+ font-size: 12px;
+ color: #737373;
+ margin-top: 8px;
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 8px;
+}
+
+.message-actions {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ flex: 0 0 auto;
+}
+
+/* User and Assistant message 's actions hidden by default, hover when display */
+.user-message .message-actions,
+.assistant-message .message-actions,
+.message-container.user-message-container .message-actions,
+.message-container.assistant-message-container .message-actions,
+.segmented-message .message-actions {
+ opacity: 0;
+ transition: opacity 0.2s ease;
+}
+
+.user-message:hover .message-actions,
+.assistant-message:hover .message-actions,
+.message-container.user-message-container:hover .message-actions,
+.message-container.assistant-message-container:hover .message-actions,
+.segmented-message:hover .message-actions {
+ opacity: 1;
+}
+
+/* System message 's metadata and actions hidden by default, hover when display */
+.system-message .message-metadata,
+.message-container.system-message-container .message-metadata {
+ opacity: 0;
+ transition: opacity 0.2s ease;
+}
+
+.system-message:hover .message-metadata,
+.message-container.system-message-container:hover .message-metadata {
+ opacity: 1;
+}
+
+.message-role {
+ font-weight: 500;
+ flex: 0 0 auto;
+ margin-left: auto;
+}
+
+/* ===========================
+ Message Action button common styles
+ =========================== */
+
+.message-action-btn {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px;
+ border: none;
+ background: rgba(59, 130, 246, 0.1);
+ border-radius: 6px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ outline: none;
+}
+
+.message-action-btn:hover {
+ background: rgba(59, 130, 246, 0.15);
+ transform: translateY(-1px);
+ box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.message-action-btn:active {
+ transform: translateY(0) scale(0.95);
+ background: rgba(59, 130, 246, 0.2);
+ box-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
+}
+
+.message-action-btn:focus-visible {
+ outline: 2px solid #3b82f6;
+ outline-offset: 2px;
+}
+
+.action-icon {
+ flex-shrink: 0;
+ color: #3b82f6;
+ transition: all 0.2s ease;
+ display: block;
+}
+
+.message-action-btn:hover .action-icon {
+ transform: scale(1.1);
+}
+
+.message-action-btn:active .action-icon {
+ transform: scale(0.9);
+}
+
+/* ===========================
+ System Prompt edit button styles
+ =========================== */
+
+.system-prompt-edit-btn {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px;
+ border: none;
+ background: rgba(59, 130, 246, 0.1);
+ border-radius: 6px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ outline: none;
+}
+
+.system-prompt-edit-btn:hover {
+ background: rgba(59, 130, 246, 0.15);
+ transform: translateY(-1px);
+ box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.system-prompt-edit-btn:active {
+ transform: translateY(0) scale(0.95);
+ background: rgba(59, 130, 246, 0.2);
+ box-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
+}
+
+.system-prompt-edit-btn:focus-visible {
+ outline: 2px solid #3b82f6;
+ outline-offset: 2px;
+}
+
+.system-prompt-edit-icon {
+ flex-shrink: 0;
+ color: #3b82f6;
+ transition: all 0.2s ease;
+ display: block;
+}
+
+.system-prompt-edit-btn:hover .system-prompt-edit-icon {
+ transform: scale(1.1);
+}
+
+.system-prompt-edit-btn:active .system-prompt-edit-icon {
+ transform: scale(0.9);
+}
+
+/* add a subtle pulse animation hinting user can click */
+@keyframes subtle-pulse {
+ 0%, 100% {
+ opacity: 0.8;
+ }
+ 50% {
+ opacity: 1;
+ }
+}
+
+.system-prompt-edit-btn {
+ animation: subtle-pulse 3s ease-in-out infinite;
+}
+
+.system-prompt-edit-btn:hover {
+ animation: none;
+ opacity: 1;
+}
+
+/* ===========================
+ Tool Calls Section
+ =========================== */
+
+.tool-calls-section {
+ /* 🔥 modified: auto-adapt width, but keep max-width limit */
+ width: 100%;
+ max-width: 640px;
+ min-width: 0;
+ background: #FFFFFF;
+ /* remove section 's border, by child element control itself */
+ border: none;
+ border-radius: 0;
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 0px;
+}
+
+.tool-calls-header {
+ box-sizing: border-box;
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: flex-start;
+ align-items: center;
+ padding: 10px 16px;
+ gap: 8px;
+ height: 48px;
+ background: #FFFFFF;
+ /* collapse state: display complete 's four border-radius and four bar border */
+ border-radius: 12px;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 14px;
+ font-weight: 500;
+ color: #374151;
+}
+
+/* expand state:header only display top border-radius, hidden bottom border */
+.tool-calls-section:has(.tool-calls-content) .tool-calls-header {
+ border-radius: 12px 12px 0 0;
+ border-bottom: none;
+}
+
+.tool-calls-header.clickable:hover {
+ background: rgba(224, 231, 243, 0.9);
+}
+
+.tool-calls-header .toggle-icon {
+ font-size: 12px;
+ color: #6b7280;
+ margin-left: auto;
+}
+
+.tool-status-icon {
+ /* remove margin-left: auto, let all has element align left */
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ flex-shrink: 0;
+ width: 16px;
+ height: 16px;
+}
+
+.tool-status-icon svg {
+ display: block;
+}
+
+.tool-status-icon.executing {
+ /* animation handled by Tailwind animate-spin class */
+}
+
+.tool-status-icon.completed {
+ color: #10b981;
+}
+
+.tool-status-icon.partial {
+ color: #f59e0b;
+ /* animation handled by Tailwind animate-spin class */
+}
+
+@keyframes spin {
+ from {
+ transform: rotate(0deg);
+ }
+ to {
+ transform: rotate(360deg);
+ }
+}
+
+.tool-calls-content {
+ box-sizing: border-box;
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ justify-content: space-between;
+ background: #FFFFFF;
+ border-radius: 0 0 12px 12px;
+ /* display left, right, bottom three bar border, hidden top border */
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-top: none;
+ padding: 12px 16px;
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+}
+
+.tool-call-item {
+ margin-bottom: 12px;
+ padding: 12px;
+ background: white;
+ border-radius: 6px;
+}
+
+.tool-call-item:last-child {
+ margin-bottom: 0;
+}
+
+.tool-call-args {
+ margin-bottom: 8px;
+}
+
+.tool-call-args strong {
+ font-size: 12px;
+ color: #6b7280;
+}
+
+.tool-call-result {
+ margin-top: 8px;
+ padding-top: 8px;
+ border-top: 1px solid rgba(203, 213, 225, 0.3);
+}
+
+.tool-call-result strong {
+ font-size: 12px;
+ color: #6b7280;
+}
+
+.tool-result-status {
+ display: inline-flex;
+ align-items: center;
+ gap: 4px;
+ margin: 4px 0;
+ padding: 2px 8px;
+ border-radius: 4px;
+ font-size: 12px;
+ font-weight: 500;
+}
+
+.tool-result-status.success {
+ background: rgba(16, 185, 129, 0.1);
+ color: #059669;
+}
+
+/* 🆕 Tool call name content layout */
+.tool-call-name {
+ font-size: 13px;
+ font-weight: 600;
+ color: #1f2937;
+ margin-bottom: 8px;
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+}
+
+.tool-call-name-content {
+ display: flex;
+ align-items: center;
+}
+
+/* 🆕 Tool call section header layout */
+.tool-call-section-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+/* 🆕 Tool call copy button styles */
+.tool-call-copy-btn {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 2px;
+ border: none;
+ background: transparent;
+ border-radius: 4px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ outline: none;
+ opacity: 0;
+ margin-left: auto;
+}
+
+.tool-call-name:hover .tool-call-copy-btn,
+.tool-call-section-header:hover .tool-call-copy-btn {
+ opacity: 1;
+}
+
+.tool-call-copy-btn:hover {
+ background: rgba(59, 130, 246, 0.1);
+}
+
+.tool-call-copy-btn:active {
+ transform: scale(0.95);
+}
+
+.tool-call-copy-btn .action-icon {
+ color: #6b7280;
+ transition: color 0.2s ease;
+}
+
+.tool-call-copy-btn:hover .action-icon {
+ color: #3b82f6;
+}
+
+/* Tool call code block text selection styles - ensure in dark background top can visible */
+.tool-call-args ::selection,
+.tool-call-args code ::selection,
+.tool-call-args span ::selection,
+.tool-call-result ::selection,
+.tool-call-result code ::selection,
+.tool-call-result span ::selection {
+ background-color: rgba(56, 139, 253, 0.4) !important;
+ color: #ffffff !important;
+ text-shadow: none !important;
+}
+
+.tool-call-args ::-moz-selection,
+.tool-call-args code ::-moz-selection,
+.tool-call-args span ::-moz-selection,
+.tool-call-result ::-moz-selection,
+.tool-call-result code ::-moz-selection,
+.tool-call-result span ::-moz-selection {
+ background-color: rgba(56, 139, 253, 0.4) !important;
+ color: #ffffff !important;
+ text-shadow: none !important;
+}
+
+/* ===========================
+ Tool Calls Section - new version simplified styles
+ single line display, no border, dashed line connecting icons
+ =========================== */
+
+/* Section container */
+.tool-calls-section-new {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 0;
+ /* adjust context spacing: reduce distance from text above, increase distance from text below */
+ margin-top: -12px;
+ margin-bottom: 16px;
+}
+
+/* each row 's layout: icon column + text column */
+.tool-calls-row {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ gap: 8px;
+ cursor: pointer;
+ transition: opacity 0.2s ease;
+ padding: 4px 0;
+ max-width: 100%;
+}
+
+.tool-calls-row:hover {
+ opacity: 0.7;
+}
+
+/* icon column - fixed width, contains icon and dashed line */
+.tool-calls-icon-col {
+ position: relative;
+ width: 16px;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ flex-shrink: 0;
+}
+
+/* dashed connecting line */
+.tool-calls-dashed-line {
+ position: absolute;
+ top: calc(50% + 8px);
+ left: 50%;
+ transform: translateX(-50%);
+ width: 0;
+ height: calc(100% + 8px);
+ border-left: 1px dashed #d1d5db;
+}
+
+/* text column */
+.tool-calls-text-col {
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ gap: 8px;
+ min-height: 16px;
+ line-height: 16px;
+ flex: 1;
+ min-width: 0;
+}
+
+/* summary text */
+.tool-calls-summary-text {
+ color: #6b7280;
+ font-size: 14px;
+}
+
+/* arrow icon */
+.tool-calls-arrow {
+ color: #9ca3af;
+ transition: transform 0.2s ease;
+ flex-shrink: 0;
+}
+
+.tool-calls-arrow.expanded {
+ transform: rotate(90deg);
+}
+
+/* Tool Call Item row */
+.tool-call-item-row {
+ cursor: default;
+}
+
+.tool-call-item-row:hover {
+ opacity: 1;
+}
+
+/* single Tool Call Item text */
+.tool-call-item-text {
+ color: #6b7280;
+ font-size: 14px;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+/* Tool Item state icon - small dimensions */
+.tool-item-status-icon {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ flex-shrink: 0;
+ position: relative;
+ z-index: 1;
+ background: #fff;
+ width: 16px;
+ height: 16px;
+}
+
+.tool-item-status-icon svg {
+ display: block;
+}
+
+.tool-item-status-icon.executing {
+ /* animation handled by Tailwind animate-spin class */
+}
+
+.tool-item-status-icon.completed {
+ color: #10b981;
+}
+
+/* main status icon also needs background to cover dashed line */
+.tool-calls-row .tool-status-icon {
+ position: relative;
+ z-index: 1;
+ background: #fff;
+ border-radius: 50%;
+}
+
+/* ===========================
+ attachment styles
+ =========================== */
+
+.message-attachments {
+ margin-top: 12px;
+ margin-bottom: 8px;
+}
+
+/* file attachment special styles - Message component use */
+.file-attachment-content {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ width: 100%;
+}
+
+.file-attachment-icon {
+ width: 24px;
+ height: 24px;
+ color: #0ea5e9;
+ flex-shrink: 0;
+}
+
+.file-attachment-info {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ min-width: 0;
+ flex: 1;
+}
+
+.file-attachment-name {
+ font-size: 12px;
+ font-weight: 500;
+ color: #374151;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ max-width: 100%;
+ line-height: 1.2;
+}
+
+.file-attachment-meta {
+ display: flex;
+ gap: 8px;
+ align-items: center;
+ margin-top: 2px;
+}
+
+.file-attachment-type {
+ font-size: 10px;
+ color: #0ea5e9;
+ font-weight: 600;
+ background: rgba(14, 165, 233, 0.1);
+ padding: 2px 6px;
+ border-radius: 4px;
+}
+
+.file-attachment-size {
+ font-size: 10px;
+ color: #6b7280;
+ opacity: 0.8;
+}
+
+.attachments-grid {
+ display: grid;
+ gap: 12px;
+}
+
+.attachments-grid.single-attachment {
+ grid-template-columns: 1fr;
+}
+
+.attachments-grid.multiple-attachments {
+ grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.attachment-card {
+ display: flex;
+ flex-direction: column;
+ border: 1px solid rgba(203, 213, 225, 0.5);
+ border-radius: 8px;
+ overflow: hidden;
+ background: white;
+ transition: all 0.2s ease;
+}
+
+.attachment-card:hover {
+ border-color: #3b82f6;
+ box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+/* 🔥 can dot click 's attachment card - provide visual feedback */
+.attachment-card.clickable {
+ cursor: pointer;
+}
+
+.attachment-card.clickable:hover {
+ border-color: #3b82f6;
+ box-shadow: 0 2px 12px rgba(59, 130, 246, 0.15);
+ transform: translateY(-1px);
+}
+
+.attachment-card.clickable:active {
+ transform: translateY(0);
+ box-shadow: 0 1px 4px rgba(59, 130, 246, 0.1);
+}
+
+.attachment-card.image-attachment {
+ /* image attachment special styles */
+}
+
+.attachment-card.file-attachment {
+ /* file attachment special styles */
+}
+
+.attachment-preview {
+ position: relative;
+ width: 100%;
+ background: rgba(248, 250, 252, 0.8);
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 12px;
+}
+
+.attachment-preview.image-preview-full {
+ padding: 0;
+ background: transparent;
+}
+
+.attachment-image {
+ max-width: 100%;
+ height: auto;
+ display: block;
+}
+
+.file-icon {
+ font-size: 48px;
+ line-height: 1;
+}
+
+.attachment-info {
+ padding: 8px 12px;
+ background: white;
+}
+
+.attachment-name {
+ font-size: 13px;
+ color: #374151;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+/* ===========================
+ file path attachment styles (Assistant Message)
+ =========================== */
+
+.message-file-attachments {
+ margin-top: 0;
+ margin-bottom: 0;
+}
+
+.file-attachments-list {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+.file-attachment-item {
+ box-sizing: border-box;
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ padding: 12px 16px;
+ width: 400px;
+ height: 56px;
+ background: #FFFFFF;
+ border: 1px solid #EFEAE7;
+ border-radius: 8px;
+ transition: all 0.2s ease;
+ cursor: pointer;
+ position: relative;
+}
+
+.file-attachment-item:hover {
+ background: #FAFAFA;
+ border-color: #E0DBD8;
+ transform: translateX(2px);
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.file-attachment-item:active {
+ transform: translateX(1px);
+ background: #F5F5F5;
+}
+
+.file-attachment-item.clickable {
+ cursor: pointer;
+}
+
+.file-attachment-icon {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 24px;
+ height: 24px;
+ flex-shrink: 0;
+}
+
+.file-attachment-name {
+ font-size: 16px;
+ font-weight: 410;
+ color: #322D29;
+ line-height: 26px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ flex: 1;
+ min-width: 0;
+}
+
+.file-attachment-menu-trigger {
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ padding: 4px;
+ width: 24px;
+ height: 24px;
+ border: none;
+ background: none;
+ cursor: pointer;
+ border-radius: 4px;
+ transition: background 0.2s ease;
+ flex-shrink: 0;
+}
+
+.file-attachment-menu-trigger:hover {
+ background: rgba(0, 0, 0, 0.08);
+}
+
+.file-attachment-menu-trigger:active {
+ transform: scale(0.95);
+}
+
+.file-attachment-menu {
+ position: fixed;
+ z-index: 1000;
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 4px;
+ gap: 2px;
+ min-width: 200px;
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 8px;
+ box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15),
+ 0px 0px 1px rgba(0, 0, 0, 0.1);
+ animation: dropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+ from {
+ opacity: 0;
+ transform: translateY(-4px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+.file-attachment-menu-item {
+ border: none;
+ background: none;
+ cursor: pointer;
+ text-align: left;
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 8px 12px;
+ gap: 8px;
+ width: 100%;
+ min-height: 36px;
+ border-radius: 6px;
+ transition: background 0.2s ease;
+}
+
+.file-attachment-menu-item:hover {
+ background: rgba(0, 0, 0, 0.05);
+}
+
+.file-attachment-menu-item:active {
+ background: rgba(0, 0, 0, 0.08);
+}
+
+.file-attachment-menu-item-icon {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ width: 20px;
+ height: 20px;
+ font-size: 16px;
+}
+
+.file-attachment-menu-item-text {
+ font-style: normal;
+ font-weight: 410;
+ font-size: 14px;
+ line-height: 20px;
+ color: #272320;
+ flex: 1;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+/* ===========================
+ segmented message styles
+ =========================== */
+
+.segmented-message {
+ /* inherit assistant-message 's styles */
+ border-radius: 20px;
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(8px);
+ animation: fadeIn 0.3s ease-out;
+ min-width: 0;
+ /* with message-container.assistant-message-container consistent 's bottom spacing */
+ margin-bottom: 28px;
+ 
+ /* segment layout */
+ display: flex;
+ flex-direction: column;
+}
+
+/* segment between keep gap, message-meta does not participate in gap */
+.segmented-message > .segment + .segment {
+ margin-top: 28px;
+}
+
+/* segmented-message container variant */
+.message-container.segmented-message-container {
+ align-items: flex-start;
+}
+
+.segment {
+ display: block;
+}
+
+/* segment internal message container should not have own padding and margin-bottom */
+.segment .message {
+ padding: 0;
+ margin-bottom: 0;
+ background: transparent;
+ backdrop-filter: none;
+ animation: none;
+ border-radius: 0;
+}
+
+.segment-text {
+ /* remove margin-bottom, by parent container .segmented-message 's gap control spacing */
+}
+
+.segment-image {
+ /* remove margin-bottom, by parent container .segmented-message 's gap control spacing */
+}
+
+/* segment-image internal image display should not have border and background */
+.segment-image .image-display {
+ border: none;
+ background: transparent;
+ padding: 0;
+ margin: 0;
+}
+
+/* ===========================
+ image display component styles
+ =========================== */
+
+.image-display {
+ margin: 8px 0;
+ padding: 8px;
+ border: 1px solid rgba(203, 213, 225, 0.5);
+ border-radius: 8px;
+ background: rgba(248, 250, 252, 0.5);
+ text-align: center;
+}
+
+.image-display img {
+ border-radius: 6px;
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.image-display.loading,
+.image-display.error {
+ background: rgba(241, 245, 249, 0.8);
+}
+
+.image-placeholder {
+ padding: 20px;
+ color: #64748b;
+ font-style: italic;
+}
+
+.image-debug-info {
+ margin-top: 8px;
+ text-align: left;
+}
+
+.image-debug-info summary {
+ cursor: pointer;
+ font-size: 12px;
+ color: #94a3b8;
+}
+
+.image-debug-info pre {
+ margin-top: 4px;
+ padding: 8px;
+ background: rgba(229, 231, 235, 0.5);
+ border-radius: 4px;
+ font-size: 11px;
+ color: #374151;
+ white-space: pre-wrap;
+ word-break: break-all;
+ max-height: 100px;
+ overflow-y: auto;
+}
+
+/* image placeholder styles */
+.image-placeholder-loading {
+ min-height: 200px;
+ margin: 8px 0;
+ padding: 20px;
+ background: rgba(248, 250, 252, 0.8);
+ border: 2px dashed rgba(203, 213, 225, 0.6);
+ border-radius: 8px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ transition: all 0.3s ease;
+}
+
+.loading-skeleton {
+ text-align: center;
+ color: #64748b;
+}
+
+.loading-dots {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ gap: 4px;
+ margin-bottom: 8px;
+}
+
+.loading-dots span {
+ width: 8px;
+ height: 8px;
+ background: #94a3b8;
+ border-radius: 50%;
+ animation: loading-pulse 1.4s infinite both;
+}
+
+.loading-dots span:nth-child(1) {
+ animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+ animation-delay: -0.16s;
+}
+
+.loading-dots span:nth-child(3) {
+ animation-delay: 0s;
+}
+
+@keyframes loading-pulse {
+ 0%, 80%, 100% {
+ opacity: 0.3;
+ transform: scale(0.8);
+ }
+ 40% {
+ opacity: 1;
+ transform: scale(1);
+ }
+}
+
+.loading-text {
+ font-size: 14px;
+ font-style: italic;
+}
+
+/* ===========================
+ 🗑️ DEPRECATED: image gallery styles (ImageGallery) - arrow navigation horizontal scroll
+ please use .image-gallery-new instead, new version use Google search style layout
+ =========================== */
+
+/* gallery outer container - contains navigation arrows and gallery */
+.image-gallery-wrapper {
+ position: relative;
+ margin: 12px 0;
+ width: 100%;
+}
+
+/* gallery scroll container - hidden scroll bar but keep scroll capability */
+.image-gallery {
+ display: flex;
+ gap: 12px;
+ width: 100%;
+ overflow-x: auto; /* keep scroll capability */
+ overflow-y: hidden;
+ scroll-behavior: smooth;
+ padding: 8px 0;
+ /* hidden scroll bar - Firefox */
+ scrollbar-width: none;
+ /* hidden scroll bar - IE/Edge */
+ -ms-overflow-style: none;
+}
+
+/* hidden scroll bar - Webkit (Chrome/Safari) */
+.image-gallery::-webkit-scrollbar {
+ display: none;
+}
+
+/* navigation button common styles */
+.gallery-nav-btn {
+ position: absolute;
+ top: 50%;
+ transform: translateY(-50%);
+ z-index: 10;
+ width: 40px;
+ height: 40px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.5);
+ border-radius: 50%;
+ cursor: pointer;
+ transition: all 0.3s ease;
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+ color: #374151;
+}
+
+.gallery-nav-btn:hover {
+ background: rgba(255, 255, 255, 1);
+ border-color: rgba(59, 130, 246, 0.5);
+ box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+ transform: translateY(-50%) scale(1.1);
+ color: #3b82f6;
+}
+
+.gallery-nav-btn:active {
+ transform: translateY(-50%) scale(0.95);
+}
+
+/* left arrow position */
+.gallery-nav-prev {
+ left: -20px;
+}
+
+/* right arrow position */
+.gallery-nav-next {
+ right: -20px;
+}
+
+/* image indicator container */
+.gallery-indicators {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ gap: 8px;
+ margin-top: 12px;
+}
+
+/* single indicator dot */
+.gallery-indicator {
+ width: 8px;
+ height: 8px;
+ border-radius: 50%;
+ border: none;
+ background: rgba(203, 213, 225, 0.5);
+ cursor: pointer;
+ transition: all 0.3s ease;
+ padding: 0;
+}
+
+.gallery-indicator:hover {
+ background: rgba(203, 213, 225, 0.8);
+ transform: scale(1.2);
+}
+
+.gallery-indicator.active {
+ background: #3b82f6;
+ width: 24px;
+ border-radius: 4px;
+}
+
+/* remove all has special layout class, unified use flex */
+.image-gallery-single,
+.image-gallery-double,
+.image-gallery-triple,
+.image-gallery-grid {
+ /* keep class name for compatibility, but do not apply special styles */
+}
+
+/* image item container - cinema mode styles (dark background, none border, none shadow) */
+.image-gallery-item {
+ position: relative;
+ flex-shrink: 0;
+ width: 300px;
+ height: 225px; /* 4:3 aspect ratio */
+ overflow: hidden;
+ border-radius: 8px;
+ /* cinema mode: dark background, no border, no shadow */
+ background: linear-gradient(145deg, #1a1a1a 0%, #0a0a0a 100%);
+ border: none;
+ transition: all 0.3s ease;
+ /* ensure content is centered */
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+
+.image-gallery-item:hover {
+ transform: translateY(-2px);
+}
+
+/* image itself - center horizontally and vertically, keep aspect ratio */
+.gallery-image {
+ width: 100%;
+ height: 100%;
+ display: block;
+ object-fit: contain; /* display full image, keep aspect ratio */
+ object-position: center; /* center horizontally and vertically */
+ transition: transform 0.3s ease;
+}
+
+.image-gallery-item:hover .gallery-image {
+ transform: scale(1.05);
+}
+
+/* 🆕 Loading state mask layer - absolute positioning override entire image area */
+.image-loading-overlay {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ background: rgba(248, 250, 252, 0.95);
+ z-index: 1;
+}
+
+/* 🆕 Loading spin animation */
+.loading-spinner {
+ width: 40px;
+ height: 40px;
+ margin-bottom: 12px;
+}
+
+.spinner-circle {
+ width: 100%;
+ height: 100%;
+ border: 3px solid rgba(203, 213, 225, 0.3);
+ border-top-color: #3b82f6;
+ border-radius: 50%;
+ animation: spinner-spin 0.8s linear infinite;
+}
+
+@keyframes spinner-spin {
+ 0% {
+ transform: rotate(0deg);
+ }
+ 100% {
+ transform: rotate(360deg);
+ }
+}
+
+.loading-text {
+ font-size: 13px;
+ color: #64748b;
+ font-weight: 500;
+}
+
+/* image caption */
+.image-caption {
+ position: absolute;
+ bottom: 0;
+ left: 0;
+ right: 0;
+ padding: 8px 12px;
+ background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+ color: white;
+ font-size: 12px;
+ line-height: 1.4;
+ opacity: 0;
+ transition: opacity 0.3s ease;
+}
+
+.image-gallery-item:hover .image-caption {
+ opacity: 1;
+}
+
+/* loading skeleton */
+.image-loading-skeleton {
+ width: 100%;
+ padding-bottom: 75%; /* 4:3 aspect ratio */
+ position: relative;
+ background: linear-gradient(
+ 90deg,
+ rgba(226, 232, 240, 0.4) 0%,
+ rgba(226, 232, 240, 0.6) 50%,
+ rgba(226, 232, 240, 0.4) 100%
+);
+ background-size: 200% 100%;
+ animation: shimmer 1.5s infinite;
+ border-radius: 8px;
+}
+
+@keyframes shimmer {
+ 0% {
+ background-position: -200% 0;
+ }
+ 100% {
+ background-position: 200% 0;
+ }
+}
+
+/* error placeholder */
+.image-error-placeholder {
+ width: 100%;
+ padding: 40px 20px;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ gap: 8px;
+ background: rgba(254, 242, 242, 0.5);
+ border: 1px dashed rgba(239, 68, 68, 0.3);
+ border-radius: 8px;
+ text-align: center;
+}
+
+.error-icon {
+ font-size: 32px;
+}
+
+.error-text {
+ font-size: 14px;
+ color: #dc2626;
+ font-weight: 500;
+}
+
+.error-detail {
+ font-size: 12px;
+ color: #6b7280;
+ max-width: 200px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+/* responsive adjustments */
+@media (max-width: 768px) {
+ .image-gallery-double,
+ .image-gallery-triple,
+ .image-gallery-grid {
+ grid-template-columns: 1fr;
+ }
+ 
+ .image-gallery-triple .image-gallery-item:first-child {
+ grid-column: 1;
+ }
+}
+
+/* ===========================
+ responsive and accessibility
+ =========================== */
+
+@media (prefers-reduced-motion: reduce) {
+ .message-action-btn,
+ .action-icon,
+ .system-prompt-edit-btn,
+ .system-prompt-edit-icon,
+ .user-message .message-actions,
+ .assistant-message .message-actions,
+ .tool-status-icon.executing,
+ .loading-dots span {
+ transition: none;
+ animation: none;
+ }
+}
+
+@media (prefers-contrast: high) {
+ .message-action-btn,
+ .system-prompt-edit-btn {
+ border: 1px solid currentColor;
+ }
+ 
+ .tool-calls-section,
+ .attachment-card,
+ .image-display {
+ border-color: #000;
+ }
+}
+
+/* ===========================
+ 🆕 new version Image Gallery - Google search style layout
+ fixed height 130px, dynamic width keep aspect ratio, auto-wrap row
+ =========================== */
+
+/* image gallery outermost container */
+.image-gallery-new {
+ display: flex;
+ /* if multiple rows of images, they arrange vertically */
+ flex-direction: column;
+ /* all content left aligned */
+ align-items: flex-start;
+ /* spacing between rows */
+ gap: 4px;
+ width: 100%;
+}
+
+/* image grid container (direct image parent, controls horizontal arrangement and wrapping) */
+.gallery-grid-container {
+ display: flex;
+ /* auto wraps to next row when one row is full */
+ flex-wrap: wrap;
+ /* spacing between images */
+ gap: 4px;
+ /* images aligned at top (widths differ, heights uniform) */
+ align-items: flex-start;
+ width: 100%;
+}
+
+/* single image item container */
+.gallery-grid-item {
+ position: relative;
+ /* fix all image heights to be the same */
+ height: 130px;
+ /* gray background as is fallback (image load failure when display) */
+ background: #D9D9D9;
+ /* right angles */
+ border-radius: 0;
+ overflow: hidden;
+ transition: transform 0.2s ease, box-shadow 0.2s ease;
+ /* prevent compression */
+ flex-shrink: 0;
+ /* show pointer cursor on hover (clickable) */
+ cursor: pointer;
+
+ /* image via inline style 's background property set */
+ /* image centered display */
+ background-position: 50% 50%;
+ /* image covers entire container */
+ background-size: cover;
+ background-repeat: no-repeat;
+}
+
+/* image hover effect */
+.gallery-grid-item:hover {
+ /* slight float upward */
+ transform: translateY(-2px);
+ /* add shadow for depth */
+ box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+ /* ensure hovered image is above others */
+ z-index: 1;
+}
+
+/* image loading process in display 's loading animation layer */
+.gallery-grid-item .image-loading-overlay {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ background: rgba(248, 250, 252, 0.95);
+ z-index: 1;
+}
+
+.gallery-grid-item .loading-spinner {
+ width: 40px;
+ height: 40px;
+ margin-bottom: 12px;
+}
+
+.gallery-grid-item .spinner-circle {
+ width: 100%;
+ height: 100%;
+ border: 3px solid rgba(203, 213, 225, 0.3);
+ border-top-color: #3b82f6;
+ border-radius: 50%;
+ animation: spinner-spin 0.8s linear infinite;
+}
+
+@keyframes spinner-spin {
+ 0% {
+ transform: rotate(0deg);
+ }
+ 100% {
+ transform: rotate(360deg);
+ }
+}
+
+.gallery-grid-item .loading-text {
+ font-size: 13px;
+ color: #64748b;
+ font-weight: 500;
+}
+
+/* element shown when image fails to load */
+.gallery-grid-item .image-error-placeholder {
+ width: 100%;
+ padding: 40px 20px;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ gap: 8px;
+ background: rgba(254, 242, 242, 0.5);
+ border: 1px dashed rgba(239, 68, 68, 0.3);
+ border-radius: 8px;
+ text-align: center;
+}
+
+.gallery-grid-item .error-icon {
+ font-size: 32px;
+}
+
+.gallery-grid-item .error-text {
+ font-size: 14px;
+ color: #dc2626;
+ font-weight: 500;
+}
+
+.gallery-grid-item .error-detail {
+ font-size: 12px;
+ color: #6b7280;
+ max-width: 200px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+/* ===========================
+ 🧠 Thinking Section styles - Gemini style can collapse thinking process
+ =========================== */
+
+/* Thinking Section outermost outer container */
+.thinking-section-container {
+ /* only set bottom spacing, separate from other message content */
+ margin-bottom: 28px;
+ /* 🔥 ensure container width auto-adapts to parent */
+ width: 100%;
+ max-width: 100%;
+ min-width: 0;
+}
+
+/* collapse/expand button - styles similar to model-selector */
+.thinking-toggle-button {
+ display: flex;
+ /* button content vertically centered */
+ align-items: center;
+ /* spacing between status icon, text and arrow */
+ gap: 8px;
+ padding: 8px 12px;
+ /* semi-transparent white background, blends with chat interface */
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 12px;
+ cursor: pointer;
+ /* all properties smooth transition (hover effect) */
+ transition: all 0.2s ease;
+ font-size: 14px;
+ color: #374151;
+ /* background blur effect, enhance layering */
+ backdrop-filter: blur(4px);
+ /* fixed height ensures consistent button dimensions */
+ height: 40px;
+}
+
+/* button hover effect - blue theme */
+.thinking-toggle-button:hover {
+ /* light blue background hint can interaction */
+ background: rgba(240, 249, 255, 0.95);
+ border-color: #0ea5e9;
+ color: #0ea5e9;
+ /* slight float up for interactivity */
+ transform: translateY(-1px);
+ /* add blue shadow */
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+/* arrow icon - expand when will rotate 180 degrees */
+.thinking-arrow {
+ width: 14px;
+ height: 14px;
+ /* prevent arrow from being compressed */
+ flex-shrink: 0;
+ /* rotation animation smooth transition */
+ transition: transform 0.2s ease;
+}
+
+/* Thinking state icon styles */
+.thinking-status-icon {
+ /* remove margin-left: auto, let all has element align left */
+ /* 🔥 fix Windows top animation not taking effect issue */
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ flex-shrink: 0;
+}
+
+.thinking-status-icon svg {
+ display: block;
+}
+
+.thinking-status-icon.executing {
+ animation: spin 1s linear infinite;
+ /* 🔥 ensure Windows top animation take effect */
+ transform-origin: center center;
+}
+
+.thinking-status-icon.completed {
+ color: #10b981;
+}
+
+/* arrow rotate state - expand when application this class */
+.thinking-arrow.rotated {
+ /* arrow points up (default points down) */
+ transform: rotate(180deg);
+}
+
+/* Thinking content area - only display when expanded */
+.thinking-content {
+ /* maintain spacing from button */
+ margin-top: 25px;
+ /* left padding, leave space for vertical line */
+ padding-left: 13px;
+ /* left vertical line, identifies thinking content */
+ border-left: 1px solid rgba(203, 213, 225, 0.8);
+ font-size: 14px;
+ line-height: 1.6;
+ color: black;
+ /* italic emphasis for thinking process, not final answer */
+ font-style: italic;
+ /* inner child element spacing */
+ display: flex;
+ flex-direction: column;
+ gap: 16px;
+ /* 🔥 set min-height to avoid layout jumping */
+ min-height: 42px;
+ /* 🔥 fix: use max-height limit height, ensure gap work correctly and scroll functionality normal */
+ max-height: 400px;
+ overflow-y: auto;
+ /* 🔥 fix: add padding-bottom to ensure last element is not obscured by scrollbar */
+ padding-bottom: 8px;
+ /* 🔥 auto-adapt width: follow window width changes */
+ width: 100%;
+ max-width: 100%;
+ min-width: 0;
+ /* 🔥 ensure long text can wrap without expanding container */
+ word-wrap: break-word;
+ overflow-wrap: break-word;
+ /* scrollbar styles */
+ scrollbar-width: thin;
+ scrollbar-color: rgba(203, 213, 225, 0.6) transparent;
+ /* 🔥 fix: ensure smooth scrolling behavior */
+ scroll-behavior: smooth;
+ /* 🔥 prevent horizontal scrollbar from appearing */
+ overflow-x: hidden;
+}
+
+/* WebKit browser 's scrollbar styles */
+.thinking-content::-webkit-scrollbar {
+ width: 6px;
+}
+
+.thinking-content::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.thinking-content::-webkit-scrollbar-thumb {
+ background-color: rgba(203, 213, 225, 0.6);
+ border-radius: 3px;
+}
+
+.thinking-content::-webkit-scrollbar-thumb:hover {
+ background-color: rgba(203, 213, 225, 0.8);
+}
+
+/* 🔥 fix dark theme bottom thinking-content text invisible issue */
+/* 🆕 Thinking section inside loading message styles */
+.thinking-loading-message {
+ /* 🔥 with tool-calls-header consistent 's dimensions */
+ height: 48px;
+ padding: 10px 16px;
+ background: transparent;
+ border: none;
+ border-radius: 8px;
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ font-style: normal; /* reset italic, loading message no need for italic */
+ /* when hidden use display: none, but parent container thinking-part keeps min-height */
+ box-sizing: border-box;
+}
+
+/* 🆕 thinking-loading-message hidden state */
+.thinking-loading-message.hidden {
+ display: none;
+}
+
+.thinking-loading-message .loading-text {
+ display: flex;
+ align-items: center;
+ font-size: 14px;
+ color: #64748b;
+}
+
+.thinking-loading-message .typing-indicator {
+ display: inline-flex;
+ align-items: center;
+ gap: 2px;
+}
+
+.thinking-loading-message .typing-indicator .dots {
+ display: flex;
+ gap: 4px;
+}
+
+.thinking-loading-message .typing-indicator .dots span {
+ width: 6px;
+ height: 6px;
+ background: #94a3b8;
+ border-radius: 50%;
+ animation: thinking-loading-pulse 1.4s infinite both;
+}
+
+.thinking-loading-message .typing-indicator .dots span:nth-child(1) {
+ animation-delay: -0.32s;
+}
+
+/* 🆕 Thinking part styles - ensure in scroll container inside gap work correctly */
+.thinking-part {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+ /* 🔥 fix: set flex-shrink: 0 to prevent compression, ensure gap space is preserved */
+ flex-shrink: 0;
+ /* set min-height with thinking-loading-message 's total height consistent, avoid layout jumping */
+ min-height: 48px; /* with tool-calls-header height consistency */
+}
+
+/* if thinking-part is empty (only empty div), do not apply gap */
+.thinking-part:empty {
+ gap: 0;
+}
+
+/* such as thinking-part only contains empty children, also should not apply gap */
+.thinking-part:has(> :empty):not(:has(> :not(:empty))) {
+ gap: 0;
+}
+
+.thinking-loading-message .typing-indicator .dots span:nth-child(2) {
+ animation-delay: -0.16s;
+}
+
+.thinking-loading-message .typing-indicator .dots span:nth-child(3) {
+ animation-delay: 0s;
+}
+
+@keyframes thinking-loading-pulse {
+ 0%, 80%, 100% {
+ opacity: 0.3;
+ transform: scale(0.8);
+ }
+ 40% {
+ opacity: 1;
+ transform: scale(1);
+ }
+}
+
+/* ===========================
+ Tool Call expand/collapse and custom views
+ =========================== */
+
+/* Tool Call Item container */
+.tool-call-item-container {
+ display: flex;
+ flex-direction: column;
+ position: relative;
+}
+
+/* dashed line connection - use pseudo-element extending from below icon to container bottom */
+.tool-call-item-container.has-next::before {
+ content: '';
+ position: absolute;
+ left: 7px; /* icon center position (16px / 2 - 1px) */
+ top: 28px; /* starts below icon (padding 4px + icon 16px + gap 8px) */
+ bottom: 0;
+ width: 0;
+ border-left: 1px dashed #d1d5db;
+}
+
+/* can expand 's Tool Call Item row */
+.tool-call-item-row.expandable {
+ cursor: pointer;
+}
+
+.tool-call-item-row.expandable:hover {
+ opacity: 0.7;
+}
+
+/* expand arrow */
+.tool-call-expand-arrow {
+ color: #9ca3af;
+ transition: transform 0.2s ease;
+ flex-shrink: 0;
+ /* remove margin-left: auto, let arrow follow text closely */
+}
+
+.tool-call-expand-arrow.expanded {
+ transform: rotate(90deg);
+}
+
+/* expand content area */
+.tool-call-expanded-content {
+ display: flex;
+ flex-direction: row;
+ padding-left: 24px; /* align with text column (icon 16px + gap 8px) */
+}
+
+/* custom view container */
+.tool-call-custom-view {
+ flex: 1;
+ min-width: 0;
+ padding: 8px 0;
+}
+
+/* ===========================
+ Web Search custom view styles
+ =========================== */
+
+/* Web Search view container */
+.web-search-view {
+ display: flex;
+ flex-direction: column;
+ gap: 16px;
+}
+
+/* Query group */
+.web-search-query-group {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+/* Query title row */
+.web-search-query-header {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ font-size: 14px;
+ padding: 4px 0;
+}
+
+.web-search-query-text {
+ color: #374151;
+ flex: 1;
+ min-width: 0;
+}
+
+.web-search-result-count {
+ color: #9ca3af;
+ font-size: 13px;
+ flex-shrink: 0;
+}
+
+.web-search-loading {
+ color: #9ca3af;
+ font-size: 12px;
+ margin-left: 8px;
+}
+
+/* search results list */
+.web-search-results-list {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ background: #f9fafb;
+ border: 1px solid #e5e7eb;
+ border-radius: 8px;
+ overflow: hidden;
+}
+
+/* search result row - single row layout */
+.web-search-result-row {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ padding: 10px 12px;
+ cursor: pointer;
+ transition: background 0.15s ease;
+ border-bottom: 1px solid #f3f4f6;
+}
+
+.web-search-result-row:last-child {
+ border-bottom: none;
+}
+
+.web-search-result-row:hover {
+ background: #f3f4f6;
+}
+
+/* left side: favicon + title */
+.web-search-result-left {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+}
+
+.web-search-result-favicon {
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+ border-radius: 2px;
+}
+
+/* result title */
+.web-search-result-title {
+ font-size: 14px;
+ color: #374151;
+ line-height: 1.4;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.web-search-result-row:hover .web-search-result-title {
+ color: #1d4ed8;
+}
+
+/* right: website domain */
+.web-search-result-site {
+ font-size: 13px;
+ color: #9ca3af;
+ flex-shrink: 0;
+ white-space: nowrap;
+}
+
+/* no results hint */
+.web-search-no-results {
+ font-size: 13px;
+ color: #9ca3af;
+ font-style: italic;
+ padding-left: 8px;
+}
+
+/* error info */
+.web-search-errors {
+ display: flex;
+ flex-direction: column;
+ gap: 4px;
+ padding: 8px;
+ background: rgba(254, 242, 242, 0.5);
+ border: 1px solid rgba(239, 68, 68, 0.2);
+ border-radius: 6px;
+}
+
+.web-search-error-item {
+ font-size: 12px;
+ color: #dc2626;
+}
+
+/* ==========================================
+ Web Fetch view styles
+ ========================================== */
+
+/* Web Fetch view container */
+.web-fetch-view {
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+/* loading state */
+.web-fetch-loading {
+ font-size: 13px;
+ color: #9ca3af;
+ padding: 8px 0;
+}
+
+/* results list */
+.web-fetch-results-list {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ background: #f9fafb;
+ border: 1px solid #e5e7eb;
+ border-radius: 8px;
+ overflow: hidden;
+}
+
+/* result row - single row layout */
+.web-fetch-result-row {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ padding: 10px 12px;
+ border-bottom: 1px solid #e5e7eb;
+ cursor: pointer;
+ transition: background 0.15s ease;
+}
+
+.web-fetch-result-row:last-child {
+ border-bottom: none;
+}
+
+.web-fetch-result-row:hover {
+ background: #f3f4f6;
+}
+
+/* left side: favicon + title */
+.web-fetch-result-left {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+}
+
+.web-fetch-result-favicon {
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+ border-radius: 2px;
+}
+
+/* result title */
+.web-fetch-result-title {
+ font-size: 14px;
+ color: #374151;
+ line-height: 1.4;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.web-fetch-result-row:hover .web-fetch-result-title {
+ color: #1d4ed8;
+}
+
+/* right: website domain + external link icon */
+.web-fetch-result-right {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ flex-shrink: 0;
+}
+
+.web-fetch-result-site {
+ font-size: 13px;
+ color: #9ca3af;
+ white-space: nowrap;
+}
+
+.web-fetch-result-link-icon {
+ color: #9ca3af;
+ display: flex;
+ align-items: center;
+}
+
+.web-fetch-result-row:hover .web-fetch-result-link-icon {
+ color: #6b7280;
+}
+
+/* no results hint */
+.web-fetch-no-results {
+ font-size: 13px;
+ color: #9ca3af;
+ font-style: italic;
+ padding: 8px 0;
+}
+
+/* error list */
+.web-fetch-errors-list {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ background: rgba(254, 242, 242, 0.6);
+ border: 1px solid rgba(239, 68, 68, 0.3);
+ border-radius: 8px;
+ overflow: hidden;
+}
+
+/* error row - single row layout */
+.web-fetch-error-row {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ padding: 10px 12px;
+ border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.web-fetch-error-row:last-child {
+ border-bottom: none;
+}
+
+.web-fetch-error-row.clickable {
+ cursor: pointer;
+ transition: background 0.15s ease;
+}
+
+.web-fetch-error-row.clickable:hover {
+ background: rgba(254, 226, 226, 0.5);
+}
+
+/* error row left: error info */
+.web-fetch-error-left {
+ display: flex;
+ align-items: center;
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+}
+
+.web-fetch-error-message {
+ font-size: 14px;
+ color: #dc2626;
+ line-height: 1.4;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+/* error row right side: URL + external link icon */
+.web-fetch-error-right {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ flex-shrink: 0;
+}
+
+.web-fetch-error-site {
+ font-size: 13px;
+ color: #b91c1c;
+ white-space: nowrap;
+}
+
+.web-fetch-error-link-icon {
+ color: #b91c1c;
+ display: flex;
+ align-items: center;
+}
+
+.web-fetch-error-row.clickable:hover .web-fetch-error-link-icon {
+ color: #991b1b;
+}
+
+/* ==========================================
+ Execute Command view styles - terminal-style display
+ ========================================== */
+
+/* command view container */
+.execute-command-view {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ width: 100%;
+}
+
+/* terminal container - dark background terminal-style */
+.terminal-container {
+ background: #1e1e1e;
+ border: 1px solid #3c3c3c;
+ border-radius: 8px;
+ overflow: hidden;
+ font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+ font-size: 13px;
+ line-height: 1.5;
+}
+
+/* terminal line */
+.terminal-line {
+ padding: 8px 12px;
+}
+
+/* command line - with prompt */
+.terminal-command-line {
+ display: flex;
+ align-items: flex-start;
+ gap: 0;
+ background: #1e1e1e;
+ border-bottom: 1px solid #3c3c3c;
+ flex-wrap: wrap;
+}
+
+/* prompt styles */
+.terminal-prompt {
+ color: #4ec9b0;
+ flex-shrink: 0;
+ user-select: none;
+ margin-right: 8px;
+}
+
+/* command text */
+.terminal-command {
+ color: #dcdcdc;
+ word-break: break-all;
+ flex: 1;
+ min-width: 0;
+}
+
+/* executing state */
+.terminal-executing {
+ background: #1e1e1e;
+ border-bottom: 1px solid #3c3c3c;
+}
+
+.terminal-executing-text {
+ color: #808080;
+ font-style: italic;
+}
+
+/* output area */
+.terminal-output {
+ padding: 12px;
+ background: #1e1e1e;
+ max-height: 400px;
+ overflow-y: auto;
+ /* scrollbar styles */
+ scrollbar-width: thin;
+ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.terminal-output::-webkit-scrollbar {
+ width: 8px;
+}
+
+.terminal-output::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.terminal-output::-webkit-scrollbar-thumb {
+ background-color: rgba(255, 255, 255, 0.2);
+ border-radius: 4px;
+}
+
+.terminal-output::-webkit-scrollbar-thumb:hover {
+ background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* output preformatted text */
+.terminal-output-pre {
+ margin: 0;
+ padding: 0;
+ color: #d4d4d4;
+ white-space: pre-wrap;
+ word-break: break-all;
+ font-family: inherit;
+ font-size: inherit;
+ line-height: inherit;
+}
+
+/* output styles with errors */
+.terminal-output.has-error .terminal-output-pre {
+ color: #f48771;
+}
+
+/* timeout hint */
+.terminal-timeout {
+ background: rgba(255, 193, 7, 0.1);
+ border-top: 1px solid #3c3c3c;
+}
+
+.terminal-timeout-text {
+ color: #ffcc00;
+ font-size: 12px;
+}
+
+/* truncation hint */
+.terminal-truncated {
+ background: #1e1e1e;
+ border-top: 1px solid #3c3c3c;
+}
+
+.terminal-truncated-text {
+ color: #808080;
+ font-size: 12px;
+ font-style: italic;
+}
+
+/* exit code */
+.terminal-exit-code {
+ background: rgba(244, 135, 113, 0.1);
+ border-top: 1px solid #3c3c3c;
+}
+
+.terminal-exit-code-text {
+ color: #f48771;
+ font-size: 12px;
+}
+
+/* ==========================================
+ Write File / Create File view styles
+ ========================================== */
+
+/* view container */
+.write-file-view {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ width: 100%;
+}
+
+/* Streaming state container - code preview */
+.write-file-streaming-container {
+ background: #1e1e1e;
+ border: 1px solid #3c3c3c;
+ border-radius: 8px;
+ overflow: hidden;
+}
+
+/* Streaming header */
+.write-file-streaming-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ padding: 8px 12px;
+ background: #252526;
+ border-bottom: 1px solid #3c3c3c;
+}
+
+.write-file-icon {
+ color: #569cd6;
+ flex-shrink: 0;
+}
+
+.write-file-icon.error {
+ color: #f48771;
+}
+
+.write-file-filename {
+ color: #d4d4d4;
+ font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+ font-size: 13px;
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.write-file-streaming-indicator {
+ color: #808080;
+ font-size: 12px;
+ font-style: italic;
+ flex-shrink: 0;
+}
+
+/* content preview area */
+.write-file-content-preview {
+ padding: 12px;
+ background: #1e1e1e;
+ max-height: 300px;
+ overflow-y: auto;
+ overflow-x: hidden;
+ /* use overlay scroll bar, does not take content space */
+ overflow-y: overlay;
+ scrollbar-width: thin;
+ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.write-file-content-preview::-webkit-scrollbar {
+ width: 8px;
+ background: transparent;
+}
+
+.write-file-content-preview::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.write-file-content-preview::-webkit-scrollbar-thumb {
+ background-color: rgba(255, 255, 255, 0.2);
+ border-radius: 4px;
+}
+
+.write-file-content-preview::-webkit-scrollbar-thumb:hover {
+ background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* content preformatted text */
+.write-file-content-pre {
+ margin: 0;
+ padding: 0;
+ color: #d4d4d4;
+ white-space: pre-wrap;
+ word-break: break-all;
+ font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+ font-size: 13px;
+ line-height: 1.5;
+}
+
+/* success state container - file link */
+.write-file-success-container {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ padding: 10px 12px;
+ background: #f9fafb;
+ border: 1px solid #e5e7eb;
+ border-radius: 8px;
+ cursor: pointer;
+ transition: all 0.15s ease;
+}
+
+.write-file-success-container:hover {
+ background: #f3f4f6;
+ border-color: #d1d5db;
+}
+
+.write-file-success-content {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ flex: 1;
+ min-width: 0;
+ overflow: hidden;
+}
+
+.write-file-success-container .write-file-icon {
+ color: #10b981;
+}
+
+.write-file-success-container .write-file-filename {
+ color: #374151;
+ font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+ font-size: 13px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.write-file-open-icon {
+ color: #9ca3af;
+ flex-shrink: 0;
+ transition: color 0.15s ease;
+}
+
+.write-file-success-container:hover .write-file-open-icon {
+ color: #6b7280;
+}
+
+/* error state container */
+.write-file-error-container {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ padding: 10px 12px;
+ background: rgba(254, 242, 242, 0.6);
+ border: 1px solid rgba(239, 68, 68, 0.3);
+ border-radius: 8px;
+}
+
+.write-file-error-container .write-file-filename {
+ color: #374151;
+ font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+ font-size: 13px;
+}
+
+.write-file-error-text {
+ color: #dc2626;
+ font-size: 12px;
+ margin-left: auto;
+}
+
+/* ==========================================
+ Presented Files Card styles
+ file list reuses .file-attachment-* styles
+ ========================================== */
+
+.presented-files-card {
+ margin-top: 0;
+ margin-bottom: 8px;
+ width: 100%;
+}
+
+.presented-files-group {
+ margin-bottom: 8px;
+}
+
+.presented-files-group:last-child {
+ margin-bottom: 0;
+}
+
+.presented-files-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-bottom: 12px;
+}
+
+.presented-files-icon {
+ color: var(--text-secondary, #6b7280);
+ flex-shrink: 0;
+}
+
+.presented-files-description {
+ font-weight: 410;
+ color: #322D29;
+ flex: 1;
+ font-size: 16px;
+ line-height: 26px;
+}

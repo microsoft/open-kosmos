@@ -1,0 +1,100 @@
+{
+  "skills": [
+    {
+      "id": "skill-product-decision-maker-in-library",
+      "name": "product-decision-maker",
+      "description": "Guide end-to-end product decision workflow from feature definition through data collection, decision analysis (Continue/Pivot/Deprecate), to execution planning with intelligent routing.",
+      "version": "1.0.1",
+      "source": "IN-LIBRARY",
+      "contact": "siyangliu@microsoft.com"
+    },
+    {
+      "id": "skill-competitive-analyze-in-library",
+      "name": "competitive-analyze",
+      "description": "Analyze mobile competitors (iOS/Android) through Vision-Reality Gap Analysis - comparing marketing claims with user feedback to identify execution gaps and strategic insights.",
+      "version": "1.0.2",
+      "source": "IN-LIBRARY",
+      "contact": "shengjieshi@microsoft.com"
+    },
+    {
+      "id": "skill-titan-dynamic-query-in-library",
+      "name": "titan-dynamic-query",
+      "description": "Ask for any product data or manually paste a Titan SQL query to analyze the data for this product. PM Agent will analyze trends and automatically discover filters and dimensions beyond your original query.",
+      "version": "3.2.0",
+      "source": "IN-LIBRARY",
+      "contact": "zhangjingwei@microsoft.com"
+    },
+    {
+      "id": "skill-topline-metric-in-library",
+      "name": "topline-metric",
+      "description": "A demo skill to fetch BSoM, Edge Mobile DAU and Edge MAU DAU",
+      "version": "1.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "yazhouzhou@microsoft.com"
+    },
+    {
+      "id": "skill-edge-mobile-commercial-weekly-dau-report-in-library",
+      "name": "edge-mobile-commercial-weekly-dau-report",
+      "description": "Edge Mobile Commercial DAU KPI Weekly Report",
+      "version": "1.0.3",
+      "source": "IN-LIBRARY",
+      "contact": "chfen@microsoft.com"
+    },
+    {
+      "id": "skill-product-specification-in-library",
+      "name": "product-specification",
+      "description": "Evaluates, critiques, and iteratively improves product specifications to be decision-clear, testable, and execution-ready.",
+      "version": "1.0.2",
+      "source": "IN-LIBRARY",
+      "contact": "yazhouzhou@microsoft.com"
+    },
+    {
+      "id": "skill-lenny-skills-recommender-in-library",
+      "name": "lenny-skills-recommender",
+      "description": "Skills to get help and insights from Lenny's podcast guests.",
+      "version": "0.0.4",
+      "source": "IN-LIBRARY",
+      "contact": "dingxiao@microsoft.com"
+    },
+    {
+      "id": "skill-composite-in-library",
+      "name": "composite",
+      "description": "Goal-Driven composite skill framework supporting sequential Skill execution, data handoff, and cross-validation. Automatically orchestrates atomic skills based on user goals like 'understand users', 'analyze competition', or 'product discovery'.",
+      "version": "2.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "menghuihu@microsoft.com"
+    },
+    {
+      "id": "skill-design-thinking-in-library",
+      "name": "design-thinking",
+      "description": "Assist product and design teams with user insights, competitive analysis, and visual direction exploration. Includes Persona Generator, Competitive Visual Analysis, Visual Moodboard, Design Review, and UX Copywriting capabilities.",
+      "version": "2.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "menghuihu@microsoft.com"
+    },
+    {
+      "id": "skill-copilot-mac-context-in-library",
+      "name": "copilot-mac-context",
+      "description": "Product strategy, design system, and user research context for Copilot Mac application. Provides MAI Design System components, Voice Mode guidance, and macOS native design patterns.",
+      "version": "2.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "menghuihu@microsoft.com"
+    },
+    {
+      "id": "skill-edge-mobile-context-in-library",
+      "name": "edge-mobile-context",
+      "description": "Autonomous design guidance, context retrieval, and validation for Edge Mobile UI/UX tasks. Includes Fluent Design System rules, product philosophy, and growth experiment insights.",
+      "version": "2.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "menghuihu@microsoft.com"
+    },
+    {
+      "id": "skill-report-generator-in-library",
+      "name": "report-generator",
+      "description": "Transform research outputs into high-fidelity HTML reports with Tandem Co visual style. Converts Chat Markdown output into professional, shareable design research deliverables.",
+      "version": "2.0.0",
+      "source": "IN-LIBRARY",
+      "contact": "menghuihu@microsoft.com"
+    }
+  ]
+}

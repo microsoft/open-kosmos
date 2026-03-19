@@ -1,0 +1,231 @@
+/* NavItem component styles - based on leftNavi_design.css */
+
+.nav-item {
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+ /* remove font-family: inherit, let children freely set font */
+ 
+ /* Menu item 14 - normal state styles */
+ box-sizing: border-box;
+ 
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px 0px 0px 10px;
+ gap: 2px;
+ isolation: isolate;
+ 
+ width: 100%;
+ height: 40px;
+ min-height: 40px;
+ 
+ border-radius: 12px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ 
+ /* transition effects */
+ transition: background 0.2s ease;
+}
+
+/* Hover state - Menu item 6 */
+.nav-item:hover:not(:disabled) {
+ /* only change visual effect, do not change layout */
+ background: rgba(0, 0, 0, 0.05);
+}
+
+/* Active/Selected state - Menu item 6 */
+.nav-item.active {
+ /* only change visual effect, do not change layout */
+ background: rgba(0, 0, 0, 0.05);
+}
+
+/* Disabled state */
+.nav-item:disabled {
+ cursor: not-allowed;
+ opacity: 0.5;
+}
+
+/* Focus state */
+.nav-item:focus-visible {
+ outline: 2px solid rgba(0, 0, 0, 0.2);
+ outline-offset: 2px;
+}
+
+/* Content container - contains icon and label */
+/* Icon & Text */
+.nav-item-content {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px;
+ gap: 4px;
+ 
+ min-width: 0;
+ max-width: 243px;
+ flex: 1 1 auto;
+ height: 40px;
+ 
+ /* Inside auto layout */
+ order: 1;
+ z-index: 1;
+}
+
+/* Icon container */
+/* Icon Placeholder */
+.nav-item-icon {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 24px;
+ height: 24px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 1;
+ flex-grow: 0;
+}
+
+/* Avatar - user avatar special styles */
+/* note: AgentAvatar component 's image should not use this styles, use :not(.agent-avatar-img) exclude */
+.nav-item-icon img:not(.agent-avatar-img) {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ padding: 0px;
+ isolation: isolate;
+ 
+ width: 40px;
+ height: 40px;
+ 
+ /* Shadows/Avatar */
+ filter: drop-shadow(0px 1px 3px rgba(0, 0, 0, 0.15));
+ 
+ /* keep circular avatar */
+ border-radius: 50%;
+ object-fit: cover;
+}
+
+/* Label text */
+/* Text Offset */
+.nav-item-label {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: flex-start;
+ padding: 10px 10px 10px 2px;
+ 
+ min-width: 0;
+ max-width: 243px;
+ flex: 1 1 auto;
+ height: 40px;
+ 
+ /* .Semantic/Label/Control */
+ font-style: normal;
+ font-weight: 410;
+ font-size: 15px;
+ line-height: 20px;
+ /* identical to box height, or 133% */
+ 
+ color: #272320;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ /* Inside auto layout */
+ order: 2;
+ 
+ /* Text overflow */
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+/* 🔥 Built-in Agent badge styles (for Kobi, PM Agent and other built-in Agent)- with .agent-tab .builtin-badge consistent */
+.nav-item-label .kobi-builtin-badge {
+ display: inline-flex;
+ align-items: center;
+ padding: 1px 5px;
+ background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+ color: white;
+ font-size: 0.55rem;
+ font-weight: 600;
+ border-radius: 3px;
+ line-height: 1.2;
+ white-space: nowrap;
+ vertical-align: super;
+ position: relative;
+ top: -0.25em;
+ flex-shrink: 0;
+}
+
+/* right side content */
+.nav-item-right {
+ /* Auto layout */
+ display: flex;
+ flex-direction: row;
+ align-items: center;
+ padding: 0px;
+ gap: 8px;
+ 
+ width: 68px;
+ height: 40px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 3;
+ flex-grow: 0;
+ z-index: 3;
+ 
+ /* align right */
+ margin-left: auto;
+}
+
+/* 🔥 hover when display right side content */
+.nav-item:hover .nav-item-right .dropdown-menu-container {
+ opacity: 1 !important;
+}
+
+/* 🔥 active when display right side content */
+.nav-item.active .nav-item-right .dropdown-menu-container {
+ opacity: 1 !important;
+}
+
+/* right side button styles */
+/* Chevron */
+.nav-item-right button {
+ /* Auto layout */
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ 
+ width: 20px;
+ height: 20px;
+ 
+ /* Inside auto layout */
+ flex: none;
+ order: 0;
+ flex-grow: 0;
+ 
+ /* reset button styles */
+ border: none;
+ background: none;
+ cursor: pointer;
+}
+
+/* Active indicator */
+.nav-item-indicator {
+ /* optional: add active status indicators 's styles */
+}

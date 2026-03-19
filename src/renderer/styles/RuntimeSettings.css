@@ -1,0 +1,399 @@
+/* ===========================
+   Runtime Settings Page Styles
+   Redesigned to match Toolbar / Screenshot card style
+   =========================== */
+
+/* ── Preserved: parent view container & loading ── */
+
+.runtime-settings-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #FFFFFF;
+}
+
+.runtime-settings-loading {
+  padding: 24px;
+  color: #6b7280;
+}
+
+/* ── Card description text (subtitle inside card header) ── */
+
+.runtime-card-desc {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 2px 0 0 0;
+  line-height: 1.5;
+}
+
+/* ── Runtime Mode rows ── */
+
+.runtime-mode-row {
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+
+.runtime-mode-row:hover {
+  background: #f9fafb;
+}
+
+
+
+/* Native radio hidden; replaced by styled one via CSS */
+.runtime-radio {
+  width: 16px;
+  height: 16px;
+  accent-color: #272320;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+/* ── Environment Component rows ── */
+
+.runtime-component-row {
+  /* flex row already provided by toolbar-setting-item */
+}
+
+.runtime-component-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.runtime-component-tag {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9ca3af;
+  margin-left: 6px;
+}
+
+.runtime-status-dot {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runtime-status-dot--ok {
+  color: #059669;
+}
+
+.runtime-status-dot--off {
+  color: #dc2626;
+}
+
+.runtime-component-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Version input field (compact) */
+.runtime-version-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 0 8px;
+  height: 32px;
+}
+
+.runtime-version-prefix {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.runtime-version-input-sm {
+  width: 64px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #272320;
+}
+
+/* Primary action button */
+.runtime-action-btn {
+  padding: 0 16px;
+  height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+  background: #272320;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.runtime-action-btn:hover:not(:disabled) {
+  background: #3d3836;
+}
+
+.runtime-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Loading bar */
+.runtime-loading-bar {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+/* ── Python version management ── */
+
+/* Install input */
+.runtime-python-input {
+  flex: 1;
+  max-width: 160px;
+  padding: 0 12px;
+  height: 32px;
+  font-size: 14px;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  color: #272320;
+}
+
+.runtime-python-input:focus {
+  outline: none;
+  border-color: #272320;
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
+}
+
+/* Per-version list row */
+.runtime-python-row {
+  gap: 10px;
+}
+
+/* Status badge */
+.runtime-python-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.runtime-python-badge--installed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.runtime-python-badge--available {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Version label */
+.runtime-python-version {
+  font-size: 14px;
+  font-weight: 500;
+  color: #272320;
+  flex-shrink: 0;
+  min-width: 60px;
+}
+
+/* Truncated path */
+.runtime-python-path {
+  font-size: 12px;
+  color: #6b7280;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pin label */
+.runtime-pin-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.runtime-pin-text {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Icon-only delete button */
+.runtime-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+
+.runtime-icon-btn:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.runtime-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Text-only button (e.g. Clean Cache) */
+.runtime-text-btn {
+  font-size: 12px;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.runtime-text-btn:hover:not(:disabled) {
+  color: #374151;
+}
+
+.runtime-text-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty hint */
+.runtime-empty-hint {
+  padding: 12px 4px;
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* ── Model list row (Voice Input / TTS) ── */
+/* Three-column grid: [badge 90px] [info 1fr] [actions 168px] */
+.settings-model-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 168px;
+  align-items: center;
+  gap: 0;
+  padding: 10px 4px;
+}
+
+.settings-model-row .settings-model-badge {
+  /* col 1 – dynamic width, centered in the cell */
+  justify-self: center;
+  width: fit-content;
+}
+
+.settings-model-row .settings-model-info {
+  /* col 2 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.settings-model-row .settings-model-actions {
+  /* col 3 – always 168px, right-aligned */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Model download progress (Voice Input / TTS) ── */
+
+.settings-model-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.settings-model-progress-bar {
+  width: 80px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.settings-model-progress-fill {
+  height: 100%;
+  background: #272320;
+  border-radius: 3px;
+  transition: width 0.15s ease;
+}
+
+/* ── Speech speed slider (TTS settings) ── */
+
+.settings-speed-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.settings-speed-slider {
+  width: 120px;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e5e7eb;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #272320;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s ease;
+}
+
+.settings-speed-slider::-webkit-slider-thumb:hover {
+  background: #3d3836;
+}
+
+.settings-speed-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #272320;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.settings-speed-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #272320;
+  min-width: 36px;
+  text-align: center;
+}
+

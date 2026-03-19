@@ -1,0 +1,25 @@
+- SDK (Collection) Simplified Version
+  - Data schema for all records: `<UUID, Event, Timestamp(UTC), Locale>`
+  - Main process records usage status to local database
+    - Records one entry each when the app starts, when midnight passes (app stays alive with no shutdown that day), and when the app closes
+  - Main process sends events to the server
+    - Sends once 1 minute after startup, then every 6 hours (sends all records cached in the local database)
+    - Sends data via HTTP/2 (using Electron's net.request, which has better performance than fetch)
+    - Payload format: json / protobuf (binary, smaller packet size and lower parsing overhead)
+
+- Server (Storage & Compute)
+  - API Ingestion
+    - Node.js (Fastify, faster than Express)
+    - For high load, consider: Golang / C# + Kestrel / Rust (the latter two have higher development costs)
+    - Incoming data is added to an in-memory buffer and written to the database (Table 1) in non-blocking batches to handle traffic spikes
+  - Database
+    - ClickHouse (faster than PostgreSQL for bulk inserts and aggregate queries)
+    - Table 1: Stores raw client events (for tracking complete information; TTL can be set to retain only recent raw events)
+    - Tables 2, 3, 4, ...: Aggregated statistical data (automatically aggregated and updated from the main table via MATERIALIZED VIEWs)
+  - Dashboard
+    - API: One route (e.g., '/api/stats/overview') corresponds to one Liquid template query
+    - Frontend: React, GET /api/stats/overview, render charts
+
+- Open Source Implementations
+  - Aptabase: Desktop app, C# + TypeScript, ClickHouse
+  - PostHog: Large SaaS product, Python + TypeScript, ClickHouse/PostgreSQL

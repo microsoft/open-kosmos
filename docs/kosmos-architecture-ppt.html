@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kosmos Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+            color: #1e293b;
+            height: 100vh;
+            padding: 30px 40px;
+            overflow: hidden;
+        }
+
+        .slide {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #818cf8, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1rem;
+            margin-top: 5px;
+        }
+
+        .architecture {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-height: 0;
+        }
+
+        .layer {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 8px 16px;
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .layer-badge {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .layer-info {
+            width: 180px;
+            flex-shrink: 0;
+        }
+
+        .layer-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 2px;
+        }
+
+        .layer-path {
+            font-size: 0.7rem;
+            color: #64748b;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .modules {
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-content: center;
+            justify-content: space-between;
+        }
+
+        .module {
+            background: rgba(99, 102, 241, 0.06);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 6px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            flex: 1 1 auto;
+            min-width: 120px;
+            justify-content: center;
+        }
+
+        .module:hover {
+            background: rgba(99, 102, 241, 0.12);
+            border-color: rgba(99, 102, 241, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .module-icon {
+            font-size: 1rem;
+        }
+
+        .module-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .module-name {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        .module-desc {
+            font-size: 0.65rem;
+            color: #64748b;
+        }
+
+        /* Layer Colors */
+        .layer-ui .layer-badge { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+        .layer-state .layer-badge { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
+        .layer-ipc .layer-badge { background: linear-gradient(135deg, #f59e0b, #f97316); }
+        .layer-core .layer-badge { background: linear-gradient(135deg, #10b981, #14b8a6); }
+        .layer-llm .layer-badge { background: linear-gradient(135deg, #ec4899, #f43f5e); }
+        .layer-mcp .layer-badge { background: linear-gradient(135deg, #8b5cf6, #a855f7); }
+        .layer-infra .layer-badge { background: linear-gradient(135deg, #64748b, #475569); }
+
+        /* Connectors */
+        .connector {
+            display: flex;
+            justify-content: center;
+            height: 12px;
+            flex-shrink: 0;
+        }
+
+        .arrow {
+            color: #6366f1;
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        /* Small module variant */
+        .module-sm {
+            padding: 6px 10px;
+        }
+
+        .module-sm .module-name {
+            font-size: 0.72rem;
+        }
+
+        .module-sm .module-icon {
+            font-size: 0.85rem;
+        }
+
+        /* Infrastructure sub-sections */
+        .infra-sections {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+        }
+
+        .infra-section {
+            flex: 1;
+            background: rgba(99, 102, 241, 0.05);
+            border-radius: 6px;
+            padding: 6px 10px;
+        }
+
+        .infra-section-title {
+            font-size: 0.7rem;
+            color: #818cf8;
+            font-weight: 600;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .infra-modules {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: space-between;
+        }
+
+        .infra-module {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid rgba(99, 102, 241, 0.12);
+            flex: 1 1 auto;
+            justify-content: center;
+            min-width: 80px;
+            color: #475569;
+        }
+
+        .infra-module:hover {
+            background: rgba(99, 102, 241, 0.12);
+        }
+    </style>
+</head>
+<body>
+    <div class="slide">
+
+
+        <div class="architecture">
+            <!-- UI Layer -->
+            <div class="layer layer-ui">
+                <div class="layer-badge">🎨</div>
+                <div class="layer-info">
+                    <div class="layer-title">UI Layer</div>
+                    <div class="layer-path">renderer/components/</div>
+                </div>
+                <div class="modules">
+                    <div class="module">
+                        <span class="module-icon">🔐</span>
+                        <div class="module-text">
+                            <span class="module-name">auth/</span>
+                            <span class="module-desc">Authentication</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">💬</span>
+                        <div class="module-text">
+                            <span class="module-name">chat/</span>
+                            <span class="module-desc">Chat Interface</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔌</span>
+                        <div class="module-text">
+                            <span class="module-name">mcp/</span>
+                            <span class="module-desc">MCP Manager</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🧠</span>
+                        <div class="module-text">
+                            <span class="module-name">memory/</span>
+                            <span class="module-desc">Memory View</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">⚡</span>
+                        <div class="module-text">
+                            <span class="module-name">skills/</span>
+                            <span class="module-desc">Skills Manager</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">⚙️</span>
+                        <div class="module-text">
+                            <span class="module-name">settings/</span>
+                            <span class="module-desc">Settings</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🧩</span>
+                        <div class="module-text">
+                            <span class="module-name">ui/</span>
+                            <span class="module-desc">Shared Components</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="connector"><span class="arrow">▼</span></div>
+
+            <!-- State Layer -->
+            <div class="layer layer-state">
+                <div class="layer-badge">📊</div>
+                <div class="layer-info">
+                    <div class="layer-title">State Management</div>
+                    <div class="layer-path">renderer/lib/</div>
+                </div>
+                <div class="modules">
+                    <div class="module">
+                        <span class="module-icon">🔑</span>
+                        <div class="module-text">
+                            <span class="module-name">AuthProvider</span>
+                            <span class="module-desc">Auth State</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">👤</span>
+                        <div class="module-text">
+                            <span class="module-name">ProfileDataProvider</span>
+                            <span class="module-desc">User Data</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">💬</span>
+                        <div class="module-text">
+                            <span class="module-name">ChatOpsManager</span>
+                            <span class="module-desc">Chat Operations</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">📦</span>
+                        <div class="module-text">
+                            <span class="module-name">SessionCacheManager</span>
+                            <span class="module-desc">Session Cache</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔗</span>
+                        <div class="module-text">
+                            <span class="module-name">McpClientCache</span>
+                            <span class="module-desc">MCP State</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="connector"><span class="arrow">▼ IPC</span></div>
+
+            <!-- IPC Bridge -->
+            <div class="layer layer-ipc">
+                <div class="layer-badge">🌉</div>
+                <div class="layer-info">
+                    <div class="layer-title">IPC Bridge</div>
+                    <div class="layer-path">main/preload.ts</div>
+                </div>
+                <div class="modules">
+                    <div class="module">
+                        <span class="module-icon">🛡️</span>
+                        <div class="module-text">
+                            <span class="module-name">contextBridge</span>
+                            <span class="module-desc">Secure Bridge</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">📡</span>
+                        <div class="module-text">
+                            <span class="module-name">electronAPI</span>
+                            <span class="module-desc">Exposed APIs</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔄</span>
+                        <div class="module-text">
+                            <span class="module-name">ipcRenderer</span>
+                            <span class="module-desc">Renderer IPC</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="connector"><span class="arrow">▼</span></div>
+
+            <!-- Core Layer -->
+            <div class="layer layer-core">
+                <div class="layer-badge">⚡</div>
+                <div class="layer-info">
+                    <div class="layer-title">Main Process Core</div>
+                    <div class="layer-path">main/lib/</div>
+                </div>
+                <div class="modules">
+                    <div class="module">
+                        <span class="module-icon">🔐</span>
+                        <div class="module-text">
+                            <span class="module-name">MainAuthManager</span>
+                            <span class="module-desc">Authentication</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🤖</span>
+                        <div class="module-text">
+                            <span class="module-name">AgentChatManager</span>
+                            <span class="module-desc">Chat Instances</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔌</span>
+                        <div class="module-text">
+                            <span class="module-name">MCPClientManager</span>
+                            <span class="module-desc">MCP Clients</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">💾</span>
+                        <div class="module-text">
+                            <span class="module-name">ProfileCacheManager</span>
+                            <span class="module-desc">Config Cache</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">💬</span>
+                        <div class="module-text">
+                            <span class="module-name">AgentChat</span>
+                            <span class="module-desc">Chat & Tool Calls</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">⚡</span>
+                        <div class="module-text">
+                            <span class="module-name">SkillManager</span>
+                            <span class="module-desc">Skills</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">📁</span>
+                        <div class="module-text">
+                            <span class="module-name">WorkspaceService</span>
+                            <span class="module-desc">File Indexing</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="connector"><span class="arrow">▼</span></div>
+
+            <!-- LLM + MCP Layer -->
+            <div class="layer layer-llm">
+                <div class="layer-badge">🤖</div>
+                <div class="layer-info">
+                    <div class="layer-title">AI/LLM & MCP</div>
+                    <div class="layer-path">main/lib/llm/ + mcpRuntime/</div>
+                </div>
+                <div class="modules">
+                    <div class="module">
+                        <span class="module-icon">🐙</span>
+                        <div class="module-text">
+                            <span class="module-name">GhcModelApi</span>
+                            <span class="module-desc">GitHub Copilot</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">☁️</span>
+                        <div class="module-text">
+                            <span class="module-name">AzureOpenAI</span>
+                            <span class="module-desc">Azure API</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">📐</span>
+                        <div class="module-text">
+                            <span class="module-name">TextEmbedder</span>
+                            <span class="module-desc">Embeddings</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔗</span>
+                        <div class="module-text">
+                            <span class="module-name">VscMcpClient</span>
+                            <span class="module-desc">MCP Client</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">📦</span>
+                        <div class="module-text">
+                            <span class="module-name">BuiltinMcpClient</span>
+                            <span class="module-desc">Built-in Tools</span>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <span class="module-icon">🔧</span>
+                        <div class="module-text">
+                            <span class="module-name">builtinTools/</span>
+                            <span class="module-desc">30+ Tools</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="connector"><span class="arrow">▼</span></div>
+
+            <!-- Infrastructure Layer -->
+            <div class="layer layer-infra">
+                <div class="layer-badge">🏗️</div>
+                <div class="layer-info">
+                    <div class="layer-title">Infrastructure</div>
+                    <div class="layer-path">main/lib/</div>
+                </div>
+                <div class="infra-sections">
+                    <div class="infra-section">
+                        <div class="infra-section-title">Data Persistence</div>
+                        <div class="infra-modules">
+                            <div class="infra-module">📋 ChatSessionManager</div>
+                            <div class="infra-module">📄 ChatSessionFileOps</div>
+                            <div class="infra-module">📁 pathUtils</div>
+                        </div>
+                    </div>
+                    <div class="infra-section">
+                        <div class="infra-section-title">Memory System (mem0)</div>
+                        <div class="infra-modules">
+                            <div class="infra-module">🧠 mem0-core</div>
+                            <div class="infra-module">🔌 kosmos-adapters</div>
+                            <div class="infra-module">💾 SqliteVectorStore</div>
+                        </div>
+                    </div>
+                    <div class="infra-section">
+                        <div class="infra-section-title">Utilities & Security</div>
+                        <div class="infra-modules">
+                            <div class="infra-module">📝 unifiedLogger</div>
+                            <div class="infra-module">🛡️ security</div>
+                            <div class="infra-module">📊 analytics</div>
+                            <div class="infra-module">⏹️ cancellation</div>
+                        </div>
+                    </div>
+                    <div class="infra-section">
+                        <div class="infra-section-title">Storage</div>
+                        <div class="infra-modules">
+                            <div class="infra-module">🗄️ better-sqlite3</div>
+                            <div class="infra-module">📐 sqlite-vec</div>
+                            <div class="infra-module">📋 JSON Files</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

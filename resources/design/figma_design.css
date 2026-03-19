@@ -1,0 +1,208 @@
+/* Page header */
+/* Semantic/Ramp/Page header */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 650;
+font-size: 28px;
+line-height: 32px;
+color: #322D29;
+font-variation-settings: 'opsz' 36;
+
+
+
+/* Section header */
+/* Semantic/Ramp/Section header */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 650;
+font-size: 20px;
+line-height: 26px;
+color: #322D29;
+font-variation-settings: 'opsz' 36;
+
+
+
+/* Sub section header */
+/* Semantic/Ramp/Subsection header */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 650;
+font-size: 18px;
+line-height: 26px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+
+/* Reading body */
+/* Semantic/Ramp/Reading body */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 16px;
+line-height: 26px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+/* Item header */
+/* Semantic/Ramp/Item header */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 650;
+font-size: 14px;
+line-height: 20px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+/* Item body */
+/* Semantic/Ramp/Item body */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 14px;
+line-height: 20px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+
+/* Meta data */
+/* Semantic/Ramp/Metadata */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 12px;
+line-height: 16px;
+color: #322D29;
+font-variation-settings: 'opsz' 5;
+
+
+/* Legal */
+/* Semantic/Ramp/Metadata */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 12px;
+line-height: 16px;
+color: #322D29;
+font-variation-settings: 'opsz' 5;
+
+
+
+/* Control */
+/* Semantic/Label/Control */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 14px;
+line-height: 20px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+
+/* Button */
+/* Semantic/Label/Button */
+font-family: 'Segoe Sans';
+font-style: normal;
+font-weight: 410;
+font-size: 14px;
+line-height: 20px;
+color: #322D29;
+font-variation-settings: 'opsz' 10.5;
+
+
+
+
+
+======================================
+
+
+
+
+/* Agent Message */
+
+==
+/* Agent_header_large */
+font-family: 'Test Tiempos Text';
+font-style: normal;
+font-weight: 400;
+font-size: 32px;
+line-height: 42px;
+color: #322D29;
+
+==
+
+/* Agent_header */
+font-family: 'Test Tiempos Text';
+font-style: normal;
+font-weight: 400;
+font-size: 20px;
+line-height: 26px;
+font-feature-settings: 'calt' off;
+color: #322D29;
+==
+
+/* Agent_text */
+font-family: 'Test Tiempos Text';
+font-style: normal;
+font-weight: 400;
+font-size: 15px;
+line-height: 20px;
+font-feature-settings: 'calt' off;
+color: #322D29;
+
+==
+
+/* Agent_text_bold */
+font-family: 'Test Tiempos Text';
+font-style: normal;
+font-weight: 600;
+font-size: 15px;
+line-height: 20px;
+font-feature-settings: 'calt' off;
+color: #322D29;
+
+======================================
+
+
+
+
+/* Background_1 */
+
+background: #FFFBF8;
+==
+/* Background_2 */
+background: #F8F4F1;
+==
+/* Background_0 */
+background: #FFFFFF;
+==
+/* Accent_1 */
+background: #A88C76;
+==
+
+
+======================================
+
+/* Container */
+
+/* Auto layout */
+display: flex;
+flex-direction: row;
+align-items: flex-start;
+padding: 16px 20px;
+gap: 10px;
+
+position: relative;
+width: 189px;
+height: 52px;
+
+/* Background_2 */
+background: #F8F4F1;
+border-radius: 20px;
+
+======================================
+

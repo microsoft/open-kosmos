@@ -1,0 +1,315 @@
+/* ===========================
+ Server Card Wrapper - new design system styles
+ replaces mcp.css in 's server-card-wrapper old styles
+ =========================== */
+
+/* Normal state */
+.server-card-wrapper {
+ box-sizing: border-box;
+ display: flex;
+ flex-direction: row;
+ width: 288px;
+ min-height: 88px;
+ height: auto;
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+ flex: none;
+ align-self: stretch;
+ flex-grow: 0;
+ cursor: pointer;
+ position: relative;
+ transition: background 0.2s ease, border 0.2s ease;
+}
+
+/* Hover state - hover when unselected */
+.server-card-wrapper:not(.selected):hover {
+ background: #F8F4F1;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* Selected state - keep light brown when selected */
+.server-card-wrapper.selected {
+ background: #F8F4F1;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* built-in server special styles - removed left side purple border */
+/* built-in server now in only via Built-in badge to identify */
+
+/* menu open state - keep high z-index for display dropdown menu */
+.server-card-wrapper.menu-open {
+ z-index: 1000;
+}
+
+/* ===========================
+ Server Card inner - keep transparent
+ =========================== */
+.server-card {
+ border: none;
+ background: transparent;
+ width: 100%;
+}
+
+.server-card-header {
+ background: transparent;
+ padding: 1.25rem;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ width: 100%;
+}
+
+.server-info {
+ display: flex;
+ align-items: center;
+ gap: 0.75rem;
+ flex: 1;
+ min-width: 0;
+}
+
+.server-name-group {
+ display: flex;
+ flex-direction: column;
+ gap: 0.25rem;
+ flex: 1;
+ min-width: 0;
+}
+
+.server-title-row {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+}
+
+.server-name {
+ margin: 0;
+ /* Semantic/Ramp/Item header */
+ font-style: normal;
+ font-weight: 650;
+ font-size: 14px;
+ line-height: 20px;
+ /* identical to box height, or 143% */
+ color: #272320;
+ font-variation-settings: 'opsz' 10.5;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.builtin-badge {
+ display: inline-flex;
+ align-items: center;
+ padding: 1px 5px;
+ background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+ color: white;
+ font-size: 0.55rem;
+ font-weight: 600;
+ border-radius: 3px;
+ line-height: 1.2;
+ white-space: nowrap;
+ vertical-align: super;
+ position: relative;
+ top: -0.25em;
+}
+
+/* Server Version Badge - with skill-card-version consistent */
+.server-version-badge {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px 8px;
+ gap: 4px;
+ background: rgba(224, 158, 102, 0.3);
+ border-radius: 8px;
+ font-style: normal;
+ font-weight: 600;
+ font-size: 12px;
+ line-height: 16px;
+ color: #6B3900;
+ font-variation-settings: 'opsz' 10.5;
+ flex: none;
+ align-self: flex-start;
+ white-space: nowrap;
+ box-shadow: none;
+}
+
+/* Server Source Badge - with skill-card-version consistent */
+.server-source-badge {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px 8px;
+ gap: 4px;
+ background: rgba(224, 158, 102, 0.3);
+ border-radius: 8px;
+ font-style: normal;
+ font-weight: 600;
+ font-size: 12px;
+ line-height: 16px;
+ color: #6B3900;
+ font-variation-settings: 'opsz' 10.5;
+ flex: none;
+ align-self: flex-start;
+ white-space: nowrap;
+ box-shadow: none;
+}
+
+.server-status-group {
+ display: flex;
+ align-items: center;
+ gap: 0.5rem;
+}
+
+/* Server Meta Group - second row displays version and source */
+.server-meta-group {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+}
+
+.server-status {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px 8px;
+ gap: 4px;
+ height: 24px;
+ border-radius: 8px;
+ font-style: normal;
+ font-weight: 600;
+ font-size: 12px;
+ line-height: 16px;
+ font-variation-settings: 'opsz' 10.5;
+ flex: none;
+ align-self: flex-start;
+ white-space: nowrap;
+ box-shadow: none;
+}
+
+.server-status.connected {
+ background: rgba(34, 197, 94, 0.3);
+ color: #16a34a;
+}
+
+.server-status.disconnected {
+ background: rgba(107, 114, 128, 0.3);
+ color: #4b5563;
+}
+
+.server-status.connecting {
+ background: rgba(251, 191, 36, 0.3);
+ color: #d97706;
+}
+
+.server-status.error {
+ background: rgba(239, 68, 68, 0.3);
+ color: #dc2626;
+}
+
+.server-status.disconnecting {
+ background: rgba(251, 191, 36, 0.3);
+ color: #d97706;
+}
+
+/* Badge / Medium - use unified 's badge styles */
+.tools-badge {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ padding: 4px 8px;
+ gap: 4px;
+ 
+ background: rgba(224, 158, 102, 0.3);
+ border-radius: 8px;
+ 
+ font-style: normal;
+ font-weight: 600;
+ font-size: 12px;
+ line-height: 16px;
+ color: #6B3900;
+ font-variation-settings: 'opsz' 10.5;
+ 
+ flex: none;
+ align-self: flex-start;
+ white-space: nowrap;
+ box-shadow: none;
+}
+
+.error-indicator {
+ color: rgb(239, 68, 68);
+ cursor: help;
+ font-size: 1rem;
+}
+
+.status-indicator {
+ width: 8px;
+ height: 8px;
+ border-radius: 50%;
+ flex-shrink: 0;
+}
+
+.status-indicator.connected {
+ background: rgb(34, 197, 94);
+}
+
+.status-indicator.disconnected {
+ background: rgb(107, 114, 128);
+}
+
+.status-indicator.connecting {
+ background: rgb(251, 191, 36);
+ animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-indicator.error {
+ background: rgb(239, 68, 68);
+}
+
+@keyframes pulse {
+ 0%, 100% {
+ opacity: 1;
+ }
+ 50% {
+ opacity: 0.5;
+ }
+}
+
+/* Server menu container */
+.server-menu-container {
+ position: relative;
+ opacity: 0;
+ transition: opacity 0.2s ease;
+}
+
+.server-card:hover .server-menu-container {
+ opacity: 1;
+}
+
+.server-menu-container.menu-open {
+ opacity: 1;
+}
+
+.server-menu-btn {
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ padding: 0px;
+ border: none;
+ background: none;
+ cursor: pointer;
+ font-size: 16px;
+ color: #6b7280;
+ transition: opacity 0.2s ease, transform 0.2s ease;
+ width: 20px;
+ height: 20px;
+ font-weight: bold;
+}
+
+.server-menu-btn:hover {
+ opacity: 0.8;
+ transform: scale(1.1);
+ background: rgba(0, 0, 0, 0.08);
+ border-radius: 4px;
+}

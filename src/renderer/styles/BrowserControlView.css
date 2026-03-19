@@ -1,0 +1,247 @@
+/* ===========================
+ BrowserControl settings page styles
+ Contains styles for BrowserControlView, HeaderView, and ContentView
+ =========================== */
+
+/* ===========================
+ main container
+ =========================== */
+
+.browser-control-view {
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ background: #FFFFFF;
+}
+
+/* ===========================
+ content area layout
+ =========================== */
+
+.browser-control-content {
+ max-width: 56rem;
+ margin-left: auto;
+ margin-right: auto;
+ width: 100%;
+}
+
+/* ===========================
+ settings form
+ =========================== */
+
+.browser-control-form {
+ transition: all 0.3s ease-in-out;
+ max-height: 2000px;
+ opacity: 1;
+}
+
+.browser-control-form-inner {
+ padding: 0 1.5rem 1.5rem 1.5rem;
+}
+
+.browser-control-form-inner > * + * {
+ margin-top: 1.5rem;
+}
+
+/* ===========================
+ settings card
+ =========================== */
+
+.browser-control-card {
+ background-color: white;
+ border-radius: 0.75rem;
+ padding: 8px;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ display: flex;
+ flex-direction: column;
+ gap: 8px;
+}
+
+/* ===========================
+ settings item
+ =========================== */
+
+.browser-control-setting-item {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 10px 4px;
+}
+
+.browser-control-setting-item .setting-label-container {
+ flex: 1;
+}
+
+.browser-control-setting-item .setting-label {
+ display: block;
+ color: #272320;
+ font-size: 14px;
+ font-weight: 400;
+}
+
+.browser-control-setting-item .setting-sublabel {
+ display: block;
+ color: #6b7280;
+ font-size: 12px;
+ font-weight: 400;
+ margin-top: 2px;
+}
+
+/* ===========================
+ toggle component
+ =========================== */
+
+.browser-control-toggle-wrapper {
+ position: relative;
+ display: inline-flex;
+ align-items: center;
+ cursor: pointer;
+ margin-left: 1rem;
+}
+
+.browser-control-toggle-wrapper input {
+ position: absolute;
+ width: 1px;
+ height: 1px;
+ padding: 0;
+ margin: -1px;
+ overflow: hidden;
+ clip: rect(0, 0, 0, 0);
+ white-space: nowrap;
+ border-width: 0;
+}
+
+.browser-control-toggle-track {
+ width: 36px;
+ height: 20px;
+ background-color: #e5e7eb;
+ border-radius: 9999px;
+ position: relative;
+ transition: background-color 0.2s;
+}
+
+.browser-control-toggle-track::after {
+ content: '';
+ position: absolute;
+ top: 2px;
+ left: 2px;
+ width: 16px;
+ height: 16px;
+ background-color: white;
+ border: 1px solid #d1d5db;
+ border-radius: 9999px;
+ transition: transform 0.2s;
+}
+
+.browser-control-toggle-wrapper input:checked + .browser-control-toggle-track {
+ background-color: #272320;
+}
+
+.browser-control-toggle-wrapper input:checked + .browser-control-toggle-track::after {
+ transform: translateX(100%);
+ border-color: white;
+}
+
+.browser-control-toggle-wrapper:hover input:checked + .browser-control-toggle-track {
+ background-color: #3d3935;
+}
+
+/* Disabled state */
+.browser-control-toggle-wrapper input:disabled + .browser-control-toggle-track {
+ opacity: 0.5;
+ cursor: not-allowed;
+}
+
+.browser-control-toggle-wrapper:has(input:disabled) {
+ cursor: not-allowed;
+}
+
+/* ===========================
+ inline progress bar (replaces button position)
+ =========================== */
+
+.browser-control-inline-progress {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-left: 1rem;
+}
+
+.browser-control-inline-progress-label {
+ font-size: 12px;
+ color: #6b7280;
+ white-space: nowrap;
+}
+
+.browser-control-inline-progress-bar-container {
+ width: 80px;
+ height: 6px;
+ background-color: #e5e7eb;
+ border-radius: 3px;
+ overflow: hidden;
+}
+
+.browser-control-inline-progress-bar {
+ height: 100%;
+ background-color: #272320;
+ border-radius: 3px;
+ transition: width 0.15s ease-out;
+}
+
+/* Indeterminate animation */
+.browser-control-inline-progress-bar-indeterminate {
+ width: 40%;
+ animation: browser-control-inline-progress-indeterminate 1s ease-in-out infinite;
+}
+
+@keyframes browser-control-inline-progress-indeterminate {
+ 0% {
+ transform: translateX(-100%);
+ }
+ 50% {
+ transform: translateX(150%);
+ }
+ 100% {
+ transform: translateX(-100%);
+ }
+}
+
+.browser-control-inline-progress-percent {
+ font-size: 12px;
+ color: #6b7280;
+ min-width: 32px;
+ text-align: right;
+}
+
+/* ===========================
+ Launch Button
+ =========================== */
+
+.browser-control-launch-btn {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 6px 16px;
+ font-size: 13px;
+ font-weight: 500;
+ color: #272320;
+ background-color: #f5f5f5;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 8px;
+ cursor: pointer;
+ transition: all 0.15s ease;
+ margin-left: 1rem;
+}
+
+.browser-control-launch-btn:hover:not(:disabled) {
+ background-color: #e8e8e8;
+}
+
+.browser-control-launch-btn:active:not(:disabled) {
+ background-color: #ddd;
+}
+
+.browser-control-launch-btn:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+}

@@ -1,0 +1,830 @@
+/* ===========================
+ ChatInput component styles
+ =========================== */
+
+/* Chat Input Container - New integrated design */
+.chat-input-container {
+ padding: 16px 24px 0 24px; /* top 16, bottom 0, left 24, right 24 */
+ /* Remove background, use parent component background color */
+ backdrop-filter: blur(12px);
+ /* remove top border for borderless design */
+ border-top: none;
+ /* Allow height to expand upward */
+ flex-shrink: 0;
+ min-height: auto;
+ /* ensure dropdown menu is not obscured */
+ position: relative;
+ overflow: visible;
+}
+
+/* Input Area - Contains textarea and button area */
+.input-area {
+ position: relative;
+ /* subtle background difference, blending into overall design */
+ background: #FFFFFF;
+ backdrop-filter: blur(8px);
+ /* darker border for enhanced floating effect */
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 20px;
+ /* enhanced shadow for floating feel */
+ box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+ /* ensure dropdown menu can overflow */
+ overflow: visible;
+ transition: all 0.2s ease;
+ /* Allow height to adapt to content */
+ min-height: auto;
+ min-width: 380px;
+ position: relative;
+}
+
+.input-area:focus-within {
+ border-color: #0ea5e9;
+ box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1), 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Textarea - Top section */
+.chat-textarea {
+ width: 100%;
+ resize: none;
+ border: none;
+ padding: 0 20px 0 20px;
+ margin: 16px 0 0 0;
+ font-size: 15px;
+ line-height: 1.6;
+ background: transparent;
+ color: #1a1a1a;
+ outline: none;
+ height: 72px; /* 3 lines of text height: 15px × 1.6 × 3 = 72px */
+ font-family: inherit;
+ /* Auto-resize based on content */
+ overflow-y: auto;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+}
+
+.chat-textarea::-webkit-scrollbar {
+ display: none;
+}
+
+.chat-textarea::placeholder {
+ color: #a3a3a3;
+}
+
+.chat-textarea:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+}
+
+/* Button Area - Bottom section */
+.button-area {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 12px 20px 16px 20px;
+ /* remove separator for borderless integrated design */
+ border-top: none;
+ /* use same transparent background as textarea, blend seamlessly */
+ background: transparent;
+ gap: 12px;
+}
+
+/* Left side buttons group */
+.button-area .attachment-button {
+ order: 1;
+}
+
+/* Model selector - now inside right-buttons-group */
+.model-selector {
+ order: 0;
+}
+
+/* Right side buttons group - contains voice input and send button */
+.right-buttons-group {
+ order: 3;
+ margin-left: auto;
+ display: flex;
+ align-items: center;
+ gap: 12px;
+}
+
+/* Voice input button - positioned between attachment buttons and right-side group */
+.voice-input-container {
+ order: 2;
+}
+
+/* Right side send button */
+.send-button {
+ /* No margin-left needed, parent group handles positioning */
+}
+
+/* Model Selector */
+.chat-input-container .model-selector {
+ position: relative;
+ flex: 0 0 auto;
+ width: 180px !important;
+ min-width: 40px;
+ /* ensure dropdown menu is at the highest level */
+ z-index: 1000;
+}
+
+.chat-input-container .model-button {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ padding: 8px 12px;
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 14px;
+ color: #374151;
+ backdrop-filter: blur(4px);
+ width: 180px !important;
+ min-width: 40px;
+ height: 40px;
+ min-height: 40px;
+}
+
+.model-button:hover:not(:disabled) {
+ background: rgba(240, 249, 255, 0.95);
+ border-color: #0ea5e9;
+ color: #0ea5e9;
+ transform: translateY(-1px);
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.model-button:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+}
+
+.model-icon {
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+}
+
+.model-name {
+ flex: 1;
+ text-align: left;
+ font-weight: 500;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+ width: 14px;
+ height: 14px;
+ flex-shrink: 0;
+ transition: transform 0.2s ease;
+}
+
+.dropdown-arrow.rotated {
+ transform: rotate(180deg);
+}
+
+/* Model Dropdown */
+.model-dropdown {
+ position: absolute;
+ bottom: calc(100% + 8px);
+ left: 0;
+ right: 0;
+ background: rgba(255, 255, 255, 0.98);
+ backdrop-filter: blur(16px);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 12px;
+ box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+ /* increase z-index to ensure above all elements */
+ z-index: 9999;
+ max-height: 320px;
+ overflow: hidden;
+ animation: dropdownSlideUp 0.2s ease-out;
+ /* ensure not clipped by parent container */
+ pointer-events: auto;
+}
+
+@keyframes dropdownSlideUp {
+ from {
+ opacity: 0;
+ transform: translateY(8px);
+ }
+ to {
+ opacity: 1;
+ transform: translateY(0);
+ }
+}
+
+.dropdown-header {
+ padding: 16px 20px 12px 20px;
+ font-size: 14px;
+ font-weight: 600;
+ color: #374151;
+ border-bottom: 1px solid rgba(229, 229, 229, 0.6);
+ background: rgba(248, 250, 252, 0.8);
+}
+
+.model-list {
+ max-height: 240px;
+ overflow-y: auto;
+ scrollbar-width: thin;
+ scrollbar-color: rgba(203, 213, 225, 0.8) transparent;
+}
+
+.model-list::-webkit-scrollbar {
+ width: 6px;
+}
+
+.model-list::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.model-list::-webkit-scrollbar-thumb {
+ background: rgba(203, 213, 225, 0.8);
+ border-radius: 3px;
+}
+
+/* Model Option */
+.model-option {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 12px 20px;
+ width: 100%;
+ background: transparent;
+ border: none;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ text-align: left;
+ gap: 12px;
+}
+
+.model-option:hover:not(:disabled) {
+ background: rgba(240, 249, 255, 0.8);
+}
+
+.model-option.selected {
+ background: rgba(240, 249, 255, 0.95);
+ color: #0ea5e9;
+}
+
+.model-option:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+}
+
+.model-info {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ gap: 6px;
+}
+
+/* ChatInput specific vertical layout styles - ensure distinction from model dropdowns in other files */
+.model-info.chat-input-vertical {
+ flex-direction: column;
+ align-items: flex-start;
+ justify-content: flex-start;
+ gap: 8px; /* increase spacing to emphasize vertical layout */
+}
+
+.model-info.chat-input-vertical .model-option-name {
+ width: 100%;
+ text-align: left;
+ line-height: 1.3;
+}
+
+.model-info.chat-input-vertical .model-badges {
+ width: 100%;
+ display: flex;
+ flex-wrap: wrap;
+ gap: 4px;
+ margin-top: 2px;
+}
+
+.model-option-name {
+ font-size: 14px;
+ font-weight: 500;
+ color: inherit;
+}
+
+.model-badges {
+ display: flex;
+ gap: 4px;
+ flex-wrap: wrap;
+}
+
+.badge {
+ font-size: 11px;
+ padding: 2px 6px;
+ border-radius: 4px;
+ font-weight: 500;
+ white-space: nowrap;
+}
+
+.badge.reasoning {
+ background: rgba(251, 191, 36, 0.15);
+ color: #d97706;
+}
+
+.badge.tools {
+ background: rgba(34, 197, 94, 0.15);
+ color: #059669;
+}
+
+.badge.files {
+ background: rgba(59, 130, 246, 0.15);
+ color: #2563eb;
+}
+
+.check-icon {
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+ color: #0ea5e9;
+}
+
+/* Attachment Button */
+.attachment-button {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 40px;
+ min-width: 40px;
+ height: 40px;
+ min-height: 40px;
+ padding: 0;
+ background: rgba(255, 255, 255, 0.95);
+ border: 1px solid rgba(203, 213, 225, 0.8);
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ backdrop-filter: blur(4px);
+ flex-shrink: 0;
+ color: #6b7280;
+}
+
+.attachment-button:hover:not(:disabled) {
+ background: rgba(240, 249, 255, 0.95);
+ border-color: #0ea5e9;
+ color: #0ea5e9;
+ transform: translateY(-1px);
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.attachment-button:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+}
+
+/* Disabled state when model doesn't support images */
+.attachment-button.disabled-no-support {
+ opacity: 0.4;
+ background: rgba(248, 250, 252, 0.8);
+ border-color: rgba(203, 213, 225, 0.5);
+ color: #9ca3af;
+ cursor: not-allowed;
+}
+
+.attachment-button.disabled-no-support:hover {
+ background: rgba(248, 250, 252, 0.8);
+ border-color: rgba(203, 213, 225, 0.5);
+ color: #9ca3af;
+ transform: none;
+ box-shadow: none;
+}
+
+/* Drag and Drop Styles */
+.chat-input-container.drag-over {
+ position: relative;
+}
+
+.chat-input-container.drag-over::before {
+ content: '';
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background-color: rgba(59, 130, 246, 0.1);
+ border: 2px dashed #3b82f6;
+ border-radius: 8px;
+ pointer-events: none;
+ z-index: 10;
+}
+
+.chat-input-container.drag-over::after {
+ content: 'Drop files here to attach';
+ position: absolute;
+ top: 50%;
+ left: 50%;
+ transform: translate(-50%, -50%);
+ background-color: rgba(59, 130, 246, 0.9);
+ color: white;
+ padding: 8px 16px;
+ border-radius: 6px;
+ font-size: 14px;
+ font-weight: 500;
+ pointer-events: none;
+ z-index: 11;
+ white-space: nowrap;
+}
+
+.attachment-icon {
+ width: 18px;
+ height: 18px;
+ flex-shrink: 0;
+}
+
+/* Attachments Area - new grid layout, now inside input-area internal */
+.attachments-area {
+ padding: 16px 20px 0 20px;
+ background: transparent;
+}
+
+.attachment-list {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 8px;
+ align-items: flex-start;
+}
+
+/* image attachment card - small previewable block */
+.attachment-item.image {
+ position: relative;
+ width: 48px;
+ height: 48px;
+ background: rgba(240, 249, 255, 0.9);
+ border: 1px solid rgba(186, 230, 253, 0.8);
+ border-radius: 8px;
+ backdrop-filter: blur(4px);
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.1);
+ overflow: hidden;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.attachment-item.image:hover {
+ transform: translateY(-2px);
+ box-shadow: 0 4px 16px rgba(14, 165, 233, 0.2);
+ border-color: rgba(14, 165, 233, 0.6);
+}
+
+.attachment-image-preview {
+ width: 100%;
+ height: 100%;
+ object-fit: cover;
+ border-radius: 6px;
+}
+
+.attachment-image-overlay {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: rgba(0, 0, 0, 0.5);
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ opacity: 0;
+ transition: opacity 0.2s ease;
+}
+
+.attachment-item.image:hover .attachment-image-overlay {
+ opacity: 1;
+}
+
+.attachment-image-name {
+ position: absolute;
+ bottom: 0;
+ left: 0;
+ right: 0;
+ background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+ color: white;
+ font-size: 10px;
+ font-weight: 500;
+ padding: 8px 6px 4px 6px;
+ text-align: center;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+}
+
+/* file attachment card - icon + file name 's small block */
+.attachment-item.file {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 6px 8px;
+ width: 48px;
+ height: 48px;
+ background: rgba(240, 249, 255, 0.8);
+ border: 1px solid rgba(186, 230, 253, 0.6);
+ border-radius: 8px;
+ backdrop-filter: blur(4px);
+ box-shadow: 0 2px 6px rgba(14, 165, 233, 0.1);
+ cursor: pointer;
+ transition: all 0.2s ease;
+ position: relative;
+}
+
+.attachment-item.file:hover {
+ transform: translateY(-2px);
+ box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+ border-color: rgba(14, 165, 233, 0.6);
+ background: rgba(240, 249, 255, 0.95);
+}
+
+.attachment-file-icon {
+ width: 16px;
+ height: 16px;
+ color: #0ea5e9;
+ flex-shrink: 0;
+ margin-bottom: 2px;
+}
+
+.attachment-file-info {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ text-align: center;
+ width: 100%;
+ overflow: hidden;
+}
+
+.attachment-name {
+ font-size: 9px;
+ font-weight: 500;
+ color: #374151;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ max-width: 100%;
+ line-height: 1.1;
+}
+
+.attachment-type {
+ display: none; /* hide file type, only show filename */
+}
+
+/* generic remove button - floating at top right */
+.attachment-remove {
+ position: absolute;
+ top: 4px;
+ right: 4px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 18px;
+ height: 18px;
+ padding: 0;
+ background: rgba(239, 68, 68, 0.9);
+ border: none;
+ border-radius: 50%;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ color: white;
+ opacity: 0;
+ transform: scale(0.8);
+ z-index: 10;
+}
+
+.attachment-item:hover .attachment-remove {
+ opacity: 1;
+ transform: scale(1);
+}
+
+.attachment-remove:hover {
+ background: rgba(220, 38, 38, 1);
+ transform: scale(1.1);
+}
+
+.attachment-remove svg {
+ width: 10px;
+ height: 10px;
+}
+
+/* image attachment special remove button styles */
+.attachment-item.image .attachment-remove {
+ background: rgba(0, 0, 0, 0.7);
+ backdrop-filter: blur(4px);
+}
+
+.attachment-item.image .attachment-remove:hover {
+ background: rgba(239, 68, 68, 0.9);
+}
+
+/* Cancel Button - copy send-button styles but use warning red */
+.send-button.cancel-button,
+.send-button:is(.cancel-button) {
+ background: #dc2626; /* prominent warning red */
+ color: white;
+}
+
+.send-button.cancel-button:hover:not(:disabled),
+.send-button:is(.cancel-button):hover:not(:disabled) {
+ background: #b91c1c; /* deeper red hover state */
+ transform: translateY(-1px);
+ box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+}
+
+.cancel-icon {
+ width: 16px; /* with send-icon consistent */
+ height: 16px;
+ flex-shrink: 0;
+}
+
+/* Send Button */
+.send-button {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ gap: 8px;
+ padding: 0;
+ width: 40px;
+ min-width: 40px;
+ height: 40px;
+ min-height: 40px;
+ background: #272320;
+ color: white;
+ border: none;
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ font-size: 14px;
+ font-weight: 500;
+ backdrop-filter: blur(8px);
+ box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.15);
+ flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+ background: #1a1613;
+ transform: translateY(-1px);
+ box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.send-button:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ transform: none;
+ box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.send-icon {
+ width: 16px;
+ height: 16px;
+ flex-shrink: 0;
+}
+
+/* Override existing input-container styles for new ChatInput */
+.chat-view .chat-input-container {
+ /* Override the existing input-container height */
+ height: auto;
+ flex-shrink: 0;
+}
+
+/* responsive adjustments */
+@media (max-width: 768px) {
+ /* reduce minimum width on small screens */
+ .input-area {
+ min-width: 280px;
+ }
+ 
+ .attachment-item.image {
+ width: 42px;
+ height: 42px;
+ }
+ 
+ .attachment-item.file {
+ width: 42px;
+ height: 42px;
+ padding: 4px 6px;
+ }
+ 
+ .attachment-file-icon {
+ width: 14px;
+ height: 14px;
+ }
+ 
+ .attachment-name {
+ font-size: 8px;
+ }
+ 
+ .attachment-type {
+ display: none;
+ }
+}
+
+/* very small screen - further reduce min-width */
+@media (max-width: 480px) {
+ .input-area {
+ min-width: 240px;
+ }
+ 
+ .chat-input-container {
+ padding: 12px 16px 0 16px;
+ }
+}
+
+/* High contrast mode adjustments */
+@media (prefers-contrast: high) {
+ .input-area {
+ border-color: #000;
+ }
+
+ .model-button {
+ border-color: #000;
+ }
+
+ .model-dropdown {
+ border-color: #000;
+ box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+ }
+}
+
+/* Reduced motion adjustments */
+@media (prefers-reduced-motion: reduce) {
+ .input-area,
+ .model-button,
+ .send-button,
+ .model-option,
+ .dropdown-arrow {
+ transition: none;
+ }
+
+ .model-dropdown {
+ animation: none;
+ }
+
+ .model-button:hover,
+ .send-button:hover {
+ transform: none;
+ }
+}
+
+/* ===========================
+ Mention Highlight styles
+ =========================== */
+
+/* Highlight layer - in textarea below */
+.mention-highlight-layer {
+ position: absolute;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ /* must be exactly consistent with .chat-textarea padding and margin */
+ padding: 0 20px 0 20px;
+ margin: 16px 0 0 0;
+ font-family: inherit;
+ /* explicitly specify same font size and line-height as .chat-textarea */
+ font-size: 15px;
+ line-height: 1.6;
+ white-space: pre-wrap;
+ word-wrap: break-word;
+ /* must match .chat-textarea scroll behavior */
+ overflow-y: auto;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+ pointer-events: none; /* do not intercept mouse events */
+ color: transparent; /* text is transparent */
+ z-index: 1;
+}
+
+/* hide highlight layer scrollbar (with textarea consistent) */
+.mention-highlight-layer::-webkit-scrollbar {
+ display: none;
+}
+
+/* Textarea - above highlight layer */
+.chat-textarea {
+ position: relative;
+ background: transparent; /* transparent background, showing highlights below */
+ z-index: 2;
+}
+
+/* Mention highlight mark */
+.mention-highlight {
+ background-color: rgba(0, 122, 204, 0.15); /* light blue background */
+ border-radius: 3px;
+ color: transparent; /* keep text transparent */
+ /* use box-shadow instead of ::before pseudo-element, to avoid layout impact */
+ box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.3);
+}
+
+/* Dark mode support */
+/* 🆕 Skill mention highlight - use purple/magenta to distinguish from blue 's @workspace mention */
+.skill-mention {
+ background-color: rgba(168, 85, 247, 0.15); /* purple background */
+ border-radius: 3px;
+ color: transparent; /* keep text transparent */
+ box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.3);
+}
+
+/* Dark mode support for skill mention */

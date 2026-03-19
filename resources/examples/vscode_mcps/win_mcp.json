@@ -1,0 +1,27 @@
+{
+	"servers": {
+		"fetch": {
+			"type": "stdio",
+			"command": "uvx",
+			"args": [
+				"mcp-server-fetch"
+			]
+		},
+		"haystack-search": {
+			"url": "http://localhost:13135/mcp/sse",
+			"type": "http"
+		},
+		"file-reader": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"C:\\Repo\\mcp.servers\\servers\\file_reader\\file_reader_server.py"
+			]
+		},
+		"chrome-mcp":{
+			"url": "http://127.0.0.1:12306/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}

@@ -1,0 +1,85 @@
+/* ===========================
+ MCP Tool List View styles
+ =========================== */
+
+.mcp-tool-list-view {
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ max-height: 100%;
+ overflow: hidden;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+}
+
+.tool-list-content {
+ flex: 1;
+ overflow-y: auto;
+ padding: 1rem;
+ padding-bottom: 3rem;
+ min-height: 0;
+}
+
+.tools-list {
+ display: flex;
+ flex-direction: column;
+ gap: 12px;
+}
+
+.tool-item {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 0.75rem;
+ padding: 0.75rem 1rem;
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ border-radius: 12px;
+ cursor: pointer;
+ transition: all 0.2s ease;
+}
+
+.tool-item:hover {
+ background: #F8F4F1;
+ border: 1px solid rgba(0, 0, 0, 0.12);
+ box-shadow: none;
+}
+
+.tool-item.selected {
+ background: #F8F4F1;
+ border: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.tool-item-icon {
+ font-size: 1rem;
+ flex-shrink: 0;
+ color: rgb(107, 114, 128);
+}
+
+.tool-item-content {
+ flex: 1;
+ min-width: 0;
+}
+
+.tool-item-header {
+ display: flex;
+ align-items: center;
+ gap: 0.5rem;
+ margin-bottom: 0.25rem;
+}
+
+.tool-item-name {
+ font-size: 0.875rem;
+ font-weight: 600;
+ color: rgb(55, 65, 81);
+ word-break: break-word;
+ flex: 1;
+}
+
+.tool-item-explore-icon {
+ flex-shrink: 0;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ opacity: 0.6;
+}

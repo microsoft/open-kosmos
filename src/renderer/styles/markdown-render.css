@@ -1,0 +1,1038 @@
+/**
+ * Markdown rendering style specification
+ * converted from designer Figma design draft (.vscode/markdown-html.css)
+ * 
+ * design specification: 
+ * - font: Segoe Sans (body text), Cascadia Code (code)
+ * - primary color: #322D29 (dark text), #F8F4F1 (light background)
+ * - spacing system: 8px (paragraph), 16px (block), 28px (section)
+ */
+
+/* ============================================
+ base container styles
+ ============================================ */
+.markdown-body {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ /* remove gap, all has spacing by element 's margin-top control */
+ 
+ max-width: 696px;
+ width: 100%;
+ 
+ /* 🔥 key: prevent content expand large container causing horizontal scroll bar
+ table monospace content will in .table-wrapper layer level via overflow-x: auto handle */
+ overflow-x: hidden;
+ 
+ font-size: 16px;
+ line-height: 26px;
+ font-weight: 410;
+ color: #322D29;
+ 
+ /* optimize text rendering */
+ -webkit-font-smoothing: antialiased;
+ -moz-osx-font-smoothing: grayscale;
+}
+
+/* dark theme */
+/* ============================================
+ title styles H1 - H6
+ ============================================ */
+
+/* H1 - main title */
+.markdown-body h1 {
+ font-weight: 620;
+ font-size: 28px;
+ line-height: 32px;
+ color: #322D29;
+ 
+ /* spacing specification: heading margin-top 28px, other directions are 0 */
+ margin: 28px 0 0 0;
+ padding: 0;
+ 
+ /* first H1 no need for top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* H2 - second-level title */
+.markdown-body h2 {
+ font-weight: 620;
+ font-size: 20px;
+ line-height: 26px;
+ color: #322D29;
+ 
+ /* spacing specification: heading margin-top 28px, other directions are 0 */
+ margin: 28px 0 0 0;
+ padding: 0;
+ 
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* H3 - third-level title */
+.markdown-body h3 {
+ font-weight: 620;
+ font-size: 16px;
+ line-height: 26px;
+ color: #322D29;
+ 
+ /* spacing specification: heading margin-top 28px, other directions are 0 */
+ margin: 28px 0 0 0;
+ padding: 0;
+ 
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* H4 - H6 use with H3 same styles */
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+ font-weight: 620;
+ font-size: 16px;
+ line-height: 26px;
+ color: #322D29;
+ 
+ /* spacing specification: heading margin-top 28px, other directions are 0 */
+ margin: 28px 0 0 0;
+ padding: 0;
+ 
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* dark theme heading */
+.markdown-body/* ============================================
+ paragraph styles
+ ============================================ */
+.markdown-body p {
+ font-weight: 410;
+ font-size: 16px;
+ line-height: 26px;
+ color: #322D29;
+ 
+ /* spacing specification: paragraph margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ padding: 0;
+ 
+ /* first paragraph does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+.markdown-body/* ============================================
+ emphasis styles
+ ============================================ */
+.markdown-body strong,
+.markdown-body b {
+ font-weight: 620;
+}
+
+.markdown-body em,
+.markdown-body i {
+ font-style: italic;
+}
+
+.markdown-body del,
+.markdown-body s {
+ text-decoration: line-through;
+ opacity: 0.7;
+}
+
+/* ============================================
+ link styles
+ ============================================ */
+.markdown-body a {
+ color: #0066CC;
+ text-decoration: none;
+ 
+ &:hover {
+ text-decoration: underline;
+ }
+ 
+ &:visited {
+ color: #551A8B;
+ }
+}
+
+/* ============================================
+ list styles
+ ============================================ */
+
+/* unordered list */
+.markdown-body ul {
+ /* spacing specification: list margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ padding: 0;
+ padding-left: 27px;
+ 
+ list-style: none;
+ 
+ /* first list does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+.markdown-body ul > li {
+ position: relative;
+ padding-left: 10px;
+ /* list item between interval only is 8px, none other spacing */
+ margin: 8px 0 0 0;
+ padding-top: 0;
+ padding-bottom: 0;
+ 
+ font-weight: 410;
+ font-size: 16px;
+ line-height: 26px;
+ 
+ /* first list item does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+ 
+ &::before {
+ content: '•';
+ position: absolute;
+ left: -17px;
+ font-weight: 620;
+ color: #322D29;
+ }
+}
+
+.markdown-body/* ordered list */
+.markdown-body ol {
+ /* spacing specification: list margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ padding: 0;
+ padding-left: 33px;
+ 
+ list-style: none;
+ counter-reset: list-counter;
+ 
+ /* first list does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+.markdown-body ol > li {
+ position: relative;
+ padding-left: 8px;
+ /* list item between interval only is 8px, none other spacing */
+ margin: 8px 0 0 0;
+ padding-top: 0;
+ padding-bottom: 0;
+ counter-increment: list-counter;
+ 
+ font-weight: 410;
+ font-size: 16px;
+ line-height: 26px;
+ 
+ /* first list item does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+ 
+ &::before {
+ content: counter(list-counter) '.';
+ position: absolute;
+ left: -25px;
+ width: 22px;
+ text-align: right;
+ font-weight: 410;
+ color: #322D29;
+ }
+}
+
+.markdown-body/* nested list */
+.markdown-body ul ul,
+.markdown-body ul ol,
+.markdown-body ol ul,
+.markdown-body ol ol {
+ margin-top: 8px;
+}
+
+/* emphasis text in list items */
+.markdown-body li strong {
+ font-weight: 620;
+}
+
+/* ============================================
+ code rendering styles - unified management
+ ============================================
+ 
+ this section manages all code-related styles:
+ 1. inline code (inline-code) - `code` single row, text inside use
+ 2. fenced code block (code-block) - ``` or ~~~ multi-line, can specify language
+ 
+ design specification: 
+ - font: Cascadia Code / var(--font-mono)
+ - inline code: light semi-transparent background, dark text
+ - code block: dark background (oneDark theme), light text
+*/
+
+/* --- CSS variable define --- */
+:root {
+ /* inline code color - light mode */
+ --inline-code-bg: #EDD5C4;
+ --inline-code-text: #322D29;
+ 
+ /* inline code color - dark mode */
+ --inline-code-bg-dark: rgba(255, 255, 255, 0.12);
+ --inline-code-text-dark: #E2DDD9;
+ 
+ /* code block color (oneDark theme) */
+ --code-block-bg: rgb(40, 44, 52);
+ --code-block-text: rgb(171, 178, 191);
+ 
+ /* code block syntax highlighting colors */
+ --code-keyword: #C586C0;
+ --code-string: #CE9178;
+ --code-comment: #6A9955;
+ --code-function: #DCDCAA;
+ --code-number: #B5CEA8;
+ --code-operator: #D4D4D4;
+}
+
+/* --- 1. inline code styles (Inline Code) --- */
+
+/* inline code base styles */
+.inline-code {
+ font-family: var(--font-mono);
+ font-size: 0.875em;
+ font-weight: 400;
+ line-height: 1.4;
+ 
+ /* light mode styles */
+ background-color: var(--inline-code-bg);
+ color: var(--inline-code-text);
+ 
+ /* padding and border-radius */
+ padding: 0.125em 0.375em;
+ border-radius: 4px;
+ 
+ /* prevent wrapping, keep in single line */
+ white-space: nowrap;
+ 
+ /* vertical alignment */
+ vertical-align: baseline;
+}
+
+/* markdown-body inside inline code (non-code block inside code) */
+.markdown-body code:not(pre code):not(.code-block-wrapper code) {
+ font-family: var(--font-mono);
+ font-size: 0.875em;
+ font-weight: 400;
+ line-height: 1.4;
+ 
+ background-color: var(--inline-code-bg);
+ color: var(--inline-code-text);
+ 
+ padding: 0.125em 0.375em;
+ border-radius: 4px;
+ white-space: nowrap;
+}
+
+.markdown-body/* --- 2. fenced code block styles (Code Block) --- */
+
+/* code block outer wrapper */
+.code-block-wrapper {
+ /* layout */
+ display: block;
+ width: 100%;
+ max-width: 100%;
+ min-width: 0;
+ 
+ /* spacing */
+ margin: 0.5rem 0;
+ 
+ /* border-radius */
+ border-radius: 0.375rem;
+ 
+ /* horizontal scroll */
+ overflow-x: auto;
+ overflow-y: hidden;
+ 
+ /* hide scrollbar but keep functionality */
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+}
+
+.code-block-wrapper::-webkit-scrollbar {
+ display: none;
+}
+
+/* code block content container (SyntaxHighlighter generated 's div) */
+.code-block-wrapper > div {
+ /* layout */
+ display: block !important;
+ min-width: fit-content !important;
+ 
+ /* color - force override SyntaxHighlighter inline styles */
+ background: var(--code-block-bg) !important;
+ color: var(--code-block-text) !important;
+ 
+ /* font */
+ font-family: var(--font-mono) !important;
+ font-size: 0.875rem !important;
+ line-height: 1.5 !important;
+ 
+ /* padding and border-radius */
+ padding: 1em !important;
+ margin: 0 !important;
+ border-radius: 0.375rem !important;
+ 
+ /* text rendering optimization */
+ text-shadow: rgba(0, 0, 0, 0.3) 0px 1px !important;
+ direction: ltr !important;
+ text-align: left !important;
+ 
+ /* preserve code formatting */
+ white-space: pre !important;
+ word-spacing: normal !important;
+ word-break: normal !important;
+ tab-size: 2 !important;
+ hyphens: none !important;
+ 
+ /* internal scroll */
+ overflow: auto !important;
+}
+
+/* code block inside code element */
+.code-block-wrapper code {
+ /* layout */
+ display: block !important;
+ 
+ /* preserve code formatting */
+ white-space: pre !important;
+ word-wrap: normal !important;
+ overflow-wrap: normal !important;
+ word-break: normal !important;
+ 
+ /* inherit color, do not override */
+ color: inherit !important;
+ background: transparent !important;
+}
+
+/* code block text selection styles - ensure in dark background top can visible */
+.code-block-wrapper ::selection,
+.code-block-wrapper code ::selection,
+.code-block-wrapper span ::selection {
+ background-color: rgba(56, 139, 253, 0.4) !important;
+ color: #ffffff !important;
+ text-shadow: none !important;
+}
+
+.code-block-wrapper ::-moz-selection,
+.code-block-wrapper code ::-moz-selection,
+.code-block-wrapper span ::-moz-selection {
+ background-color: rgba(56, 139, 253, 0.4) !important;
+ color: #ffffff !important;
+ text-shadow: none !important;
+}
+
+/* code block pre element styles */
+.code-block-pre {
+ /* reset default styles */
+ margin: 0;
+ padding: 0;
+ 
+ /* inherit background and color */
+ background: transparent;
+ color: inherit;
+}
+
+/* pre wrapper (non-code block) */
+.pre-wrapper {
+ max-width: 100%;
+ min-width: 0;
+ overflow: hidden;
+}
+
+/* --- 3. streaming rendering special handling --- */
+
+/* code block in streaming message */
+.streaming-v2-message .code-block-wrapper {
+ /* inherit base styles, only add transition effects */
+ transition: opacity 0.1s ease-out;
+}
+
+.streaming-v2-message .code-block-wrapper > div {
+ min-width: fit-content;
+}
+
+.streaming-v2-message .code-block-wrapper code {
+ display: block;
+ white-space: pre !important;
+ word-wrap: normal !important;
+ overflow-wrap: normal !important;
+}
+
+/* --- 4. markdown-body inside code block styles --- */
+
+/* code block styles consistent with design spec */
+.markdown-body pre {
+ margin: 8px 0 0 0;
+ padding: 0;
+ background: var(--code-block-bg);
+ border-radius: 0.5rem;
+ overflow: hidden;
+}
+
+.markdown-body pre:first-child {
+ margin-top: 0;
+}
+
+.markdown-body pre code {
+ display: block;
+ padding: 1em;
+ 
+ font-family: var(--font-mono);
+ font-size: 0.875rem;
+ line-height: 1.5;
+ font-weight: 400;
+ 
+ color: var(--code-block-text);
+ 
+ overflow-x: auto;
+ white-space: pre;
+}
+
+/* code block scrollbar styles */
+.markdown-body pre code::-webkit-scrollbar {
+ height: 3px;
+}
+
+.markdown-body pre code::-webkit-scrollbar-track {
+ background: transparent;
+}
+
+.markdown-body pre code::-webkit-scrollbar-thumb {
+ background: rgba(255, 255, 255, 0.4);
+ border-radius: 10px;
+}
+
+/* code block header component (optional, for displaying language and copy button) */
+.markdown-body pre .code-header {
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 12px 16px;
+ border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.markdown-body pre .code-language {
+ font-size: 14px;
+ line-height: 20px;
+ font-weight: 410;
+ color: #B3ADA8;
+}
+
+.markdown-body pre .code-copy {
+ display: flex;
+ align-items: center;
+ gap: 4px;
+ font-size: 14px;
+ line-height: 20px;
+ font-weight: 410;
+ color: #B3ADA8;
+ cursor: pointer;
+ background: none;
+ border: none;
+ padding: 0;
+}
+
+.markdown-body pre .code-copy:hover {
+ color: #E2DDD9;
+}
+
+/* ============================================
+ blockquote styles
+ ============================================ */
+.markdown-body blockquote {
+ /* spacing specification: blockquote margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ padding: 12px 16px;
+ padding-left: 20px;
+ 
+ background: #F8F4F1;
+ border-left: 4px solid #DAC6B7;
+ border-radius: 0 12px 12px 0;
+ 
+ /* first blockquote does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+ 
+ p {
+ margin: 0;
+ }
+}
+
+.markdown-body/* ============================================
+ table styles
+ ============================================ */
+.markdown-body table {
+ width: 100%;
+ /* spacing specification: table margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ 
+ border-collapse: separate;
+ border-spacing: 0;
+ 
+ border: 1px solid #DAC6B7;
+ border-radius: 12px;
+ overflow: hidden;
+ 
+ /* 🔥 use table-layout: auto let column width based on content auto-fit */
+ table-layout: auto;
+ 
+ /* first table does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* table container - support horizontal scroll, prevent long content overflow */
+.markdown-body .table-wrapper {
+ width: 100%;
+ /* 🔥 enabled horizontal scroll, prevent table overflow message container */
+ overflow-x: auto;
+ /* spacing specification: table container margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ 
+ /* table container border styles */
+ border: 1px solid #DAC6B7;
+ border-radius: 12px;
+ 
+ /* first table container does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+ 
+ table {
+ margin: 0;
+ border: none;
+ border-radius: 0;
+ /* 🔥 use auto layout let column width based on content auto-fit */
+ table-layout: auto;
+ width: 100%;
+ }
+}
+
+/* table row */
+.markdown-body tr {
+ /* table row has no special styles */
+}
+
+/* table header */
+.markdown-body thead {
+ background: #F6E8DD;
+}
+
+/* table header cell */
+.markdown-body th {
+ padding: 12px;
+ 
+ font-size: inherit;
+ line-height: inherit;
+ font-weight: 620;
+ color: #322D29;
+ text-align: left;
+ 
+ /* table header cell background */
+ background: #F6E8DD;
+ 
+ /* border styles: right border and bottom border (0 1px 1px 0) */
+ border-top: 0;
+ border-left: 0;
+ border-bottom: 1px solid #EBDBCE;
+ border-right: 1px solid #EBDBCE;
+ 
+ /* 🔥 cell no wrap, long content via table horizontal scroll bar display */
+ white-space: nowrap;
+ 
+ /* last column no right border */
+ &:last-child {
+ border-right: 0;
+ }
+}
+
+/* content cell */
+.markdown-body td {
+ padding: 12px;
+ 
+ font-size: inherit;
+ line-height: inherit;
+ font-weight: 410;
+ color: #322D29;
+ 
+ /* content cell background */
+ background: rgba(255, 255, 255, 0.25);
+ 
+ /* border styles: right border and bottom border (0 1px 1px 0) */
+ border-top: 0;
+ border-left: 0;
+ border-bottom: 1px solid #EBDBCE;
+ border-right: 1px solid #EBDBCE;
+ 
+ /* 🔥 cell no wrap, long content via table horizontal scroll bar display */
+ white-space: nowrap;
+ 
+ /* last column no right border */
+ &:last-child {
+ border-right: 0;
+ }
+}
+
+/* table first column bold */
+.markdown-body td:first-child {
+ font-weight: 620;
+}
+
+/* last row no bottom border */
+.markdown-body tr:last-child td {
+ border-bottom: 0;
+}
+
+/* last row header also no bottom border (if header is last row) */
+.markdown-body tr:last-child th {
+ border-bottom: 0;
+}
+
+/* dark theme table */
+.markdown-body.markdown-body.markdown-body.markdown-body.markdown-body/* ============================================
+ divider styles
+ ============================================ */
+.markdown-body hr {
+ /* spacing specification: divider margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ padding: 0;
+ 
+ border: none;
+ border-top: 1px solid rgba(0, 0, 0, 0.1);
+ 
+ height: 0;
+ 
+ /* first divider does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+.markdown-body/* ============================================
+ image styles
+ ============================================ */
+.markdown-body img {
+ max-width: 100%;
+ height: auto;
+ 
+ /* spacing specification: image margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ border-radius: 8px;
+ 
+ display: block;
+ 
+ /* first image does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+/* ============================================
+ task list styles
+ ============================================ */
+.markdown-body ul.task-list {
+ padding-left: 0;
+}
+
+.markdown-body .task-list-item {
+ list-style: none;
+ padding-left: 28px;
+ position: relative;
+ 
+ &::before {
+ content: none;
+ }
+}
+
+.markdown-body .task-list-item input[type="checkbox"] {
+ position: absolute;
+ left: 0;
+ top: 3px;
+ 
+ width: 20px;
+ height: 20px;
+ 
+ margin: 0;
+ cursor: pointer;
+ 
+ /* custom checkbox appearance */
+ appearance: none;
+ -webkit-appearance: none;
+ 
+ background: #FFFFFF;
+ border: 2px solid #DAC6B7;
+ border-radius: 9999px;
+ 
+ &:checked {
+ background: #272320;
+ border-color: #272320;
+ 
+ /* check icon */
+ &::after {
+ content: '✓';
+ position: absolute;
+ left: 50%;
+ top: 50%;
+ transform: translate(-50%, -50%);
+ color: #E2DDD9;
+ font-size: 12px;
+ font-weight: bold;
+ }
+ }
+}
+
+
+
+/* ============================================
+ user message styles
+ ============================================ */
+.markdown-body.user-message {
+ align-items: flex-end;
+ padding-left: 48px;
+}
+
+.markdown-body.user-message .message-bubble {
+ display: inline-block;
+ padding: 16px 20px;
+ 
+ background: #F8F4F1;
+ border-radius: 20px;
+ 
+ max-width: 100%;
+}
+
+.markdown-body.user-message p {
+ font-size: 14px;
+ line-height: 20px;
+ font-weight: 410;
+ color: #272320;
+}
+
+/* ============================================
+ MCP tool call card styles
+ ============================================ */
+.markdown-body .tool-card {
+ box-sizing: border-box;
+ 
+ display: flex;
+ flex-direction: row;
+ justify-content: space-between;
+ align-items: center;
+ padding: 10px 16px;
+ gap: 8px;
+ 
+ width: 100%;
+ 
+ background: #FFFFFF;
+ border: 1px solid rgba(0, 0, 0, 0.1);
+ border-radius: 12px;
+ 
+ /* spacing specification: tool card margin-top 8px, other directions are 0 */
+ margin: 8px 0 0 0;
+ 
+ /* first tool card does not need top spacing */
+ &:first-child {
+ margin-top: 0;
+ }
+}
+
+.markdown-body .tool-card .tool-status {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+}
+
+.markdown-body .tool-card .tool-checkbox {
+ width: 20px;
+ height: 20px;
+ 
+ background: #272320;
+ border-radius: 9999px;
+ 
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ 
+ color: #E2DDD9;
+ font-size: 12px;
+}
+
+.markdown-body .tool-card .tool-label {
+ font-size: 15px;
+ line-height: 20px;
+ font-weight: 410;
+ color: #322D29;
+}
+
+.markdown-body .tool-card .tool-name {
+ display: inline-block;
+ padding: 4px 8px;
+ 
+ background: #F8F4F1;
+ border-radius: 12px;
+ 
+ font-size: 15px;
+ line-height: 20px;
+ font-weight: 410;
+ color: #322D29;
+}
+
+.markdown-body.markdown-body.markdown-body/* ============================================
+ responsive adjustments
+ ============================================ */
+@media (max-width: 768px) {
+ .markdown-body {
+ max-width: 100%;
+ font-size: 15px;
+ line-height: 24px;
+ }
+ 
+ .markdown-body h1 {
+ font-size: 24px;
+ line-height: 28px;
+ }
+ 
+ .markdown-body h2 {
+ font-size: 18px;
+ line-height: 24px;
+ }
+ 
+ .markdown-body pre code {
+ font-size: 13px;
+ line-height: 18px;
+ }
+ 
+ /* 🔥 remove min-width, keep auto-fit */
+ .markdown-body th,
+ .markdown-body td {
+ padding: 8px;
+ font-size: 13px;
+ }
+}
+
+/* ============================================
+ print styles
+ ============================================ */
+@media print {
+ .markdown-body {
+ max-width: 100%;
+ color: #000000;
+ }
+ 
+ .markdown-body pre {
+ background: #f5f5f5;
+ border: 1px solid #ddd;
+ }
+ 
+ .markdown-body pre code {
+ color: #333333;
+ }
+ 
+ .markdown-body a {
+ color: #000000;
+ text-decoration: underline;
+ }
+ 
+ /* code-related print styles */
+ .inline-code {
+ background: #f5f5f5;
+ color: #333333;
+ border: 1px solid #ddd;
+ }
+ 
+ .code-block-wrapper > div {
+ background: #f5f5f5 !important;
+ color: #333333 !important;
+ border: 1px solid #ddd !important;
+ }
+}
+
+/* ============================================
+ code responsive adaptation
+ ============================================ */
+@media (max-width: 640px) {
+ .inline-code {
+ font-size: 0.8125em;
+ }
+ 
+ .code-block-wrapper > div {
+ font-size: 0.8125rem !important;
+ padding: 0.75em !important;
+ }
+}
+
+/* ============================================
+ Mermaid chart styles
+ ============================================ */
+.mermaid-diagram-wrapper {
+ margin: 8px 0;
+ padding: 16px;
+ background: #ffffff;
+ border-radius: 0.375rem;
+ border: 1px solid #e5e7eb;
+ overflow-x: auto;
+ text-align: center;
+}
+
+.mermaid-diagram-wrapper svg {
+ max-width: 100%;
+ height: auto;
+}
+
+.mermaid-diagram-error {
+ background: #fef2f2;
+ border-color: #fca5a5;
+}
+
+.mermaid-error-label {
+ font-size: 0.75rem;
+ color: #dc2626;
+ margin-bottom: 8px;
+ font-weight: 500;
+}
+
+.mermaid-error-code {
+ font-size: 0.8125rem;
+ color: #7f1d1d;
+ background: transparent;
+ margin: 0;
+ padding: 0;
+ white-space: pre-wrap;
+ word-break: break-word;
+ text-align: left;
+}
+
+.mermaid-diagram-loading {
+ background: #f9fafb;
+}
+
+.mermaid-loading-code {
+ font-size: 0.8125rem;
+ color: #6b7280;
+ background: transparent;
+ margin: 0;
+ padding: 0;
+ white-space: pre-wrap;
+ word-break: break-word;
+ text-align: left;
+}
