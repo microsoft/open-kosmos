@@ -1,53 +1,73 @@
 # OpenKosmos
 
-**OpenKosmos** is an advanced AI-powered desktop application built with Electron, React, and TypeScript. It provides a unified interface for interacting with multiple AI models, managing chat sessions, and integrating with Model Context Protocol (MCP) servers to extend AI capabilities with custom tools and contextual information.
+**OpenKosmos** is a local-first AI Agent Studio that empowers you to create, configure, and run personalized AI agents tailored to your own workflows — with a low-code approach that puts productivity first.
+
+It runs entirely on your desktop, provides native access to your local files and system, and connects to the broader AI ecosystem through MCP servers, skills, and multi-model support. Whether you're automating daily tasks, building research assistants, or orchestrating complex multi-step workflows, OpenKosmos gives you a flexible, privacy-respecting platform to get it done.
+
+![OpenKosmos Screenshot](screenshot.png)
+
+## ✨ Highlights
+
+- 🏠 **Local-First** — Runs on your machine. Your data stays on your device.
+- 🤖 **Personalized Agents** — Create custom agents with tailored instructions, tools, knowledge bases, and skills — no coding required.
+- 🔌 **MCP Ecosystem** — Connect to any MCP server (stdio/SSE/HTTP) to extend agent capabilities with external tools and data sources.
+- 🧩 **Skills & Context** — Package reusable AI prompt templates as skills; attach knowledge bases for domain-specific context.
+- 🌐 **Multi-Model** — Switch between GitHub Copilot, OpenAI, Azure OpenAI, Google Gemini, Anthropic Claude, Cohere, and Ollama — all in one interface.
+- 🔍 **Built-in Tools** — Web search (Bing/Google), web fetch, file operations, shell commands, Office document reading, and more — out of the box.
+- 💾 **Long-Term Memory** — Semantic memory system powered by vector embeddings, so your agents remember what matters across sessions.
+- 🖥️ **Cross-Platform** — Windows, macOS, and Linux support.
 
 ## Features
 
-### 🤖 Multi-Model AI Integration
-- **GitHub Copilot Integration**: Seamless authentication and access to GitHub Copilot models
-- **Multiple AI Providers**: Support for OpenAI, Azure OpenAI, Google Gemini, Claude Sonnect
-- **Model Flexibility**: Switch between different AI models within the same chat session
-- **Streaming Responses**: Real-time streaming of AI responses for improved user experience
+### 🤖 Personalized Agent Studio
+- **Low-Code Agent Creation** — Configure agents through a visual editor: set system prompts, attach MCP servers, assign skills, and define knowledge bases — all without writing code.
+- **Agent Library** — Browse, import, and share agent configurations from a built-in library.
+- **Multi-Agent Workspace** — Run multiple agents in parallel chat sessions, each with its own context and tools.
+- **Smart Context Compression** — Automatically compress long conversations to keep agents responsive without losing important context.
 
-### 💬 Advanced Chat Management
-- **Multi-Chat Sessions**: Create and manage multiple independent chat sessions
-- **Agent-Based Conversations**: Configure custom AI agents with specific personalities, instructions, and tools
-- **Session Persistence**: Automatic saving and restoration of chat history
+### 🔌 MCP (Model Context Protocol) Integration
+- **Universal MCP Support** — Connect to any MCP server via stdio, SSE, or HTTP transport.
+- **One-Click MCP Setup** — Add MCP servers from a curated library, or import directly from VSCode settings.
+- **30+ Built-in Tools** — Web search, web fetch, file read/write/search, shell command execution, Office document parsing, and more — available to all agents by default.
+- **Dynamic Tool Execution** — Agents autonomously discover and invoke tools during conversations, with user approval controls.
 
-### 🔧 MCP (Model Context Protocol) Support
-- **MCP Server Integration**: Connect to external MCP servers to extend AI capabilities
-- **Tool Execution**: Enable AI models to execute tools and access external data sources
-- **VSCode MCP Import**: Import MCP server configurations directly from VSCode settings
-- **Built-in Tools**: Pre-configured tools for common operations, like web-search, web-fetch, and file management
+### 🧩 Skills & Knowledge Management
+- **Skill Packages** — Portable prompt template archives (`.skill` / `.zip`) with metadata, installable from a library or local files.
+- **Knowledge Bases** — Attach document folders to agents for retrieval-augmented generation (RAG) with domain-specific context.
+- **Built-in Skills** — Pre-installed skills like `skill-creator` to help you build new skills from within the app.
 
-### 🧠 Memory System
-- **Long-Term Memory**: Store and retrieve contextual information across sessions using mem0
-- **Vector Search**: Semantic search through conversation history and stored memories
-- **Automatic Embeddings**: Generate embeddings for efficient memory retrieval
-- **User-Specific Memory**: Isolated memory storage per user profile
+### 🌐 Multi-Model AI Support
+- **GitHub Copilot** — First-class integration with OAuth device flow authentication.
+- **Multiple Providers** — OpenAI, Azure OpenAI, Google Gemini, Anthropic Claude, Cohere, and Ollama.
+- **Model Switching** — Change models mid-conversation without losing context.
+- **Streaming Responses** — Real-time token streaming with typewriter animation for a natural feel.
 
-### 🔐 Authentication & Security
-- **OAuth Device Flow**: Secure authentication with GitHub Copilot
-- **Token Management**: Automatic token refresh and expiration handling
-- **Multi-User Support**: Separate profiles for different authenticated users
+### 🏠 Local System Access
+- **File Operations** — Read, write, create, search, and manage files on your local filesystem.
+- **Shell Commands** — Execute terminal commands directly from agent conversations.
+- **Workspace Integration** — Attach project folders with real-time file watching and fast ripgrep-powered search.
+- **Screenshot Capture** — Multi-display screenshot with region selection, directly usable as chat input.
 
-### 🎨 Modern User Interface
-- **Glass Morphism Design**: Modern, elegant UI with glass effects and smooth animations
-- **Responsive Layout**: Adaptive interface that works on different screen sizes
-- **Dark Mode**: Comfortable viewing experience with dark theme support
-- **Customizable Agents**: Configure agent appearance with emojis and custom names
+### 🧠 Long-Term Memory
+- **Semantic Memory** — Vector-embedding-based memory powered by SQLite + sqlite-vec, stored locally.
+- **Cross-Session Recall** — Agents remember important facts, preferences, and context across conversations.
+- **Per-User Isolation** — Each user profile has its own memory store.
+- **Optional Graph Memory** — Neo4j integration for knowledge graph-based reasoning (advanced).
+
+### 🎨 Modern Desktop Experience
+- **Glass Morphism UI** — Elegant dark theme with blur effects and smooth animations.
+- **Multi-Tab Chat** — Work with multiple agents and conversations simultaneously.
+- **Voice Input** — Speech-to-text powered by Whisper, running locally with GPU acceleration.
+- **Auto-Update** — Seamless in-app updates via GitHub Releases or custom CDN.
+- **Multi-Brand Support** — Customize app name, icons, and identity for white-label deployment.
 
 ## Getting Started
 
 ### Prerequisites
 
-Before running OpenKosmos, ensure you have the following installed:
-
 - **Node.js** 18.0.0 or later
-- **Python** 3.10 or later (for MCP server support)
-- **VS Code** (recommended for development)
-- **GitHub Copilot** subscription and authentication in VS Code
+- **Python** 3.10 or later (for some MCP servers)
+- **GitHub Copilot** subscription (primary AI provider)
 
 ### Installation
 
@@ -58,8 +78,6 @@ Before running OpenKosmos, ensure you have the following installed:
    ```
 
 2. **Configure environment variables**
-   
-   Copy the example environment file to create your local configuration:
    ```bash
    # Windows
    copy .env.example .env.local
@@ -67,61 +85,66 @@ Before running OpenKosmos, ensure you have the following installed:
    # macOS/Linux
    cp .env.example .env.local
    ```
-   
-   The `.env.local` file contains default settings that work out of the box. No modification needed.
 
 3. **Install dependencies**
    ```bash
    npm install
    ```
 
-4. **Rebuild native modules for Electron** (required for Whisper speech-to-text)
-
-   OpenKosmos uses native Node.js addons that need to be rebuilt for your Electron version:
+4. **Rebuild native modules for Electron**
    ```bash
    npx electron-rebuild
    ```
 
-   This step is necessary for:
-   - `@kutalia/whisper-node-addon` - Offline speech-to-text with Whisper
-   - `sqlite-vec` - Vector database for memory system
-   - `@vscode/ripgrep` - Fast file search
+   > **Build tools required**: Windows needs [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), macOS needs `xcode-select --install`, Linux needs `sudo apt install build-essential`.
 
-   > **Note**: If you encounter build errors, ensure you have the necessary build tools:
-   > - **Windows**: Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop development with C++"
-   > - **macOS**: Install Xcode Command Line Tools (`xcode-select --install`)
-   > - **Linux**: Install build-essential (`sudo apt install build-essential`)
-### Quick Start 
-
-#### with Hot Reload (Recommended)
-OpenKosmos features a modern development environment with hot module replacement (HMR) for rapid iteration:
+### Quick Start
 
 ```bash
 # One-command development mode (recommended)
 npm run dev:full
 
 # Or start components separately
-npm run dev          # Terminal 1: Start webpack-dev-server
-npm run dev:main    # Terminal 2: Build main process in watch mode
+npm run dev          # Terminal 1: webpack-dev-server with HMR
+npm run dev:main     # Terminal 2: Main process watch mode
 npm run electron:dev # Terminal 3: Launch Electron
 ```
-#### without Hot Reload
- ```bash
-   npm run build
-   npm run electron
-```
 
+Production build:
+```bash
+npm run build && npm run electron
+```
 
 ## Architecture
 
-OpenKosmos is built on a modern Electron architecture:
+OpenKosmos is built on Electron with a clean multi-process architecture:
 
-- **Main Process**: Handles system operations, file I/O, authentication, and MCP server management
-- **Renderer Process**: React-based UI with TypeScript for type safety
-- **IPC Communication**: Secure communication between main and renderer processes
-- **ProfileCacheManager**: Centralized data management for user profiles and chat configurations
-- **AuthManager**: Unified authentication and token management system
-- **MCP Runtime**: Dynamic loading and management of MCP servers
+```
+src/
+├── main/                # Electron main process
+│   └── lib/
+│       ├── auth/        # GitHub Copilot OAuth authentication
+│       ├── chat/        # Agent conversation engine
+│       ├── mcpRuntime/  # MCP server lifecycle & built-in tools
+│       ├── mem0/        # Long-term memory (vector + graph)
+│       ├── featureFlags/# Feature flag system
+│       ├── workspace/   # File tree & ripgrep search
+│       └── userDataADO/ # Profile & data persistence
+├── renderer/            # React 18 + TailwindCSS UI
+│   ├── components/      # Chat, agents, settings, FRE
+│   ├── atom/            # Custom atom-based state management
+│   └── lib/             # Frontend utilities
+├── shared/              # Type-safe IPC framework & constants
+└── brands/              # Multi-brand configuration
+```
+
+**Key design principles:**
+- **Type-safe IPC** — Renderer ↔ Main communication is fully typed at compile time.
+- **Lazy initialization** — All heavy managers use lazy getters for fast startup.
+- **Non-fatal errors** — Subsystem failures are logged, never crash the app.
+- **Per-profile isolation** — Auth, data, memory, and skills are scoped per user.
+
+For full architectural details, see [CLAUDE.md](./CLAUDE.md).
 
 ## Development
 
@@ -129,217 +152,33 @@ OpenKosmos is built on a modern Electron architecture:
 
 We welcome contributions! Please open an issue or submit a pull request on [GitHub](https://github.com/microsoft/open-kosmos).
 
-### Development Workflow
+### Workflow
 
-1. **Choose your AI coding assistant**:
-   - GitHub Copilot in VS Code
-   - Claude Code with GitHub Copilot (see [CLAUDE.md](./CLAUDE.md) for detailed instructions)
-   - RooCode with GitHub Copilot
-   - ECline with GitHub Copilot
-   - Or other AI-powered development tools
+```bash
+git switch main && git pull
+git checkout -b user/<your-alias>/<feature-name>
+# Make changes, then submit PR
+```
 
-2. **Create a development branch**:
-   ```bash
-   git switch main
-   git pull origin main
-   git checkout -b user/<your-alias>/<branch-name>
-   ```
-
-3. **Make your changes** and test thoroughly
-
-4. **Submit a Pull Request**:
-
-   You can use the AI-assisted PR workflow:
-   ```
-   Use AI with .github/prompts/gitpush.prompt.md to automatically create and submit PR
-   ```
-
-### Development Commands
+### Commands
 
 ```bash
 # Development
-npm run dev          # Start webpack-dev-server with HMR
-npm run dev:main     # Build main process in watch mode
-npm run dev:full     # Start both dev server and electron (parallel)
-npm run electron:dev # Launch Electron in development mode
-
-# Building
-npm run build        # Full build (main + renderer)
-npm run build:main   # Build main process only
-npm run build:renderer # Build renderer process only
+npm run dev:full         # Full dev mode with HMR
+npm run build            # Production build
 
 # Testing & Quality
-npm test             # Run Jest tests
-npm run lint         # Check code style
-npm run lint:fix     # Auto-fix linting issues
+npm test                 # Jest unit tests
+npm run test:e2e         # Playwright E2E tests
+npm run lint             # Lint check
+npm run lint:fix         # Auto-fix
 
-# Running
-npm run electron     # Run after building
-npm run start        # Build and run in production mode
+# Distribution
+npm run dist             # Build installer for current platform
+npm run dist:win         # Windows (NSIS + ZIP)
+npm run dist:mac         # macOS (DMG + ZIP)
+npm run dist:linux       # Linux (AppImage)
 ```
-
-### Project Structure
-
-```
-OpenKosmos/
-├── src/
-│   ├── main/              # Electron main process
-│   │   ├── lib/           # Core libraries
-│   │   │   ├── auth/      # Authentication system
-│   │   │   ├── llm/       # LLM integrations
-│   │   │   ├── mcpRuntime/# MCP server management
-│   │   │   └── userDataADO/# Data persistence
-│   │   └── main.ts        # Main process entry
-│   └── renderer/          # React application
-│       ├── components/    # React components
-│       ├── lib/           # Frontend libraries
-│       └── styles/        # CSS styles
-├── resources/             # Application resources
-├── scripts/               # Build and utility scripts
-└── docs/                  # Documentation
-
-```
-
-## Feature Flags
-
-OpenKosmos uses a feature flag system to control experimental and in-development features. This ensures new features can be safely developed and tested without affecting production users.
-
-### Key Concepts
-
-| Property | Purpose | Description |
-|----------|---------|-------------|
-| `devOnly` | **Environment restriction** | When `true`, the feature is **only available in development mode**. In production, the flag always returns `false` regardless of other settings. |
-| `defaultValue` | **Business logic** | Controls feature availability based on business conditions (brand, platform, architecture, etc.). Can be a static boolean or a dynamic function. |
-
-### Configuration
-
-Feature flags are defined in `src/main/lib/featureFlags/featureFlagDefinitions.ts`:
-
-```typescript
-// Static value: simple boolean
-{
-  name: 'kosmosFeatureScreenshot',
-  description: 'Screenshot capture functionality',
-  defaultValue: true,           // Always enabled (in dev environment)
-  devOnly: true,
-}
-
-// Dynamic value: function that receives context
-{
-  name: 'kosmosFeatureMemory',
-  description: 'Enable memory system features',
-  defaultValue: (ctx) => ctx.arch !== 'arm64' || ctx.platform !== 'win32',
-  devOnly: true,
-}
-```
-
-**Available context properties for dynamic values:**
-
-Context properties are defined in `src/main/lib/featureFlags/types.ts` (`FeatureFlagContext` interface) and can be extended as needed. Current properties include:
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `ctx.isDev` | boolean | Whether running in development mode |
-| `ctx.brandName` | string | Current brand name (e.g., `'openkosmos'`) |
-| `ctx.platform` | string | OS platform (`'win32'`, `'darwin'`, `'linux'`) |
-| `ctx.arch` | string | CPU architecture (`'x64'`, `'arm64'`) |
-
-### Adding a New Feature Flag
-
-1. **Add the flag name** to `src/main/lib/featureFlags/types.ts`:
-   ```typescript
-   export type FeatureFlagName = 
-     | 'kosmosFeatureMyNewFeature'
-     // ... other flags
-   ```
-
-2. **Add the configuration** to `src/main/lib/featureFlags/featureFlagDefinitions.ts`:
-   ```typescript
-   {
-     name: 'kosmosFeatureMyNewFeature',
-     description: 'Description of my new feature',
-     defaultValue: true,  // or (ctx) => ctx.someCondition
-     devOnly: true,       // Set to true for experimental features
-   }
-   ```
-
-### Usage
-
-#### In Main Process
-```typescript
-import { featureFlagManager } from './lib/featureFlags';
-
-if (featureFlagManager.isEnabled('kosmosFeatureMyNewFeature')) {
-  // Feature-specific code
-}
-```
-
-#### In Renderer Process
-```typescript
-import { useFeatureFlag } from '../lib/featureFlags';
-
-function MyComponent() {
-  const isFeatureEnabled = useFeatureFlag('kosmosFeatureMyNewFeature');
-  
-  if (!isFeatureEnabled) return null;
-  
-  return <div>New Feature UI</div>;
-}
-```
-
-### Best Practices
-
-1. **New/Experimental features**: Always set `devOnly: true` until the feature is stable and ready for production
-2. **Separation of concerns**: Use `devOnly` for environment control, `defaultValue` for business logic
-3. **Naming convention**: Use prefix `kosmosFeature` followed by the feature name in PascalCase
-4. **CLI override**: Flags can be overridden via CLI args (dev mode only): `--feature-myNewFeature=true`
-
-## Building for Production
-
-### Local Build Testing (macOS)
-
-Before pushing to CI/CD, test your build locally to catch issues early:
-
-```bash
-# Quick test build (skips notarization)
-npm run test:build
-
-# Test build with verification
-npm run test:build:verify
-```
-
-For detailed local testing instructions and troubleshooting, see [docs/local-build-test.md](docs/local-build-test.md).
-
-### Build for Current Platform
-```bash
-npm run dist
-```
-
-### Build for Specific Platforms
-```bash
-# Windows
-npm run dist:win
-
-# macOS
-npm run dist:mac
-
-# Linux
-npm run dist:linux
-
-# All platforms
-npm run dist:all
-```
-
-## Troubleshooting
-
-### Whisper Native Addon Issues
-If you encounter errors related to loading the Whisper native addon (e.g., `Cannon find module .../whisper.node` or `Library not loaded: @rpath/libwhisper.1.dylib`), you can run the fix script manually:
-
-```bash
-node scripts/fix-whisper-addon.js
-```
-
-This script fixes the directory structure (copies `mac-arm64` to `darwin-arm64`) and patches the dynamic library paths (RPATH) for macOS. It runs automatically after `npm install` and during `npm run rebuild`.
 
 ## License
 
@@ -348,4 +187,3 @@ This project is licensed under the [MIT License](LICENSE).
 ## Contact
 
 For questions, bug reports, or feature requests, please open an issue on [GitHub](https://github.com/microsoft/open-kosmos/issues).
-
