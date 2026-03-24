@@ -1,0 +1,62 @@
+name: PR E2E Tests
+
+# Run Playwright E2E tests for every pull request to catch regressions early.
+# Tests launch the Electron app in a headless environment and validate core user flows.
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+# Only one E2E run allowed per PR at a time (cancel previous)
+concurrency:
+  group: e2e-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  e2e-test:
+    name: E2E Tests
+    # Use ubuntu for fast CI; Electron runs headless via xvfb
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Electron tests use the bundled Electron binary — no Playwright browsers needed.
+      # Only install system dependencies required by Electron on headless Linux.
+      - name: Install system dependencies for Electron
+        run: npx playwright install-deps
+
+      # pretest:e2e builds with DOTENV_CONFIG_PATH=.env.test
+      # xvfb-run provides a virtual X11 display for Electron on headless Linux
+      - name: Run E2E Tests
+        run: xvfb-run --auto-servernum -- npm run test:e2e --max-failures=1 
+        env:
+          BRAND: openkosmos
+
+
+      # Upload test report & artifacts (screenshots, video, trace) on failure for debugging
+      - name: Upload E2E test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-report
+          path: |
+            tests/e2e/test-results/
+            tests/e2e/report/
+          retention-days: 7

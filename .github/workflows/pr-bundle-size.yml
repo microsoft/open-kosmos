@@ -1,0 +1,201 @@
+name: PR Bundle Size Check
+
+# Check webpack bundle size change introduced by a PR
+# Fail CI if total bundle size increases by >= 5%
+
+on:
+  pull_request:
+    branches: ['**']
+    # Only trigger when files that may affect bundle size are changed
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'webpack.*.config.js'
+      - 'tsconfig*.json'
+      - 'tailwind.config.js'
+      - 'postcss.config.js'
+      - 'assets/**'
+      - 'resources/**'
+
+permissions:
+  contents: read
+  pull-requests: write  # needed to post PR comments
+
+# Only one size-check run allowed per PR at a time (cancel previous)
+concurrency:
+  group: bundle-size-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  THRESHOLD: '5'   # fail if total bundle size increases by >= 5%
+
+# ─── Bundle size measurement steps (reusable) ────────────────────────────────────
+# Note: GitHub Actions does not support YAML anchors; using duplicate steps instead.
+# Both jobs share the same step structure, targeting the PR branch and base branch respectively.
+
+jobs:
+  # ─── Job 1: Build PR branch and measure bundle size ────────────────────────────
+  measure-pr:
+    name: Measure PR Branch Bundle Size
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      # Install dependencies only; skip time-consuming native module rebuild
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      # Build webpack bundles only (no electron-builder needed, JS bundles only)
+      - name: Build webpack bundles
+        run: |
+          npm run build:main
+          npm run build:renderer
+        env:
+          NODE_ENV: production
+          BRAND: openkosmos
+          # Skip Electron binary download, compile JS only
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Measure bundle sizes
+        run: node scripts/measure-bundle-size.js --dist-dir ./dist --output pr-sizes.json
+
+      - name: Upload PR sizes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-bundle-sizes
+          path: pr-sizes.json
+          retention-days: 1
+
+  # ─── Job 2: Build base branch and measure bundle size ──────────────────────────
+  measure-base:
+    name: Measure Base Branch Bundle Size
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Build webpack bundles
+        run: |
+          npm run build:main
+          npm run build:renderer
+        env:
+          NODE_ENV: production
+          BRAND: openkosmos
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Measure bundle sizes
+        run: node scripts/measure-bundle-size.js --dist-dir ./dist --output base-sizes.json
+
+      - name: Upload base sizes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: base-bundle-sizes
+          path: base-sizes.json
+          retention-days: 1
+
+  # ─── Job 3: Compare sizes, post report, and determine pass/fail ───────────────
+  compare-and-report:
+    name: Compare & Report Bundle Size
+    runs-on: ubuntu-latest
+    needs: [measure-pr, measure-base]
+    # Run even if a measure job fails, so we can surface the error
+    if: always()
+
+    steps:
+      - name: Checkout (for scripts)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Download PR sizes
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-bundle-sizes
+
+      - name: Download base sizes
+        uses: actions/download-artifact@v4
+        with:
+          name: base-bundle-sizes
+
+      # If any measure job failed, report the error and stop
+      - name: Check if measure jobs succeeded
+        if: needs.measure-pr.result != 'success' || needs.measure-base.result != 'success'
+        run: |
+          echo "::error::One or more bundle measurement jobs failed. PR: ${{ needs.measure-pr.result }}, Base: ${{ needs.measure-base.result }}"
+          exit 1
+
+      - name: Setup Node.js (for compare script)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Run compare script and generate Markdown report
+      - name: Compare bundle sizes
+        id: compare
+        run: |
+          set +e
+          node scripts/compare-bundle-size.js \
+            --base-sizes base-sizes.json \
+            --pr-sizes   pr-sizes.json   \
+            --threshold  ${{ env.THRESHOLD }} \
+            --output     size-report.md
+          COMPARE_EXIT=$?
+          echo "exit_code=$COMPARE_EXIT" >> $GITHUB_OUTPUT
+          set -e
+
+      # Read report content for posting as PR comment
+      - name: Read report content
+        id: report
+        run: |
+          REPORT=$(cat size-report.md)
+          # GitHub Actions multiline output
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$REPORT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # Post (or update) the size report comment on the PR
+      - name: Post or update PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: bundle-size-report
+          message: |
+            <!-- bundle-size-report -->
+            ${{ steps.report.outputs.content }}
+
+            <sub>🤖 Generated by [PR Bundle Size Check](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) | threshold: ${{ env.THRESHOLD }}%</sub>
+
+      # Fail CI if bundle size exceeded the threshold
+      - name: Fail if bundle size exceeded threshold
+        if: steps.compare.outputs.exit_code != '0'
+        run: |
+          echo "::error::Bundle size increased by >= ${{ env.THRESHOLD }}%. Please review the size report in the PR comment."
+          exit 1
