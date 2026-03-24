@@ -390,7 +390,7 @@ Configured via `.env.local` file (copy from `.env.example`). Injected via webpac
 
 #### Electron Builder (`electron-builder.config.js`)
 - Multi-brand support via `brandConfig`
-- Publication: GitHub Releases (`ai-microsoft/openKosmos` repo)
+- Publication: GitHub Releases (`microsoft/open-kosmos` repo)
 - Asar unpacking: `@vscode/ripgrep`, all `sqlite-vec` platform variants
 - Excluded from bundle: whisper-addon (downloaded on demand)
 - Windows: NSIS installer + ZIP (x64, arm64)

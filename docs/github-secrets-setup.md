@@ -72,7 +72,7 @@ base64 -i certificate.p12 > certificate.base64.txt
 
 Go to your GitHub repository settings:
 ```
-https://github.com/ai-microsoft/openKosmos/settings/secrets/actions
+https://github.com/microsoft/open-kosmos/settings/secrets/actions
 ```
 
 Configure the following Secrets:

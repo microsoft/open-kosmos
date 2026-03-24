@@ -233,8 +233,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ai-microsoft",
-        "repo": "openKosmos",
+        "owner": "microsoft",
+        "repo": "open-kosmos",
         "private": false,
         "protocol": "https",
         "releaseType": "release",

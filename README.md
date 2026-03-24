@@ -53,8 +53,8 @@ Before running OpenKosmos, ensure you have the following installed:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/ai-microsoft/openKosmos.git
-   cd openKosmos
+   git clone https://github.com/microsoft/open-kosmos.git
+   cd open-kosmos
    ```
 
 2. **Configure environment variables**
@@ -127,7 +127,7 @@ OpenKosmos is built on a modern Electron architecture:
 
 ### Contributing
 
-We welcome contributions! Please open an issue or submit a pull request on [GitHub](https://github.com/ai-microsoft/openKosmos).
+We welcome contributions! Please open an issue or submit a pull request on [GitHub](https://github.com/microsoft/open-kosmos).
 
 ### Development Workflow
 
@@ -347,5 +347,5 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For questions, bug reports, or feature requests, please open an issue on [GitHub](https://github.com/ai-microsoft/openKosmos/issues).
+For questions, bug reports, or feature requests, please open an issue on [GitHub](https://github.com/microsoft/open-kosmos/issues).
 
