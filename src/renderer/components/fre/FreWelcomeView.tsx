@@ -55,7 +55,7 @@ export interface FreWelcomeViewProps {
 
 /**
  * FRE Welcome View Component
- * Displayed when Kosmos brand starts and freDone=false
+ * Displayed when OpenKosmos brand starts and freDone=false
  * Shows promoted agents for user to choose from
  */
 const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
@@ -319,7 +319,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
                 margin: 0,
               }}
             >
-              Hi {userDisplayName}, welcome to Kosmos AI Studio!
+              Hi {userDisplayName}, welcome to OpenKosmos!
             </h1>
 
             {/* Subtitle */}

@@ -6,7 +6,7 @@
 import { exec } from 'child_process';
 import { BROWSER_CONFIG, BrowserType } from './browserConfig';
 
-const MCP_SERVER_NAME = 'kosmos-chrome-extension';
+const MCP_SERVER_NAME = 'openkosmos-chrome-extension';
 const NATIVE_HOST_NAME = 'com.chromemcp.nativehost';
 
 /**

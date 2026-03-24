@@ -1,4 +1,4 @@
-# Kosmos E2E Testing Technical Proposal — Based on Playwright
+# OpenKosmos E2E Testing Technical Proposal — Based on Playwright
 
 > **Version**: 1.0
 > **Last Updated**: 2026-02-24
@@ -28,7 +28,7 @@
 
 ### 1.1 Background
 
-Kosmos AI Studio is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all located in the `__tests__` directory under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iterations accelerate, there is an urgent need to establish an E2E testing framework to ensure the stability of core user flows.
+OpenKosmos is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all located in the `__tests__` directory under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iterations accelerate, there is an urgent need to establish an E2E testing framework to ensure the stability of core user flows.
 
 ### 1.2 Goals
 
@@ -376,7 +376,7 @@ type ElectronFixtures = {
  * Create an isolated test userData directory
  */
 function createTestUserDataDir(): string {
-  const dirName = `kosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `openkosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
@@ -747,10 +747,10 @@ test.describe('Application Startup Flow', () => {
     expect(windows.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('Application title contains KOSMOS', async ({ electronApp }) => {
+  test('Application title contains OpenKosmos', async ({ electronApp }) => {
     const window = await electronApp.firstWindow();
     const title = await window.title();
-    expect(title).toMatch(/KOSMOS/i);
+    expect(title).toMatch(/OpenKosmos/i);
   });
 
   test('Redirects to sign-in page when no account exists', async ({ mainWindow }) => {
@@ -985,7 +985,7 @@ jobs:
       - name: Run E2E Tests
         run: npm run test:e2e
         env:
-          BRAND: kosmos
+          BRAND: openkosmos
 
       # Upload test report & artifacts (screenshots, video, trace) on failure for debugging
       - name: Upload E2E test report
@@ -1096,7 +1096,7 @@ jest.mock('electron', () => ({
   app: {
     getPath: jest.fn(() => '/tmp/test'),
     setPath: jest.fn(),
-    getName: jest.fn(() => 'kosmos-test'),
+    getName: jest.fn(() => 'openkosmos-test'),
     getVersion: jest.fn(() => '0.0.0-test'),
   },
   ipcMain: {

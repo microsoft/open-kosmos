@@ -172,13 +172,13 @@ describe('TerminalInstance PowerShell command handling', () => {
 
     /**
      * Case 2: From Analyze YouTube Video.json
-     * Original command: Get-ChildItem "C:\Users\v-fuchenyu\AppData\Roaming\kosmos-app\..."
+     * Original command: Get-ChildItem "C:\Users\v-fuchenyu\AppData\Roaming\openkosmos-app\..."
      * 
      * BEFORE fix: & "Get-ChildItem ..." (WRONG)
      * AFTER fix: Get-ChildItem "..." (CORRECT)
      */
     it('should NOT wrap Get-ChildItem cmdlet in quotes', async () => {
-      const config = createConfig('Get-ChildItem "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\kosmos-app\\profiles"');
+      const config = createConfig('Get-ChildItem "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\openkosmos-app\\profiles"');
       const instance = new TestableTerminalInstance(config);
       
       const result = await instance.testPrepareCommand();
@@ -197,7 +197,7 @@ describe('TerminalInstance PowerShell command handling', () => {
      * AFTER fix: dir "..." (CORRECT)
      */
     it('should NOT wrap dir command in quotes', async () => {
-      const config = createConfig('dir "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\kosmos-app"');
+      const config = createConfig('dir "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\openkosmos-app"');
       const instance = new TestableTerminalInstance(config);
       
       const result = await instance.testPrepareCommand();

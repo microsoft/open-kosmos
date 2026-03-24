@@ -128,7 +128,7 @@ interface FreSettingUpViewProps {
 
 ## Data Flow
 
-### Kosmos Brand Complete Flow
+### OpenKosmos Brand Complete Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

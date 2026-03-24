@@ -31,7 +31,7 @@ export function getUserDataPath(): string {
   }
 
   const os = require('os');
-  const fallbackPath = path.join(os.tmpdir(), 'kosmos-app-test');
+  const fallbackPath = path.join(os.tmpdir(), 'openkosmos-app-test');
   ensureDirectoryExists(fallbackPath);
   return fallbackPath;
 }
@@ -69,7 +69,7 @@ export function ensureMem0StoragePaths(
 
   [ragBasePath, historyDirectory].forEach(ensureDirectoryExists);
 
-  const historyDbPath = path.join(historyDirectory, 'kosmos_memory.db');
+  const historyDbPath = path.join(historyDirectory, 'openkosmos_memory.db');
 
   return {
     basePath: ragBasePath,

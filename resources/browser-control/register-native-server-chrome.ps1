@@ -8,11 +8,11 @@ $HostName = "com.chromemcp.nativehost"
 $ExtensionId = "oopmjmifghgbliienphmofbfffhhgcjl"
 
 # Get User Data directory from environment variable (set by Kosmos main process)
-# Fallback to default kosmos-app location if not set
+# Fallback to default openkosmos-app location if not set
 $UserDataDir = if ($env:KOSMOS_USER_DATA_DIR) { 
     $env:KOSMOS_USER_DATA_DIR 
 } else { 
-    Join-Path $env:APPDATA "kosmos-app" 
+    Join-Path $env:APPDATA "openkosmos-app" 
 }
 
 # Paths - native-server is in assets/native-server

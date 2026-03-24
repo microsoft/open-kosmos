@@ -74,7 +74,7 @@ export class ChatSessionFileOps {
     } catch (error) {
       // In test environment, use a local test directory
       const os = require('os');
-      userDataPath = path.join(os.tmpdir(), 'kosmos-app-test');
+      userDataPath = path.join(os.tmpdir(), 'openkosmos-app-test');
     }
     
     this.basePath = path.join(userDataPath, 'profiles', userAlias, 'chat_sessions');

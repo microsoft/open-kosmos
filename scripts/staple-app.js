@@ -46,7 +46,7 @@ function main() {
   
   if (!appPath) {
     console.error('Usage: node staple-app.js <path-to-app>');
-    console.error('Example: node staple-app.js release/mac/KOSMOS.app');
+    console.error('Example: node staple-app.js release/mac/OpenKosmos.app');
     process.exit(1);
   }
   

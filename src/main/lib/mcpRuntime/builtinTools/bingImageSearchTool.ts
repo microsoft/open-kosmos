@@ -344,7 +344,7 @@ export class BingImageSearchTool {
       const errors: string[] = [];
       
       // State file configuration
-      const stateFile = path.join(os.tmpdir(), 'kosmos-bing-image-browser-state.json');
+      const stateFile = path.join(os.tmpdir(), 'openkosmos-bing-image-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
       
       // Load saved state

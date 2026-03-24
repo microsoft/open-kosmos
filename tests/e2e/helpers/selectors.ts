@@ -14,7 +14,7 @@ export const Selectors = {
   // ==================== App.tsx Initial Loading Screen ====================
   /** App initialization loading screen (dark background #1c1c1c) */
   LOADING_SCREEN_TEXT: 'text=Initializing Core Services',
-  LOADING_SCREEN_BRAND: 'text=KOSMOS',
+  LOADING_SCREEN_BRAND: 'text=OpenKosmos',
   LOADING_SPINNER: '.animate-spin',
 
   // ==================== StartupPage (route /) ====================
@@ -38,7 +38,7 @@ export const Selectors = {
   SIGN_IN_CARD_TITLE: '.signin-card-title',
 
   // --- State 2: Default login (new user) ---
-  /** "Welcome to KOSMOS" title */
+  /** "Welcome to OpenKosmos" title */
   SIGN_IN_WELCOME_TITLE: 'text=Welcome to',
   /** Main sign-in button */
   SIGN_IN_BUTTON: 'button:has-text("Sign In with GitHub Copilot")',

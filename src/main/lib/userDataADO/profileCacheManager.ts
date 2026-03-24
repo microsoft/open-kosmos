@@ -908,16 +908,16 @@ export class ProfileCacheManager {
       if (!targetWindow || targetWindow.isDestroyed()) {
         const windows = BrowserWindow.getAllWindows();
         // Try to match by title (multi-brand compatible)
-        const appTitle = process.env.APP_NAME; // "KOSMOS", etc.
+        const appTitle = process.env.APP_NAME; // "OpenKosmos", etc.
         
         // Window lookup strategy:
-        // 1. Exact title match "Kosmos AI Studio" (default / legacy)
+        // 1. Exact title match "OpenKosmos" (default / legacy)
         // 2. Title contains "Kosmos"
         // 3. Fall back to the only open window
         
         targetWindow = windows.find((window: BrowserWindow) => {
           const title = window.title;
-          return title === 'Kosmos AI Studio' || 
+          return title === 'OpenKosmos' || 
                  (appTitle && title === appTitle) || // Fallback to provided APP_NAME
                  title.includes('Kosmos');
         });

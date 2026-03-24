@@ -319,7 +319,7 @@ export class GoogleWebSearchTool {
       const errors: string[] = [];
       
       // State file configuration
-      const stateFile = path.join(os.tmpdir(), 'kosmos-google-browser-state.json');
+      const stateFile = path.join(os.tmpdir(), 'openkosmos-google-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
       
       // Load saved state

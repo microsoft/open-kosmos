@@ -3,9 +3,9 @@
   "releaseNotes": "Release Notes",
   "releaseDate": "2025-01-15T10:30:00.000Z",
   "downloadUrls": {
-    "darwin-arm64": "KOSMOS-1.15.3-mac-arm64.zip",
-    "darwin-x64": "KOSMOS-1.15.3-mac-x64.zip",
-    "win32-arm64": "KOSMOS-1.15.3-win-arm64.zip",
-    "win32-x64": "KOSMOS-1.15.3-win-x64.zip"
+    "darwin-arm64": "OpenKosmos-1.15.3-mac-arm64.zip",
+    "darwin-x64": "OpenKosmos-1.15.3-mac-x64.zip",
+    "win32-arm64": "OpenKosmos-1.15.3-win-arm64.zip",
+    "win32-x64": "OpenKosmos-1.15.3-win-x64.zip"
   }
 }

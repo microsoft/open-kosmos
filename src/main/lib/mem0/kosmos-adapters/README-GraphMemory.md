@@ -1,4 +1,4 @@
-# Kosmos Graph Memory - Knowledge Graph Memory System
+# OpenKosmos Graph Memory - Knowledge Graph Memory System
 
 Kosmos Graph Memory is the graph database extension for the mem0 intelligent memory system, supporting knowledge graph construction and querying to understand complex relationships between entities.
 

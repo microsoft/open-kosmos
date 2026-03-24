@@ -1,4 +1,4 @@
-# Kosmos Memory Adapters
+# OpenKosmos Memory Adapters
 
 These are custom mem0 memory system adapters designed for the Kosmos application. They integrate Kosmos's existing GitHub Copilot API and vector storage system.
 

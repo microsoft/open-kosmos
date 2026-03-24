@@ -13,7 +13,7 @@ jest.mock(
     app: {
       getPath: jest.fn(() => '/tmp/test'),
       setPath: jest.fn(),
-      getName: jest.fn(() => 'kosmos-test'),
+      getName: jest.fn(() => 'openkosmos-test'),
       getVersion: jest.fn(() => '0.0.0-test'),
       isReady: jest.fn(() => true),
       whenReady: jest.fn(() => Promise.resolve()),

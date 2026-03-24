@@ -1,8 +1,8 @@
 {
-  "name": "kosmos-app",
+  "name": "openkosmos-app",
   "version": "1.0.0",
-  "description": "KOSMOS AI STUDIO",
-  "author": "KOSMOS Team",
+  "description": "OpenKosmos",
+  "author": "OpenKosmos Team",
   "homepage": "./",
   "license": "MIT",
   "main": "dist/main/main.js",
@@ -196,8 +196,8 @@
     "lodash-es": "^4.17.23"
   },
   "build": {
-    "appId": "com.yanhu.kosmos-ai-studio",
-    "productName": "KOSMOS",
+    "appId": "com.openkosmos.app",
+    "productName": "OpenKosmos",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -233,8 +233,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ai-microsoft",
-        "repo": "openKosmos",
+        "owner": "microsoft",
+        "repo": "open-kosmos",
         "private": false,
         "protocol": "https",
         "releaseType": "release",
@@ -255,7 +255,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "type": "distribution",
-      "artifactName": "KOSMOS-${version}-mac-${arch}.${ext}",
+      "artifactName": "OpenKosmos-${version}-mac-${arch}.${ext}",
       "extendInfo": {
         "NSAppleEventsUsageDescription": "This app needs to access Apple Events to run external programs.",
         "NSSystemAdministrationUsageDescription": "This app needs system administration access to run MCP servers.",
@@ -278,7 +278,7 @@
     },
     "win": {
       "icon": "resources/icons_all_sizes_win/kosmos_icon.ico",
-      "artifactName": "KOSMOS-${version}-win-${arch}.${ext}",
+      "artifactName": "OpenKosmos-${version}-win-${arch}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -331,12 +331,12 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KOSMOS",
+      "shortcutName": "OpenKosmos",
       "displayLanguageSelector": false,
       "multiLanguageInstaller": false,
       "allowElevation": false,
       "perMachine": false,
-      "artifactName": "KOSMOS-${version}-win-${arch}.${ext}",
+      "artifactName": "OpenKosmos-${version}-win-${arch}.${ext}",
       "differentialPackage": true
     },
     "dmg": {

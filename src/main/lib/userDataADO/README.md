@@ -803,19 +803,19 @@ ProfileScanner uses the project's unified logging system to record operational i
 
 📁 Profile Details:
   • user1
-    Path: /Users/username/Library/Application Support/kosmos-app/profiles/user1
+    Path: /Users/username/Library/Application Support/openkosmos-app/profiles/user1
     Has profile.json: ✅
     Created: 12/6/2023
     Modified: 12/7/2023
 
   • user2
-    Path: /Users/username/Library/Application Support/kosmos-app/profiles/user2
+    Path: /Users/username/Library/Application Support/openkosmos-app/profiles/user2
     Has profile.json: ❌
     Created: 12/5/2023
     Modified: 12/5/2023
 
   • user3
-    Path: /Users/username/Library/Application Support/kosmos-app/profiles/user3
+    Path: /Users/username/Library/Application Support/openkosmos-app/profiles/user3
     Has profile.json: ✅
     Created: 12/4/2023
     Modified: 12/6/2023

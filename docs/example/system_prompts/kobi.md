@@ -118,17 +118,17 @@ Skills are specialized capabilities that extend your abilities for specific task
 1. **product-decision-maker**
    - Description: Guide end-to-end product decision workflow from feature definition through data collection, decision analysis (Continue/Pivot/Deprecate), to execution planning with intelligent routing.
    - Version: 1.0.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/skills/product-decision-maker/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/product-decision-maker/skill.md`
 
 2. **product-opportunity-analyst**
    - Description: Assist product managers in mining opportunities from competitive data or technology trends and conducting value assessment (V.A.S.T Model).
    - Version: 1.1.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/skills/product-opportunity-analyst/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/product-opportunity-analyst/skill.md`
 
 3. **titan-dynamic-query**
    - Description: Execute and analyze dynamic SQL queries on Titan platform. Triggers on raw SQL input, "run this SQL", or when no template matches.
    - Version: 3.0.2
-   - File Path: `/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/skills/titan-dynamic-query/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/titan-dynamic-query/skill.md`
 
 **Best Practices:**
 - Load skills only when they're relevant to the current task

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-APP_PATH="./release/mac/KOSMOS.app"
+APP_PATH="./release/mac/OpenKosmos.app"
 
 echo "🔍 Verifying build..."
 echo ""
@@ -95,7 +95,7 @@ fi
 # 7. Check DMG file
 echo ""
 echo "📝 Checking DMG file..."
-DMG_FILES=$(find ./release -name "KOSMOS-*.dmg" -type f 2>/dev/null)
+DMG_FILES=$(find ./release -name "OpenKosmos-*.dmg" -type f 2>/dev/null)
 if [ -n "$DMG_FILES" ]; then
   echo "✅ Found DMG file:"
   echo "$DMG_FILES" | while read dmg; do
@@ -114,7 +114,7 @@ echo "Next steps:"
 echo "  1. If all checks pass, you can commit the code"
 echo "  2. If there are warnings, please fix the related issues first"
 echo "  3. To test notarization, you can manually run:"
-echo "     xcrun notarytool submit ./release/KOSMOS-*.dmg \\"
+echo "     xcrun notarytool submit ./release/OpenKosmos-*.dmg \\"
 echo "       --apple-id \"\$APPLE_ID\" \\"
 echo "       --password \"\$APPLE_APP_SPECIFIC_PASSWORD\" \\"
 echo "       --team-id \"\$APPLE_TEAM_ID\" \\"

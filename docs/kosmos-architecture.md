@@ -1,4 +1,4 @@
-# Kosmos Project Layered Architecture Diagram
+# OpenKosmos Project Layered Architecture Diagram
 
 > **Version**: 1.0  
 > **Updated**: 2026-01-26  
@@ -303,7 +303,7 @@ mem0/
 │   ├── vector_stores/       # Vector storage interface
 │   ├── embeddings/          # Embedding interface
 │   └── llms/                # LLM interface
-└── kosmos-adapters/         # Kosmos adapter layer
+└── kosmos-adapters/         # OpenKosmos adapter layer
     ├── BetterSqliteVectorStore.ts  # SQLite vector storage
     ├── KosmosEmbedder.ts           # Embedding adapter
     ├── KosmosLLM.ts                # LLM adapter

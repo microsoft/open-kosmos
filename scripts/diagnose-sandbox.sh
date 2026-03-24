@@ -1,9 +1,9 @@
 #!/bin/bash
 
-echo "🔍 KOSMOS Application Sandbox Status Diagnostics"
+echo "🔍 OpenKosmos Application Sandbox Status Diagnostics"
 echo "================================"
 
-APP_PATH="/Applications/KOSMOS.app"
+APP_PATH="/Applications/OpenKosmos.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "❌ Application not found: $APP_PATH"
     echo "Please build and install the application first"
@@ -45,11 +45,11 @@ echo ""
 
 # 6. Check if the application is running
 echo "🏃 Checking application running status..."
-if pgrep -f KOSMOS > /dev/null; then
-    echo "✅ KOSMOS application is running"
-    echo "Process ID: $(pgrep -f KOSMOS)"
+if pgrep -f OpenKosmos > /dev/null; then
+    echo "✅ OpenKosmos application is running"
+    echo "Process ID: $(pgrep -f OpenKosmos)"
 else
-    echo "❌ KOSMOS application is not running"
+    echo "❌ OpenKosmos application is not running"
 fi
 echo ""
 

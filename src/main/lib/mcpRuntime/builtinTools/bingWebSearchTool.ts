@@ -298,7 +298,7 @@ export class BingWebSearchTool {
       const errors: string[] = [];
       
       // State file configuration
-      const stateFile = path.join(os.tmpdir(), 'kosmos-bing-browser-state.json');
+      const stateFile = path.join(os.tmpdir(), 'openkosmos-bing-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
       
       // Load saved state

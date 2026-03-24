@@ -1,6 +1,6 @@
-# Kosmos AI Studio
+# OpenKosmos
 
-**Kosmos AI Studio** is an advanced AI-powered desktop application built with Electron, React, and TypeScript. It provides a unified interface for interacting with multiple AI models, managing chat sessions, and integrating with Model Context Protocol (MCP) servers to extend AI capabilities with custom tools and contextual information.
+**OpenKosmos** is an advanced AI-powered desktop application built with Electron, React, and TypeScript. It provides a unified interface for interacting with multiple AI models, managing chat sessions, and integrating with Model Context Protocol (MCP) servers to extend AI capabilities with custom tools and contextual information.
 
 ## Features
 
@@ -42,7 +42,7 @@
 
 ### Prerequisites
 
-Before running Kosmos AI Studio, ensure you have the following installed:
+Before running OpenKosmos, ensure you have the following installed:
 
 - **Node.js** 18.0.0 or later
 - **Python** 3.10 or later (for MCP server support)
@@ -53,8 +53,8 @@ Before running Kosmos AI Studio, ensure you have the following installed:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/ai-microsoft/openKosmos.git
-   cd openKosmos
+   git clone https://github.com/microsoft/open-kosmos.git
+   cd open-kosmos
    ```
 
 2. **Configure environment variables**
@@ -77,7 +77,7 @@ Before running Kosmos AI Studio, ensure you have the following installed:
 
 4. **Rebuild native modules for Electron** (required for Whisper speech-to-text)
 
-   Kosmos AI Studio uses native Node.js addons that need to be rebuilt for your Electron version:
+   OpenKosmos uses native Node.js addons that need to be rebuilt for your Electron version:
    ```bash
    npx electron-rebuild
    ```
@@ -94,7 +94,7 @@ Before running Kosmos AI Studio, ensure you have the following installed:
 ### Quick Start 
 
 #### with Hot Reload (Recommended)
-Kosmos AI Studio features a modern development environment with hot module replacement (HMR) for rapid iteration:
+OpenKosmos features a modern development environment with hot module replacement (HMR) for rapid iteration:
 
 ```bash
 # One-command development mode (recommended)
@@ -114,7 +114,7 @@ npm run electron:dev # Terminal 3: Launch Electron
 
 ## Architecture
 
-Kosmos AI Studio is built on a modern Electron architecture:
+OpenKosmos is built on a modern Electron architecture:
 
 - **Main Process**: Handles system operations, file I/O, authentication, and MCP server management
 - **Renderer Process**: React-based UI with TypeScript for type safety
@@ -127,7 +127,7 @@ Kosmos AI Studio is built on a modern Electron architecture:
 
 ### Contributing
 
-We welcome contributions! Please open an issue or submit a pull request on [GitHub](https://github.com/ai-microsoft/openKosmos).
+We welcome contributions! Please open an issue or submit a pull request on [GitHub](https://github.com/microsoft/open-kosmos).
 
 ### Development Workflow
 
@@ -181,7 +181,7 @@ npm run start        # Build and run in production mode
 ### Project Structure
 
 ```
-Kosmos AI Studio/
+OpenKosmos/
 ├── src/
 │   ├── main/              # Electron main process
 │   │   ├── lib/           # Core libraries
@@ -202,7 +202,7 @@ Kosmos AI Studio/
 
 ## Feature Flags
 
-Kosmos AI Studio uses a feature flag system to control experimental and in-development features. This ensures new features can be safely developed and tested without affecting production users.
+OpenKosmos uses a feature flag system to control experimental and in-development features. This ensures new features can be safely developed and tested without affecting production users.
 
 ### Key Concepts
 
@@ -240,7 +240,7 @@ Context properties are defined in `src/main/lib/featureFlags/types.ts` (`Feature
 | Property | Type | Description |
 |----------|------|-------------|
 | `ctx.isDev` | boolean | Whether running in development mode |
-| `ctx.brandName` | string | Current brand name (e.g., `'kosmos'`) |
+| `ctx.brandName` | string | Current brand name (e.g., `'openkosmos'`) |
 | `ctx.platform` | string | OS platform (`'win32'`, `'darwin'`, `'linux'`) |
 | `ctx.arch` | string | CPU architecture (`'x64'`, `'arm64'`) |
 
@@ -347,5 +347,5 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For questions, bug reports, or feature requests, please open an issue on [GitHub](https://github.com/ai-microsoft/openKosmos/issues).
+For questions, bug reports, or feature requests, please open an issue on [GitHub](https://github.com/microsoft/open-kosmos/issues).
 

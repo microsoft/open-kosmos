@@ -191,7 +191,7 @@ async function extractZipToTempDir(zipFilePath: string): Promise<string | null> 
     const zip = await JSZip.loadAsync(zipBuffer);
     
     // Create temporary directory
-    const tempDir = path.join(os.tmpdir(), `kosmos-import-${Date.now()}`);
+    const tempDir = path.join(os.tmpdir(), `openkosmos-import-${Date.now()}`);
     fs.mkdirSync(tempDir, { recursive: true });
     
     // Extract all files
@@ -694,7 +694,7 @@ async function downloadToTempFile(url: string): Promise<string> {
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 8);
-    const tempFilePath = path.join(tempDir, `kosmos-download-${timestamp}-${randomStr}.zip`);
+    const tempFilePath = path.join(tempDir, `openkosmos-download-${timestamp}-${randomStr}.zip`);
     
     // Create write stream
     const fileStream = fs.createWriteStream(tempFilePath);

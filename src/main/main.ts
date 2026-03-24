@@ -2431,7 +2431,7 @@ class ElectronApp {
           console.log(`[BrowserControl] Install command: ${installCmd}`);
 
           await new Promise<void>((resolve, reject) => {
-            sudoInstall.exec(installCmd, { name: 'Kosmos Browser Install' }, (error: Error | null, stdout: string, stderr: string) => {
+            sudoInstall.exec(installCmd, { name: 'OpenKosmos Browser Install' }, (error: Error | null, stdout: string, stderr: string) => {
               if (error) {
                 console.error(`[BrowserControl] Install failed:`, error.message);
                 if (stderr) console.error(`[BrowserControl] Install stderr:`, stderr);
@@ -2481,7 +2481,7 @@ class ElectronApp {
         const sudo = require('sudo-prompt');
         const registerAllScript = path.join(browserControlDir, COMBINED_SCRIPTS.registerAll);
         const command = `powershell.exe -ExecutionPolicy Bypass -File "${registerAllScript}"`;
-        const options = { name: 'Kosmos Browser Control Setup' };
+        const options = { name: 'OpenKosmos Browser Control Setup' };
 
         // Wait for admin privilege registration to complete (registering both Chrome and Edge)
         await new Promise<void>((resolve, reject) => {
@@ -2573,7 +2573,7 @@ class ElectronApp {
         if (this.currentUserAlias) {
           const { mcpClientManager } = await import('./lib/mcpRuntime/mcpClientManager');
           const pcManager = await getProfileCacheManager();
-          const mcpServerName = 'kosmos-chrome-extension';
+          const mcpServerName = 'openkosmos-chrome-extension';
           const existingServer = pcManager.getMcpServerInfo(this.currentUserAlias, mcpServerName);
           
           if (!existingServer.config) {
@@ -2650,7 +2650,7 @@ class ElectronApp {
         const sudo = require('sudo-prompt');
         const unregisterAllScript = path.join(browserControlDir, COMBINED_SCRIPTS.unregisterAll);
         const command = `powershell.exe -ExecutionPolicy Bypass -File "${unregisterAllScript}"`;
-        const options = { name: 'Kosmos Browser Control Uninstall' };
+        const options = { name: 'OpenKosmos Browser Control Uninstall' };
 
         // 4. Execute commands and wait for completion
         return new Promise((resolve) => {
@@ -2670,7 +2670,7 @@ class ElectronApp {
             // 4.2. Delete MCP server config and disconnect
             if (this.currentUserAlias) {
               const { mcpClientManager } = await import('./lib/mcpRuntime/mcpClientManager');
-              const mcpServerName = 'kosmos-chrome-extension';
+              const mcpServerName = 'openkosmos-chrome-extension';
               
               try {
                 // Disconnect first
@@ -2706,7 +2706,7 @@ class ElectronApp {
       }
       
       try {
-        const mcpServerName = 'kosmos-chrome-extension';
+        const mcpServerName = 'openkosmos-chrome-extension';
         
         // Read user-selected browser type
         let selectedBrowser: 'chrome' | 'edge' = 'edge';
@@ -4960,7 +4960,7 @@ class ElectronApp {
         const fs = require('fs');
         if (!fs.existsSync(htmlPath)) {
           // Load a simple fallback page
-          await this.mainWindow.loadURL('data:text/html,<html><body><h1>KOSMOS App</h1><p>HTML file not found. Please run: npm run build</p></body></html>');
+          await this.mainWindow.loadURL('data:text/html,<html><body><h1>OpenKosmos App</h1><p>HTML file not found. Please run: npm run build</p></body></html>');
         } else {
           await this.mainWindow.loadFile(htmlPath);
         }
@@ -4968,7 +4968,7 @@ class ElectronApp {
     } catch (error) {
       // Load error page
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await this.mainWindow.loadURL('data:text/html,<html><body><h1>KOSMOS App - Error</h1><p>Failed to load: ' + errorMessage + '</p></body></html>');
+      await this.mainWindow.loadURL('data:text/html,<html><body><h1>OpenKosmos App - Error</h1><p>Failed to load: ' + errorMessage + '</p></body></html>');
     }
   }
 
@@ -4980,7 +4980,7 @@ class ElectronApp {
   private initSelectionHook() {
     const logger = getAdvancedLogger();
     // Only support selection-hook for Kosmos brand
-    if (process.env.BRAND_NAME !== 'kosmos') {
+    if (process.env.BRAND_NAME !== 'openkosmos') {
       return;
     }
 
@@ -5356,7 +5356,7 @@ class ElectronApp {
   private async registerGlobalShortcuts(): Promise<void> {
     const logger = getAdvancedLogger();
     // Only register shortcuts for Kosmos brand
-    if (process.env.BRAND_NAME !== 'kosmos') {
+    if (process.env.BRAND_NAME !== 'openkosmos') {
       return;
     }
 

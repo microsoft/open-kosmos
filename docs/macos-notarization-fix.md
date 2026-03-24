@@ -7,7 +7,7 @@ The previous CI builds had critical issues:
 1. ✅ **Codesign Succeeded** - Code signing worked correctly
 2. ❌ **Notarization was only submitted, not awaited** - `APPLE_NOTARIZE_WAIT=false`
 3. ❌ **No Stapled Notarization Ticket** - App was missing the notarization ticket
-4. ❌ **Gatekeeper Warning After User Download** - "Apple could not verify KOSMOS is free of malware"
+4. ❌ **Gatekeeper Warning After User Download** - "Apple could not verify OpenKosmos is free of malware"
 
 ### Key Log Evidence
 
@@ -32,7 +32,7 @@ This means:
 **File**: [.github/workflows/release.yml](.github/workflows/release.yml)
 
 **Modified Location**: 
-- Line 403: `build-macos-kosmos` job
+- Line 403: `build-macos-openkosmos` job
 
 **Changes**:
 ```diff
@@ -52,17 +52,17 @@ The script already has full support (no modifications needed):
 
 1. **Codesign Verification** (`verifyCodesign`)
    ```bash
-   codesign --verify --deep --strict --verbose=2 "KOSMOS.app"
+   codesign --verify --deep --strict --verbose=2 "OpenKosmos.app"
    ```
 
 2. **Compress App to ZIP**
    ```bash
-   ditto -c -k --keepParent "KOSMOS.app" "KOSMOS.app.zip"
+   ditto -c -k --keepParent "OpenKosmos.app" "OpenKosmos.app.zip"
    ```
 
 3. **Submit to Apple Notarization Service**
    ```bash
-   xcrun notarytool submit "KOSMOS.app.zip" \
+   xcrun notarytool submit "OpenKosmos.app.zip" \
      --apple-id "$APPLE_ID" \
      --team-id "$TEAM_ID" \
      --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -80,8 +80,8 @@ The script already has full support (no modifications needed):
 
 5. **Staple Ticket to App**
    ```bash
-   xcrun stapler staple "KOSMOS.app"
-   xcrun stapler validate "KOSMOS.app"
+   xcrun stapler staple "OpenKosmos.app"
+   xcrun stapler validate "OpenKosmos.app"
    ```
 
 6. **Package DMG/ZIP**
@@ -95,16 +95,16 @@ The script already has full support (no modifications needed):
 
 ```bash
 # 1. Verify code signature
-codesign --verify --deep --strict --verbose=2 "KOSMOS.app"
+codesign --verify --deep --strict --verbose=2 "OpenKosmos.app"
 
 # 2. Verify Hardened Runtime
-codesign -dv --verbose=4 "KOSMOS.app" 2>&1 | grep -i runtime
+codesign -dv --verbose=4 "OpenKosmos.app" 2>&1 | grep -i runtime
 
 # 3. Verify stapled ticket
-xcrun stapler validate "KOSMOS.app"
+xcrun stapler validate "OpenKosmos.app"
 
 # 4. Verify Gatekeeper assessment
-spctl -a -vvv -t execute "KOSMOS.app"
+spctl -a -vvv -t execute "OpenKosmos.app"
 ```
 
 ### CI Build Log Checkpoints
@@ -113,7 +113,7 @@ Expected log output:
 
 ```text
 🍎 Starting macOS notarization (using notarytool with polling)...
-   App: /path/to/KOSMOS.app
+   App: /path/to/OpenKosmos.app
    Team ID: XXXXXXXXXX
    Apple ID: your-apple-id@example.com
    Wait for completion: YES (max 30 minutes)
@@ -121,7 +121,7 @@ Expected log output:
 🔏 Verifying codesign...
 ✓ Codesign verification passed
 
-📦 Creating zip archive: /path/to/KOSMOS.app.zip
+📦 Creating zip archive: /path/to/OpenKosmos.app.zip
 ✓ Zip archive created
 
 📤 Submitting to Apple notarization service...
@@ -194,8 +194,8 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
 3. Verify the released files:
    ```bash
    # Extract the DMG/ZIP and verify the App
-   xcrun stapler validate "KOSMOS.app"
-   spctl -a -vvv -t execute "KOSMOS.app"
+   xcrun stapler validate "OpenKosmos.app"
+   spctl -a -vvv -t execute "OpenKosmos.app"
    ```
 
 ---
@@ -218,8 +218,8 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
 
 - [ ] Pre-release local verification:
   ```bash
-  xcrun stapler validate "KOSMOS.app"
-  spctl -a -vvv -t execute "KOSMOS.app"
+  xcrun stapler validate "OpenKosmos.app"
+  spctl -a -vvv -t execute "OpenKosmos.app"
   ```
 
 - [ ] Post-release user verification:
@@ -240,5 +240,5 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
 
 **Fix Date**: 2026-01-14  
 **Fix Version**: Next release (v1.13.19+)  
-**Scope of Impact**: macOS KOSMOS builds
+**Scope of Impact**: macOS OpenKosmos builds
 

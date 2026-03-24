@@ -50,7 +50,7 @@ export interface FeatureFlagConfig {
    * defaultValue: false
    * 
    * // Dynamic logic
-   * defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'kosmos'
+   * defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos'
    */
   defaultValue: FeatureFlagDefaultValue;
 }

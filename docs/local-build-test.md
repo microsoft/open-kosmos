@@ -47,23 +47,23 @@ npm run build
 npm run dist:mac
 
 # 5. Verify signature
-codesign -dv --verbose=4 ./release/mac/KOSMOS.app
+codesign -dv --verbose=4 ./release/mac/OpenKosmos.app
 
 # 6. Verify entitlements
-codesign -d --entitlements - ./release/mac/KOSMOS.app
+codesign -d --entitlements - ./release/mac/OpenKosmos.app
 
 # 7. Verify Gatekeeper
-spctl -a -vvv -t install ./release/mac/KOSMOS.app
+spctl -a -vvv -t install ./release/mac/OpenKosmos.app
 ```
 
 ### Plan 2: Quick Signing Test (Skip Notarization)
 
 Create a temporary configuration file `electron-builder.test.yml`:
 ```yaml
-appId: com.kosmos.app
-productName: KOSMOS
+appId: com.openkosmos.app
+productName: OpenKosmos
 mac:
-  icon: brands/kosmos/assets/mac/app.icns
+  icon: brands/openkosmos/assets/mac/app.icns
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -121,29 +121,29 @@ act -j build-macos --secret-file .secrets --dryrun
 ### 1. Check Code Signing Status
 ```bash
 # Detailed signing information
-codesign -dvvv ./release/mac/KOSMOS.app
+codesign -dvvv ./release/mac/OpenKosmos.app
 
 # View signing identity
-codesign -d --extract-certificates ./release/mac/KOSMOS.app
+codesign -d --extract-certificates ./release/mac/OpenKosmos.app
 
 # Verify signature validity
-codesign --verify --deep --strict --verbose=2 ./release/mac/KOSMOS.app
+codesign --verify --deep --strict --verbose=2 ./release/mac/OpenKosmos.app
 ```
 
 ### 2. Check Entitlements
 ```bash
 # View the actual entitlements in use
-codesign -d --entitlements :- ./release/mac/KOSMOS.app
+codesign -d --entitlements :- ./release/mac/OpenKosmos.app
 
 # Compare with the configuration file
 diff <(plutil -convert xml1 -o - build/entitlements.mac.plist) \
-     <(codesign -d --entitlements :- ./release/mac/KOSMOS.app)
+     <(codesign -d --entitlements :- ./release/mac/OpenKosmos.app)
 ```
 
 ### 3. Test Notarization (Requires Waiting)
 ```bash
 # Manually submit for notarization
-xcrun notarytool submit ./release/KOSMOS-*.dmg \
+xcrun notarytool submit ./release/OpenKosmos-*.dmg \
   --apple-id "$APPLE_ID" \
   --password "$APPLE_APP_SPECIFIC_PASSWORD" \
   --team-id "$APPLE_TEAM_ID" \
@@ -176,7 +176,7 @@ Create `scripts/verify-build.sh`:
 #!/bin/bash
 set -e
 
-APP_PATH="./release/mac/KOSMOS.app"
+APP_PATH="./release/mac/OpenKosmos.app"
 
 echo "🔍 Verifying build..."
 

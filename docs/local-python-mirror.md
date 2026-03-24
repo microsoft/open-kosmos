@@ -1,4 +1,4 @@
-# Kosmos Local Python Mirror and Proxy Solution
+# OpenKosmos Local Python Mirror and Proxy Solution
 
 ## 1. Background and Objectives
 Currently, the `uv python install` command relies on GitHub Releases to download Python build packages (`python-build-standalone`). Due to network environment constraints, downloads are often slow or fail entirely.

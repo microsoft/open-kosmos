@@ -11,7 +11,7 @@
  * 
  * defaultValue supports two forms:
  * 1. Static boolean: defaultValue: false
- * 2. Dynamic function: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'kosmos'
+ * 2. Dynamic function: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos'
  */
 
 import { FeatureFlagConfig, FeatureFlagName, FeatureFlagContext, FeatureFlagDefaultValue } from './types';
@@ -27,7 +27,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     name: 'kosmosFeatureToolbarSettings',
     description: 'Show Toolbar entry in Settings page (kosmos brand only, dev environment only)',
 
-    defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'kosmos',
+    defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos',
   },
 
   // ============== Memory/Context Enhancement ==============

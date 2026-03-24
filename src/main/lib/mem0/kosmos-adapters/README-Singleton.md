@@ -1,4 +1,4 @@
-# Kosmos Memory Singleton Pattern Implementation Document
+# OpenKosmos Memory Singleton Pattern Implementation Document
 
 ## 📋 Implementation Overview
 
@@ -104,13 +104,13 @@ const isReady = isKosmosMemoryInitialized('user123');
 │   ├── chroma.sqlite3
 │   └── collections/
 ├── history/                   # SQLite history records
-│   └── kosmos_memory.db
+│   └── openkosmos_memory.db
 └── logs/                     # Optional log files
 ```
 
 ### Path Examples
-- Production mode: `/Users/user/Library/Application Support/kosmos-app/profiles/alice/mem0/`
-- Development mode: `/Users/user/Library/Application Support/kosmos-app/profiles/alice/mem0/`
+- Production mode: `/Users/user/Library/Application Support/openkosmos-app/profiles/alice/mem0/`
+- Development mode: `/Users/user/Library/Application Support/openkosmos-app/profiles/alice/mem0/`
 - Memory mode: No persistence
 
 ## 🔄 Backward Compatibility

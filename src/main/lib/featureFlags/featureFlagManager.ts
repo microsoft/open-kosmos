@@ -38,7 +38,7 @@ class FeatureFlagManager {
     // Initialize context (using temporary values, will be updated during initialize)
     this.context = {
       isDev: false,
-      brandName: BRAND_NAME || 'kosmos',
+      brandName: BRAND_NAME || 'openkosmos',
       platform: process.platform,
       arch: process.arch,
     };

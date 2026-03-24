@@ -17,7 +17,7 @@
  * 
  * Define feature flag default values:
  * 1. Static value: defaultValue: false
- * 2. Dynamic logic: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'kosmos'
+ * 2. Dynamic logic: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos'
  * 
  * Enable via command line arguments:
  * --enable-features=flag1,flag2 --disable-features=flag3

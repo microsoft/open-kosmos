@@ -13,7 +13,7 @@
 import { exec } from 'child_process';
 import { checkBrowserControlStatus } from './browserControlStatus';
 
-const MCP_SERVER_NAME = 'kosmos-chrome-extension';
+const MCP_SERVER_NAME = 'openkosmos-chrome-extension';
 const PING_URL = 'http://127.0.0.1:12306/ping';
 const POLL_INTERVAL = 2000;  // 2-second polling
 const PING_TIMEOUT = 1000;   // 1-second timeout

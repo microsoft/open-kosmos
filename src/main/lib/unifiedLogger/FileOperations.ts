@@ -25,8 +25,8 @@ export function getDefaultLogDirectory(): string {
     }
   }
   const userProfile = os.homedir();
-  // Try to get app name from environment or default to 'kosmos-app'
-  const appName = process.env.APP_NAME || 'kosmos-app';
+  // Try to get app name from environment or default to 'openkosmos-app'
+  const appName = process.env.APP_NAME || 'openkosmos-app';
 
   // Platform specific headers
   if (process.platform === 'darwin') {
@@ -65,7 +65,7 @@ export function getTodayLogFileName(): string {
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
-  return `kosmos-${year}-${month}-${day}.log`;
+  return `openkosmos-${year}-${month}-${day}.log`;
 }
 
 /**

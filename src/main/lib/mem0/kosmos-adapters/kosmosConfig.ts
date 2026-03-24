@@ -26,7 +26,7 @@ export const KOSMOS_MEMORY_CONFIG: MemoryConfig = {
   vectorStore: {
     provider: "bettersqlite",
     config: {
-      collectionName: "kosmos_memories", // Kosmos-specific collection name
+      collectionName: "kosmos_memories", // OpenKosmos-specific collection name
       dimension: 1536, // text-embedding-3-small dimension
       persistPath: "./sqlite_db/user_memories.db" // Local storage path
     },
