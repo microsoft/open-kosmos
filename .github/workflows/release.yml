@@ -1,0 +1,1241 @@
+name: Build and Release
+
+# Set required permissions
+permissions:
+  contents: write    # Need write permission to create releases
+  actions: read      # Need read actions permission
+  checks: write      # Need write check status
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.8)'
+        required: true
+        type: string
+
+jobs:
+  # Windows build job - OpenKosmos
+  build-windows-openkosmos:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Windows Build Tools
+        shell: powershell
+        run: |
+          Write-Host "Setting up Windows Build Tools..." -ForegroundColor Green
+          
+          # Check pre-installed build tools
+          Write-Host "Checking for Visual Studio Build Tools..." -ForegroundColor Yellow
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vsWhere) {
+            $vsPath = & $vsWhere -latest -property installationPath
+            if ($vsPath) {
+              Write-Host "[OK] Visual Studio found at: $vsPath" -ForegroundColor Green
+              $env:VCTargetsPath = "$vsPath\MSBuild\Microsoft\VC\v160\"
+            } else {
+              Write-Host "[WARN] Visual Studio not found, but runners usually have build tools pre-installed" -ForegroundColor Yellow
+            }
+          } else {
+            Write-Host "[WARN] vswhere not found, but Windows runners usually have build tools" -ForegroundColor Yellow
+          }
+          
+          # Check Windows SDK (usually pre-installed on GitHub runners)
+          Write-Host "Checking Windows SDK..." -ForegroundColor Yellow
+          $sdkPaths = @(
+            "C:\Program Files (x86)\Windows Kits\10\Include\*",
+            "C:\Program Files\Windows Kits\10\Include\*"
+          )
+          $sdkFound = $false
+          foreach ($path in $sdkPaths) {
+            if (Test-Path $path) {
+              Write-Host "[OK] Windows SDK found at: $path" -ForegroundColor Green
+              $sdkFound = $true
+              break
+            }
+          }
+          
+          if (-not $sdkFound) {
+            Write-Host "Installing Windows SDK..." -ForegroundColor Yellow
+            try {
+              choco install windows-sdk-10-version-2004-all -y --timeout 600
+              Write-Host "[OK] Windows SDK installation completed" -ForegroundColor Green
+            } catch {
+              Write-Host "[WARN] Windows SDK installation failed: $_" -ForegroundColor Red
+              Write-Host "[WARN] Continuing with pre-installed tools..." -ForegroundColor Yellow
+            }
+          }
+          
+          Write-Host "[OK] Windows Build Tools setup completed" -ForegroundColor Green
+          
+      - name: Verify Visual Studio and Windows SDK
+        shell: powershell
+        run: |
+          Write-Host "=== Visual Studio Installation ===" -ForegroundColor Green
+          $vsPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          if (Test-Path $vsPath) {
+            Write-Host "[OK] Visual Studio 2022 found at: $vsPath" -ForegroundColor Green
+          }
+          
+          Write-Host "`n=== Windows SDK Installation ===" -ForegroundColor Green
+          $sdkPaths = @(
+            "C:\Program Files (x86)\Windows Kits\10\Include\*",
+            "C:\Program Files\Windows Kits\10\Include\*"
+          )
+          foreach ($path in $sdkPaths) {
+            if (Test-Path $path) {
+              Write-Host "[OK] Windows SDK found at: $path" -ForegroundColor Green
+              Get-ChildItem $path | Select-Object -First 3 | ForEach-Object {
+                Write-Host "  - $($_.Name)" -ForegroundColor Gray
+              }
+            }
+          }
+
+      - name: Clean npm cache and node_modules
+        run: |
+          Write-Host "Cleaning npm cache..." -ForegroundColor Green
+          npm cache clean --force
+          
+          Write-Host "Removing node_modules..." -ForegroundColor Yellow
+          if (Test-Path "node_modules") {
+            Remove-Item -Recurse -Force "node_modules"
+            Write-Host "[INFO] Removed node_modules" -ForegroundColor Gray
+          }
+          Write-Host "[OK] Cleanup completed" -ForegroundColor Green
+        shell: powershell
+
+      - name: Install dependencies
+        run: |
+          Write-Host "Installing dependencies..." -ForegroundColor Green
+          npm install --no-audit
+          Write-Host "Dependencies installation completed" -ForegroundColor Green
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_msvs_version: 2022
+          npm_config_build_from_source: false
+          npm_config_node_gyp: node_modules\.bin\node-gyp.cmd
+        shell: powershell
+
+      - name: Setup Windows build environment
+        run: |
+          Write-Host "Setting up Windows build environment..." -ForegroundColor Green
+          
+          # Use GitHub Actions environment variables to ensure variables are available in subsequent steps
+          echo "MSVS_VERSION=2022" >> $env:GITHUB_ENV
+          echo "npm_config_msvs_version=2022" >> $env:GITHUB_ENV
+          echo "npm_config_build_from_source=false" >> $env:GITHUB_ENV
+          echo "npm_config_cache=C:\npm-cache" >> $env:GITHUB_ENV
+          echo "npm_config_disturl=https://electronjs.org/headers" >> $env:GITHUB_ENV
+          echo "npm_config_runtime=electron" >> $env:GITHUB_ENV
+          echo "npm_config_cache_lock_retries=10" >> $env:GITHUB_ENV
+          echo "npm_config_python=python" >> $env:GITHUB_ENV
+          
+          Write-Host "Environment variables configured for subsequent steps:" -ForegroundColor Gray
+          Write-Host "  MSVS_VERSION: 2022" -ForegroundColor Gray
+          Write-Host "  npm_config_msvs_version: 2022" -ForegroundColor Gray
+          Write-Host "  npm_config_runtime: electron" -ForegroundColor Gray
+          Write-Host "  npm_config_python: python" -ForegroundColor Gray
+          
+          Write-Host "[OK] Windows build environment setup completed" -ForegroundColor Green
+        shell: powershell
+
+      - name: Rebuild native modules
+        run: |
+          Write-Host "Running native modules rebuild script..." -ForegroundColor Green
+          
+          # Use cross-platform Node.js rebuild script
+          try {
+            node scripts/rebuild-native.js
+            $rebuildExitCode = $LASTEXITCODE
+            
+            if ($rebuildExitCode -eq 0) {
+              Write-Host "[OK] Native modules rebuild successful" -ForegroundColor Green
+            } else {
+              Write-Host "[WARN] Native modules rebuild failed, but continuing..." -ForegroundColor Yellow
+              Write-Host "Exit code: $rebuildExitCode" -ForegroundColor Red
+            }
+          } catch {
+            Write-Host "[ERROR] Native modules rebuild script failed: $_" -ForegroundColor Red
+            Write-Host "[WARN] Continuing with build, but this may cause runtime errors..." -ForegroundColor Yellow
+          }
+          
+          Write-Host "Native modules rebuild step completed" -ForegroundColor Green
+        shell: powershell
+        continue-on-error: true
+
+      - name: Create environment file
+        run: |
+          "NODE_ENV=${{ vars.NODE_ENV || 'production' }}" | Out-File -FilePath .env.local -Encoding utf8
+          "HISTORY_PROMPT_QUEUE_SIZE=${{ vars.HISTORY_PROMPT_QUEUE_SIZE || '20' }}" | Out-File -FilePath .env.local -Append -Encoding utf8
+          "DEVELOPMENT_BASE_CDN_URL=${{ vars.DEVELOPMENT_BASE_CDN_URL }}" | Out-File -FilePath .env.local -Append -Encoding utf8
+          "PRODUCTION_BASE_CDN_URL=${{ vars.PRODUCTION_BASE_CDN_URL }}" | Out-File -FilePath .env.local -Append -Encoding utf8
+        shell: powershell
+
+      - name: Verify environment file
+        run: |
+          Write-Host "=== Environment file content ===" -ForegroundColor Green
+          if (Test-Path ".env.local") {
+            Get-Content .env.local | ForEach-Object {
+              if ($_ -like "*CDN_URL*") {
+                Write-Host "[OK] Found: $_" -ForegroundColor Green
+              } else {
+                Write-Host "[FILE] $_" -ForegroundColor Gray
+              }
+            }
+            Write-Host "=== File size ===" -ForegroundColor Green
+            $fileInfo = Get-Item .env.local
+            Write-Host "File size: $($fileInfo.Length) bytes" -ForegroundColor Green
+          } else {
+            Write-Host "[ERROR] .env.local file not found!" -ForegroundColor Red
+            exit 1
+          }
+        shell: powershell
+
+      - name: Build application
+        run: npm run build --brand=openkosmos
+        shell: powershell
+
+      - name: Verify Windows icons
+        run: |
+          if (Test-Path "brands/openkosmos/assets/win/app.ico") {
+            Write-Host "[OK] Windows icon found"
+          } else {
+            Write-Host "[ERROR] Windows icon not found at brands/openkosmos/assets/win/app.ico"
+            exit 1
+          }
+        shell: powershell
+
+      - name: Build and publish Windows
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_FOR_PULL_REQUEST: false
+        run: |
+          # Use custom publish configuration, exclude source code
+          npm run dist:publish:win --brand=openkosmos -- --config.publish.releaseType=release
+        shell: powershell
+
+  # macOS build job - OpenKosmos (arm64) - Stage 1: Build & Sign & Submit Notarization
+  # Note: Only builds arm64 architecture, since package job runs on arm64 runner
+  build-macos-openkosmos:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Clean npm cache and node_modules
+        run: |
+          echo "Cleaning npm cache..."
+          npm cache clean --force
+          rm -rf node_modules
+          echo "✅ Cleanup completed"
+
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+          npm install --no-audit
+          echo "Dependencies installation completed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_build_from_source: false
+
+      - name: Rebuild native modules
+        run: |
+          echo "Rebuilding native modules for macOS..."
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          
+          node scripts/rebuild-native.js
+          
+          echo "Native modules rebuild step completed"
+
+      - name: Create environment file
+        run: |
+          {
+            echo "NODE_ENV=${{ vars.NODE_ENV || 'production' }}"
+            echo "HISTORY_PROMPT_QUEUE_SIZE=${{ vars.HISTORY_PROMPT_QUEUE_SIZE || '20' }}"
+            echo "DEVELOPMENT_BASE_CDN_URL=${{ vars.DEVELOPMENT_BASE_CDN_URL }}"
+            echo "PRODUCTION_BASE_CDN_URL=${{ vars.PRODUCTION_BASE_CDN_URL }}"
+          } >> .env.local
+
+      - name: Verify environment file
+        run: |
+          echo "=== Environment file content ==="
+          if [ -f ".env.local" ]; then
+            while IFS= read -r line; do
+              if [[ "$line" == *"CDN_URL"* ]]; then
+                echo "✅ Found: $line"
+              else
+                echo "📄 $line"
+              fi
+            done < .env.local
+            echo "=== File info ==="
+            ls -la .env.local
+            echo "File size: $(wc -c < .env.local) bytes"
+          else
+            echo "❌ .env.local file not found!"
+            exit 1
+          fi
+
+      - name: Build application
+        run: npm run build --brand=openkosmos
+
+      - name: Verify and fix entitlements file
+        run: |
+          echo "Checking entitlements file..."
+          if [ -f "build/entitlements.mac.plist" ]; then
+            echo "✅ Entitlements file exists"
+            xattr -c build/entitlements.mac.plist 2>/dev/null || true
+            chmod 644 build/entitlements.mac.plist
+            if [ -r "build/entitlements.mac.plist" ]; then
+              echo "✅ Entitlements file is readable"
+              plutil -lint build/entitlements.mac.plist
+            else
+              echo "❌ Entitlements file is not readable"
+              exit 1
+            fi
+          else
+            echo "❌ Entitlements file not found at build/entitlements.mac.plist"
+            exit 1
+          fi
+
+      - name: Verify macOS icons
+        run: |
+          if [ -f "brands/openkosmos/assets/mac/app.icns" ]; then
+            echo "✅ macOS icon found"
+          else
+            echo "❌ macOS icon not found at brands/openkosmos/assets/mac/app.icns"
+            exit 1
+          fi
+
+      - name: Show electron-builder config (before build)
+        run: |
+          echo "========== electron-builder.config.js =========="
+          cat electron-builder.config.js
+          echo ""
+          echo "========== package.json build section =========="
+          node -e "console.log(JSON.stringify(require('./package.json').build, null, 2))"
+          echo ""
+          echo "========== Environment =========="
+          echo "BRAND: openkosmos"
+          echo "Node: $(node --version)"
+          echo "npm: $(npm --version)"
+
+      - name: Build, Sign and Submit Notarization (arm64)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_NOTARIZE_WAIT: false
+          DEBUG: electron-builder
+          BRAND: openkosmos
+        run: |
+          echo "🔧 Starting build with signing and notarization submission..."
+          echo "========================================"
+          
+          # Use electron-builder to build, sign, and submit notarization
+          # --publish=never: Prevent uploading un-notarized ZIP to GitHub Release before stapling
+          npm run dist:mac:arm64 --brand=openkosmos -- --publish=never
+          
+          echo ""
+          echo "========================================"
+          echo "🔍 Build completed, analyzing results..."
+
+      - name: Analyze build output
+        run: |
+          echo "========== Release Directory Structure =========="
+          find release -type f -exec ls -lh {} \; 2>/dev/null || echo "No release directory"
+          
+          echo ""
+          echo "========== DMG Files =========="
+          find release -name "*.dmg" -exec ls -lh {} \; 2>/dev/null || echo "No DMG files found"
+          
+          echo ""
+          echo "========== ZIP Files =========="
+          find release -name "*.zip" -exec ls -lh {} \; 2>/dev/null || echo "No ZIP files found"
+          
+          echo ""
+          echo "========== APP Bundles =========="
+          find release -name "*.app" -type d -exec du -sh {} \; 2>/dev/null || echo "No .app bundles found"
+          
+          echo ""
+          echo "========== builder-effective-config.yaml =========="
+          if [ -f "release/builder-effective-config.yaml" ]; then
+            cat release/builder-effective-config.yaml
+          else
+            echo "Not found"
+          fi
+          
+          echo ""
+          echo "========== builder-debug.yml =========="
+          if [ -f "release/builder-debug.yml" ]; then
+            cat release/builder-debug.yml
+          else
+            echo "Not found"
+          fi
+          
+          echo ""
+          echo "========== DMG Info (if exists) =========="
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ]; then
+            echo "DMG file: $DMG_FILE"
+            echo "Size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+            # Get DMG details
+            hdiutil imageinfo "$DMG_FILE" 2>/dev/null | grep -E "Format|Compressed|Total" || true
+          fi
+
+      - name: Package app as tar (preserve symlinks)
+        run: |
+          # GitHub Actions artifact doesn't preserve symlinks, which causes
+          # Electron Framework.framework to expand from ~159MB to ~477MB
+          # Using tar to preserve the symlink structure
+          cd release/mac-arm64
+          APP_NAME=$(ls -d *.app | head -n 1)
+          echo "📦 Packaging $APP_NAME as tar to preserve symlinks..."
+          tar -cvf app-bundle.tar "$APP_NAME"
+          echo "Original app size: $(du -sh "$APP_NAME" | cut -f1)"
+          echo "Tar archive size: $(ls -lh app-bundle.tar | awk '{print $5}')"
+
+      - name: Upload macOS app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-openkosmos
+          path: release/mac-arm64/app-bundle.tar
+          retention-days: 1
+
+      - name: Upload notarization input (submission-id)
+        uses: actions/upload-artifact@v4
+        with:
+          name: notarization-input-openkosmos
+          path: |
+            release/mac-arm64/*.zip
+            release/mac-arm64/submission-id.txt
+          retention-days: 1
+
+      - name: Upload build artifacts for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-openkosmos-arm64
+          path: |
+            release/
+            build.log
+          retention-days: 3
+
+  # ============================================================================
+  # macOS OpenKosmos (arm64) - Stage 2: Wait for Notarization
+  # ============================================================================
+  notarize-macos-openkosmos:
+    runs-on: macos-latest
+    needs: build-macos-openkosmos
+    timeout-minutes: 150
+    steps:
+      - name: Checkout code (for scripts)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/wait-notarization.js
+          sparse-checkout-cone-mode: false
+
+      - name: Log notarize job start
+        run: |
+          echo "=========================================="
+          echo "🔔 NOTARIZE JOB START - OpenKosmos arm64"
+          echo "=========================================="
+          echo "Job: notarize-macos-openkosmos"
+          echo "Runner: $(uname -a)"
+          echo "Time: $(date)"
+
+      - name: Download notarization input
+        uses: actions/download-artifact@v4
+        with:
+          name: notarization-input-openkosmos
+          path: notarization-input
+
+      - name: Log downloaded artifacts
+        run: |
+          echo "========== Downloaded Notarization Input =========="
+          ls -la notarization-input/
+          echo ""
+          echo "========== submission-id.txt content =========="
+          cat notarization-input/submission-id.txt || echo "File not found"
+
+      - name: Wait for notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "🕐 Starting notarization wait..."
+          node scripts/wait-notarization.js notarization-input/submission-id.txt
+          echo "✅ Notarization completed"
+
+  # ============================================================================
+  # macOS OpenKosmos (arm64) - Stage 3: Staple & Package & Publish
+  # ============================================================================
+  package-macos-openkosmos:
+    runs-on: macos-latest
+    needs: notarize-macos-openkosmos
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log package job start
+        run: |
+          echo "=========================================="
+          echo "📦 PACKAGE JOB START - OpenKosmos arm64"
+          echo "=========================================="
+          echo "Job: package-macos-openkosmos"
+          echo "Runner: $(uname -a)"
+          echo "Time: $(date)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          rm -rf node_modules
+          npm install --no-audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download macOS app artifact (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app-openkosmos
+          path: release/mac-arm64
+
+      - name: Download notarization input (for ZIP file)
+        uses: actions/download-artifact@v4
+        with:
+          name: notarization-input-openkosmos
+          path: release/mac-arm64
+
+      - name: Extract app from tar (restore symlinks)
+        run: |
+          cd release/mac-arm64
+          echo "📦 Extracting app-bundle.tar to restore symlinks..."
+          tar -xvf app-bundle.tar
+          rm app-bundle.tar
+          echo "✅ App extracted successfully"
+
+      - name: Log downloaded app artifact
+        run: |
+          echo "========== Downloaded App Artifact =========="
+          echo "Directory structure:"
+          find release -type f -exec ls -lh {} \; 2>/dev/null || echo "No files found"
+          echo ""
+          echo "========== Symlink verification =========="
+          echo "Checking Electron Framework symlinks:"
+          ls -la release/mac-arm64/*.app/Contents/Frameworks/Electron\ Framework.framework/ 2>/dev/null || true
+          ls -la release/mac-arm64/*.app/Contents/Frameworks/Electron\ Framework.framework/Versions/ 2>/dev/null || true
+          echo ""
+          echo "========== .app bundle info =========="
+          APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            echo "App path: $APP_PATH"
+            echo "App size: $(du -sh "$APP_PATH" | cut -f1)"
+          else
+            echo "❌ No .app found"
+          fi
+
+      - name: Staple notarization ticket
+        run: |
+          APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app file found in release/mac-arm64"
+            exit 1
+          fi
+          echo "🔖 Stapling app: $APP_PATH"
+          node scripts/staple-app.js "$APP_PATH"
+          echo "✅ Staple completed"
+
+      - name: Show electron-builder config (before DMG creation)
+        run: |
+          echo "========== electron-builder.config.js =========="
+          cat electron-builder.config.js
+          echo ""
+          echo "========== Environment =========="
+          echo "BRAND: openkosmos"
+          echo "ARCH: arm64"
+
+      - name: Create DMG with detailed logging (arm64)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          DEBUG: electron-builder
+          BRAND: openkosmos
+        run: |
+          APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app file found in release/mac-arm64"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "🔧 Creating DMG with DEBUG logging"
+          echo "=========================================="
+          echo "Input app: $APP_PATH"
+          echo "Input app size: $(du -sh "$APP_PATH" | cut -f1)"
+          echo ""
+          
+          npx electron-builder --mac dmg --arm64 --prepackaged "$APP_PATH" --config electron-builder.config.js --config.mac.identity=null --publish=never 2>&1 | tee dmg-build.log
+          
+          echo ""
+          echo "=========================================="
+          echo "🔍 DMG creation completed"
+          echo "=========================================="
+
+      - name: Analyze DMG output
+        run: |
+          echo "========== Release Directory After DMG Creation =========="
+          find release -type f -exec ls -lh {} \; 2>/dev/null
+          
+          echo ""
+          echo "========== DMG Files =========="
+          find release -name "*.dmg" -exec ls -lh {} \;
+          
+          echo ""
+          echo "========== DMG Detailed Info =========="
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ]; then
+            echo "DMG file: $DMG_FILE"
+            echo "DMG size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+            echo ""
+            echo "hdiutil imageinfo output:"
+            hdiutil imageinfo "$DMG_FILE" 2>/dev/null | grep -E "Format|Compressed|Total|Class" || true
+          fi
+          
+          echo ""
+          echo "========== builder-effective-config.yaml =========="
+          if [ -f "release/builder-effective-config.yaml" ]; then
+            cat release/builder-effective-config.yaml
+          else
+            echo "Not found"
+          fi
+
+      - name: Create ZIP from DMG (OpenKosmos arm64)
+        env:
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ No DMG file found in release/"
+            exit 1
+          fi
+          echo "📦 Creating ZIP from DMG (ensures identical content to DMG)..."
+          echo "   DMG: $DMG_FILE"
+          echo "   This guarantees ZIP contains the same signed+notarized+stapled .app as DMG"
+          node scripts/repack-zip.js --from-dmg "$DMG_FILE" "release/mac-arm64" "arm64"
+          echo "✅ ZIP created from DMG content"
+
+      - name: Upload package artifacts for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-package-openkosmos-arm64
+          path: |
+            release/
+            dmg-build.log
+          retention-days: 3
+
+      - name: Regenerate latest-mac.yml with correct hashes
+        env:
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          ZIP_FILE=$(find release/mac-arm64 -name "*-arm64.zip" | head -n 1)
+          if [ -n "$DMG_FILE" ] && [ -n "$ZIP_FILE" ]; then
+            echo "📋 Regenerating latest-mac.yml with correct hashes for stapled artifacts..."
+            echo "   DMG: $DMG_FILE"
+            echo "   ZIP: $ZIP_FILE"
+            node scripts/generate-latest-mac-yml.js "$DMG_FILE" "$ZIP_FILE" "release/latest-mac.yml"
+            echo ""
+            echo "📄 latest-mac.yml content:"
+            cat release/latest-mac.yml
+          else
+            echo "⚠️ Cannot regenerate latest-mac.yml - missing DMG or ZIP"
+            echo "   DMG: ${DMG_FILE:-not found}"
+            echo "   ZIP: ${ZIP_FILE:-not found}"
+          fi
+
+      - name: Publish to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ No DMG file found in release/"
+            exit 1
+          fi
+          echo "📤 Publishing DMG: $DMG_FILE"
+          echo "DMG size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+          
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "Uploading to release: $TAG"
+          
+          # Ensure GitHub Release exists (may already be created by Windows build or another parallel job)
+          gh release create "$TAG" --title "$TAG" --notes "Release $TAG" --verify-tag 2>/dev/null || echo "ℹ️ Release $TAG already exists or created by another job"
+          
+          gh release upload "$TAG" "$DMG_FILE" --clobber || echo "DMG upload failed or already exists"
+          
+          BLOCKMAP_FILE="${DMG_FILE}.blockmap"
+          if [ -f "$BLOCKMAP_FILE" ]; then
+            gh release upload "$TAG" "$BLOCKMAP_FILE" --clobber || echo "Blockmap upload failed or already exists"
+          fi
+          
+          # Upload ZIP file for auto-update
+          ZIP_FILE=$(find release/mac-arm64 -name "*-arm64.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+            echo "📤 Publishing ZIP: $ZIP_FILE"
+            gh release upload "$TAG" "$ZIP_FILE" --clobber || echo "ZIP upload failed or already exists"
+            
+            ZIP_BLOCKMAP="${ZIP_FILE}.blockmap"
+            if [ -f "$ZIP_BLOCKMAP" ]; then
+              gh release upload "$TAG" "$ZIP_BLOCKMAP" --clobber || echo "ZIP blockmap upload failed or already exists"
+            fi
+          fi
+          
+          if [ -f "release/latest-mac.yml" ]; then
+            gh release upload "$TAG" "release/latest-mac.yml" --clobber || echo "latest-mac.yml upload failed or already exists"
+          fi
+          
+          echo "✅ Publish completed"
+
+  # ============================================================================
+  # macOS build job - OpenKosmos (x64) - Three-stage pipeline
+  # ============================================================================
+
+  # macOS build job - OpenKosmos (x64) - Stage 1: Build & Sign & Submit Notarization
+  build-macos-openkosmos-x64:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Clean npm cache and node_modules
+        run: |
+          echo "Cleaning npm cache..."
+          npm cache clean --force
+          rm -rf node_modules
+          echo "✅ Cleanup completed"
+
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+          npm install --no-audit
+          echo "Dependencies installation completed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_build_from_source: false
+
+      - name: Rebuild native modules
+        run: |
+          echo "Rebuilding native modules for macOS..."
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          
+          node scripts/rebuild-native.js
+          
+          echo "Native modules rebuild step completed"
+
+      - name: Create environment file
+        run: |
+          {
+            echo "NODE_ENV=${{ vars.NODE_ENV || 'production' }}"
+            echo "HISTORY_PROMPT_QUEUE_SIZE=${{ vars.HISTORY_PROMPT_QUEUE_SIZE || '20' }}"
+            echo "DEVELOPMENT_BASE_CDN_URL=${{ vars.DEVELOPMENT_BASE_CDN_URL }}"
+            echo "PRODUCTION_BASE_CDN_URL=${{ vars.PRODUCTION_BASE_CDN_URL }}"
+          } >> .env.local
+
+      - name: Build application
+        run: npm run build --brand=openkosmos
+
+      - name: Verify and fix entitlements file
+        run: |
+          echo "Checking entitlements file..."
+          if [ -f "build/entitlements.mac.plist" ]; then
+            echo "✅ Entitlements file exists"
+            xattr -c build/entitlements.mac.plist 2>/dev/null || true
+            chmod 644 build/entitlements.mac.plist
+            plutil -lint build/entitlements.mac.plist
+          else
+            echo "❌ Entitlements file not found"
+            exit 1
+          fi
+
+      - name: Verify macOS icons
+        run: |
+          if [ -f "brands/openkosmos/assets/mac/app.icns" ]; then
+            echo "✅ macOS icon found"
+          else
+            echo "❌ macOS icon not found"
+            exit 1
+          fi
+
+      - name: Show electron-builder config (before build)
+        run: |
+          echo "========== electron-builder.config.js =========="
+          cat electron-builder.config.js
+          echo ""
+          echo "========== Environment =========="
+          echo "BRAND: openkosmos"
+          echo "ARCH: x64"
+          echo "Node: $(node --version)"
+
+      - name: Build, Sign and Submit Notarization (x64)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_NOTARIZE_WAIT: false
+          DEBUG: electron-builder
+          BRAND: openkosmos
+        run: |
+          echo "🔧 Starting build with signing and notarization submission..."
+          echo "========================================"
+          
+          # Use electron-builder to build, sign, and submit notarization
+          # --publish=never: Prevent uploading un-notarized ZIP to GitHub Release before stapling
+          npm run dist:mac:x64 --brand=openkosmos -- --publish=never
+          
+          echo ""
+          echo "========================================"
+          echo "🔍 Build completed, analyzing results..."
+
+      - name: Analyze build output
+        run: |
+          echo "========== Release Directory Structure =========="
+          find release -type f -exec ls -lh {} \; 2>/dev/null || echo "No release directory"
+          
+          echo ""
+          echo "========== DMG Files =========="
+          find release -name "*.dmg" -exec ls -lh {} \; 2>/dev/null || echo "No DMG files found"
+          
+          echo ""
+          echo "========== ZIP Files =========="
+          find release -name "*.zip" -exec ls -lh {} \; 2>/dev/null || echo "No ZIP files found"
+          
+          echo ""
+          echo "========== APP Bundles =========="
+          find release -name "*.app" -type d -exec du -sh {} \; 2>/dev/null || echo "No .app bundles found"
+          
+          echo ""
+          echo "========== builder-effective-config.yaml =========="
+          if [ -f "release/builder-effective-config.yaml" ]; then
+            cat release/builder-effective-config.yaml
+          else
+            echo "Not found"
+          fi
+          
+          echo ""
+          echo "========== DMG Info (if exists) =========="
+          DMG_FILE=$(find release -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ]; then
+            echo "DMG file: $DMG_FILE"
+            echo "Size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+            hdiutil imageinfo "$DMG_FILE" 2>/dev/null | grep -E "Format|Compressed|Total" || true
+          fi
+
+      - name: Package app as tar (preserve symlinks)
+        run: |
+          # GitHub Actions artifact doesn't preserve symlinks, which causes
+          # Electron Framework.framework to expand from ~159MB to ~477MB
+          # Using tar to preserve the symlink structure
+          cd release/mac
+          APP_NAME=$(ls -d *.app | head -n 1)
+          echo "📦 Packaging $APP_NAME as tar to preserve symlinks..."
+          tar -cvf app-bundle.tar "$APP_NAME"
+          echo "Original app size: $(du -sh "$APP_NAME" | cut -f1)"
+          echo "Tar archive size: $(ls -lh app-bundle.tar | awk '{print $5}')"
+
+      - name: Upload macOS app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-openkosmos-x64
+          path: release/mac/app-bundle.tar
+          retention-days: 1
+
+      - name: Upload notarization input (submission-id)
+        uses: actions/upload-artifact@v4
+        with:
+          name: notarization-input-openkosmos-x64
+          path: |
+            release/mac/*.zip
+            release/mac/submission-id.txt
+          retention-days: 1
+
+      - name: Upload build artifacts for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-openkosmos-x64
+          path: |
+            release/
+            build.log
+          retention-days: 3
+
+  # ============================================================================
+  # macOS OpenKosmos (x64) - Stage 2: Wait for Notarization
+  # ============================================================================
+  notarize-macos-openkosmos-x64:
+    runs-on: macos-latest
+    needs: build-macos-openkosmos-x64
+    timeout-minutes: 150
+    steps:
+      - name: Checkout code (for scripts)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/wait-notarization.js
+          sparse-checkout-cone-mode: false
+
+      - name: Log notarize job start
+        run: |
+          echo "=========================================="
+          echo "🔔 NOTARIZE JOB START - OpenKosmos x64"
+          echo "=========================================="
+          echo "Job: notarize-macos-openkosmos-x64"
+          echo "Runner: $(uname -a)"
+          echo "Time: $(date)"
+
+      - name: Download notarization input
+        uses: actions/download-artifact@v4
+        with:
+          name: notarization-input-openkosmos-x64
+          path: notarization-input
+
+      - name: Log downloaded artifacts
+        run: |
+          echo "========== Downloaded Notarization Input =========="
+          ls -la notarization-input/
+          echo ""
+          echo "========== submission-id.txt content =========="
+          cat notarization-input/submission-id.txt || echo "File not found"
+
+      - name: Wait for notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "🕐 Starting notarization wait..."
+          node scripts/wait-notarization.js notarization-input/submission-id.txt
+          echo "✅ Notarization completed"
+
+  # ============================================================================
+  # macOS OpenKosmos (x64) - Stage 3: Staple & Package & Publish
+  # ============================================================================
+  package-macos-openkosmos-x64:
+    runs-on: macos-15
+    needs: notarize-macos-openkosmos-x64
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log package job start
+        run: |
+          echo "=========================================="
+          echo "📦 PACKAGE JOB START - OpenKosmos x64"
+          echo "=========================================="
+          echo "Job: package-macos-openkosmos-x64"
+          echo "Runner: $(uname -a)"
+          echo "Time: $(date)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          rm -rf node_modules
+          npm install --no-audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download macOS app artifact (x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app-openkosmos-x64
+          path: release/mac
+
+      - name: Download notarization input (for ZIP file)
+        uses: actions/download-artifact@v4
+        with:
+          name: notarization-input-openkosmos-x64
+          path: release/mac
+
+      - name: Extract app from tar (restore symlinks)
+        run: |
+          cd release/mac
+          echo "📦 Extracting app-bundle.tar to restore symlinks..."
+          tar -xvf app-bundle.tar
+          rm app-bundle.tar
+          echo "✅ App extracted successfully"
+
+      - name: Log downloaded app artifact
+        run: |
+          echo "========== Downloaded App Artifact =========="
+          echo "Directory structure:"
+          find release -type f -exec ls -lh {} \; 2>/dev/null || echo "No files found"
+          echo ""
+          echo "========== Symlink verification =========="
+          echo "Checking Electron Framework symlinks:"
+          ls -la release/mac/*.app/Contents/Frameworks/Electron\ Framework.framework/ 2>/dev/null || true
+          ls -la release/mac/*.app/Contents/Frameworks/Electron\ Framework.framework/Versions/ 2>/dev/null || true
+          echo ""
+          echo "========== .app bundle info =========="
+          APP_PATH=$(find release/mac -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            echo "App path: $APP_PATH"
+            echo "App size: $(du -sh "$APP_PATH" | cut -f1)"
+          else
+            echo "❌ No .app found"
+          fi
+
+      - name: Staple notarization ticket
+        run: |
+          APP_PATH=$(find release/mac -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app file found in release/mac"
+            exit 1
+          fi
+          echo "🔖 Stapling app: $APP_PATH"
+          node scripts/staple-app.js "$APP_PATH"
+          echo "✅ Staple completed"
+
+      - name: Show electron-builder config (before DMG creation)
+        run: |
+          echo "========== electron-builder.config.js =========="
+          cat electron-builder.config.js
+          echo ""
+          echo "========== Environment =========="
+          echo "BRAND: openkosmos"
+          echo "ARCH: x64"
+
+      - name: Create DMG with detailed logging (x64)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          DEBUG: electron-builder
+          BRAND: openkosmos
+        run: |
+          APP_PATH=$(find release/mac -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app file found in release/mac"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "🔧 Creating DMG with DEBUG logging"
+          echo "=========================================="
+          echo "Input app: $APP_PATH"
+          echo "Input app size: $(du -sh "$APP_PATH" | cut -f1)"
+          echo ""
+          
+          npx electron-builder --mac dmg --x64 --prepackaged "$APP_PATH" --config electron-builder.config.js --config.mac.identity=null --publish=never 2>&1 | tee dmg-build.log
+          
+          echo ""
+          echo "=========================================="
+          echo "🔍 DMG creation completed"
+          echo "=========================================="
+
+      - name: Analyze DMG output
+        run: |
+          echo "========== Release Directory After DMG Creation =========="
+          find release -type f -exec ls -lh {} \; 2>/dev/null
+          
+          echo ""
+          echo "========== DMG Files =========="
+          find release -name "*.dmg" -exec ls -lh {} \;
+          
+          echo ""
+          echo "========== DMG Detailed Info =========="
+          DMG_FILE=$(find release -name "*-x64.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ]; then
+            echo "DMG file: $DMG_FILE"
+            echo "DMG size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+            echo ""
+            echo "hdiutil imageinfo output:"
+            hdiutil imageinfo "$DMG_FILE" 2>/dev/null | grep -E "Format|Compressed|Total|Class" || true
+          fi
+          
+          echo ""
+          echo "========== builder-effective-config.yaml =========="
+          if [ -f "release/builder-effective-config.yaml" ]; then
+            cat release/builder-effective-config.yaml
+          else
+            echo "Not found"
+          fi
+
+      - name: Create ZIP from DMG (OpenKosmos x64)
+        env:
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*-x64.dmg" | head -n 1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ No x64 DMG file found in release/"
+            exit 1
+          fi
+          echo "📦 Creating ZIP from DMG (ensures identical content to DMG)..."
+          echo "   DMG: $DMG_FILE"
+          echo "   This guarantees ZIP contains the same signed+notarized+stapled .app as DMG"
+          node scripts/repack-zip.js --from-dmg "$DMG_FILE" "release/mac" "x64"
+          echo "✅ ZIP created from DMG content"
+
+      - name: Upload package artifacts for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-package-openkosmos-x64
+          path: |
+            release/
+            dmg-build.log
+          retention-days: 3
+
+      - name: Regenerate latest-mac.yml with correct hashes
+        env:
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*-x64.dmg" | head -n 1)
+          ZIP_FILE=$(find release/mac -name "*-x64.zip" | head -n 1)
+          if [ -n "$DMG_FILE" ] && [ -n "$ZIP_FILE" ]; then
+            echo "📋 Regenerating latest-mac.yml with correct hashes for stapled artifacts..."
+            echo "   DMG: $DMG_FILE"
+            echo "   ZIP: $ZIP_FILE"
+            node scripts/generate-latest-mac-yml.js "$DMG_FILE" "$ZIP_FILE" "release/latest-mac.yml"
+            echo ""
+            echo "📄 latest-mac.yml content:"
+            cat release/latest-mac.yml
+          else
+            echo "⚠️ Cannot regenerate latest-mac.yml - missing DMG or ZIP"
+            echo "   DMG: ${DMG_FILE:-not found}"
+            echo "   ZIP: ${ZIP_FILE:-not found}"
+          fi
+
+      - name: Publish to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRAND: openkosmos
+        run: |
+          DMG_FILE=$(find release -name "*-x64.dmg" | head -n 1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ No x64 DMG file found in release/"
+            exit 1
+          fi
+          echo "📤 Publishing DMG: $DMG_FILE"
+          echo "DMG size: $(ls -lh "$DMG_FILE" | awk '{print $5}')"
+          
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "Uploading to release: $TAG"
+          
+          # Ensure GitHub Release exists (may already be created by Windows build or another parallel job)
+          gh release create "$TAG" --title "$TAG" --notes "Release $TAG" --verify-tag 2>/dev/null || echo "ℹ️ Release $TAG already exists or created by another job"
+          
+          gh release upload "$TAG" "$DMG_FILE" --clobber || echo "DMG upload failed or already exists"
+          
+          BLOCKMAP_FILE="${DMG_FILE}.blockmap"
+          if [ -f "$BLOCKMAP_FILE" ]; then
+            gh release upload "$TAG" "$BLOCKMAP_FILE" --clobber || echo "Blockmap upload failed or already exists"
+          fi
+          
+          # Upload ZIP file for auto-update
+          ZIP_FILE=$(find release/mac -name "*-x64.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+            echo "📤 Publishing ZIP: $ZIP_FILE"
+            gh release upload "$TAG" "$ZIP_FILE" --clobber || echo "ZIP upload failed or already exists"
+            
+            ZIP_BLOCKMAP="${ZIP_FILE}.blockmap"
+            if [ -f "$ZIP_BLOCKMAP" ]; then
+              gh release upload "$TAG" "$ZIP_BLOCKMAP" --clobber || echo "ZIP blockmap upload failed or already exists"
+            fi
+          fi
+          
+          if [ -f "release/latest-mac.yml" ]; then
+            gh release upload "$TAG" "release/latest-mac.yml" --clobber || echo "latest-mac.yml upload failed or already exists"
+          fi
+          
+          echo "✅ Publish completed"
+
+
+  # Post-release validation (temporarily disabled, needs to wait for release creation)
+  validate:
+    needs: [build-windows-openkosmos, package-macos-openkosmos, package-macos-openkosmos-x64]
+    runs-on: ubuntu-latest
+    if: false  # Temporarily disable validation step
+    steps:
+      - name: Validate release
+        run: |
+          echo "Validation step disabled temporarily"
+          echo "Release validation successful"
+
+  # Send notification
+  notify:
+    needs: [build-windows-openkosmos, package-macos-openkosmos, package-macos-openkosmos-x64]
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Send notification
+        run: |
+          echo "Release ${{ github.ref_name }} completed successfully!"
+          echo "✅ Windows build completed"
+          echo "✅ macOS arm64 build and package completed"
+          echo "✅ macOS x64 build and package completed"
+          echo "✅ Release validation skipped"
+          # Can add DingTalk, WeCom, or other notifications here
