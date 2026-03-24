@@ -22,7 +22,6 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
 
   // Get brand configuration info
   const brandDisplayName = BRAND_CONFIG.productName || APP_NAME;
-  const brandHomepage = 'https://www.kosmos-ai.com';
   useEffect(() => {
     const loadAppInfo = async () => {
       try {
@@ -71,14 +70,6 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
                 )}
                 <div className="about-brand-text">
                   <span className="about-brand-name">{brandDisplayName}</span>
-                  <a
-                    href={brandHomepage}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="about-link"
-                  >
-                    Learn more about {brandDisplayName}
-                  </a>
                 </div>
               </div>
 
@@ -101,7 +92,7 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
                     <p className="about-legal-text">
                       This app is made possible by the{' '}
                       <a
-                        href="https://www.kosmos-ai.com"
+                        href="https://github.com/microsoft/open-kosmos"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="about-link"
