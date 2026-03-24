@@ -106,7 +106,7 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
                         rel="noopener noreferrer"
                         className="about-link"
                       >
-                        OpenKosmos AI Studio
+                        OpenKosmos
                       </a>
                       {' '}project.
                     </p>

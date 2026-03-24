@@ -63,7 +63,7 @@ npm run dist:publish:mac        # Publish macOS build
 
 ## Architecture Overview
 
-OpenKosmos AI Studio is an Electron-based AI assistant application (v1.21.7) with a modern React frontend. It supports multi-brand deployment via `BRAND` env variable. The architecture follows Electron's multi-process model with clear separation of concerns.
+OpenKosmos is an Electron-based AI assistant application (v1.21.7) with a modern React frontend. It supports multi-brand deployment via `BRAND` env variable. The architecture follows Electron's multi-process model with clear separation of concerns.
 
 ### Process Architecture
 
@@ -369,7 +369,7 @@ Build-time injected: `APP_NAME`, `BRAND_NAME`, `BRAND_CONFIG`, `getWindowTitle()
 | Product name | OpenKosmos |
 | User data folder | `openkosmos-app` |
 | Exe name | `OpenKosmos.exe` |
-| Window title | OpenKosmos AI Studio |
+| Window title | OpenKosmos |
 | Config source | `brands/openkosmos/config.json` |
 
 Controlled by `BRAND` environment variable. Brand configs stored in `brands/` directory.

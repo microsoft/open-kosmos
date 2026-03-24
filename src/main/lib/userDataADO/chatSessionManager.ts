@@ -1047,7 +1047,7 @@ export class ChatSessionManager {
   private async notifyFrontend(alias: string, chatId: string): Promise<void> {
     try {
       const windows = BrowserWindow.getAllWindows();
-      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos AI Studio');
+      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos');
       
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
         // Get latest chatSessions list (using paginated load result)
@@ -1085,7 +1085,7 @@ export class ChatSessionManager {
   private async notifyAutoSelectChatSession(alias: string, chatId: string, chatSessionId: string): Promise<void> {
     try {
       const windows = BrowserWindow.getAllWindows();
-      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos AI Studio');
+      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos');
       
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
         mainWindow.webContents.send('chatSession:autoSelect', {

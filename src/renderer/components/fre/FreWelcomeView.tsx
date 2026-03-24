@@ -319,7 +319,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
                 margin: 0,
               }}
             >
-              Hi {userDisplayName}, welcome to OpenKosmos AI Studio!
+              Hi {userDisplayName}, welcome to OpenKosmos!
             </h1>
 
             {/* Subtitle */}

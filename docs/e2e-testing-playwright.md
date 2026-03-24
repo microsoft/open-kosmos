@@ -28,7 +28,7 @@
 
 ### 1.1 Background
 
-OpenKosmos AI Studio is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all located in the `__tests__` directory under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iterations accelerate, there is an urgent need to establish an E2E testing framework to ensure the stability of core user flows.
+OpenKosmos is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all located in the `__tests__` directory under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iterations accelerate, there is an urgent need to establish an E2E testing framework to ensure the stability of core user flows.
 
 ### 1.2 Goals
 
