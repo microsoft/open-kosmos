@@ -12,13 +12,13 @@ import * as path from 'path';
  * ============================================================================
  * 
  * process.env.APP_NAME       → productName from config.json
- *                              e.g., "KOSMOS"
+ *                              e.g., "OpenKosmos"
  * 
  * process.env.USER_DATA_NAME → userDataName from config.json  
- *                              e.g., "kosmos-app"
+ *                              e.g., "openkosmos-app"
  * 
  * process.env.BRAND_NAME     → Brand folder name
- *                              e.g., "kosmos"
+ *                              e.g., "openkosmos"
  * 
  * ============================================================================
  * USER DATA PATH RESOLUTION
@@ -27,12 +27,12 @@ import * as path from 'path';
  * Windows:
  *   app.getPath('appData') = C:\Users\<user>\AppData\Roaming
  *   userData = C:\Users\<user>\AppData\Roaming\<userDataName>
- *            → e.g., kosmos-app
+ *            → e.g., openkosmos-app
  * 
  * macOS:
  *   app.getPath('appData') = ~/Library/Application Support
  *   userData = ~/Library/Application Support/<userDataName>
- *            → e.g., kosmos-app
+ *            → e.g., openkosmos-app
  * 
  * Linux:
  *   app.getPath('appData') = ~/.config
@@ -45,7 +45,7 @@ import * as path from 'path';
  * 1. Brand Isolation: Different brands must have separate user data
  * 2. Timing: Must run before ANY module calls app.getPath('userData')
  * 3. Electron Default: Without this, Electron uses package.json "name" field
- *    which would be "kosmos-app" for both brands (collision!)
+ *    which would be "openkosmos-app" for both brands (collision!)
  * 
  */
 // ============================================================================
@@ -77,7 +77,7 @@ if (testUserDataOverride) {
 
   // USER_DATA_NAME determines the folder name under AppData/Application Support
   // This is separate from APP_NAME to allow flexibility
-  // e.g., APP_NAME="KOSMOS" but USER_DATA_NAME="kosmos-app" (no spaces)
+  // e.g., APP_NAME="OpenKosmos" but USER_DATA_NAME="openkosmos-app" (no spaces)
   const userDataName = process.env.USER_DATA_NAME || process.env.APP_NAME;
   const customUserDataPath = path.join(app.getPath('appData'), userDataName);
   console.log(`[Bootstrap] Setting User Data Path to: ${customUserDataPath}`);

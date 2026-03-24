@@ -63,7 +63,7 @@ npm run dist:publish:mac        # Publish macOS build
 
 ## Architecture Overview
 
-KOSMOS AI Studio is an Electron-based AI assistant application (v1.21.7) with a modern React frontend. It supports multi-brand deployment via `BRAND` env variable. The architecture follows Electron's multi-process model with clear separation of concerns.
+OpenKosmos AI Studio is an Electron-based AI assistant application (v1.21.7) with a modern React frontend. It supports multi-brand deployment via `BRAND` env variable. The architecture follows Electron's multi-process model with clear separation of concerns.
 
 ### Process Architecture
 
@@ -153,7 +153,7 @@ KOSMOS AI Studio is an Electron-based AI assistant application (v1.21.7) with a 
 
 #### 6. Memory System (`src/main/lib/mem0/`)
 - mem0-based long-term memory with vector embeddings
-- **KosmosMemoryManager**: Kosmos-specific memory orchestration
+- **KosmosMemoryManager**: OpenKosmos-specific memory orchestration
 - **BetterSqliteVectorStore**: Local SQLite + sqlite-vec for vector search
 - **KosmosNeo4jStore**: Optional Neo4j graph store for knowledge graphs
 - **KosmosLLM** / **KosmosEmbedder**: Memory-specific LLM and embedding adapters
@@ -363,14 +363,14 @@ Build-time injected: `APP_NAME`, `BRAND_NAME`, `BRAND_CONFIG`, `getWindowTitle()
 - Dev server: port 3000, HMR enabled, SockJS transport
 
 #### Multi-Brand Architecture
-| Attribute | `kosmos` (default) |
+| Attribute | `openkosmos` (default) |
 |-----------|-------------------|
-| App ID | `com.kosmos.app` |
-| Product name | KOSMOS |
-| User data folder | `kosmos-app` |
-| Exe name | `KOSMOS.exe` |
-| Window title | KOSMOS AI Studio |
-| Config source | `brands/kosmos/config.json` |
+| App ID | `com.openkosmos.app` |
+| Product name | OpenKosmos |
+| User data folder | `openkosmos-app` |
+| Exe name | `OpenKosmos.exe` |
+| Window title | OpenKosmos AI Studio |
+| Config source | `brands/openkosmos/config.json` |
 
 Controlled by `BRAND` environment variable. Brand configs stored in `brands/` directory.
 

@@ -12,7 +12,7 @@ const path = require('path');
  * ============================================================================
  * 
  * Configuration values are loaded from: brands/<brandName>/config.json
- * Brand is determined by: BRAND environment variable (default: 'kosmos')
+ * Brand is determined by: BRAND environment variable (default: 'openkosmos')
  * 
  * ============================================================================
  * WINDOWS INSTALLATION PATHS
@@ -20,10 +20,10 @@ const path = require('path');
  * 
  * EXE Installer (NSIS):
  *   Install Dir:  %LOCALAPPDATA%\Programs\<brandName>
- *                 → C:\Users\<user>\AppData\Local\Programs\kosmos
- *   Executable:   <filenamePrefix>.exe (e.g., KOSMOS.exe)
+ *                 → C:\Users\<user>\AppData\Local\Programs\openkosmos
+ *   Executable:   <filenamePrefix>.exe (e.g., OpenKosmos.exe)
  *   User Data:    %APPDATA%\<userDataName>
- *                 → C:\Users\<user>\AppData\Roaming\kosmos-app
+ *                 → C:\Users\<user>\AppData\Roaming\openkosmos-app
  * 
  * ZIP Portable:
  *   Extract to:   Any folder (user choice)
@@ -40,9 +40,9 @@ const path = require('path');
  * 
  * DMG Installer:
  *   Install Dir:  /Applications/<productName>.app
- *                 → /Applications/KOSMOS.app
+ *                 → /Applications/OpenKosmos.app
  *   User Data:    ~/Library/Application Support/<userDataName>
- *                 → ~/Library/Application Support/kosmos-app
+ *                 → ~/Library/Application Support/openkosmos-app
  * 
  * ZIP Portable:
  *   Extract to:   Any folder → <productName>.app bundle

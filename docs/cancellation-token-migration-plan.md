@@ -1,4 +1,4 @@
-# Kosmos CancellationToken Migration Plan
+# OpenKosmos CancellationToken Migration Plan
 
 ## 📋 Executive Summary
 

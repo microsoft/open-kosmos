@@ -14,7 +14,7 @@ const brandConfig = require('../brand-config');
 function getAuthFilePath() {
   // Default path
   // Prefer productName as directory name, consistent with Electron app.setName()
-  const appDirName = brandConfig.config.productName || 'kosmos-app';
+  const appDirName = brandConfig.config.productName || 'openkosmos-app';
 
   // Windows: AppData/Roaming/<AppName>
   // macOS: Library/Application Support/<AppName>

@@ -73,7 +73,7 @@ Add a "Repack ZIP with stapled app" step to the 4 package jobs:
 ```yaml
 - name: Repack ZIP with stapled app
   env:
-    BRAND: kosmos
+    BRAND: openkosmos
   run: |
     APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -n 1)
     node scripts/repack-zip.js "$APP_PATH" "release/mac-arm64" "arm64"
@@ -81,8 +81,8 @@ Add a "Repack ZIP with stapled app" step to the 4 package jobs:
 
 ### Modified Jobs
 
-- `package-macos-kosmos` (arm64)
-- `package-macos-kosmos-x64`
+- `package-macos-openkosmos` (arm64)
+- `package-macos-openkosmos-x64`
 
 ## Post-Fix Pipeline
 
@@ -100,14 +100,14 @@ Build logs should show:
 
 ```text
 📦 Repacking ZIP with stapled app...
-   App: release/mac-arm64/KOSMOS.app
+   App: release/mac-arm64/OpenKosmos.app
    This ensures the ZIP contains the stapled notarization ticket
    Without this, auto-update would show 'App Damaged' error
 🔍 Verifying staple before repacking...
 ✅ Staple verification passed
-📦 Creating new ZIP: release/mac-arm64/KOSMOS-1.x.x-mac-arm64.zip
+📦 Creating new ZIP: release/mac-arm64/OpenKosmos-1.x.x-mac-arm64.zip
 ✅ ZIP created successfully
-   Path: release/mac-arm64/KOSMOS-1.x.x-mac-arm64.zip
+   Path: release/mac-arm64/OpenKosmos-1.x.x-mac-arm64.zip
    Size: xxx.xx MB
 📊 Generating blockmap for differential updates...
 ✅ Blockmap generated
@@ -118,15 +118,15 @@ Build logs should show:
 
 ```bash
 # 1. Download and extract the ZIP
-unzip KOSMOS-xxx-mac-arm64.zip
+unzip OpenKosmos-xxx-mac-arm64.zip
 
 # 2. Verify staple
-xcrun stapler validate "KOSMOS.app"
+xcrun stapler validate "OpenKosmos.app"
 # Expected: The validate action worked!
 
 # 3. Verify Gatekeeper
-spctl -a -vvv -t execute "KOSMOS.app"
-# Expected: KOSMOS.app: accepted / source=Notarized Developer ID
+spctl -a -vvv -t execute "OpenKosmos.app"
+# Expected: OpenKosmos.app: accepted / source=Notarized Developer ID
 ```
 
 ## Related Files
@@ -146,5 +146,5 @@ spctl -a -vvv -t execute "KOSMOS.app"
 **Fix Date**: 2026-02-05  
 **Fix Branch**: `user/yanhu/fix-mac-zip-codesign`  
 **Affected Versions**: Next release  
-**Affected Products**: KOSMOS macOS edition
+**Affected Products**: OpenKosmos macOS edition
 

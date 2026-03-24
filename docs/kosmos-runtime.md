@@ -1,4 +1,4 @@
-# Kosmos Built-in Runtime Environment Technical Proposal
+# OpenKosmos Built-in Runtime Environment Technical Proposal
 
 ## 1. Overview
 To enhance the availability and stability of Kosmos services (including MCP services and general command execution) across different user environments, we will implement a runtime environment management solution. This solution allows users to switch between "using the system environment" and "using the built-in environment," and supports managing the versions of built-in environments (Bun and uv), **as well as managing Python virtual environments/interpreter versions via uv**.

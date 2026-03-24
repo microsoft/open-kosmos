@@ -484,7 +484,7 @@ export class SkillManager {
   /**
    * Create temporary directory
    */
-  public createTempDirectory(prefix: string = 'kosmos-skill'): string {
+  public createTempDirectory(prefix: string = 'openkosmos-skill'): string {
     const tempDir = path.join(app.getPath('userData'), 'tmp', `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });

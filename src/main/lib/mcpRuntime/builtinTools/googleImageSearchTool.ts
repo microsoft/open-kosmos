@@ -351,7 +351,7 @@ export class GoogleImageSearchTool {
       const errors: string[] = [];
       
       // State file configuration
-      const stateFile = path.join(os.tmpdir(), 'kosmos-google-image-browser-state.json');
+      const stateFile = path.join(os.tmpdir(), 'openkosmos-google-image-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
       
       // Load saved state

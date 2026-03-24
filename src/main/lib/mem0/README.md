@@ -1,4 +1,4 @@
-# Kosmos Memory System
+# OpenKosmos Memory System
 
 Kosmos application memory management system based on mem0. Fully integrated into the Kosmos project with no standalone package configuration.
 
@@ -46,11 +46,11 @@ src/main/lib/mem0/
 │   ├── utils/                  # Utility functions (factory classes updated)
 │   ├── vector_stores/          # Vector stores
 │   └── index.ts               # Core exports
-└── kosmos-adapters/            # Kosmos adapter layer
+└── kosmos-adapters/            # OpenKosmos adapter layer
     ├── chromaVectorStore.ts    # ChromaDB adapter
-    ├── kosmosEmbedder.ts       # Kosmos embedding adapter
-    ├── kosmosLLM.ts           # Kosmos LLM adapter
-    ├── kosmosConfig.ts         # Kosmos configuration
+    ├── kosmosEmbedder.ts       # OpenKosmos embedding adapter
+    ├── kosmosLLM.ts           # OpenKosmos LLM adapter
+    ├── kosmosConfig.ts         # OpenKosmos configuration
     ├── index.ts                # Main export file
     ├── README.md               # Detailed documentation
     └── example.js              # Usage examples

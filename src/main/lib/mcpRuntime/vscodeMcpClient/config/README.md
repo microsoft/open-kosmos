@@ -229,7 +229,7 @@ constructor(options?: ConfigAdapterOptions)
 }
 ```
 
-### Kosmos Format
+### OpenKosmos Format
 
 ```json
 {

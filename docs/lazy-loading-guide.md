@@ -300,7 +300,7 @@ export class PluginManager {
       if (!fs.existsSync(packageJsonPath)) {
         fs.writeFileSync(
           packageJsonPath,
-          JSON.stringify({ name: 'kosmos-plugins', version: '1.0.0' }, null, 2)
+          JSON.stringify({ name: 'openkosmos-plugins', version: '1.0.0' }, null, 2)
         );
       }
 

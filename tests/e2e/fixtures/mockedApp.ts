@@ -14,7 +14,7 @@ import {
 // ==================== Utility Functions ====================
 
 function createTestUserDataDir(): string {
-  const dirName = `kosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `openkosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
@@ -1239,13 +1239,13 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       }
     });
 
-    // First wait for React to mount ("Starting KOSMOS" disappears)
+    // First wait for React to mount ("Starting OpenKosmos" disappears)
     console.log('[E2E Mock Chat] Waiting for React to mount...');
     try {
       await window.waitForFunction(
         () => {
           const body = document.querySelector('body');
-          // "Starting KOSMOS" is the pre-React loading text from index.html
+          // "Starting OpenKosmos" is the pre-React loading text from index.html
           // After React mounts, this text is replaced
           return body && !body.textContent?.includes('Starting');
         },

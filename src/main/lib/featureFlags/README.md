@@ -63,7 +63,7 @@ Command-line arguments take higher priority than default values:
 app.exe --enable-features=kosmosFeatureDevTools,kosmosFeatureDebugLogging
 
 # macOS
-./KOSMOS.app/Contents/MacOS/KOSMOS --enable-features=kosmosFeatureDevTools
+./OpenKosmos.app/Contents/MacOS/OpenKosmos --enable-features=kosmosFeatureDevTools
 
 # Development environment
 npm run dev -- --enable-features=kosmosFeatureDevTools,kosmosFeatureMcpDebug

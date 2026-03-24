@@ -1,4 +1,4 @@
-# KOSMOS Visual Updater
+# OpenKosmos Visual Updater
 
 A visual update program for the Windows platform, providing a user-friendly installation experience.
 
@@ -67,15 +67,15 @@ npm run build:visual-updater
 ```
 
 Build artifacts:
-- `kosmos-updater-x64.exe` - Windows x64
-- `kosmos-updater-arm64.exe` - Windows ARM64
+- `openkosmos-updater-x64.exe` - Windows x64
+- `openkosmos-updater-arm64.exe` - Windows ARM64
 
 ## CDN Deployment
 
 Upload build artifacts to CDN:
 ```
-<CDN_BASE_URL>/updaters/kosmos-updater-x64.exe
-<CDN_BASE_URL>/updaters/kosmos-updater-arm64.exe
+<CDN_BASE_URL>/updaters/openkosmos-updater-x64.exe
+<CDN_BASE_URL>/updaters/openkosmos-updater-arm64.exe
 ```
 
 Update `updaters.json`:
@@ -83,8 +83,8 @@ Update `updaters.json`:
 {
   "latest": "1.0.0",
   "downloadUrls": {
-    "visual-win32-x64": "kosmos-updater-x64.exe",
-    "visual-win32-arm64": "kosmos-updater-arm64.exe"
+    "visual-win32-x64": "openkosmos-updater-x64.exe",
+    "visual-win32-arm64": "openkosmos-updater-arm64.exe"
   }
 }
 ```
@@ -96,7 +96,7 @@ The visual updater is integrated into the main application's update workflow:
 
 1. **Download Phase**
    - The main application automatically downloads the visual updater when checking for updates
-   - Saved to `<userData>/assets/updater/kosmos-updater-<arch>.exe`
+   - Saved to `<userData>/assets/updater/openkosmos-updater-<arch>.exe`
 
 2. **Installation Phase**
    - ZIP updates preferentially use the visual updater
@@ -110,7 +110,7 @@ The visual updater is integrated into the main application's update workflow:
 
 Log files are saved at:
 ```
-%TEMP%\kosmos-updater-visual.log
+%TEMP%\openkosmos-updater-visual.log
 ```
 
 ## Tech Stack

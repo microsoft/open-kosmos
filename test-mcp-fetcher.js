@@ -9,7 +9,7 @@ const path = require('path');
 // Mock electron app environment
 if (!app.isReady()) {
   // Set user data path for testing
-  app.setPath('userData', '/Users/pumpedgechina/Library/Application Support/kosmos-app');
+  app.setPath('userData', '/Users/pumpedgechina/Library/Application Support/openkosmos-app');
 }
 
 async function testMcpLibraryFetcher() {

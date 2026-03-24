@@ -27,7 +27,7 @@ function fetchJson(url) {
   return new Promise((resolve, reject) => {
     const options = {
       headers: {
-        'User-Agent': 'kosmos-version-fetcher/1.0',
+        'User-Agent': 'openkosmos-version-fetcher/1.0',
         Accept: 'application/json',
       },
     };

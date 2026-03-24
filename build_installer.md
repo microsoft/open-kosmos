@@ -1,6 +1,6 @@
-# KOSMOS Multi-Platform Installer Build Guide
+# OpenKosmos Multi-Platform Installer Build Guide
 
-This document provides a complete solution for building Windows ARM64, x64 and Mac ARM, x64 installers for the KOSMOS application.
+This document provides a complete solution for building Windows ARM64, x64 and Mac ARM, x64 installers for the OpenKosmos application.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -13,7 +13,7 @@ This document provides a complete solution for building Windows ARM64, x64 and M
 
 ## Overview
 
-The KOSMOS application is built on the Electron framework and uses electron-builder for packaging. The following target platforms are currently supported:
+The OpenKosmos application is built on the Electron framework and uses electron-builder for packaging. The following target platforms are currently supported:
 - Windows x64 & ARM64
 - macOS Intel (x64) & Apple Silicon (ARM64)
 
@@ -47,8 +47,8 @@ First, update the electron-builder configuration in [`package.json`](package.jso
 ```json
 {
   "build": {
-    "appId": "com.kosmos.app",
-    "productName": "KOSMOS",
+    "appId": "com.openkosmos.app",
+    "productName": "OpenKosmos",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -94,7 +94,7 @@ First, update the electron-builder configuration in [`package.json`](package.jso
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KOSMOS",
+      "shortcutName": "OpenKosmos",
       "displayLanguageSelector": true,
       "multiLanguageInstaller": true,
       "allowElevation": true,
@@ -460,12 +460,12 @@ After the build completes, installers will be generated in the `release/` direct
 
 ```
 release/
-├── KOSMOS-Setup-1.0.0-x64.exe           # Windows x64 installer
-├── KOSMOS-Setup-1.0.0-arm64.exe         # Windows ARM64 installer
-├── KOSMOS-Portable-1.0.0-x64.exe        # Windows x64 portable version
-├── KOSMOS-Portable-1.0.0-arm64.exe      # Windows ARM64 portable version
-├── KOSMOS-1.0.0-x64.dmg                 # macOS Intel installer
-├── KOSMOS-1.0.0-arm64.dmg               # macOS Apple Silicon installer
+├── OpenKosmos-Setup-1.0.0-x64.exe           # Windows x64 installer
+├── OpenKosmos-Setup-1.0.0-arm64.exe         # Windows ARM64 installer
+├── OpenKosmos-Portable-1.0.0-x64.exe        # Windows x64 portable version
+├── OpenKosmos-Portable-1.0.0-arm64.exe      # Windows ARM64 portable version
+├── OpenKosmos-1.0.0-x64.dmg                 # macOS Intel installer
+├── OpenKosmos-1.0.0-arm64.dmg               # macOS Apple Silicon installer
 └── latest.yml                           # Auto-update configuration file
 ```
 

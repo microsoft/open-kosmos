@@ -1,4 +1,4 @@
-# Kosmos Memory System Integration Update
+# OpenKosmos Memory System Integration Update
 
 ## Overview
 

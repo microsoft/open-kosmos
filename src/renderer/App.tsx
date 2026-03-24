@@ -203,7 +203,7 @@ const App: React.FC = () => {
         
         {/* Loading Text */}
         <div className="flex flex-col items-center gap-2">
-          <div className="text-neutral-200 font-medium text-lg tracking-wide">KOSMOS</div>
+          <div className="text-neutral-200 font-medium text-lg tracking-wide">OpenKosmos</div>
           <div className="flex items-center gap-2 text-neutral-500 text-sm">
             <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

@@ -1,0 +1,24 @@
+{
+  "_comment": "OpenKosmos Brand Configuration - See electron-builder.config.js for full documentation",
+  "_paths_windows": {
+    "_install_dir": "C:\\Users\\<user>\\AppData\\Local\\Programs\\openkosmos",
+    "_user_data": "C:\\Users\\<user>\\AppData\\Roaming\\openkosmos-app",
+    "_executable": "OpenKosmos.exe"
+  },
+  "_paths_macos": {
+    "_install_dir": "/Applications/OpenKosmos.app",
+    "_user_data": "~/Library/Application Support/openkosmos-app"
+  },
+  
+  "appId": "com.openkosmos.app",
+  "productName": "OpenKosmos",
+  "userDataName": "openkosmos-app",
+  "description": "OpenKosmos - AI Studio",
+  "copyright": "Copyright © 2025-2026 OpenKosmos Team",
+  "author": "OpenKosmos Team",
+  "homepage": "https://www.kosmos-ai.com",
+  "feedbackLink": "https://github.com/ai-microsoft/openKosmos/issues",
+  "filenamePrefix": "OpenKosmos",
+  "shortcutName": "OpenKosmos",
+  "windowTitle": "OpenKosmos AI Studio"
+}

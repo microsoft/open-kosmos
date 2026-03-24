@@ -95,7 +95,7 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
             <div className="toolbar-settings-card">
 
               {/* "Made possible by" — only shown for non-kosmos brands */}
-              {BRAND_NAME !== 'kosmos' && (
+              {BRAND_NAME !== 'openkosmos' && (
                 <div className="toolbar-setting-item">
                   <div className="setting-label-container">
                     <p className="about-legal-text">
@@ -106,7 +106,7 @@ const AboutAppContentView: React.FC<AboutAppContentViewProps> = () => {
                         rel="noopener noreferrer"
                         className="about-link"
                       >
-                        Kosmos AI Studio
+                        OpenKosmos AI Studio
                       </a>
                       {' '}project.
                     </p>

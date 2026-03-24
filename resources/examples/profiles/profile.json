@@ -14,7 +14,7 @@
         "studio-design-mcp"
       ],
       "env": {
-        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/design-agent"
+        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/design-agent"
       },
       "url": "",
       "in_use": true,
@@ -34,8 +34,8 @@
         "avatar": "",
         "name": "Kobi",
         "model": "claude-opus-4.6",
-        "workspace": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459",
-        "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459/knowledge",
+        "workspace": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459",
+        "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459/knowledge",
         "version": "1.0.0",
         "remoteVersion": "",
         "source": "ON-DEVICE",

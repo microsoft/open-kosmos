@@ -19,8 +19,8 @@ The `updaters.json` file should be placed at:
     "win32-arm64": "updater-win-arm64.exe",
     "darwin-x64": "updater-mac-x64",
     "darwin-arm64": "updater-mac-arm64",
-    "visual-win32-x64": "kosmos-updater-x64.exe",
-    "visual-win32-arm64": "kosmos-updater-arm64.exe"
+    "visual-win32-x64": "openkosmos-updater-x64.exe",
+    "visual-win32-arm64": "openkosmos-updater-arm64.exe"
   }
 }
 ```
@@ -64,8 +64,8 @@ All updater files should be placed at:
 
 | File | Description |
 |------|-------------|
-| `kosmos-updater-x64.exe` | Windows x64 visual updater with GUI |
-| `kosmos-updater-arm64.exe` | Windows ARM64 visual updater with GUI |
+| `openkosmos-updater-x64.exe` | Windows x64 visual updater with GUI |
+| `openkosmos-updater-arm64.exe` | Windows ARM64 visual updater with GUI |
 
 ## Update Flow
 
@@ -79,7 +79,7 @@ All updater files should be placed at:
 ### Visual Updater (Windows Only)
 1. App downloads `updaters.json`
 2. App checks if visual updater exists (key: `visual-win32-<arch>`)
-3. If available, downloads `kosmos-updater-<arch>.exe`
+3. If available, downloads `openkosmos-updater-<arch>.exe`
 4. On ZIP update, app prefers visual updater over command-line
 5. Visual updater shows progress window with:
    - Progress bar

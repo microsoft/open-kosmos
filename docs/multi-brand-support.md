@@ -1,11 +1,11 @@
-# Kosmos Multi-Brand Architecture
+# OpenKosmos Multi-Brand Architecture
 
 ## 1. Overview
 
 Kosmos supports a **multi-brand architecture** that allows generating application versions with different names, icons, and identifiers from a single codebase through configuration. This enables community contributors and organizations to create customized builds while sharing the same core codebase.
 
 **Current Brand:**
-- **Kosmos** (Default, folder: `brands/kosmos`)
+- **OpenKosmos** (Default, folder: `brands/openkosmos`)
 
 > **Adding Your Own Brand:** See [Section 6](#6-adding-a-new-brand) for instructions on creating a custom brand.
 
@@ -16,7 +16,7 @@ Brand configurations reside in the `brands/` directory. During the build process
 
 ### How It Works
 
-1. `scripts/brand-config.js` reads `BRAND` env var (default: `'kosmos'`)
+1. `scripts/brand-config.js` reads `BRAND` env var (default: `'openkosmos'`)
 2. Loads `brands/{brand}/config.json` for the selected brand
 3. Webpack injects brand constants (`APP_NAME`, `APP_ID`, etc.) into the bundle
 4. Electron Builder uses brand-specific icons, names, and identifiers for packaging
@@ -27,7 +27,7 @@ Each brand has its own directory under `brands/` containing a configuration file
 
 ```text
 brands/
-├── kosmos/                  # Default brand
+├── openkosmos/                  # Default brand
 │   ├── config.json          # Brand configuration (name, IDs, etc.)
 │   ├── assets/
 │   │   ├── mac/
@@ -49,12 +49,12 @@ Each brand's `config.json` defines the following properties:
 
 | Property | Description | Example |
 |----------|-------------|---------|
-| `appId` | Unique application identifier | `com.kosmos.app` |
-| `productName` | Display name of the application | `KOSMOS` |
-| `userDataName` | User data folder name (no spaces) | `kosmos-app` |
-| `filenamePrefix` | Executable file prefix (no spaces) | `KOSMOS` |
-| `shortcutName` | Start menu / dock shortcut name | `KOSMOS` |
-| `brandName` | Brand identifier (matches folder name) | `kosmos` |
+| `appId` | Unique application identifier | `com.openkosmos.app` |
+| `productName` | Display name of the application | `OpenKosmos` |
+| `userDataName` | User data folder name (no spaces) | `openkosmos-app` |
+| `filenamePrefix` | Executable file prefix (no spaces) | `OpenKosmos` |
+| `shortcutName` | Start menu / dock shortcut name | `OpenKosmos` |
+| `brandName` | Brand identifier (matches folder name) | `openkosmos` |
 
 ### Build-time Injection
 
@@ -68,7 +68,7 @@ These values are injected into the app via:
 ### Using Environment Variable
 
 ```bash
-# Build with default brand (kosmos)
+# Build with default brand (openkosmos)
 npm run build
 
 # Build with a specific brand
@@ -81,11 +81,11 @@ npm run dist --brandname=your-brand
 ### Using npm config
 
 ```bash
-npm run dist --brandname=kosmos
-npm run build --brandname=kosmos
+npm run dist --brandname=openkosmos
+npm run build --brandname=openkosmos
 ```
 
-The `scripts/brand-config.js` checks `process.env.npm_config_brandname` first, then falls back to `process.env.BRAND`, defaulting to `'kosmos'`.
+The `scripts/brand-config.js` checks `process.env.npm_config_brandname` first, then falls back to `process.env.BRAND`, defaulting to `'openkosmos'`.
 
 ## 6. Adding a New Brand
 
@@ -135,4 +135,4 @@ To create a custom brand:
 | `webpack.main.config.js` | Webpack main process — injects brand env vars via `DefinePlugin` |
 | `webpack.renderer.config.js` | Webpack renderer — sets HTML `<title>` dynamically |
 | `src/main/bootstrap.ts` | App entry point — sets `userData` path based on brand |
-| `brands/kosmos/config.json` | Kosmos brand configuration (reference example) |
+| `brands/openkosmos/config.json` | OpenKosmos brand configuration (reference example) |

@@ -321,14 +321,14 @@ private async setupDeferredHandlers(): Promise<void> {
 
 ```powershell
 # 1. Add Defender exclusion for testing
-Add-MpPreference -ExclusionPath "C:\Users\$env:USERNAME\AppData\Local\KOSMOS"
+Add-MpPreference -ExclusionPath "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos"
 
 # 2. Cold start after clearing Node module cache
-Remove-Item -Recurse -Force "C:\Users\$env:USERNAME\AppData\Local\KOSMOS\Cache"
+Remove-Item -Recurse -Force "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos\Cache"
 
 # 3. Record startup time
 $sw = [Diagnostics.Stopwatch]::StartNew()
-Start-Process "C:\Users\$env:USERNAME\AppData\Local\KOSMOS\KOSMOS.exe"
+Start-Process "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos\OpenKosmos.exe"
 # Manually record when the window appears
 ```
 

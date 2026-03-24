@@ -10,7 +10,7 @@ import { featureFlagCacheManager } from './lib/featureFlags';
 // Global type definitions are automatically loaded from ./types/global.d.ts
 
 // Startup logs - also displayed in production mode
-logger.startup('KOSMOS App renderer process started!');
+logger.startup('OpenKosmos App renderer process started!');
 logger.system('Current time:', new Date().toLocaleString());
 logger.system('Environment:', process.env.NODE_ENV);
 logger.debug('User agent:', navigator.userAgent);

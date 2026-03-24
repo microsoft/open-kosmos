@@ -14,8 +14,8 @@ declare global {
   }
 }
 
-export const APP_NAME = process.env.APP_NAME || 'KOSMOS';
-export const BRAND_NAME = process.env.BRAND_NAME || 'kosmos';
+export const APP_NAME = process.env.APP_NAME || 'OpenKosmos';
+export const BRAND_NAME = process.env.BRAND_NAME || 'openkosmos';
 export const BRAND_CONFIG = process.env.BRAND_CONFIG || {};
 
 export const getWindowTitle = () => (BRAND_CONFIG.windowTitle || `${APP_NAME} AI Studio`);

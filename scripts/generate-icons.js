@@ -307,7 +307,7 @@ async function generateMacIcns() {
  * Main function
  */
 async function main() {
-  console.log('🚀 KOSMOS Icon Generation Tool');
+  console.log('🚀 OpenKosmos Icon Generation Tool');
   console.log('═'.repeat(60));
   console.log('');
   

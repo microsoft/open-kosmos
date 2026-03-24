@@ -25,7 +25,7 @@ type ElectronFixtures = {
  * Each test uses an independent directory to avoid interference
  */
 function createTestUserDataDir(): string {
-  const dirName = `kosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `openkosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
