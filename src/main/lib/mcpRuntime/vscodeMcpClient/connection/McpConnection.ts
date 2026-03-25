@@ -23,6 +23,8 @@ import {
   InitializeResult,
   MCP_PROTOCOL_VERSION,
   MCP_CLIENT_INFO,
+  JsonRpcNotification,
+  JsonRpcRequest,
 } from '../types/protocolTypes';
 
 // ==================== Connection Events ====================
@@ -32,8 +34,8 @@ export interface ConnectionEvents {
   error: (error: Error) => void;
   initialized: (serverInfo: InitializeResult) => void;
   disconnected: (reason?: string) => void;
-  notification: (notification: { method: string; params?: any }) => void;
-  request: (request: { id: string | number; method: string; params?: any }) => void;
+  notification: (notification: JsonRpcNotification) => void;
+  request: (request: JsonRpcRequest) => void;
 }
 
 // ==================== Connection Statistics ====================
@@ -533,16 +535,17 @@ export class McpConnection extends EventEmitter {
     try {
       this.emit(McpConnection.EVENTS.ERROR, error);
     } catch (emitError) {
-      // If no listeners, log the error instead of letting it become unhandled
+      // If no listeners, log to console to avoid silent failures
+      console.error('[McpConnection] Unhandled error (no listeners):', error.message);
     }
   }
 
-  private handleNotification(notification: any): void {
+  private handleNotification(notification: JsonRpcNotification): void {
     this.stats.lastActivity = Date.now();
     this.emit(McpConnection.EVENTS.NOTIFICATION, notification);
   }
 
-  private handleRequest(request: any): void {
+  private handleRequest(request: JsonRpcRequest): void {
     this.stats.lastActivity = Date.now();
 
     // Respond to server-initiated ping requests
