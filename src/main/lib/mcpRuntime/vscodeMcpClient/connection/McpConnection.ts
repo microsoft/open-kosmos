@@ -32,6 +32,8 @@ export interface ConnectionEvents {
   error: (error: Error) => void;
   initialized: (serverInfo: InitializeResult) => void;
   disconnected: (reason?: string) => void;
+  notification: (notification: { method: string; params?: any }) => void;
+  request: (request: { id: string | number; method: string; params?: any }) => void;
 }
 
 // ==================== Connection Statistics ====================
@@ -84,6 +86,8 @@ export class McpConnection extends EventEmitter {
     ERROR: 'error',
     INITIALIZED: 'initialized',
     DISCONNECTED: 'disconnected',
+    NOTIFICATION: 'notification',
+    REQUEST: 'request',
   } as const;
 
   constructor(
@@ -534,13 +538,19 @@ export class McpConnection extends EventEmitter {
   }
 
   private handleNotification(notification: any): void {
-    // Handle server notifications
-    // TODO: Implement notification handlers
+    this.stats.lastActivity = Date.now();
+    this.emit(McpConnection.EVENTS.NOTIFICATION, notification);
   }
 
   private handleRequest(request: any): void {
-    // Handle server requests
-    // TODO: Implement request handlers
+    this.stats.lastActivity = Date.now();
+
+    // Respond to server-initiated ping requests
+    if (request.method === MCP_METHODS.PING && this.jsonRpcClient) {
+      this.jsonRpcClient.respond(request.id, {});
+    }
+
+    this.emit(McpConnection.EVENTS.REQUEST, request);
   }
 
   private throwIfDisposed(): void {
