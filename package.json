@@ -152,7 +152,7 @@
     "crypto-browserify": "^3.12.1",
     "css-loader": "^6.11.0",
     "dotenv": "^17.2.0",
-    "electron": "^35.7.5",
+    "electron": "^39.8.5",
     "electron-builder": "^26.7.0",
     "electron-reload": "^2.0.0-alpha.1",
     "eslint": "^9.39.2",
