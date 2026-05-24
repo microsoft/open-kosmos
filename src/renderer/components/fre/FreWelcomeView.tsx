@@ -387,7 +387,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
                   Failed to load agents: {error}
                 </div>
                 <button
-                  onClick={fetchPromotedAgents}
+                  onClick={() => setIsLoading(false)}
                   style={{
                     padding: '10px 24px',
                     background: '#0ea5e9',
