@@ -65,7 +65,7 @@ export class JsonRpcClient extends EventEmitter {
 
   constructor(transport: JsonRpcTransport, options: JsonRpcOptions = {}) {
     super();
-    
+
     this.transport = transport;
     this.options = {
       timeout: options.timeout ?? 30000,
@@ -82,8 +82,8 @@ export class JsonRpcClient extends EventEmitter {
    * Send a request and wait for response
    */
   async request<T = any>(
-    method: string, 
-    params?: any, 
+    method: string,
+    params?: any,
     options?: { timeout?: number; signal?: AbortSignal }
   ): Promise<T> {
     if (this.isDisposed) {
@@ -227,12 +227,12 @@ export class JsonRpcClient extends EventEmitter {
    */
   cancelAllRequests(reason = 'Client disposed'): void {
     const error = new Error(reason);
-    
+
     for (const [id, pendingRequest] of Array.from(this.pendingRequests.entries())) {
       clearTimeout(pendingRequest.timeout);
       pendingRequest.reject(error);
     }
-    
+
     this.pendingRequests.clear();
   }
 
@@ -300,7 +300,7 @@ export class JsonRpcClient extends EventEmitter {
   private handleTransportMessage(messageStr: string): void {
     try {
       const message = this.parseMessage(messageStr);
-      
+
       if (isJsonRpcResponse(message)) {
         this.handleResponse(message);
       } else if (isJsonRpcRequest(message)) {
@@ -318,11 +318,11 @@ export class JsonRpcClient extends EventEmitter {
   private parseMessage(messageStr: string): JsonRpcMessage {
     try {
       const parsed = JSON.parse(messageStr);
-      
+
       if (!isJsonRpcMessage(parsed)) {
         throw new Error('Invalid JSON-RPC message format');
       }
-      
+
       return parsed;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -332,7 +332,7 @@ export class JsonRpcClient extends EventEmitter {
 
   private handleResponse(response: JsonRpcResponse): void {
     const { id, result, error } = response;
-    
+
     if (id === null || id === undefined) {
       this.emit(JsonRpcClient.EVENTS.ERROR, new Error('Response missing ID'));
       return;
@@ -470,11 +470,11 @@ export function createBatchMessage(messages: JsonRpcMessage[]): string {
   if (messages.length === 0) {
     throw new Error('Batch cannot be empty');
   }
-  
+
   if (messages.length === 1) {
     return JSON.stringify(messages[0]);
   }
-  
+
   return JSON.stringify(messages);
 }
 
@@ -483,7 +483,7 @@ export function createBatchMessage(messages: JsonRpcMessage[]): string {
  */
 export function parseBatchMessage(messageStr: string): JsonRpcMessage[] {
   const parsed = JSON.parse(messageStr);
-  
+
   if (Array.isArray(parsed)) {
     return parsed;
   } else {

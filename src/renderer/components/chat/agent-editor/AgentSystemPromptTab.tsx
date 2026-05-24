@@ -14,29 +14,29 @@ const AgentSystemPromptTab: React.FC<TabComponentProps> = ({
   cachedData,
   readOnly = false
 }) => {
-  // Check if this is a Kobi Agent (system prompt modification disabled)
+  // Check if this is the Kobi Agent (system prompt modification is prohibited)
   const isKobiAgent = agentData?.name?.toLowerCase() === 'kobi'
-  
+
   // Check if editing is disabled (read-only mode or Kobi Agent)
   const isEditDisabled = readOnly || isKobiAgent
-  
+
   const [systemPrompt, setSystemPrompt] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [optimizationError, setOptimizationError] = useState<string | null>(null)
   const [optimizationWarnings, setOptimizationWarnings] = useState<string[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
-  
-  // Initial data for comparing changes
+
+  // Initial data used to detect modifications
   const [initialSystemPrompt, setInitialSystemPrompt] = useState('')
 
-  // Load existing system prompt - only on first component load or when explicit re-sync is needed
+  // Load existing system prompt - only runs on initial component mount or when explicit re-sync is needed
   useEffect(() => {
     // Avoid resetting state while user is editing
     if (!isInitialized) {
       let basePrompt = ''
       if (agentData?.systemPrompt !== undefined) {
-        // If there is an explicit systemPrompt value (including empty string)
+        // If systemPrompt has an explicit value (including empty string)
         basePrompt = agentData.systemPrompt
       } else if (mode === 'update') {
         // Only set default system prompt in update mode
@@ -50,10 +50,10 @@ Please follow these guidelines:
 ## Specific Instructions
 Add your specific instructions here...`
       }
-      
-      // If cached data exists, use cached data first
+
+      // If cached data exists, prefer it over the base prompt
       const finalPrompt = cachedData?.systemPrompt !== undefined ? cachedData.systemPrompt : basePrompt
-      
+
       setSystemPrompt(finalPrompt)
       setInitialSystemPrompt(basePrompt) // Initial data is always the original data
       setIsInitialized(true)
@@ -78,7 +78,7 @@ Add your specific instructions here...`
     setShowPreview(prev => !prev)
   }, [])
 
-  // Handle content changes
+  // Handle content change
   const handleContentChange = useCallback((value: string) => {
     setSystemPrompt(value)
     // When content changes, clear previous errors and warnings
@@ -96,27 +96,27 @@ Add your specific instructions here...`
     setOptimizationError(null)
     setOptimizationWarnings([])
 
-    // Validate input is not empty
+    // Validate that input is not empty
     const trimmedPrompt = systemPrompt.trim()
     if (!trimmedPrompt) {
-      setOptimizationError('System prompt cannot be empty. Please enter some content before polishing with AI.')
+      setOptimizationError('System prompt cannot be empty.')
       return
     }
 
     setIsOptimizing(true)
     try {
-      
-      // Call main process systemPromptLlmWriter via IPC
+
+      // Call the main process systemPromptLlmWriter via IPC
       const ipcResult = await window.electronAPI?.llm?.improveSystemPrompt(trimmedPrompt)
-      
+
       if (!ipcResult) {
         throw new Error('LLM API not available')
       }
 
-      
+
       if (ipcResult.success && ipcResult.data) {
         const result = ipcResult.data
-        
+
         if (result.success && result.improvedPrompt) {
           setSystemPrompt(result.improvedPrompt)
           if (result.warnings && result.warnings.length > 0) {
@@ -161,14 +161,14 @@ Add your specific instructions here...`
               className="system-btn"
               onClick={handleAIOptimize}
               disabled={isOptimizing || !systemPrompt.trim()}
-              title={!systemPrompt.trim() ? 'Please enter content before polishing with AI' : 'Polish your system prompt with AI'}
+              title={!systemPrompt.trim() ? 'Enter a prompt first' : 'Polish prompt'}
             >
               {isOptimizing ? 'Polishing...' : 'Polish with AI'}
             </button>
           )}
         </div>
       </div>
-      
+
       {/* Tab Body */}
       <div className="tab-body">
         <MarkdownEditor

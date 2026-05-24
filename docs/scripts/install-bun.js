@@ -1,4 +1,4 @@
-// Reference code in the docs directory, not bundled for release
+// Reference code in the docs directory, will not be bundled for release
 
 const fs = require('fs')
 const path = require('path')

@@ -1,11 +1,11 @@
-# LLM Output Format Guide
+# LLM Output Format Specification Guide
 
-> This document defines the output format specifications for large language models, ensuring that output content works seamlessly with Markdown rendering styles to provide a consistent and elegant user experience.
+> This document defines formatting standards for large language model output, ensuring output content works seamlessly with Markdown rendering styles to provide a consistent and elegant user experience.
 
 ## Table of Contents
 
 - [Design Principles](#design-principles)
-- [Typography Specifications](#typography-specifications)
+- [Typography Standards](#typography-standards)
 - [Element Usage Guide](#element-usage-guide)
 - [System Prompt Templates](#system-prompt-templates)
 - [Examples](#examples)
@@ -16,56 +16,56 @@
 
 ### 1. Clear Hierarchy
 - Use headings to establish content structure
-- Use at most three heading levels (H1-H3)
+- Use at most three heading levels (H1–H3)
 - Avoid skipping heading levels
 
 ### 2. Visual Balance
 - Maintain appropriate spacing between paragraphs
 - Avoid excessively long continuous text
-- Use lists and tables to break down information effectively
+- Use lists and tables to break up information appropriately
 
 ### 3. Semantics First
-- Choose the most semantically appropriate Markdown element
-- Use bold for emphasis, italics for terms
-- Use code blocks for code, inline code for identifiers
+- Choose the Markdown element that best matches the semantics
+- Bold for emphasis, italic for terminology
+- Code blocks for code, inline code for identifiers
 
 ### 4. Concise and Efficient
-- Get straight to the point
-- Avoid redundant introductions
-- Present complex information in a structured format
+- Get to the point directly
+- Avoid redundant preambles
+- Present complex information in structured form
 
 ---
 
-## Typography Specifications
+## Typography Standards
 
 ### Spacing System
 
-All elements use only `margin-top` to control spacing from the content above; all other directions are set to 0.
+All elements use only `margin-top` to control spacing from the content above; all other directions are 0.
 
-| Element Type | margin-top | Description |
+| Element Type | margin-top | Notes |
 |----------|------------|------|
-| Headings (H1-H3) | 28px | Section spacing from content above |
+| Headings (H1–H3) | 28px | Section spacing from content above |
 | Paragraphs | 8px | Paragraph spacing from content above |
 | Lists | 8px | Spacing from content above |
-| List Items | 8px | Only 8px spacing between list items, no other spacing |
-| Code Blocks | 8px | Spacing from content above |
+| List items | 8px | Only 8px between list items; no other spacing |
+| Code blocks | 8px | Spacing from content above |
 | Tables | 8px | Spacing from content above |
 | Blockquotes | 8px | Spacing from content above |
 | Images | 8px | Spacing from content above |
 
-**Note:**
-- The first element (`:first-child`) has `margin-top` set to 0
-- Spacing between list items is controlled solely by `margin-top: 8px`, with no additional padding or spacing
+**Notes:**
+- The first element (`:first-child`) has `margin-top` of 0
+- Spacing between list items is controlled only by `margin-top: 8px`; no other padding or spacing
 
-### Font Specifications
+### Typography Standards
 
 ```
-Heading (H1):   28px / 32px line-height / 620 font-weight
-Heading (H2):   20px / 26px line-height / 620 font-weight
-Heading (H3):   16px / 26px line-height / 620 font-weight
-Body:           16px / 26px line-height / 410 font-weight
-Code:           14px / 20px line-height / 400 font-weight (Cascadia Code)
-Table text:     14px / 20px line-height / 410 font-weight
+Heading (H1):   28px / line-height 32px / weight 620
+Heading (H2):   20px / line-height 26px / weight 620
+Heading (H3):   16px / line-height 26px / weight 620
+Body text:      16px / line-height 26px / weight 410
+Code:           14px / line-height 20px / weight 400 (Cascadia Code)
+Table text:     14px / line-height 20px / weight 410
 ```
 
 ---
@@ -75,30 +75,30 @@ Table text:     14px / 20px line-height / 410 font-weight
 ### Headings
 
 ```markdown
-# Main Title - Used for the core topic (at most 1 per response)
+# Main Heading — for the core topic (at most 1 per reply)
 
-## Secondary Heading - Used for main sections
+## Second-level Heading — for major sections
 
-### Tertiary Heading - Used for subsections or key points
+### Third-level Heading — for subsections or key points
 ```
 
-**Usage Principles:**
-- Short responses (<100 words) typically don't need headings
-- Medium responses (100-300 words) can use H2 headings
-- Long responses (>300 words) should use headings to organize structure
-- The first H1 does not need a blank line above it
+**Usage principles:**
+- Short replies (<100 words) typically don't need headings
+- Medium replies (100–300 words) may use second-level headings
+- Long replies (>300 words) should use headings to organize structure
+- The first H1 does not need a leading blank line
 
 ### Paragraphs
 
 ```markdown
 This is a paragraph. Paragraphs are separated by blank lines.
 
-This is another paragraph. Each paragraph expresses a complete idea.
+This is another paragraph. Each paragraph expresses one complete idea.
 ```
 
-**Usage Principles:**
-- Each paragraph should focus on one topic
-- Keep paragraph length to 3-5 lines
+**Usage principles:**
+- Each paragraph focuses on one topic
+- Keep paragraph length to 3–5 lines
 - Avoid single-sentence paragraphs (unless it's a key summary)
 
 ### Lists
@@ -110,9 +110,9 @@ This is another paragraph. Each paragraph expresses a complete idea.
 - Third item
 ```
 
-Use cases:
-- Parallel key points
-- Items with no sequential dependency
+Applicable scenarios:
+- Parallel points
+- Items with no order dependency
 - Feature listings
 
 #### Ordered Lists
@@ -122,7 +122,7 @@ Use cases:
 3. Third step
 ```
 
-Use cases:
+Applicable scenarios:
 - Step-by-step instructions
 - Priority ordering
 - Chronological order
@@ -135,10 +135,10 @@ Use cases:
 - Another category
 ```
 
-**Usage Principles:**
+**Usage principles:**
 - Nest at most two levels deep
-- Keep each list item concise and clear
-- Limit list items to 3-7 per list
+- Keep each list item concise
+- Limit list items to 3–7 per group
 
 ### Code
 
@@ -147,10 +147,10 @@ Use cases:
 Use `console.log()` to output debug information.
 ```
 
-Use cases:
+Applicable scenarios:
 - Function names, variable names
 - Command-line instructions
-- Configuration item names
+- Configuration option names
 
 #### Code Blocks
 ````markdown
@@ -160,60 +160,60 @@ def hello():
 ```
 ````
 
-**Usage Principles:**
+**Usage principles:**
 - Always specify the language type
-- Keep blank lines before and after code blocks
+- Keep a blank line before and after code blocks
 - Add necessary comments
-- Keep code length moderate (ideally under 20 lines)
+- Keep code to a reasonable length (ideally under 20 lines)
 
 ### Tables
 
 ```markdown
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| A1       | B1       | C1       |
-| A2       | B2       | C2       |
+| Col1 | Col2 | Col3 |
+|-----|-----|-----|
+| A1  | B1  | C1  |
+| A2  | B2  | C2  |
 ```
 
-Use cases:
+Applicable scenarios:
 - Comparative analysis
 - Parameter descriptions
 - Data presentation
 
-**Usage Principles:**
+**Usage principles:**
 - No more than 6 columns
-- Keep headers concise and clear
-- Maintain consistent content alignment
-- The first column is typically the identifier field
+- Keep column headers concise
+- Align content consistently
+- First column is usually the identifier field
 
 ### Emphasis
 
 ```markdown
-**Bold** - Used for important concepts and keywords
+**Bold** — for important concepts and keywords
 
-*Italics* - Used for first occurrence of terms or for emphasis
+*Italic* — for first occurrence of a term or to add emphasis
 
-~~Strikethrough~~ - Used to mark deprecated or discouraged content
+~~Strikethrough~~ — to mark deprecated or not-recommended content
 ```
 
 ### Blockquotes
 
 ```markdown
-> This is a blockquote, used for citing others' opinions or important notes.
+> This is a blockquote, used to cite others' views or provide important notes.
 ```
 
-Use cases:
-- Citations or notes
+Applicable scenarios:
+- Citations from references or notes
 - Important tips
-- Warning messages
+- Warning information
 
-### Horizontal Rules
+### Dividers
 
 ```markdown
 ---
 ```
 
-Use cases:
+Applicable scenarios:
 - Topic transitions
 - End of a section
 - Breaking up long content
@@ -225,21 +225,21 @@ Use cases:
 ### Basic Version
 
 ```
-You are a professional AI assistant. Please follow the output format specifications below:
+You are a professional AI assistant. Please follow these output format standards:
 
-## Formatting Requirements
-1. Use Markdown to format responses
+## Format Requirements
+1. Use Markdown to format replies
 2. Heading levels should not exceed three
-3. Code blocks must specify the language type
-4. Keep list items between 3-7 per list
+3. Specify the language type in code blocks
+4. Keep list items to 3–7 per group
 
-## Structure Guidelines
-- Short answers (<100 words): Answer directly, use inline code
-- Medium answers (100-300 words): Use lists and paragraphs
-- Long answers (>300 words): Use headings to structure content
+## Structure Recommendations
+- Short answers (<100 words): answer directly, use inline code
+- Medium answers (100–300 words): use lists and paragraphs
+- Long answers (>300 words): use headings to structure content
 
 ## Style Requirements
-- Get straight to the point, avoid redundant introductions
+- Get to the point directly; avoid redundant preambles
 - Use bold to emphasize key concepts
 - Present complex information in tables
 ```
@@ -247,26 +247,26 @@ You are a professional AI assistant. Please follow the output format specificati
 ### Advanced Version
 
 ```
-You are a professional AI assistant. Please strictly follow the output format specifications below to ensure the best reading experience.
+You are a professional AI assistant. Please strictly follow the output format standards below to ensure the best reading experience.
 
 ## I. Content Structure
 
-### Heading Guidelines
-- `#` Main title: Used only for the core topic, at most 1 per response
-- `##` Secondary heading: Used for major section divisions
-- `###` Tertiary heading: Used for subsections or detailed points
-- Fourth-level and lower headings are prohibited
+### Heading Standards
+- `#` Main heading: for the core topic only; at most 1 per reply
+- `##` Second-level heading: for major section divisions
+- `###` Third-level heading: for subsections or detailed points
+- Fourth-level headings and below are prohibited
 
-### Paragraph Guidelines
-- Each paragraph should focus on one idea
-- Paragraph length: 3-5 lines is ideal
-- Leave a blank line between paragraphs
+### Paragraph Standards
+- Each paragraph focuses on one point
+- Paragraph length: 3–5 lines recommended
+- Leave one blank line between paragraphs
 
-### List Guidelines
+### List Standards
 - Unordered lists for parallel points
-- Ordered lists for step-by-step procedures
+- Ordered lists for step-by-step flows
 - Nest at most two levels
-- 3-7 items per list
+- 3–7 items per list group
 
 ## II. Code Handling
 
@@ -274,22 +274,22 @@ You are a professional AI assistant. Please strictly follow the output format sp
 Wrap with backticks: `functionName()`, `variableName`, `command`
 
 ### Code Blocks
-- Must specify the language type
+- Must specify language type
 - Keep under 20 lines
 - Include necessary comments
-- Maintain blank lines before and after
+- Leave blank lines before and after
 
 ## III. Special Elements
 
 ### Tables
 - No more than 6 columns
 - Keep headers concise and clear
-- Suitable for comparisons and data presentation
+- Use for comparisons and data presentation
 
 ### Emphasis
-- **Bold**: Key concepts
-- *Italics*: First occurrence of terms
-- `Code`: Technical identifiers
+- **Bold**: key concepts
+- *Italic*: first occurrence of a term
+- `Code`: technical identifiers
 
 ## IV. Format Selection Guide
 
@@ -300,40 +300,40 @@ Wrap with backticks: `functionName()`, `variableName`, `command`
 | Comparative analysis | Table |
 | Code examples | Code block |
 | Multiple points | Unordered list |
-| Notes/caveats | Blockquote |
+| Cautions | Blockquote |
 
 ## V. Output Examples
 
-### Short Response Example
-Use the `git pull` command to fetch the latest code from a remote repository and merge it into the current branch.
+### Short reply example
+Use the `git pull` command to fetch the latest code from the remote repository and merge it into the current branch.
 
-### Medium Response Example
+### Medium reply example
 **Common Git operations include:**
 
-- `git clone` - Clone a remote repository
-- `git pull` - Fetch and merge updates
-- `git push` - Push local commits
-- `git branch` - Branch management
+- `git clone` — Clone a remote repository
+- `git pull` — Fetch and merge updates
+- `git push` — Push local commits
+- `git branch` — Branch management
 
-### Long Response Example
+### Long reply example
 ## Git Workflow
 
 ### 1. Initialization
-First, clone the repository to your local machine...
+Start by cloning the repository locally...
 
-### 2. Development Process
+### 2. Development Flow
 Create a feature branch for development...
 
-### 3. Commit Conventions
+### 3. Commit Standards
 Use semantic commit messages...
 ```
 
-### Professional Domain Version (Programming Assistant)
+### Domain-Specific Version (Programming Assistant)
 
 ```
-You are a professional programming assistant. Please follow the format specifications below for output:
+You are a professional programming assistant. Please follow these format standards for output:
 
-## Code Output Guidelines
+## Code Output Standards
 
 1. **Code blocks must specify the language**
    ```python
@@ -342,28 +342,28 @@ You are a professional programming assistant. Please follow the format specifica
        pass
    ```
 
-2. **Inline code for identifiers**
+2. **Use inline code for identifiers**
    - Function names: `functionName()`
    - Variable names: `variableName`
    - File names: `config.json`
 
 3. **Code comment requirements**
    - Add comments for complex logic
-   - Describe the purpose of key parameters
+   - Explain the purpose of key parameters
    - Annotate return value types
 
-## Explanation Output Guidelines
+## Explanation Output Standards
 
-1. Provide the code first, then explain
+1. Provide code first, then explanation
 2. Use ordered lists to explain steps
-3. Use bold for key concepts
-4. Use inline code format for related functions
+3. Mark key concepts in bold
+4. Format related functions as inline code
 
 ## Error Handling Output
 
-1. Identify the error location
+1. Identify the location of the error
 2. Explain the cause of the error
-3. Provide the fix code
+3. Provide a fix with code
 4. Describe preventive measures
 ```
 
@@ -377,14 +377,14 @@ You are a professional programming assistant. Please follow the format specifica
 
 **Output:**
 
-**React Hooks** are a new feature introduced in React 16.8 that allow you to use state and other React features in function components.
+**React Hooks** are a feature introduced in React 16.8 that allow state and other React features to be used in function components.
 
 ### Core Hooks
 
-- `useState` - State management
-- `useEffect` - Side effect handling
-- `useContext` - Context access
-- `useRef` - Persistent references
+- `useState` — State management
+- `useEffect` — Side effect handling
+- `useContext` — Context access
+- `useRef` — Reference persistence
 
 ### Usage Example
 
@@ -410,7 +410,7 @@ function Counter() {
 
 ### Example 2: Comparative Analysis
 
-**Input:** Differences between SQL and NoSQL
+**Input:** What is the difference between SQL and NoSQL?
 
 **Output:**
 
@@ -418,22 +418,22 @@ function Counter() {
 
 | Feature | SQL | NoSQL |
 |------|-----|-------|
-| Data Model | Relational Tables | Document/Key-Value/Graph |
-| Schema | Fixed Schema | Flexible Schema |
-| Scalability | Vertical Scaling | Horizontal Scaling |
-| Transaction Support | ACID | BASE |
-| Use Cases | Complex Queries | Large-Scale Data |
+| Data model | Relational tables | Document/Key-value/Graph |
+| Schema | Fixed schema | Flexible schema |
+| Scalability | Vertical scaling | Horizontal scaling |
+| Transaction support | ACID | BASE |
+| Best for | Complex queries | Large-scale data |
 
-### Selection Recommendations
+### Selection Guide
 
-- **Choose SQL**: When complex transactions are needed and data relationships are well-defined
-- **Choose NoSQL**: For high concurrency, variable data structures, and rapid iteration
+- **Choose SQL**: complex transactions required, well-defined data relationships
+- **Choose NoSQL**: high concurrency, variable data structures, rapid iteration
 
 ---
 
 ### Example 3: Step-by-Step Instructions
 
-**Input:** How to configure Git
+**Input:** How do I configure Git?
 
 **Output:**
 
@@ -479,17 +479,17 @@ ssh -T git@github.com
 
 ### Checklist
 
-Before output, please confirm:
+Before outputting, please confirm:
 
 - [ ] Heading levels do not exceed three
-- [ ] Code blocks have language annotations
-- [ ] List item count is reasonable (3-7 items)
-- [ ] Tables have no more than 6 columns
-- [ ] Paragraph length is moderate
+- [ ] Code blocks specify the language
+- [ ] List item count is reasonable (3–7 items)
+- [ ] Table columns do not exceed 6
+- [ ] Paragraph length is appropriate
 - [ ] Keywords are bolded
-- [ ] No redundant introductions
+- [ ] No redundant preamble
 
 ### Related Files
 
 - CSS style file: [`src/renderer/styles/markdown-render.css`](../src/renderer/styles/markdown-render.css)
-- Design specification source: [`.vscode/markdown-html.css`](../.vscode/markdown-html.css)
+- Design spec source: [`.vscode/markdown-html.css`](../.vscode/markdown-html.css)

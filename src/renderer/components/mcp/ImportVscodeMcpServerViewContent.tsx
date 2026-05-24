@@ -1,6 +1,6 @@
 /**
  * ImportVscodeMcpServerViewContent Component
- * Contains the main content area for VSCode import functionality
+ * Main content area containing the VSCode import functionality
  */
 
 import React, { useState, useCallback, useEffect } from 'react'
@@ -8,10 +8,10 @@ import '../../styles/ImportVscodeMcpServerView.css'
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
 import { getPlatformInfo } from '../../lib/mcp/platformDetector'
-import { readFileContent, expandPath, checkFileExists } from '../../lib/utilities/fileSystemUtils'
-import { detectVscodeConfigFile } from '../../lib/mcp/VscodeConfigDetector'
+import { readFileContent } from '../../lib/utilities/fileSystemUtils'
+import { detectVSCodeConfigs } from '../../lib/mcp/VscodeConfigDetector'
 import { McpOps } from '../../lib/mcp/mcpOps'
-import { KosmosAppMCPServerConfig } from '../../types/mcpTypes'
+import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
 import { Info } from 'lucide-react'
 
 interface ParsedServerConfig {
@@ -66,7 +66,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
     if (!detectedConfig && !isScanning) {
       // Get existing server names for conflict detection
       let existingNames: string[] = []
-      
+
       try {
         if (mcpServers && Array.isArray(mcpServers)) {
           // mcpServers is an array of server objects
@@ -75,12 +75,12 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
           // mcpServers is an object with server names as keys
           existingNames = Object.keys(mcpServers)
         }
-        
+
         setExistingServerNames(existingNames)
       } catch (error) {
         setExistingServerNames([])
       }
-      
+
       handleAutoDetect(existingNames)
     }
   }, [mcpServers])
@@ -89,7 +89,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
     setIsScanning(true)
     try {
       const platformInfo = getPlatformInfo()
-      
+
       if (!platformInfo.isSupported) {
         setDetectedConfig({
           path: 'Unsupported platform',
@@ -100,22 +100,49 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
         return
       }
 
-      // Use the new multi-path detection to find the first valid VSCode config file
-      const detectedConfigPath = await detectVscodeConfigFile()
-      
-      if (!detectedConfigPath) {
+      const detectionResult = await detectVSCodeConfigs()
+
+      if (!detectionResult.success) {
         setDetectedConfig({
-          path: 'Multiple paths scanned',
+          path: 'Detection failed',
           exists: false,
           serverCount: 0,
-          error: 'No valid VSCode MCP configuration file found. Please ensure VSCode is properly installed and MCP servers are configured.'
+          error: detectionResult.error || 'Failed to scan VSCode MCP configuration files.'
         })
         return
       }
 
+      const validConfigFile = detectionResult.configFiles.find(
+        file => file.exists && file.isValid && file.serverCount > 0
+      )
+
+      if (!validConfigFile) {
+        const firstExistingConfig = detectionResult.configFiles.find(file => file.exists)
+
+        if (firstExistingConfig) {
+          setDetectedConfig({
+            path: firstExistingConfig.expandedPath,
+            exists: true,
+            serverCount: 0,
+            error: firstExistingConfig.error || 'Found a VSCode MCP configuration file, but it does not contain a supported MCP server configuration.'
+          })
+          return
+        }
+
+        setDetectedConfig({
+          path: 'Multiple paths scanned',
+          exists: false,
+          serverCount: 0,
+          error: 'No VSCode MCP configuration file found in the default user or profile locations.'
+        })
+        return
+      }
+
+      const detectedConfigPath = validConfigFile.expandedPath
+
       // Read and parse the detected file
       const contentResult = await readFileContent(detectedConfigPath)
-      
+
       if (!contentResult.success) {
         setDetectedConfig({
           path: detectedConfigPath,
@@ -130,10 +157,10 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
       let parsedServers: ParsedServerConfig[] = []
       try {
         const config = JSON.parse(contentResult.content!)
-        
+
         // Support both mcp.json format (servers) and settings.json format (mcp.servers)
         const servers = config.servers || config.mcp?.servers
-        
+
         if (servers && typeof servers === 'object') {
           // Convert each server to our format
           for (const [serverName, serverConfig] of Object.entries(servers)) {
@@ -167,11 +194,11 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
       if (parsedServers.length > 0) {
         const conflictingServers = parsedServers.filter(server => server.hasConflict)
         const nonConflictingServers = parsedServers.filter(server => !server.hasConflict)
-        
+
         // Default select only non-conflicting servers
         const defaultSelected = new Set(nonConflictingServers.map(server => server.name))
         setSelectedServers(defaultSelected)
-        
+
         // Set first server as preview
         setPreviewServer(parsedServers[0])
       }
@@ -290,7 +317,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
     }
 
     setIsScanning(true)
-    
+
     try {
       const serversToImport = detectedConfig.servers.filter(server =>
         selectedServers.has(server.name)
@@ -321,8 +348,8 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             // For overwrite, keep the original name
           }
 
-          // Convert to Kosmos format
-          const kosmosConfig: KosmosAppMCPServerConfig = {
+          // Convert to OpenKosmos format
+          const openkosmosConfig: OpenKosmosAppMCPServerConfig = {
             name: finalName,
             transport: server.transport === 'StreamableHttp' ? 'StreamableHttp' as const : server.transport as 'stdio' | 'sse',
             command: server.command || '',
@@ -330,7 +357,9 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             env: server.env || {},
             url: server.url || '',
             in_use: true,
+            // 🆕 Added from Import from VS Code: uniformly use 1.0.0 and ON-DEVICE
             version: '1.0.0',
+            source: 'ON-DEVICE',
           }
 
           // Validate if required
@@ -348,11 +377,11 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
 
           // Add or update server based on conflict resolution using McpOps API
           let result: { success: boolean; error?: string }
-          
+
           if (server.hasConflict && importOptions.conflictResolution === 'overwrite') {
             // Use McpOps.update for existing servers (overwrite mode)
-            result = await McpOps.update(server.name, kosmosConfig)
-            
+            result = await McpOps.update(server.name, openkosmosConfig)
+
             if (result.success) {
               importedCount++
             } else {
@@ -360,8 +389,8 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             }
           } else {
             // Use McpOps.add for new servers or renamed servers
-            result = await McpOps.add(kosmosConfig)
-            
+            result = await McpOps.add(openkosmosConfig)
+
             if (result.success) {
               importedCount++
             } else {
@@ -380,7 +409,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
           (errors.length > 0 ? ` (${errors.length} failed)` : '')
         )
         onImportComplete?.(importedCount)
-        
+
         // Refresh runtime info to initialize and connect servers
         await refreshRuntimeInfo()
       } else {
@@ -470,7 +499,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
                 <button onClick={handleDeselectAll} className="btn-secondary">Deselect All</button>
               </div>
             </div>
-            
+
             <div className="server-list">
               {detectedConfig.servers.map((server) => (
                 <div
@@ -507,7 +536,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
           {/* Import options section */}
           <div className="import-options">
             <h3>Import Options</h3>
-            
+
             <div className="option-group">
               <h4>Conflict Resolution:</h4>
               <div className="radio-group">

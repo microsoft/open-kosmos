@@ -1,7 +1,7 @@
 /**
  * Unified Logger System - Log Entry Manager (Singleton)
  *
- * Class AddLog - Responsible for receiving log requests and managing the pending log queue
+ * Class add-log - Responsible for receiving log requests and managing the pending log queue
  */
 
 import { LogEntry, LogLevel, UnifiedLoggerConfig, createLogEntry } from './types';
@@ -19,8 +19,8 @@ export class LogEntryManager {
   }
 
   /**
-   * Get singleton instance
-   * @param config - Configuration object (only used during first creation)
+   * Get the singleton instance
+   * @param config - Configuration object (only used on first creation)
    * @returns LogEntryManager instance
    */
   public static getInstance(config?: UnifiedLoggerConfig): LogEntryManager {
@@ -34,7 +34,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Set reference to the cache log manager (dependency injection)
+   * Set the reference to the cache log manager (dependency injection)
    * @param cacheLogManager - CacheLogManager instance
    */
   public setCacheLogManager(cacheLogManager: any): void {
@@ -42,7 +42,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Get reference to the pending cache log queue
+   * Get a reference to the pending log queue
    * @returns PendingLogQueue instance
    */
   public getPendingLogQueue(): PendingLogQueue {
@@ -50,43 +50,43 @@ export class LogEntryManager {
   }
 
   /**
-   * Main log method
+   * Primary log method
    * @param level - Log level
    * @param message - Log message
    * @param source - Log source (optional)
    * @param metadata - Metadata (optional)
    */
   public log(level: LogLevel, message: string, source?: string, metadata?: any): void {
-    // 1. Check if this log level is enabled
+    // 1. Check whether this log level is enabled
     if (!this.config.LOGGER_LEVELS.includes(level)) {
       return;
     }
 
-    // 2. Console log output - force output even if config disables it, isolated from file output
+    // 2. Output to console — forced even if disabled in config, isolated from file output
     try {
       this.outputToConsole(level, message, source, metadata);
     } catch (consoleError) {
-      // Ensure console errors do not affect file logging, but attempt to output the error itself
+      // Ensure console errors do not affect file logging, but try to output the error itself
       // Use raw console.error to avoid circular calls
       if (global.console && global.console.error) {
         global.console.error('UnifiedLogger: Failed to write to console:', consoleError);
       }
     }
 
-    // 3-5. Handle file log recording - independent try-catch block ensures console errors do not block file recording
+    // 3-5. Handle file logging — independent try-catch ensures console errors don't block file logging
     try {
-      // 3. Create LogEntry object
+      // 3. Create a LogEntry object
       const logEntry = this.createLogEntry(level, message, source, metadata);
 
-      // 4. Add to the pending cache log queue
+      // 4. Add to the pending log queue
       this.pendingLogQueue.enqueue(logEntry);
 
-      // 5. Notify cache log manager that a new log has been added
+      // 5. Notify the cache log manager that a new log has been added
       if (this.cacheLogManager && typeof this.cacheLogManager.notifyNewLogAdded === 'function') {
         this.cacheLogManager.notifyNewLogAdded();
       }
     } catch (fileError) {
-      // File recording failure must be reported
+      // File logging failure must be reported
       if (global.console && global.console.error) {
         global.console.error('UnifiedLogger: Failed to process log entry for file system:', fileError);
       }
@@ -94,8 +94,8 @@ export class LogEntryManager {
   }
 
   /**
-   * Safely write to console, ignoring EPIPE errors
-   * EPIPE errors occur when the pipe is closed (e.g., during app exit), which should be silently ignored
+   * Safely write to the console, ignoring EPIPE errors.
+   * EPIPE errors occur when a pipe is closed (e.g., when the app exits), and should be silently ignored.
    * @param fn - console method
    * @param message - Log message
    */
@@ -103,9 +103,9 @@ export class LogEntryManager {
     try {
       fn(message);
     } catch (error: any) {
-      // Ignore EPIPE errors - this typically occurs when the pipe closes during app exit
+      // Ignore EPIPE errors — these typically occur when a pipe is closed during app exit
       if (error?.code !== 'EPIPE') {
-        // For other errors, try writing directly to process.stderr (if available)
+        // For other errors, try writing to process.stderr directly (if available)
         try {
           if (process.stderr?.writable) {
             process.stderr.write(`[UnifiedLogger] Console write error: ${error?.message || error}\n`);
@@ -118,7 +118,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Output log to console
+   * Output a log entry to the console
    * @param level - Log level
    * @param message - Log message
    * @param source - Log source
@@ -128,7 +128,7 @@ export class LogEntryManager {
     const timestamp = new Date().toISOString();
     const sourceStr = source ? `[${source}]` : '';
     const metadataStr = metadata ? ` ${JSON.stringify(metadata)}` : '';
-    
+
     const logMessage = `${timestamp} [${level}]${sourceStr} ${message}${metadataStr}`;
 
     switch (level) {
@@ -150,12 +150,12 @@ export class LogEntryManager {
   }
 
   /**
-   * Create LogEntry object
+   * Create a LogEntry object
    * @param level - Log level
    * @param message - Log message
    * @param source - Log source
    * @param metadata - Metadata
-   * @returns Created LogEntry object
+   * @returns The created LogEntry object
    */
   private createLogEntry(level: LogLevel, message: string, source?: string, metadata?: any): LogEntry {
     return createLogEntry(level, message, source, metadata);
@@ -163,7 +163,7 @@ export class LogEntryManager {
 
   // Convenience methods
   /**
-   * Log a DEBUG level entry
+   * Log a DEBUG-level entry
    * @param message - Log message
    * @param source - Log source (optional)
    * @param metadata - Metadata (optional)
@@ -173,7 +173,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Log an INFO level entry
+   * Log an INFO-level entry
    * @param message - Log message
    * @param source - Log source (optional)
    * @param metadata - Metadata (optional)
@@ -183,7 +183,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Log a WARN level entry
+   * Log a WARN-level entry
    * @param message - Log message
    * @param source - Log source (optional)
    * @param metadata - Metadata (optional)
@@ -193,7 +193,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Log an ERROR level entry
+   * Log an ERROR-level entry
    * @param message - Log message
    * @param source - Log source (optional)
    * @param metadata - Metadata (optional)
@@ -211,7 +211,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Get current configuration
+   * Get the current configuration
    * @returns Current configuration object
    */
   public getConfig(): UnifiedLoggerConfig {
@@ -237,14 +237,14 @@ export class LogEntryManager {
   }
 
   /**
-   * Clear the pending cache queue (use with caution)
+   * Clear the pending log queue (use with caution)
    */
   public clearPendingQueue(): void {
     this.pendingLogQueue.clear();
   }
 
   /**
-   * Get detailed information of the pending cache queue (for debugging)
+   * Get detailed information about the pending log queue (for debugging)
    * @returns Queue detailed information
    */
   public getPendingQueueInfo(): ReturnType<PendingLogQueue['getDetailedInfo']> {
@@ -252,7 +252,7 @@ export class LogEntryManager {
   }
 
   /**
-   * Validate LogEntryManager integrity
+   * Validate the integrity of LogEntryManager
    * @returns Validation result
    */
   public validateIntegrity(): { isValid: boolean; errors: string[] } {
@@ -290,11 +290,11 @@ export class LogEntryManager {
   }
 
   /**
-   * Force process all pending cached logs (for app exit)
+   * Force processing of all pending logs (used when the app is shutting down)
    */
   public forceProcessPendingLogs(): void {
     try {
-      // Keep notifying cache manager until all pending cached logs are processed
+      // Keep notifying the cache manager until all pending logs are processed
       if (this.cacheLogManager && typeof this.cacheLogManager.notifyNewLogAdded === 'function') {
         while (!this.pendingLogQueue.isEmpty()) {
           this.cacheLogManager.notifyNewLogAdded();
@@ -309,14 +309,14 @@ export class LogEntryManager {
   }
 
   /**
-   * Reset singleton instance (primarily for testing)
+   * Reset the singleton instance (primarily for testing)
    */
   public static resetInstance(): void {
     LogEntryManager.instance = undefined as any;
   }
 
   /**
-   * Check if initialized
+   * Check whether the manager has been initialized
    * @returns Whether it is initialized
    */
   public static isInitialized(): boolean {

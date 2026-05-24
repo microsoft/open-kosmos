@@ -1,10 +1,11 @@
 import React, { useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Import } from 'lucide-react';
+import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 
 interface McpAddMenuDropdownProps {
   mcpAddMenuRef: React.RefObject<HTMLDivElement>;
-  position: { top: number; left: number };
+  position: AnchoredDropdownPosition;
   onClose: () => void;
 }
 
@@ -26,7 +27,7 @@ const McpAddMenuDropdown: React.FC<McpAddMenuDropdownProps> = ({
   const handleImportFromVSCode = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    // Navigate to VSCode import page
+    // Navigate to VS Code import page
     navigate('/settings/mcp/import-vscode');
     onClose();
   };
@@ -34,24 +35,7 @@ const McpAddMenuDropdown: React.FC<McpAddMenuDropdownProps> = ({
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
     if (mcpAddMenuRef.current) {
-      const rect = mcpAddMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      // Check if we have triggerTop info (passed via position prop extension)
-      const triggerTop = (position as any).triggerTop;
-      
-      if (rect.bottom > windowHeight - padding) {
-        // If it overflows bottom, try to position above the trigger
-        if (triggerTop !== undefined) {
-           const newTop = triggerTop - rect.height - 4;
-           mcpAddMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        } else {
-           // Fallback to just shifting up if no trigger info
-           const newTop = windowHeight - rect.height - padding;
-           mcpAddMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        }
-      }
+      adjustAnchoredDropdownToViewport(mcpAddMenuRef.current, position);
     }
   }, [position]);
 

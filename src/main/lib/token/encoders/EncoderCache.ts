@@ -1,6 +1,6 @@
 /**
- * Encoder Cache Management
- * Singleton pattern to avoid redundant encoder creation
+ * Encoder cache management
+ * Singleton pattern to avoid creating encoders repeatedly
  */
 
 import { TikTokenEncoder } from './TikTokenEncoder';
@@ -8,16 +8,16 @@ import { TikTokenEncoder } from './TikTokenEncoder';
 export class EncoderCache {
   private static instance: EncoderCache;
   private encoders: Map<string, TikTokenEncoder> = new Map();
-  
+
   private constructor() {}
-  
+
   static getInstance(): EncoderCache {
     if (!EncoderCache.instance) {
       EncoderCache.instance = new EncoderCache();
     }
     return EncoderCache.instance;
   }
-  
+
   /**
    * Get or create an encoder
    */
@@ -27,14 +27,14 @@ export class EncoderCache {
     }
     return this.encoders.get(encoding)!;
   }
-  
+
   /**
    * Clear all encoders
    */
   clearAll(): void {
     this.encoders.clear();
   }
-  
+
   /**
    * Get the number of cached encoders
    */

@@ -1,21 +1,24 @@
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
+
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Kosmos Team. All rights reserved.
+ *  Copyright (c) OpenKosmos Team. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Cancellation Token - Read-only interface
- * Used to check if an operation cancellation has been requested
- * 
+ * Cancellation token - read-only interface
+ * Used to check whether an operation has been requested to be cancelled
+ *
  * @example
  * ```typescript
  * function longOperation(token: CancellationToken) {
- *   // Check if cancellation was requested
+ *   // Check whether cancellation has been requested
  *   if (token.isCancellationRequested) {
  *     throw new CancellationError('Operation cancelled');
  *   }
- *   
- *   // Or listen for cancellation event
+ *
+ *   // Or listen for the cancellation event
  *   token.onCancellationRequested(() => {
  *     cleanup();
  *   });
@@ -24,24 +27,24 @@
  */
 export interface CancellationToken {
   /**
-   * Whether cancellation has been requested
+   * Whether cancellation of the operation has been requested
    * @readonly
    */
   readonly isCancellationRequested: boolean;
-  
+
   /**
-   * Event triggered when cancellation is requested
-   * 
-   * @param listener - Callback function invoked on cancellation
-   * @returns A dispose function to remove the listener
-   * 
+   * Event fired when cancellation is requested
+   *
+   * @param listener - Callback function to invoke on cancellation
+   * @returns A dispose function that can be used to remove the listener
+   *
    * @example
    * ```typescript
    * const disposable = token.onCancellationRequested(() => {
-   *   console.log('Operation cancelled');
+   *   logger.debug('Operation cancelled');
    * });
-   * 
-   * // Remove listener later
+   *
+   * // Remove the listener later
    * disposable.dispose();
    * ```
    */
@@ -55,21 +58,21 @@ export interface CancellationToken {
 export type Event<T> = (listener: (e: T) => void) => { dispose(): void };
 
 /**
- * Cancellation token source - Manages the lifecycle of a cancellation token
- * 
- * Each CancellationTokenSource instance owns an associated CancellationToken;
- * the cancel() method can be called to request cancellation.
- * 
+ * Cancellation token source - manages the lifecycle of a cancellation token
+ *
+ * Each CancellationTokenSource instance owns an associated CancellationToken,
+ * which can be cancelled by calling the cancel() method.
+ *
  * @example
  * ```typescript
  * const source = new CancellationTokenSource();
- * 
- * // Pass token to async operation
+ *
+ * // Pass the token to an async operation
  * doAsyncWork(source.token);
- * 
+ *
  * // Request cancellation
  * source.cancel();
- * 
+ *
  * // Clean up resources
  * source.dispose();
  * ```
@@ -77,38 +80,38 @@ export type Event<T> = (listener: (e: T) => void) => { dispose(): void };
 export class CancellationTokenSource {
   private _token: MutableCancellationToken;
   private _disposed: boolean = false;
-  
+
   /**
    * Create a new CancellationTokenSource instance
    */
   constructor() {
     this._token = new MutableCancellationToken();
   }
-  
+
   /**
    * Get the associated cancellation token
-   * 
+   *
    * This token should be passed to operations that support cancellation.
-   * 
+   *
    * @returns The associated CancellationToken
    */
   get token(): CancellationToken {
     return this._token;
   }
-  
+
   /**
-   * Request cancellation
-   * 
+   * Request cancellation of the operation
+   *
    * After calling this method:
    * 1. token.isCancellationRequested will become true
    * 2. All listeners registered via onCancellationRequested will be triggered
-   * 
-   * Multiple calls are safe, but only the first call will trigger events.
-   * 
+   *
+   * Calling multiple times is safe, but only the first call will fire the event.
+   *
    * @example
    * ```typescript
    * source.cancel();
-   * console.log(source.token.isCancellationRequested); // true
+   * logger.debug(source.token.isCancellationRequested); // true
    * ```
    */
   cancel(): void {
@@ -116,18 +119,18 @@ export class CancellationTokenSource {
       this._token.cancel();
     }
   }
-  
+
   /**
-   * Dispose resources
-   * 
+   * Release resources
+   *
    * Releases all event listeners and internal resources.
    * This source cannot be used after calling dispose.
-   * 
+   *
    * @example
    * ```typescript
    * const source = new CancellationTokenSource();
    * // ... use source
-   * source.dispose(); // Cleanup
+   * source.dispose(); // clean up
    * ```
    */
   dispose(): void {
@@ -140,25 +143,25 @@ export class CancellationTokenSource {
 
 /**
  * Mutable cancellation token implementation (internal class)
- * 
+ *
  * @internal
  */
 class MutableCancellationToken implements CancellationToken {
   private _isCancellationRequested: boolean = false;
   private _emitter: EventEmitter<void>;
-  
+
   constructor() {
     this._emitter = new EventEmitter<void>();
   }
-  
+
   get isCancellationRequested(): boolean {
     return this._isCancellationRequested;
   }
-  
+
   get onCancellationRequested(): Event<void> {
     return this._emitter.event;
   }
-  
+
   /**
    * Request cancellation (internal method)
    * @internal
@@ -169,9 +172,9 @@ class MutableCancellationToken implements CancellationToken {
       this._emitter.fire();
     }
   }
-  
+
   /**
-   * Dispose resources (internal method)
+   * Release resources (internal method)
    * @internal
    */
   dispose(): void {
@@ -181,19 +184,19 @@ class MutableCancellationToken implements CancellationToken {
 
 /**
  * Simple event emitter
- * 
+ *
  * Used to implement event subscription and notification.
- * 
+ *
  * @template T - Event data type
  * @internal
  */
 class EventEmitter<T> {
   private listeners: Array<(e: T) => void> = [];
-  
+
   /**
-   * Get event subscription function
-   * 
-   * @returns Event subscription function that returns a disposable
+   * Get the event subscription function
+   *
+   * @returns Event subscription function that returns a disposable when called
    */
   get event(): Event<T> {
     return (listener: (e: T) => void) => {
@@ -208,25 +211,25 @@ class EventEmitter<T> {
       };
     };
   }
-  
+
   /**
-   * Fire event, notify all listeners
-   * 
+   * Fire the event, notifying all listeners
+   *
    * @param event - Event data (optional)
    */
   fire(event?: T): void {
-    // Use a copy to avoid modifying the array during iteration
+    // Use a copy to avoid modifying the array while iterating
     const listeners = [...this.listeners];
     for (const listener of listeners) {
       try {
         listener(event!);
       } catch (error) {
         // Listener errors should not affect other listeners
-        console.error('Error in event listener:', error);
+        logger.error(`Error in event listener: ${error}`);
       }
     }
   }
-  
+
   /**
    * Release all listeners
    */
@@ -237,21 +240,21 @@ class EventEmitter<T> {
 
 /**
  * Cancellation error class
- * 
+ *
  * Thrown when an operation fails due to cancellation.
- * 
+ *
  * @example
  * ```typescript
  * if (token.isCancellationRequested) {
  *   throw new CancellationError('User cancelled the operation');
  * }
- * 
+ *
  * // Catch and handle
  * try {
  *   await operation(token);
  * } catch (error) {
  *   if (error instanceof CancellationError) {
- *     console.log('Operation was cancelled');
+ *     logger.debug('Operation was cancelled');
  *   }
  * }
  * ```
@@ -259,14 +262,14 @@ class EventEmitter<T> {
 export class CancellationError extends Error {
   /**
    * Create a new CancellationError instance
-   * 
+   *
    * @param message - Error message, defaults to 'Operation was cancelled'
    */
   constructor(message: string = 'Operation was cancelled') {
     super(message);
     this.name = 'CancellationError';
-    
-    // Maintain correct stack trace (only available in V8 engine)
+
+    // Maintain proper stack trace (only available in V8)
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, CancellationError);
     }
@@ -274,11 +277,11 @@ export class CancellationError extends Error {
 }
 
 /**
- * Check if an error is a CancellationError
- * 
+ * Check whether an error is a CancellationError
+ *
  * @param error - The error to check
- * @returns true if the error is a CancellationError
- * 
+ * @returns true if it is a CancellationError
+ *
  * @example
  * ```typescript
  * try {
@@ -293,6 +296,6 @@ export class CancellationError extends Error {
  * ```
  */
 export function isCancellationError(error: unknown): error is CancellationError {
-  return error instanceof CancellationError || 
+  return error instanceof CancellationError ||
          (error instanceof Error && error.name === 'CancellationError');
 }

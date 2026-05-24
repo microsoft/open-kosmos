@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 import { IsKey } from "../common/utils/global-key";
 import { define } from "../context";
 import { areaAtom } from "./area";

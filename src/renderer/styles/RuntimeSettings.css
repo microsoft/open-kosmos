@@ -285,7 +285,7 @@
   text-align: center;
 }
 
-/* ── Model list row (Voice Input / TTS) ── */
+/* ── Model list row (Voice Input) ── */
 /* Three-column grid: [badge 90px] [info 1fr] [actions 168px] */
 .settings-model-row {
   display: grid;
@@ -318,7 +318,7 @@
   flex-shrink: 0;
 }
 
-/* ── Model download progress (Voice Input / TTS) ── */
+/* ── Model download progress (Voice Input) ── */
 
 .settings-model-progress {
   display: flex;
@@ -343,57 +343,4 @@
   transition: width 0.15s ease;
 }
 
-/* ── Speech speed slider (TTS settings) ── */
-
-.settings-speed-control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  margin-left: 16px;
-}
-
-.settings-speed-slider {
-  width: 120px;
-  height: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e5e7eb;
-  border-radius: 3px;
-  outline: none;
-  cursor: pointer;
-}
-
-.settings-speed-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #272320;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: background 0.15s ease;
-}
-
-.settings-speed-slider::-webkit-slider-thumb:hover {
-  background: #3d3836;
-}
-
-.settings-speed-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  background: #272320;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-}
-
-.settings-speed-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: #272320;
-  min-width: 36px;
-  text-align: center;
-}
 

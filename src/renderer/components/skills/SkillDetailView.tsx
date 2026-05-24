@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { SkillConfig } from '../../lib/userData/types'
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[SkillDetailView]');
 
 interface SkillDetailViewProps {
   skill: SkillConfig | null
@@ -44,11 +46,11 @@ const SkillDetailView: React.FC<SkillDetailViewProps> = ({
     const loadSkillMarkdown = async () => {
       setIsLoading(true)
       setError(null)
-      
+
       try {
-        // Read SKILL.md file via IPC call to main process
+        // Read SKILL.md file via IPC call to the main process
         const result = await window.electronAPI?.skills?.getSkillMarkdown?.(skill.name)
-        
+
         if (result?.success && result.content) {
           setMarkdownContent(result.content)
         } else {
@@ -56,7 +58,7 @@ const SkillDetailView: React.FC<SkillDetailViewProps> = ({
           setMarkdownContent('')
         }
       } catch (err) {
-        console.error('Error loading skill markdown:', err)
+        logger.error('Error loading skill markdown:', err)
         setError(err instanceof Error ? err.message : 'Failed to load skill content')
         setMarkdownContent('')
       } finally {

@@ -172,7 +172,7 @@ export class ToolManager extends EventEmitter {
 
   constructor(config: Partial<ToolManagerConfig> = {}) {
     super();
-    
+
     this.config = { ...DEFAULT_TOOL_CONFIG, ...config };
     this.registry = {
       tools: new Map(),
@@ -198,7 +198,7 @@ export class ToolManager extends EventEmitter {
     } = {}
   ): string {
     const toolId = this.generateToolId(tool.name, serverId);
-    
+
     // Check if tool already exists
     if (this.registry.tools.has(toolId)) {
       throw new Error(`Tool ${tool.name} from server ${serverId} already registered`);
@@ -429,24 +429,24 @@ export class ToolManager extends EventEmitter {
     deprecated?: boolean;
   } = {}): ToolMetadata[] {
     const tools = Array.from(this.registry.tools.values());
-    
+
     return tools.filter(tool => {
       if (filters.serverId && tool.serverId !== filters.serverId) return false;
       if (filters.category && tool.category !== filters.category) return false;
       if (filters.deprecated !== undefined && tool.deprecated !== filters.deprecated) return false;
-      
+
       if (filters.tags && filters.tags.length > 0) {
         const hasAllTags = filters.tags.every(tag => tool.tags.includes(tag));
         if (!hasAllTags) return false;
       }
-      
+
       if (filters.permissions && filters.permissions.length > 0) {
-        const hasAllPermissions = filters.permissions.every(perm => 
+        const hasAllPermissions = filters.permissions.every(perm =>
           tool.permissions.requiredPermissions.includes(perm)
         );
         if (!hasAllPermissions) return false;
       }
-      
+
       return true;
     });
   }
@@ -456,7 +456,7 @@ export class ToolManager extends EventEmitter {
    */
   searchTools(query: string): ToolMetadata[] {
     const lowerQuery = query.toLowerCase();
-    return Array.from(this.registry.tools.values()).filter(tool => 
+    return Array.from(this.registry.tools.values()).filter(tool =>
       tool.name.toLowerCase().includes(lowerQuery) ||
       (tool.description && tool.description.toLowerCase().includes(lowerQuery)) ||
       tool.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
@@ -553,9 +553,9 @@ export class ToolManager extends EventEmitter {
 
     // Check concurrent execution limit
     if (this.activeExecutions.size >= this.config.maxConcurrentTools) {
-      this.emit(ToolManager.EVENTS.TOOL_EXECUTION_BLOCKED, { 
-        context, 
-        reason: 'Maximum concurrent tools limit reached' 
+      this.emit(ToolManager.EVENTS.TOOL_EXECUTION_BLOCKED, {
+        context,
+        reason: 'Maximum concurrent tools limit reached'
       });
       throw new Error('Maximum concurrent tool executions reached');
     }
@@ -594,10 +594,10 @@ export class ToolManager extends EventEmitter {
     // Update tool statistics
     tool.lastUsed = Date.now();
     tool.usageCount++;
-    
+
     const totalTime = tool.averageExecutionTime * (tool.usageCount - 1) + result.executionTime;
     tool.averageExecutionTime = totalTime / tool.usageCount;
-    
+
     if (result.success) {
       this.stats.successfulExecutions++;
     }
@@ -620,7 +620,7 @@ export class ToolManager extends EventEmitter {
         toolId: tool.id,
         toolName: tool.name,
         serverId: tool.serverId,
-        details: { 
+        details: {
           arguments: result.context.arguments,
           executionTime: result.executionTime,
           success: result.success,
@@ -713,8 +713,8 @@ export class ToolManager extends EventEmitter {
     };
   } {
     const tools = Array.from(this.registry.tools.values());
-    const averageSuccessRate = tools.length > 0 
-      ? tools.reduce((sum, tool) => sum + tool.successRate, 0) / tools.length 
+    const averageSuccessRate = tools.length > 0
+      ? tools.reduce((sum, tool) => sum + tool.successRate, 0) / tools.length
       : 0;
 
     return {

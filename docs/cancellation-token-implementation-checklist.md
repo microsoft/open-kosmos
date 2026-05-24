@@ -1,18 +1,18 @@
-# CancellationToken Detailed Implementation Checklist
+# CancellationToken Implementation Detailed Task Checklist
 
 ## 📋 Overview
 
-This document provides the complete implementation checklist for the CancellationToken feature, strictly following the design documents ([main plan](./cancellation-token-migration-plan.md) + [edge cases](./cancellation-token-edge-cases.md)).
+This document provides a complete implementation checklist for the CancellationToken feature, to be executed strictly according to the design documents ([main plan](./cancellation-token-migration-plan.md) + [edge cases](./cancellation-token-edge-cases.md)).
 
-**Estimated total duration**: 7-9 days
-**Start date**: 2025-01-13
-**Target completion date**: 2025-01-22
+**Estimated total duration**: 7–9 days  
+**Start date**: 2025-01-13  
+**Target completion date**: 2025-01-22  
 
 ---
 
-## Phase 1: Infrastructure (1-2 days)
+## Phase 1: Infrastructure (1–2 days)
 
-### 1.1 Create CancellationToken Core Class
+### 1.1 Create CancellationToken Core Classes
 
 **File**: `src/main/lib/cancellation/CancellationToken.ts`
 
@@ -43,7 +43,7 @@ This document provides the complete implementation checklist for the Cancellatio
 **Acceptance Criteria**:
 - [x] All type definitions have no TypeScript errors
 - [x] Code passes ESLint checks
-- [x] Add complete JSDoc comments
+- [x] Complete JSDoc comments added
 
 ---
 
@@ -75,7 +75,7 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **Acceptance Criteria**:
 - [x] Can correctly `throw new CancellationError()`
-- [x] Can detect via `error instanceof CancellationError`
+- [x] Can be detected via `error instanceof CancellationError`
 
 ---
 
@@ -88,10 +88,10 @@ This document provides the complete implementation checklist for the Cancellatio
   - [x] Test state change after calling `cancel()`
   - [x] Test `onCancellationRequested` event firing
   - [x] Test multiple listeners
-  - [x] Test that events are no longer fired after `dispose()`
+  - [x] Test no events fire after `dispose()`
   
 - [x] Test predefined tokens
-  - [x] Test `CancellationTokenStatic.None` is never cancelled
+  - [x] Test `CancellationTokenStatic.None` never cancels
   - [x] Test `CancellationTokenStatic.Cancelled` is already cancelled
   
 - [x] Test `CancellationError`
@@ -100,8 +100,8 @@ This document provides the complete implementation checklist for the Cancellatio
   - [x] Test `instanceof` detection
 
 **Acceptance Criteria**:
-- [x] All tests passed (26/26 tests passed ✅)
-- [x] Test execution time < 10s ✅
+- [x] All tests pass (26/26 tests pass ✅)
+- [x] Test run time < 10s ✅
 
 ---
 
@@ -115,12 +115,12 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] Add private field `cancellationSources: Map<string, CancellationTokenSource>`
 - [ ] Implement `getOrCreateCancellationSource(chatId: string)` method
   - [ ] Check if source already exists
-  - [ ] Create new source if it doesn't exist
+  - [ ] Create new source if not
   - [ ] Return source
 
 **Acceptance Criteria**:
-- [ ] Each chatId has an independent CancellationTokenSource
-- [ ] Can correctly get and create source
+- [ ] Each chatId has its own independent CancellationTokenSource
+- [ ] Source can be correctly retrieved and created
 
 ---
 
@@ -130,7 +130,7 @@ This document provides the complete implementation checklist for the Cancellatio
 
 - [ ] Implement `cancelChat(chatId: string)` method
   - [ ] Get the corresponding CancellationTokenSource
-  - [ ] If it doesn't exist, return an error
+  - [ ] Return error if not found
   - [ ] Call `source.cancel()`
   - [ ] Wait for chat status to become idle (using `waitForChatIdle`)
   - [ ] Dispose the old source
@@ -139,14 +139,14 @@ This document provides the complete implementation checklist for the Cancellatio
   
 - [ ] Implement `waitForChatIdle(chatId: string, timeoutMs?: number)` private method
   - [ ] Get agentChat instance
-  - [ ] Poll to check if `getChatStatus()` is 'idle'
+  - [ ] Poll `getChatStatus()` to check if it is 'idle'
   - [ ] Force return after timeout
-  - [ ] Implement polling using `setInterval`
+  - [ ] Use `setInterval` for polling
 
 **Acceptance Criteria**:
-- [ ] Chat status becomes idle after calling
+- [ ] Chat status becomes idle after call
 - [ ] Timeout mechanism works correctly (default 5000ms)
-- [ ] Error handling is complete
+- [ ] Error handling is thorough
 
 ---
 
@@ -154,17 +154,17 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChatManager.ts` (modify)
 
-- [ ] Modify `streamMessage` method signature (maintain backward compatibility)
-- [ ] At the beginning of the method, call `getOrCreateCancellationSource(chatId)`
+- [ ] Modify `streamMessage` method signature (keep backward compatibility)
+- [ ] Call `getOrCreateCancellationSource(chatId)` at method start
 - [ ] Pass `source.token` to `agentChat.streamMessage(message, source.token)`
-- [ ] Add catch handling for `CancellationError`
-  - [ ] Return `{ success: true, data: [] }` after catching (cancellation is not considered an error)
-  - [ ] Log
+- [ ] Add `CancellationError` catch handling
+  - [ ] Return `{ success: true, data: [] }` after catching (cancellation is not an error)
+  - [ ] Log the event
 
 **Acceptance Criteria**:
-- [ ] Token correctly passed to AgentChat
-- [ ] CancellationError correctly caught
-- [ ] Existing functionality is not affected
+- [ ] Token is correctly passed to AgentChat
+- [ ] CancellationError is correctly caught
+- [ ] Existing functionality is unaffected
 
 ---
 
@@ -172,18 +172,18 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChatManager.ts` (modify)
 
-- [ ] Clean up all CancellationTokenSource in the `destroy()` method
-  - [ ] Iterate over `cancellationSources` Map
+- [ ] Clean up all CancellationTokenSources in the `destroy()` method
+  - [ ] Iterate over the `cancellationSources` Map
   - [ ] Call `dispose()` on each source
   - [ ] Clear the Map
 
 **Acceptance Criteria**:
-- [ ] All resources are correctly released upon destruction
+- [ ] All resources are correctly released on destroy
 - [ ] No memory leaks
 
 ---
 
-## Phase 3: AgentChat Integration (2-3 days)
+## Phase 3: AgentChat Integration (2–3 days)
 
 ### 3.1 Modify streamMessage Method
 
@@ -193,16 +193,16 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] Add private field `currentCancellationToken: CancellationToken`
 - [ ] Modify `streamMessage` method signature
   - [ ] Add `cancellationToken` parameter (default `CancellationToken.None`)
-- [ ] At the beginning of the method, save token to `currentCancellationToken`
+- [ ] Save token to `currentCancellationToken` at method start
 - [ ] Call `throwIfCancellationRequested()` to check initial state
 - [ ] Modify `catch` block to handle `CancellationError`
   - [ ] After catching, call `cleanupIncompleteToolCalls()`
   - [ ] Call `setChatStatus(ChatStatus.IDLE)`
   - [ ] Return `getDisplayMessages()`
-- [ ] In the `finally` block, reset token to `None`
+- [ ] Reset token to `None` in `finally` block
 
 **Acceptance Criteria**:
-- [ ] Token correctly passed to all sub-methods
+- [ ] Token is correctly passed to all sub-methods
 - [ ] State is correct after cancellation
 - [ ] Partial messages are saved
 
@@ -226,16 +226,16 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChat.ts` (modify)
 
-- [ ] Add checkpoints at key positions in the `startChat` method
+- [ ] Add checkpoints at key locations in the `startChat` method
   - [ ] Checkpoint 1: Before each while loop iteration
   - [ ] Checkpoint 2: After `CheckAndCompress()`
   - [ ] Checkpoint 3: Before each tool call execution
   - [ ] Checkpoint 4: Before final save
-- [ ] Call `throwIfCancellationRequested()` at each checkpoint
+- [ ] Each checkpoint calls `throwIfCancellationRequested()`
 
 **Acceptance Criteria**:
 - [ ] Can stop within 500ms after cancellation
-- [ ] All checkpoint positions are reasonable
+- [ ] All checkpoint locations are appropriate
 
 ---
 
@@ -243,28 +243,28 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChat.ts` (modify)
 
-- [ ] Modify method signature, add `cancellationToken` parameter
+- [ ] Modify method signature to add `cancellationToken` parameter
 - [ ] Create `AbortController` instance
 - [ ] Listen to `cancellationToken.onCancellationRequested` event
-  - [ ] Call `abortController.abort()` when event fires
+  - [ ] On event fire, call `abortController.abort()`
 - [ ] Pass `abortController.signal` to `fetch()`
-- [ ] Check cancellation in the streaming loop
+- [ ] Check for cancellation in the streaming loop
   - [ ] Check `cancellationToken.isCancellationRequested`
   - [ ] If true, call `reader.cancel()` and break
 - [ ] Handle cancellation when building the final Message
-  - [ ] If not cancelled and has toolCalls, add to result
-  - [ ] If cancelled, discard toolCalls and keep only content
-- [ ] Dispose listener in the finally block
-- [ ] Distinguish AbortError from other errors in the catch block
+  - [ ] If not cancelled and toolCalls exist, add to result
+  - [ ] If cancelled, discard toolCalls, retain only content
+- [ ] Dispose listener in finally block
+- [ ] Distinguish AbortError from other errors in catch block
   - [ ] Convert AbortError to CancellationError
-  - [ ] Re-throw CancellationError directly
+  - [ ] Rethrow CancellationError directly
   - [ ] Wrap other errors as GhcApiError
 
 **Acceptance Criteria**:
-- [ ] Fetch request can be correctly cancelled
+- [ ] fetch requests can be correctly cancelled
 - [ ] Streaming can be interrupted
-- [ ] Partial content is correctly preserved
-- [ ] toolCalls are discarded upon cancellation
+- [ ] Partial content is correctly retained
+- [ ] toolCalls are discarded on cancellation
 
 ---
 
@@ -275,17 +275,17 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] Implement `cleanupIncompleteToolCalls()` private method
   - [ ] Check if `currentChatSession` exists
   - [ ] Get `chat_history`
-  - [ ] Search backwards for the last Assistant Message with tool_calls
+  - [ ] Search backward for the last Assistant Message with tool_calls
   - [ ] Check if these tool_calls have corresponding tool messages
-  - [ ] If not, remove the `tool_calls` field
+  - [ ] If not, delete the `tool_calls` field
   - [ ] Also update the corresponding message in `context_history`
   - [ ] Call `saveChatSession()` to save changes
   - [ ] Log detailed information
 
 **Acceptance Criteria**:
-- [ ] Orphaned tool_calls are correctly removed
-- [ ] Message content is preserved
-- [ ] chat_history and context_history are updated in sync
+- [ ] Orphan tool_calls are correctly removed
+- [ ] Message content is retained
+- [ ] chat_history and context_history are synced
 
 ---
 
@@ -293,12 +293,12 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChat.ts` (modify)
 
-- [ ] Modify method signature, add `cancellationToken` parameter
+- [ ] Modify method signature to add `cancellationToken` parameter
 - [ ] Pass token to `makeStreamingApiCall()`
 
 **Acceptance Criteria**:
-- [ ] Token correctly passed
-- [ ] Functionality is not affected
+- [ ] Token is correctly passed
+- [ ] Functionality is unaffected
 
 ---
 
@@ -306,7 +306,7 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/types/streamingTypes.ts`
 
-- [ ] Modify `complete` field definition
+- [ ] Modify the `complete` field definition
   - [ ] Add `wasCancelled?: boolean` optional field
 
 **Acceptance Criteria**:
@@ -319,9 +319,9 @@ This document provides the complete implementation checklist for the Cancellatio
 
 ### 4.1 Add Preload API
 
-**File**: `src/main/preload.ts`
+**File**: `src/preload/main.ts`
 
-- [ ] Add methods to the `agentChat` namespace
+- [ ] Add methods in the `agentChat` namespace
   - [ ] Add `cancelChat: (chatId: string) => Promise<{success: boolean; error?: string}>`
   - [ ] Add `onChatStatusChanged: (callback) => () => void`
 
@@ -352,7 +352,7 @@ This document provides the complete implementation checklist for the Cancellatio
 
 **File**: `src/main/lib/chat/agentChat.ts` (modify)
 
-- [ ] Confirm `setChatStatus` method sends event
+- [ ] Confirm that `setChatStatus` method already sends events
 - [ ] Verify event data format
   - [ ] `chatId: string`
   - [ ] `chatStatus: string`
@@ -360,7 +360,7 @@ This document provides the complete implementation checklist for the Cancellatio
   - [ ] `timestamp: string`
 
 **Acceptance Criteria**:
-- [ ] Event correctly sent to renderer process
+- [ ] Events are correctly sent to the renderer process
 - [ ] Data format is correct
 
 ---
@@ -385,7 +385,7 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] Implement `cancelChat(chatId: string)` method
   - [ ] Call `window.electronAPI.agentChat.cancelChat(chatId)`
   - [ ] Handle error cases
-  - [ ] Log
+  - [ ] Log the event
   
 - [ ] Implement `addChatStatusListener(listener)` method
 - [ ] Implement `removeChatStatusListener(listener)` method
@@ -395,7 +395,7 @@ This document provides the complete implementation checklist for the Cancellatio
   - [ ] Clear `chatStatusListeners` array
 
 **Acceptance Criteria**:
-- [ ] Can correctly listen for status changes
+- [ ] Status changes can be correctly listened to
 - [ ] cancelChat method works correctly
 - [ ] Resources are correctly cleaned up
 
@@ -420,25 +420,25 @@ This document provides the complete implementation checklist for the Cancellatio
   - [ ] Set `isCancelling = true`
   - [ ] Call `agentChatIpc.cancelChat(currentChatId)`
   - [ ] Handle errors (show toast)
-  - [ ] Log
+  - [ ] Log the event
   
 - [ ] Compute `canCancel` state
   - [ ] `chatStatus !== 'idle' && !isCancelling`
   
 - [ ] Add cancel button UI
-  - [ ] Only show when `canCancel`
+  - [ ] Show only when `canCancel`
   - [ ] Bind `handleCancelChat` event
   - [ ] Display cancellation status text
   - [ ] Handle disabled state
   
 - [ ] Add status indicator UI
   - [ ] Display current `chatStatus`
-  - [ ] Use different colors for different states
+  - [ ] Use different colors to distinguish states
   - [ ] Add CSS styles
 
 **Acceptance Criteria**:
 - [ ] Cancel button shows and hides correctly
-- [ ] Clicking can cancel the conversation
+- [ ] Clicking cancels the conversation
 - [ ] Status indicator updates in real time
 - [ ] User experience is smooth
 
@@ -446,7 +446,7 @@ This document provides the complete implementation checklist for the Cancellatio
 
 ### 5.3 Add CSS Styles
 
-**File**: `src/renderer/styles/Agent.css` (or related style file)
+**File**: `src/renderer/styles/Agent.css` (or relevant style file)
 
 - [ ] Add cancel button styles
   - [ ] `.cancel-button` base style
@@ -462,73 +462,73 @@ This document provides the complete implementation checklist for the Cancellatio
   - [ ] `.status-compressing_context` style
 
 **Acceptance Criteria**:
-- [ ] Styles look polished
+- [ ] Styles look good
 - [ ] Responsive design
 - [ ] Consistent with existing UI style
 
 ---
 
-## Phase 6: Testing (1-2 days)
+## Phase 6: Testing (1–2 days)
 
 ### 6.1 Unit Tests
 
-- [ ] **CancellationToken Unit Tests** (completed in Phase 1.4)
+- [ ] **CancellationToken unit tests** (already in Phase 1.4)
   
-- [ ] **AgentChat Unit Tests**
+- [ ] **AgentChat unit tests**
   - **File**: `src/main/lib/chat/__tests__/agentChat.cancel.test.ts`
   - [ ] Test `cleanupIncompleteToolCalls()` method
   - [ ] Test `throwIfCancellationRequested()` method
   - [ ] Test state reset after cancellation
   
-- [ ] **AgentChatManager Unit Tests**
+- [ ] **AgentChatManager unit tests**
   - **File**: `src/main/lib/chat/__tests__/agentChatManager.cancel.test.ts`
   - [ ] Test `cancelChat()` method
   - [ ] Test `getOrCreateCancellationSource()` method
   - [ ] Test independent cancellation of multiple chats
 
 **Acceptance Criteria**:
-- [ ] All unit tests passed
+- [ ] All unit tests pass
 - [ ] Code coverage > 80%
 
 ---
 
 ### 6.2 Integration Tests
 
-- [ ] **Scenario 1: Cancel before tool execution**
+- [ ] **Scenario 1: Cancellation before tool execution**
   - **File**: `src/main/lib/chat/__tests__/integration/cancel-before-tool.test.ts`
-  - [ ] Send a message that triggers tool calls
+  - [ ] Send a message that triggers a tool call
   - [ ] Wait to receive assistant message with tool_calls
   - [ ] Cancel immediately
   - [ ] Verify tool_calls are removed
-  - [ ] Verify content is preserved
+  - [ ] Verify content is retained
   - [ ] Verify message is saved
   
-- [ ] **Scenario 2: Cancel during streaming content**
+- [ ] **Scenario 2: Cancellation during Streaming Content**
   - **File**: `src/main/lib/chat/__tests__/integration/cancel-during-content.test.ts`
-  - [ ] Send message
-  - [ ] Wait to receive partial content chunks
+  - [ ] Send a message
+  - [ ] Wait to receive some content chunks
   - [ ] Cancel
-  - [ ] Verify partial content is preserved
+  - [ ] Verify partial content is retained
   - [ ] Verify message is saved
   
-- [ ] **Scenario 3: Cancel during streaming tool calls**
+- [ ] **Scenario 3: Cancellation during Streaming Tool Calls**
   - **File**: `src/main/lib/chat/__tests__/integration/cancel-during-toolcalls.test.ts`
-  - [ ] Send a message that triggers tool calls
-  - [ ] Wait for tool_calls chunks to start arriving
+  - [ ] Send a message that triggers a tool call
+  - [ ] Wait until tool_calls chunks start arriving
   - [ ] Cancel immediately
   - [ ] Verify tool_calls are discarded
-  - [ ] Verify content is preserved
+  - [ ] Verify content is retained
   - [ ] Verify message is saved
   
-- [ ] **Scenario 4: Rapid consecutive cancellation**
+- [ ] **Scenario 4: Rapid successive cancellation**
   - **File**: `src/main/lib/chat/__tests__/integration/cancel-rapid.test.ts`
-  - [ ] Send message
+  - [ ] Send a message
   - [ ] Cancel immediately
   - [ ] Send another message
   - [ ] Verify new message is processed normally
 
 **Acceptance Criteria**:
-- [ ] All integration tests passed
+- [ ] All integration tests pass
 - [ ] Tests run stably
 - [ ] Edge cases are fully covered
 
@@ -536,31 +536,31 @@ This document provides the complete implementation checklist for the Cancellatio
 
 ### 6.3 E2E Tests
 
-- [ ] **E2E Test: Complete cancellation flow**
+- [ ] **E2E test: complete cancellation flow**
   - **File**: `tests/e2e/cancellation.spec.ts`
-  - [ ] Launch application
-  - [ ] Log in
+  - [ ] Start application
+  - [ ] Sign in
   - [ ] Create new conversation
   - [ ] Send message
   - [ ] Click cancel button
   - [ ] Verify conversation stops
-  - [ ] Verify status updates
+  - [ ] Verify status is updated
   - [ ] Verify partial message is displayed
 
 **Acceptance Criteria**:
-- [ ] E2E test passed
+- [ ] E2E tests pass
 - [ ] User experience meets expectations
 
 ---
 
 ### 6.4 Performance Tests
 
-- [ ] **Cancel response time test**
-  - [ ] Measure time from clicking cancel to output stopping
+- [ ] **Cancellation response time test**
+  - [ ] Measure time from clicking cancel to stopping output
   - [ ] Verify < 500ms
   
 - [ ] **Memory leak test**
-  - [ ] Repeat cancel operation 100 times
+  - [ ] Repeat cancellation operation 100 times
   - [ ] Monitor memory usage
   - [ ] Verify no memory growth
   
@@ -570,13 +570,13 @@ This document provides the complete implementation checklist for the Cancellatio
   - [ ] Verify no race conditions
 
 **Acceptance Criteria**:
-- [ ] Performance metrics meet targets
+- [ ] Performance metrics are met
 - [ ] No memory leaks
-- [ ] Concurrency safe
+- [ ] Concurrency is safe
 
 ---
 
-## Phase 7: Documentation and Wrap-up (1 day)
+## Phase 7: Documentation and Wrap-Up (1 day)
 
 ### 7.1 Code Documentation
 
@@ -593,16 +593,16 @@ This document provides the complete implementation checklist for the Cancellatio
 ### 7.2 User Documentation
 
 - [ ] **User manual update**
-  - **File**: `docs/user-guide.md` (or related file)
+  - **File**: `docs/user-guide.md` (or relevant file)
   - [ ] Add "How to cancel a conversation" section
   - [ ] Add screenshots
   - [ ] Explain status indicator meanings
   
 - [ ] **API documentation update**
-  - **File**: `docs/api-reference.md` (or related file)
-  - [ ] Document `cancelChat` API
-  - [ ] Document `onChatStatusChanged` event
-  - [ ] Document CancellationToken types
+  - **File**: `docs/api-reference.md` (or relevant file)
+  - [ ] Document the `cancelChat` API
+  - [ ] Document the `onChatStatusChanged` event
+  - [ ] Document the CancellationToken type
 
 **Acceptance Criteria**:
 - [ ] Documentation is complete and clear
@@ -615,14 +615,14 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] **Update CHANGELOG.md**
   - [ ] Add new version number
   - [ ] List new features
-    - [ ] Support for cancelling/pausing conversations
+    - [ ] Support cancelling/pausing conversations
     - [ ] Add real-time status indicator
   - [ ] List API changes
   - [ ] List fixed issues
 
 **Acceptance Criteria**:
 - [ ] CHANGELOG follows standard format
-- [ ] All changes are documented
+- [ ] All changes are recorded
 
 ---
 
@@ -660,7 +660,7 @@ This document provides the complete implementation checklist for the Cancellatio
 - [ ] Prepare release notes
 
 **Acceptance Criteria**:
-- [ ] All tests passed
+- [ ] All tests pass
 - [ ] Version number is correct
 - [ ] Release process is ready
 
@@ -679,7 +679,7 @@ This document provides the complete implementation checklist for the Cancellatio
 ### Daily Progress Log
 
 | Date | Completed Tasks | Issues Encountered | Solutions | Notes |
-|------|----------------|-------------------|-----------|-------|
+|------|----------------|--------------------|-----------|-------|
 | YYYY-MM-DD | | | | |
 | YYYY-MM-DD | | | | |
 | YYYY-MM-DD | | | | |
@@ -692,11 +692,11 @@ This document provides the complete implementation checklist for the Cancellatio
   - **Target date**: ___________
   - **Actual completion**: ___________
   
-- [ ] **Milestone 2**: Main process integration complete (Phase 2-3)
+- [ ] **Milestone 2**: Main process integration complete (Phases 2–3)
   - **Target date**: ___________
   - **Actual completion**: ___________
   
-- [ ] **Milestone 3**: Frontend integration complete (Phase 4-5)
+- [ ] **Milestone 3**: Frontend integration complete (Phases 4–5)
   - **Target date**: ___________
   - **Actual completion**: ___________
   
@@ -712,8 +712,8 @@ This document provides the complete implementation checklist for the Cancellatio
 
 ## 📚 Reference Documents
 
-- [Main Migration Plan](./cancellation-token-migration-plan.md)
-- [Edge Case Handling](./cancellation-token-edge-cases.md)
+- [Main migration plan](./cancellation-token-migration-plan.md)
+- [Edge case handling](./cancellation-token-edge-cases.md)
 - [VS Code CancellationToken API](https://code.visualstudio.com/api/references/vscode-api#CancellationToken)
 - [AbortController MDN](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
 
@@ -725,20 +725,20 @@ This document provides the complete implementation checklist for the Cancellatio
 
 1. **Concurrency issues**
    - Risk: Cancelling multiple chats simultaneously may cause race conditions
-   - Mitigation: Each chat uses an independent CancellationTokenSource
+   - Mitigation: Each chat uses its own independent CancellationTokenSource
    
 2. **Memory leaks**
-   - Risk: Event listeners not properly cleaned up
-   - Mitigation: Strictly use the dispose pattern
+   - Risk: Event listeners not correctly cleaned up
+   - Mitigation: Strictly use dispose pattern
    
 3. **State synchronization**
-   - Risk: Frontend and backend state out of sync
+   - Risk: Frontend and backend states become inconsistent
    - Mitigation: Keep in sync via chatStatusChanged events
 
 ### Considerations
 
 - ⚠️ Must check cancellation state after every async operation
-- ⚠️ Must handle CancellationError correctly; it should not be treated as a regular error
+- ⚠️ Must correctly handle CancellationError — it must not be treated as a regular error
 - ⚠️ Must test all edge cases
 - ⚠️ Must ensure dispose is called to prevent memory leaks
 
@@ -747,4 +747,4 @@ This document provides the complete implementation checklist for the Cancellatio
 **Document version**: 1.0  
 **Created**: 2025-01-13  
 **Last updated**: 2025-01-13  
-**Maintainer**: Development Team
+**Maintainer**: Development team

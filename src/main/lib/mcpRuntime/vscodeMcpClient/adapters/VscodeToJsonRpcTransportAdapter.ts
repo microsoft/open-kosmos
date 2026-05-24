@@ -14,7 +14,7 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
   private messageListeners: ((message: string) => void)[] = [];
   private errorListeners: ((error: Error) => void)[] = [];
   private closeListeners: (() => void)[] = [];
-  
+
   // Unsubscribe functions from VscodeTransport
   private messageUnsubscribe?: () => void;
   private errorUnsubscribe?: () => void;
@@ -29,10 +29,10 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
   private setupVscodeTransportListeners(): void {
     // Listen to VscodeTransport messages and forward to JsonRpcClient
     this.vscodeTransport.on('message', this.handleMessage);
-    
+
     // Listen to VscodeTransport state changes and convert to appropriate events
     this.vscodeTransport.on('stateChange', this.handleStateChange);
-    
+
     // Listen to VscodeTransport logs for error detection
     this.vscodeTransport.on('log', this.handleLog);
   }
@@ -88,10 +88,10 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
     if (this.vscodeTransport.state.state !== 'running') {
       throw new Error(`Cannot send message: transport state is ${this.vscodeTransport.state.state}`);
     }
-    
+
     // VscodeTransport.send() can return Promise<void> or void
     const result = this.vscodeTransport.send(message);
-    
+
     // If it returns a promise, we should handle potential errors
     if (result && typeof result.catch === 'function') {
       result.catch((error: Error) => {
@@ -109,7 +109,7 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
 
   onMessage(callback: (message: string) => void): () => void {
     this.messageListeners.push(callback);
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.messageListeners.indexOf(callback);
@@ -121,7 +121,7 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
 
   onError(callback: (error: Error) => void): () => void {
     this.errorListeners.push(callback);
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.errorListeners.indexOf(callback);
@@ -133,7 +133,7 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
 
   onClose(callback: () => void): () => void {
     this.closeListeners.push(callback);
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.closeListeners.indexOf(callback);
@@ -146,7 +146,7 @@ export class VscodeToJsonRpcTransportAdapter implements JsonRpcTransport {
   async close(): Promise<void> {
     // Clean up our listeners first
     this.cleanup();
-    
+
     // Stop the underlying VscodeTransport
     await this.vscodeTransport.stop();
   }

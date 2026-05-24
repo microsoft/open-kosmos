@@ -1,9 +1,9 @@
 /**
- * Configuration Adapter Type Definitions
+ * Configuration adapter type definitions
  * VSCode MCP Client configuration compatibility integration
  */
 
-// ==================== Configuration Type Definitions ====================
+// ==================== Configuration type definitions ====================
 
 export interface McpServerConfig {
   name: string;
@@ -19,7 +19,7 @@ export interface McpServerConfig {
 
 export type TransportType = 'stdio' | 'http' | 'sse';
 
-// ==================== VSCode Configuration Compatibility Types ====================
+// ==================== VSCode config compatibility types ====================
 
 export interface VscodeConfigFile {
   path: string;
@@ -84,9 +84,9 @@ export interface PlatformInfo {
   displayName: string;
 }
 
-// ==================== Kosmos Compatibility Types ====================
+// ==================== OpenKosmos compatibility types ====================
 
-export interface KosmosAppMCPServerConfig {
+export interface OpenKosmosAppMCPServerConfig {
   name: string;
   transport: 'stdio' | 'sse' | 'StreamableHttp';
   command?: string;
@@ -113,18 +113,18 @@ export interface VSCodeMCPServerConfig {
   disabled?: boolean;
 }
 
-// ==================== Configuration Adapter Interface ====================
+// ==================== Config adapter interface ====================
 
 export interface ConfigAdapterOptions {
   /** Enable automatic configuration detection */
   autoDetection?: boolean;
-  /** Configuration validation strict mode */
+  /** Strict mode for configuration validation */
   strictValidation?: boolean;
   /** Supported platforms */
   supportedPlatforms?: string[];
   /** Custom configuration paths */
   customConfigPaths?: string[];
-  /** Cache configuration time (milliseconds) */
+  /** Cache TTL in milliseconds */
   cacheTtl?: number;
 }
 
@@ -155,7 +155,7 @@ export interface ConfigAdapterEvents {
   'platform-changed': (platformInfo: PlatformInfo) => void;
 }
 
-// ==================== Utility Function Types ====================
+// ==================== Utility function types ====================
 
 export interface FileSystemResult<T = any> {
   success: boolean;
@@ -188,25 +188,25 @@ export interface FileContentResult {
   error?: string;
 }
 
-// ==================== Type Guard Functions ====================
+// ==================== Type guard functions ====================
 
 export function isTransportType(type: string): type is TransportType {
   return ['stdio', 'http', 'sse'].includes(type);
 }
 
 export function isMcpServerConfig(obj: any): obj is McpServerConfig {
-  return obj && 
-    typeof obj.name === 'string' && 
+  return obj &&
+    typeof obj.name === 'string' &&
     isTransportType(obj.transport);
 }
 
 export function isParsedMcpConfig(obj: any): obj is ParsedMcpConfig {
-  return obj && 
-    typeof obj.transportType === 'string' && 
+  return obj &&
+    typeof obj.transportType === 'string' &&
     obj.config !== undefined;
 }
 
-// ==================== Default Configuration ====================
+// ==================== Default configuration ====================
 
 export const DEFAULT_CONFIG_ADAPTER_OPTIONS: Required<ConfigAdapterOptions> = {
   autoDetection: true,
@@ -216,12 +216,12 @@ export const DEFAULT_CONFIG_ADAPTER_OPTIONS: Required<ConfigAdapterOptions> = {
   cacheTtl: 5 * 60 * 1000, // 5 minutes
 };
 
-// ==================== Constant Definitions ====================
+// ==================== Constant definitions ====================
 
 export const SUPPORTED_CONFIG_FORMATS = [
   'settings.json',
   'mcp.json',
-  'kosmos.json'
+  'openkosmos.json'
 ] as const;
 
 export const SUPPORTED_TRANSPORT_TYPES = [

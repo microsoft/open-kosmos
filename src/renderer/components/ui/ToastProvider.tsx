@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { ToastContainer, ToastMessage } from './Toast';
 
-interface ToastContextType {
-  showToast: (message: string | React.ReactNode, type?: ToastMessage['type'], duration?: number, options?: Partial<Pick<ToastMessage, 'persistent' | 'actions'>>) => string;
+export interface ToastContextType {
+  showToast: (message: string | React.ReactNode, type?: ToastMessage['type'], duration?: number, options?: Partial<Pick<ToastMessage, 'persistent' | 'actions' | 'onDismiss'>>) => string;
   showSuccess: (message: string | React.ReactNode, duration?: number) => void;
   showError: (message: string | React.ReactNode, duration?: number) => void;
   showWarning: (message: string | React.ReactNode, duration?: number) => void;
@@ -27,9 +27,9 @@ interface ToastProviderProps {
   maxToasts?: number; // Maximum number of notifications to display simultaneously
 }
 
-export const ToastProvider: React.FC<ToastProviderProps> = ({ 
-  children, 
-  maxToasts = 5 
+export const ToastProvider: React.FC<ToastProviderProps> = ({
+  children,
+  maxToasts = 5
 }) => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -39,12 +39,12 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
       const isDuplicate = prev.some(existingToast => {
         // For same type toasts
         if (existingToast.type !== toast.type) return false;
-        
+
         // For string messages, compare directly
         if (typeof existingToast.message === 'string' && typeof toast.message === 'string') {
           return existingToast.message === toast.message;
         }
-        
+
         // For React nodes, convert to string and compare
         if (typeof existingToast.message === 'object' && typeof toast.message === 'object') {
           // Try to extract text content for comparison
@@ -52,20 +52,20 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
           const newText = getTextContent(toast.message);
           return existingText === newText && existingText.length > 0;
         }
-        
+
         return false;
       });
-      
+
       // If duplicate exists, don't add the new toast
       if (isDuplicate) {
         return prev;
       }
-      
+
       // If exceeding maximum count, remove the oldest
       const newToasts = prev.length >= maxToasts
         ? prev.slice(1)
         : prev;
-      
+
       return [...newToasts, toast];
     });
   }, [maxToasts]);
@@ -75,7 +75,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
     if (typeof node === 'string') return node;
     if (typeof node === 'number') return String(node);
     if (!node) return '';
-    
+
     if (React.isValidElement(node)) {
       // If it has children, recursively get text from children
       const props = node.props as any;
@@ -86,11 +86,11 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
         return getTextContent(props.children);
       }
     }
-    
+
     if (Array.isArray(node)) {
       return node.map(getTextContent).join('');
     }
-    
+
     return '';
   };
 
@@ -106,7 +106,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
     message: string | React.ReactNode,
     type: ToastMessage['type'] = 'info',
     duration: number = 2000,
-    options?: Partial<Pick<ToastMessage, 'persistent' | 'actions'>>
+    options?: Partial<Pick<ToastMessage, 'persistent' | 'actions' | 'onDismiss'>>
   ): string => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newToast: ToastMessage = {
@@ -115,7 +115,8 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
       type,
       duration,
       persistent: options?.persistent || false,
-      actions: options?.actions
+      actions: options?.actions,
+      onDismiss: options?.onDismiss
     };
     addToast(newToast);
     return id;
@@ -204,7 +205,7 @@ export class ToastManager {
 // Used to automatically set context inside ToastProvider
 export const ToastContextSetter: React.FC = () => {
   const toastContext = useToast();
-  
+
   React.useEffect(() => {
     ToastManager.setContext(toastContext);
     return () => {

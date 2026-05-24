@@ -1,10 +1,12 @@
 /**
  * Streaming rendering compatibility layer
- * Ensures new typewriter effects are fully compatible with existing systems
+ * Ensures the new typewriter effect is fully compatible with the existing system
  */
 
 import { streamingConfigManager } from './streamingConfig';
 import { streamingOptimizer } from './streamingOptimizer';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[CompatibilityLayer]');
 
 export interface CompatibilityConfig {
   enableLegacyMode: boolean;
@@ -24,47 +26,47 @@ export class StreamingCompatibilityLayer {
   private hasInitialized = false;
 
   /**
-   * Initialize compatibility layer
+   * Initialize the compatibility layer
    */
   async initialize(): Promise<void> {
     if (this.hasInitialized) return;
 
     try {
-      // Check existing configuration
+      // Check existing config
       const existingConfig = streamingConfigManager.getGlobalConfig();
-      
-      // If existing config has been customized by user, maintain compatibility
+
+      // If the existing config has user customizations, preserve compatibility
       if (this.hasUserCustomizations(existingConfig)) {
         this.config.preserveOriginalBehavior = true;
         if (this.config.debugCompatibility) {
-          console.log('[StreamingCompatibility] Detected user customizations, preserving original behavior');
+          logger.debug('[StreamingCompatibility] Detected user customizations, preserving original behavior');
         }
       }
 
       // Ensure optimizer is initialized
       await streamingOptimizer.initialize();
-      
+
       this.hasInitialized = true;
     } catch (error) {
-      console.warn('[StreamingCompatibility] Initialization failed, enabling fallback mode:', error);
+      logger.warn('[StreamingCompatibility] Initialization failed, enabling fallback mode:', error);
       this.config.fallbackToOriginal = true;
     }
   }
 
   /**
-   * Check if there are user-customized configurations
+   * Check whether the user has custom config
    */
   private hasUserCustomizations(config: any): boolean {
-    // Check if configuration deviates from defaults
+    // Check if config deviates from defaults
     const hasCustomBatchSize = config.batchSize !== 5;
     const hasCustomDelay = config.batchDelay !== 10;
     const hasCustomPerformanceSettings = !config.enableAdaptiveOptimization;
-    
+
     return hasCustomBatchSize || hasCustomDelay || hasCustomPerformanceSettings;
   }
 
   /**
-   * Get compatible configuration
+   * Get compatible config
    */
   getCompatibleConfig(text: string): {
     useOriginalMethod: boolean;
@@ -79,13 +81,13 @@ export class StreamingCompatibilityLayer {
       };
     }
 
-    // If preserving original behavior, use simplified configuration
+    // If preserving original behavior, use simplified config
     if (this.config.preserveOriginalBehavior) {
       return {
         useOriginalMethod: false,
         optimizedConfig: {
-          baseDelay: 10, // Use slightly slower speed to maintain original feel
-          enableBatching: false, // Disable batch processing
+          baseDelay: 10, // Use slightly slower speed to preserve original feel
+          enableBatching: false, // Disable batching
           maxBatchSize: 1,
           enableSmartPausing: false,
           adaptiveSpeed: false,
@@ -94,7 +96,7 @@ export class StreamingCompatibilityLayer {
       };
     }
 
-    // Check text complexity, use original method for simple text
+    // For simple text, skip optimization
     if (this.isSimpleText(text)) {
       return {
         useOriginalMethod: false,
@@ -131,7 +133,7 @@ export class StreamingCompatibilityLayer {
         break;
       case 'auto':
       default:
-        // Auto-detect optimal mode
+        // Auto-detect best mode
         this.config.enableLegacyMode = false;
         this.config.preserveOriginalBehavior = false;
         break;
@@ -146,7 +148,7 @@ export class StreamingCompatibilityLayer {
   }
 
   /**
-   * Check if feature is available
+   * Check if a feature is available
    */
   isFeatureAvailable(feature: 'typewriter' | 'batching' | 'optimization'): boolean {
     switch (feature) {
@@ -167,24 +169,24 @@ export class StreamingCompatibilityLayer {
   getCompatibilityReport(): string {
     const optimizer = streamingOptimizer.getCurrentConfig();
     const streamingConfig = streamingConfigManager.getGlobalConfig();
-    
+
     return `
 Streaming Rendering Compatibility Report
 ==================
 
 Compatibility Status:
-- Initialization Complete: ${this.hasInitialized ? '✅' : '❌'}
+- Initialized: ${this.hasInitialized ? '✅' : '❌'}
 - Legacy Mode: ${this.config.enableLegacyMode ? 'Enabled' : 'Disabled'}
 - Preserve Original Behavior: ${this.config.preserveOriginalBehavior ? 'Yes' : 'No'}
 - Fallback to Original: ${this.config.fallbackToOriginal ? 'Yes' : 'No'}
 
 Feature Availability:
 - Typewriter Effect: ${this.isFeatureAvailable('typewriter') ? '✅' : '❌'}
-- Batch Optimization: ${this.isFeatureAvailable('batching') ? '✅' : '❌'}
+- Batching Optimization: ${this.isFeatureAvailable('batching') ? '✅' : '❌'}
 - Performance Optimization: ${this.isFeatureAvailable('optimization') ? '✅' : '❌'}
 
-Configuration Status:
-- Streaming Rendering Enabled: ${streamingConfig.enabled ? '✅' : '❌'}
+Config Status:
+- Streaming Enabled: ${streamingConfig.enabled ? '✅' : '❌'}
 - Performance Tracking: ${streamingConfig.performanceTracking ? '✅' : '❌'}
 - Adaptive Optimization: ${streamingConfig.enableAdaptiveOptimization ? '✅' : '❌'}
 
@@ -194,7 +196,7 @@ Optimizer Status:
 - Batching: ${optimizer.enableBatching ? 'Enabled' : 'Disabled'}
 - Smart Pausing: ${optimizer.enableSmartPausing ? 'Enabled' : 'Disabled'}
 
-Suggestions:
+Recommendations:
 ${this.getRecommendations().map(rec => `• ${rec}`).join('\n')}
 `;
   }
@@ -206,30 +208,30 @@ ${this.getRecommendations().map(rec => `• ${rec}`).join('\n')}
     const recommendations: string[] = [];
 
     if (this.config.fallbackToOriginal) {
-      recommendations.push('Compatibility issues detected. Please check the console for error messages');
+      recommendations.push('Compatibility issue detected; check the console for error details');
     }
 
     if (this.config.preserveOriginalBehavior) {
-      recommendations.push('Custom user configuration detected. Reset configuration to try new features');
+      recommendations.push('User customizations detected; reset config to experience new features');
     }
 
     if (!streamingConfigManager.getGlobalConfig().enabled) {
-      recommendations.push('Streaming rendering is disabled. Enable it for a better experience');
+      recommendations.push('Streaming rendering is disabled; enable it for a better experience');
     }
 
     if (!this.hasInitialized) {
-      recommendations.push('Compatibility layer not initialized. This may affect normal functionality');
+      recommendations.push('Compatibility layer is not initialized; functionality may be affected');
     }
 
     if (recommendations.length === 0) {
-      recommendations.push('All features are running normally. Enjoy the smooth typewriter effect!');
+      recommendations.push('All features are running normally — enjoy the smooth typewriter effect!');
     }
 
     return recommendations;
   }
 
   /**
-   * Test compatibility
+   * Run compatibility test
    */
   async runCompatibilityTest(): Promise<{
     success: boolean;
@@ -245,7 +247,7 @@ ${this.getRecommendations().map(rec => `• ${rec}`).join('\n')}
       results.configManager = !!streamingConfigManager;
       results.optimizer = !!streamingOptimizer;
 
-      // Test configuration retrieval
+      // Test config generation
       try {
         const config = this.getCompatibleConfig('Hello World!');
         results.configGeneration = !!config;
@@ -274,8 +276,8 @@ export const streamingCompatibility = new StreamingCompatibilityLayer();
 
 // Auto-initialize
 if (typeof window !== 'undefined') {
-  // Delayed initialization to avoid blocking
+  // Defer initialization to avoid blocking
   requestAnimationFrame(() => {
-    streamingCompatibility.initialize().catch(console.warn);
+    streamingCompatibility.initialize().catch(err => logger.warn('Failed to initialize streaming compatibility', err));
   });
 }

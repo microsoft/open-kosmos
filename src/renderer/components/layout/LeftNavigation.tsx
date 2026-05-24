@@ -1,43 +1,17 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useLayout } from './LayoutProvider';
-import { AuthData } from '../../types/authTypes';
+import React from 'react';
 import NavigationSection from './NavigationSection';
 import UserSection from './UserSection';
 import '../../styles/LeftNavigation.css';
 
 interface LeftNavigationProps {
-  authData: AuthData | null;
-  onNewChat?: () => void;
-  onLogout: () => void;
-  onUserMenuToggle: () => void;
-  isUserMenuOpen: boolean;
-  onNewAgent: () => void;
-  onAgentMenuToggle: (chatId: string, buttonElement: HTMLElement) => void;
-  openMenuChatId: string | null;
-  onChatSessionMenuToggle?: (
-    chatId: string,
-    sessionId: string,
-    title: string,  // 🔥 New: ChatSession title
-    buttonElement: HTMLElement,
-  ) => void;
-  openMenuChatSessionId?: string | null;
+  sidebarWidth?: number;
+  leftPanelCollapsed: boolean;
 }
 
 const LeftNavigation: React.FC<LeftNavigationProps> = ({
-  authData,
-  onNewChat,
-  onLogout,
-  onUserMenuToggle,
-  isUserMenuOpen,
-  onNewAgent,
-  onAgentMenuToggle,
-  openMenuChatId,
-  onChatSessionMenuToggle,
-  openMenuChatSessionId,
+  sidebarWidth,
+  leftPanelCollapsed,
 }) => {
-  const { leftPanelCollapsed } = useLayout();
-
   const navigationClasses = [
     'left-navigation',
     leftPanelCollapsed ? 'collapsed' : '',
@@ -50,23 +24,13 @@ const LeftNavigation: React.FC<LeftNavigationProps> = ({
       className={navigationClasses}
       role="navigation"
       aria-label="Main navigation"
+      style={sidebarWidth ? { width: sidebarWidth, minWidth: sidebarWidth } : undefined}
     >
       {/* Navigation Section - includes AgentList, New Agent button, Divider, and Function List */}
-      <NavigationSection
-        onNewAgent={onNewAgent}
-        onAgentMenuToggle={onAgentMenuToggle}
-        openMenuChatId={openMenuChatId}
-        onChatSessionMenuToggle={onChatSessionMenuToggle}
-        openMenuChatSessionId={openMenuChatSessionId}
-      />
+      <NavigationSection />
 
       {/* User Section */}
-      <UserSection
-        authData={authData}
-        onLogout={onLogout}
-        onUserMenuToggle={onUserMenuToggle}
-        isUserMenuOpen={isUserMenuOpen}
-      />
+      <UserSection />
     </nav>
   );
 };

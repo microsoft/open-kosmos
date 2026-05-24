@@ -57,8 +57,8 @@ You are an expert at creating concise, informative titles for chat conversations
 **User Message**: "Can you help me debug this React component that's not rendering properly?"
 **Title**: "Debug React Component Rendering"
 
-**User Message**: "I need to analyze the sales trends of this dataset"
-**Title**: "Sales Trend Data Analysis"
+**User Message**: "我需要分析这个数据集的销售趋势"
+**Title**: "销售趋势数据分析"
 
 **User Message**: "Write a function to calculate factorial recursively"
 **Title**: "Recursive Factorial Function"
@@ -97,7 +97,7 @@ If the message is too vague or unclear, return:
     // Rough approximation: 1 token ≈ 4 characters for English, 1 token ≈ 1-2 characters for Chinese
     const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
     const englishWords = text.replace(/[\u4e00-\u9fa5]/g, '').trim().split(/\s+/).filter(word => word.length > 0).length;
-    
+
     // Estimate: Chinese characters ~1 token each, English words ~1 token each
     return chineseChars + englishWords;
   }
@@ -112,7 +112,7 @@ If the message is too vague or unclear, return:
     suggestion?: string;
   } {
     const trimmedMessage = userMessage.trim();
-    
+
     // Check if message is too short
     if (trimmedMessage.length < 5) {
       return {
@@ -176,7 +176,7 @@ If the message is too vague or unclear, return:
         temperature: 0.3 // Low temperature for consistency
       };
 
-      // Use claude-haiku-4.5 model for title generation (faster and lower cost)
+      // Use the claude-haiku-4.5 model for title generation (faster and lower cost)
       const rawResponse = await ghcModelApi.callModel(
         'claude-haiku-4.5',
         llmParams.prompt,
@@ -189,7 +189,7 @@ If the message is too vague or unclear, return:
       try {
         // Clean up response
         let cleanedResponse = rawResponse.trim();
-        
+
         // Remove markdown code block markers
         cleanedResponse = cleanedResponse
           .replace(/```json\s*/g, '')
@@ -199,7 +199,7 @@ If the message is too vague or unclear, return:
         // Extract JSON object
         const firstBrace = cleanedResponse.indexOf('{');
         const lastBrace = cleanedResponse.lastIndexOf('}');
-        
+
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const jsonContent = cleanedResponse.substring(firstBrace, lastBrace + 1);
           parsedResponse = JSON.parse(jsonContent);
@@ -207,16 +207,16 @@ If the message is too vague or unclear, return:
           // Try direct parsing
           parsedResponse = JSON.parse(cleanedResponse);
         }
-        
+
         // Add metadata
         parsedResponse.rawResponse = rawResponse;
         parsedResponse.originalMessage = userMessage;
-        
+
         // Validate token count if title exists
         if (parsedResponse.title) {
           const estimatedTokens = this.estimateTokenCount(parsedResponse.title);
           parsedResponse.tokenCount = estimatedTokens;
-          
+
           // Check if title exceeds 20 tokens
           if (estimatedTokens > 20) {
             // Truncate title if too long
@@ -233,7 +233,7 @@ If the message is too vague or unclear, return:
       } catch (parseError) {
         // If parsing fails, create a fallback title
         const fallbackTitle = this.generateFallbackTitle(userMessage);
-        
+
         parsedResponse = {
           success: true,
           originalMessage: userMessage,
@@ -273,30 +273,30 @@ If the message is too vague or unclear, return:
     const hasMemoryContent = memoryKeywords.test(userMessage);
 
     const trimmedMessage = userMessage.trim();
-    
+
     // Extract first few words as fallback, prioritizing memory-related terms
     const words = trimmedMessage.split(/\s+/);
     let selectedWords: string[] = [];
-    
+
     // If message has memory content, try to include memory-related words
     if (hasMemoryContent) {
       // Find words that contain memory keywords
       const memoryWords = words.filter(word => memoryKeywords.test(word));
       const nonMemoryWords = words.filter(word => !memoryKeywords.test(word));
-      
+
       // Prioritize memory words, then add other words up to 4 total
       selectedWords = [...memoryWords.slice(0, 2), ...nonMemoryWords.slice(0, 4 - memoryWords.slice(0, 2).length)];
     } else {
       selectedWords = words.slice(0, 4);
     }
-    
+
     let fallbackTitle = selectedWords.join(' ');
-    
+
     // If too long, truncate
     if (fallbackTitle.length > 50) {
       fallbackTitle = fallbackTitle.substring(0, 47) + '...';
     }
-    
+
     // If too short or generic, use memory-aware timestamp-based title
     if (fallbackTitle.length < 5) {
       const now = new Date();
@@ -305,7 +305,7 @@ If the message is too vague or unclear, return:
         minute: '2-digit',
         hour12: false
       });
-      
+
       // Use memory-aware titles when appropriate
       if (hasMemoryContent) {
         fallbackTitle = `Memory Chat ${timeStr}`;
@@ -313,7 +313,7 @@ If the message is too vague or unclear, return:
         fallbackTitle = `Chat ${timeStr}`;
       }
     }
-    
+
     return fallbackTitle;
   }
 
@@ -385,8 +385,8 @@ If the message is too vague or unclear, return:
           description: 'Debugging request - action-oriented title'
         },
         {
-          input: 'I need to analyze the sales trends of this dataset',
-          expectedOutput: 'Sales Trend Data Analysis',
+          input: '我需要分析这个数据集的销售趋势',
+          expectedOutput: '销售趋势数据分析',
           description: 'Chinese message - maintains original language'
         },
         {

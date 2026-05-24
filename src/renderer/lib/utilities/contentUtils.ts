@@ -1,12 +1,11 @@
 /**
- * Unified content processing utilities - UnifiedAttachmentSystem
- * 
- * This file provides unified content part processing, conversion, and validation functions
- * Supports unified management of three content types: text, image, and file
+ * Unified content processing utility — UnifiedAttachmentSystem
+ *
+ * Provides unified content part handling, transformation, and validation
+ * Supports unified management for text, image, and file content types
  */
 
 import {
-  ContentPart,
   TextContentPart,
   ImageContentPart,
   FileContentPart,
@@ -18,8 +17,10 @@ import {
   SUPPORTED_IMAGE_TYPES,
   SUPPORTED_TEXT_TYPES,
   FILE_ATTACHMENT_LIMITS,
-} from '../../types/chatTypes';
+} from '@shared/types/chatTypes';
 import { getImageDimensions, smartCompressImage, shouldCompressImageAdvanced } from './imageCompression';
+import { createLogger } from './logger';
+const logger = createLogger('[ContentUtils]');
 
 // ===== Content Creation Utilities =====
 
@@ -58,7 +59,7 @@ export class ContentPartFactory {
     };
   }
 
-  // Create file content part - uses file path reference mode
+  // Create file content part — uses file path reference mode
   static createFile(fileData: {
     fileName: string;
     filePath: string;
@@ -86,7 +87,7 @@ export class ContentPartFactory {
     };
   }
 
-  // Create Office document content part - provides metadata needed by read_office_file
+  // Create Office document content part — provides metadata required by read_office_file
   static createOffice(fileData: {
     fileName: string;
     filePath: string;
@@ -117,7 +118,7 @@ export class ContentPartFactory {
     };
   }
 
-  // Create other type file content part - metadata only, no content reading
+  // Create other file type content part — metadata only, content not read
   static createOthers(fileData: {
     fileName: string;
     filePath?: string;  // 🔥 FIX: add filePath parameter support
@@ -132,7 +133,7 @@ export class ContentPartFactory {
       type: 'others',
       file: {
         fileName: fileData.fileName,
-        filePath: fileData.filePath || '', // 🔥 FIX: use passed filePath, default to empty
+        filePath: fileData.filePath || '', // 🔥 FIX: use provided filePath, default to empty string
         mimeType: fileData.mimeType
       },
       metadata: {
@@ -140,7 +141,7 @@ export class ContentPartFactory {
         lastModified: fileData.lastModified || Date.now(),
         detail: fileData.detail || 'auto',
         fileExtension: fileData.fileExtension,
-        description: fileData.description || `Other type file: ${fileData.fileName}`
+        description: fileData.description || `Other file type: ${fileData.fileName}`
       }
     };
   }
@@ -165,12 +166,12 @@ export class FileProcessor {
     '.pptm',
   ];
 
-  // Check if file is a supported image format
+  // Check whether a file is a supported image format
   static isImageFile(file: File): boolean {
     return SUPPORTED_IMAGE_TYPES.includes(file.type as any);
   }
 
-  // Check if file is an Office document
+  // Check whether a file is an Office document
   static isOfficeFile(file: File): boolean {
     const mimeType = (file.type || '').toLowerCase();
     if (this.OFFICE_MIME_TYPES.includes(mimeType)) {
@@ -181,7 +182,7 @@ export class FileProcessor {
     return this.OFFICE_EXTENSIONS.some(ext => fileName.endsWith(ext));
   }
 
-  // Check if file is a supported text format
+  // Check whether a file is a supported text format
   static isTextFile(file: File): boolean {
     if (this.isOfficeFile(file)) {
       return false;
@@ -199,17 +200,17 @@ export class FileProcessor {
     );
   }
 
-  // Check if file is other type (not image, not text)
+  // Check whether a file is of "other" type (not image, text, or Office)
   static isOthersFile(file: File): boolean {
     return !this.isImageFile(file) && !this.isTextFile(file) && !this.isOfficeFile(file);
   }
 
-  // Check if file size is within limits
+  // Check whether a file size is within the limit
   static isFileSizeValid(file: File): boolean {
     return file.size <= FILE_ATTACHMENT_LIMITS.MAX_FILE_SIZE_BYTES;
   }
 
-  // Convert File object to DataURL
+  // Convert a File object to a DataURL
   static async fileToDataURL(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -219,20 +220,20 @@ export class FileProcessor {
     });
   }
 
-  // Convert File object to text
+  // Convert a File object to text
   static async fileToText(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         let content = reader.result as string;
-        
+
         // Check line count limit
         const lines = content.split('\n');
         if (lines.length > FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES) {
           content = lines.slice(0, FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES).join('\n') +
-                   `\n\n... [File truncated, original file has ${lines.length} lines, showing first ${FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES} lines]`;
+                   `\n\n... [File truncated; original has ${lines.length} lines, showing first ${FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES}]`;
         }
-        
+
         resolve(content);
       };
       reader.onerror = reject;
@@ -240,7 +241,7 @@ export class FileProcessor {
     });
   }
 
-  // Get file MIME type
+  // Get the MIME type of a file
   static getMimeType(file: File): string {
     if (file.type) {
       return file.type;
@@ -259,7 +260,7 @@ export class FileProcessor {
       '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       '.pptm': 'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
       '.rtf': 'text/rtf',
-      
+
       // Web technologies
       '.js': 'text/javascript',
       '.ts': 'text/typescript',
@@ -288,8 +289,8 @@ export class FileProcessor {
       '.ini': 'text/x-ini',
       '.cfg': 'text/x-ini',
       '.conf': 'text/x-ini',
-      
-      // Programming languages - C/C++ family
+
+      // Programming languages — C/C++ family
       '.c': 'text/x-c',
       '.cc': 'text/x-c++',
       '.cpp': 'text/x-cpp',
@@ -299,8 +300,8 @@ export class FileProcessor {
       '.hpp': 'text/x-cpp',
       '.hxx': 'text/x-cpp',
       '.h++': 'text/x-cpp',
-      
-      // Programming languages - Others
+
+      // Programming languages — others
       '.py': 'text/x-python',
       '.pyw': 'text/x-python',
       '.pyc': 'application/x-python-code',
@@ -347,7 +348,7 @@ export class FileProcessor {
       '.flutter': 'text/x-dart',
       '.lua': 'text/x-lua',
       '.luac': 'application/x-lua-bytecode',
-      
+
       // Shell scripts
       '.sh': 'text/x-shellscript',
       '.bash': 'text/x-shellscript',
@@ -360,23 +361,23 @@ export class FileProcessor {
       '.psd1': 'text/x-powershell',
       '.bat': 'text/x-msdos-batch',
       '.cmd': 'text/x-msdos-batch',
-      
+
       // Assembly and low-level languages
       '.asm': 'text/x-asm',
       '.s': 'text/x-asm',
       '.S': 'text/x-asm',
-      
-      // Database
+
+      // Databases
       '.sql': 'text/x-sql',
       '.mysql': 'text/x-mysql',
       '.pgsql': 'text/x-pgsql',
       '.sqlite': 'text/x-sqlite',
-      
+
       // Containerization
       '.dockerfile': 'text/x-dockerfile',
       '.containerfile': 'text/x-dockerfile',
-      
-      // Configuration files
+
+      // Config files
       '.env': 'text/x-dotenv',
       '.envrc': 'text/x-dotenv',
       '.editorconfig': 'text/x-editorconfig',
@@ -399,7 +400,7 @@ export class FileProcessor {
       '.ant': 'text/x-ant',
       '.properties': 'text/x-java-properties',
       '.lock': 'text/plain',
-      
+
       // Documentation and markup languages
       '.tex': 'text/x-latex',
       '.latex': 'text/x-latex',
@@ -411,7 +412,7 @@ export class FileProcessor {
       '.asciidoc': 'text/x-asciidoc',
       '.wiki': 'text/x-wiki',
       '.mediawiki': 'text/x-mediawiki',
-      
+
       // Data formats
       '.csv': 'text/csv',
       '.tsv': 'text/tab-separated-values',
@@ -421,7 +422,7 @@ export class FileProcessor {
       '.out': 'text/plain',
       '.err': 'text/plain',
       '.trace': 'text/x-log',
-      
+
       // Other formats
       '.patch': 'text/x-patch',
       '.diff': 'text/x-diff',
@@ -445,79 +446,15 @@ export class FileProcessor {
   }
 }
 
-// ===== Content Validation Utilities =====
-
-export class ContentValidator {
-  // Validate content part format
-  static isValidContentPart(part: any): part is UnifiedContentPart {
-    if (!part || typeof part !== 'object' || !part.type) {
-      return false;
-    }
-
-    switch (part.type) {
-      case 'text':
-        return typeof part.text === 'string';
-      
-      case 'image':
-        return part.image_url &&
-               typeof part.image_url.url === 'string' &&
-               part.metadata &&
-               typeof part.metadata.fileName === 'string' &&
-               typeof part.metadata.mimeType === 'string';
-      
-      case 'file':
-        return part.file &&
-               typeof part.file.fileName === 'string' &&
-               typeof part.file.filePath === 'string' &&
-               typeof part.file.mimeType === 'string' &&
-               part.metadata &&
-               typeof part.metadata.fileSize === 'number';
-      case 'office':
-        return part.file &&
-               typeof part.file.fileName === 'string' &&
-               typeof part.file.filePath === 'string' &&
-               typeof part.file.mimeType === 'string' &&
-               part.metadata &&
-               typeof part.metadata.fileSize === 'number';
-      
-      case 'others':
-        return part.file &&
-               typeof part.file.fileName === 'string' &&
-               typeof part.file.filePath === 'string' &&
-               typeof part.file.mimeType === 'string' &&
-               part.metadata &&
-               typeof part.metadata.fileSize === 'number';
-      
-      default:
-        return false;
-    }
-  }
-
-  // Validate message content array
-  static isValidMessageContent(content: any): content is UnifiedContentPart[] {
-    return Array.isArray(content) && 
-           content.every(part => this.isValidContentPart(part));
-  }
-
-  // Check if message has required text content
-  static hasRequiredContent(message: Message): boolean {
-    const textParts = MessageHelper.getText(message);
-    const hasAttachments = MessageHelper.hasAttachments(message);
-    
-    // Must have text content or attachments
-    return textParts.trim().length > 0 || hasAttachments;
-  }
-}
-
 // ===== Content Conversion Utilities =====
 
 export class ContentConverter {
-  // Convert string to unified content format
+  // Convert a string to unified content format
   static stringToContent(text: string): UnifiedContentPart[] {
     if (!text.trim()) {
       return [];
     }
-    
+
     return [ContentPartFactory.createText(text)];
   }
 
@@ -530,7 +467,7 @@ export class ContentConverter {
       .trim();
   }
 
-  // 🔥 Fix core issue: create image content part from File object, with auto compression
+  // 🔥 Core fix: Create image content part from a File object, with automatic compression
   static async fileToImageContent(file: File): Promise<ImageContentPart> {
     if (!FileProcessor.isImageFile(file)) {
       throw new Error(`Unsupported image format: ${file.type}`);
@@ -541,89 +478,89 @@ export class ContentConverter {
     }
 
 
-    // 🔥 Key fix: check if compression is needed, compress first if so
+    // 🔥 Key fix: Check whether compression is needed; compress first if so
     let processedFile = file;
     let wasCompressed = false;
-    
+
     try {
       const needsCompression = await shouldCompressImageAdvanced(file);
-      
+
       if (needsCompression) {
-        
+
         const compressionResult = await smartCompressImage(file);
         processedFile = compressionResult.compressedFile;
         wasCompressed = compressionResult.wasCompressed;
-        
+
       } else {
       }
     } catch (compressionError) {
-      // If compression fails, continue with original file
+      // If compression fails, continue with the original file
       processedFile = file;
       wasCompressed = false;
     }
 
-    // Convert to DataURL (now using compressed file)
+    // Convert to DataURL (now using the compressed file)
     const dataUrl = await FileProcessor.fileToDataURL(processedFile);
-    
-    // 🔥 Fix: get actual dimensions of processed file, ensure correct token calculation
+
+    // 🔥 Fix: Get actual dimensions of the processed file to ensure correct token calculation
     let width: number | undefined;
     let height: number | undefined;
-    
+
     try {
       const dimensions = await getImageDimensions(processedFile);
       width = dimensions.width;
       height = dimensions.height;
-      
+
     } catch (error) {
     }
-    
+
     return ContentPartFactory.createImage({
       url: dataUrl,
-      fileName: file.name, // Keep original file name
+      fileName: file.name, // Preserve original file name
       fileSize: processedFile.size, // 🔥 Use compressed file size
       width,
       height,
       mimeType: FileProcessor.getMimeType(processedFile),
-      detail: 'auto' // 🔥 Fix: explicitly set detail to auto, ensure token calculation uses correct value
+      detail: 'auto' // 🔥 Fix: explicitly set detail to auto for correct token calculation
     });
   }
 
-  // Create file content part from File object - uses file path reference mode
+  // Create file content part from a File object — uses file path reference mode
   static async fileToFileContent(file: File): Promise<FileContentPart> {
     if (!FileProcessor.isTextFile(file)) {
       throw new Error(`Unsupported file format: ${file.type}`);
     }
 
-    // 🔥 FIX: fix file path handling, prefer full path obtained via Electron API
-    // Priority: fullPath (Electron API) > webkitRelativePath > original path property > file name only
-    let filePath = file.name; // Default to file name
-    let needsWorkspaceSave = true; // Default to needing workspace save
-    
-    // 🔥 First priority: check for full path attached via Electron API
+    // 🔥 FIX: Fix file path handling; prefer the full path obtained via the Electron API
+    // Priority: fullPath (Electron API) > webkitRelativePath > original path property > filename only
+    let filePath = file.name; // Default to filename
+    let needsWorkspaceSave = true; // Default: needs saving to workspace
+
+    // 🔥 First priority: Check whether a full path was attached via the Electron API
     if ((file as any).fullPath && (file as any).fullPath !== file.name) {
       filePath = (file as any).fullPath;
-      needsWorkspaceSave = false; // Has full path, no need to save to workspace
-      console.log(`[ContentConverter] 🔥 Using full path from Electron API: ${filePath}`);
+      needsWorkspaceSave = false; // Full path available; no need to save to workspace
+      logger.debug(`[ContentConverter] 🔥 Using full path from Electron API: ${filePath}`);
     }
-    // Second priority: check for relative path info (may exist when dragging folders)
+    // Second priority: Check for relative path info (may be present when dragging a folder)
     else if ((file as any).webkitRelativePath) {
       filePath = (file as any).webkitRelativePath;
-      needsWorkspaceSave = false; // Has relative path from folder drag, no need to save
-      console.log(`[ContentConverter] Using webkitRelativePath: ${filePath}`);
+      needsWorkspaceSave = false; // Relative path means it came from folder drag; no need to save
+      logger.debug(`[ContentConverter] Using webkitRelativePath: ${filePath}`);
     }
-    // Third priority: Electron environment may have path property, different from file name
+    // Third priority: Electron environment may have a path property different from the filename
     else if ((file as any).path && (file as any).path !== file.name) {
       filePath = (file as any).path;
-      needsWorkspaceSave = false; // Has real path, no need to save to workspace
-      console.log(`[ContentConverter] Using path property: ${filePath}`);
+      needsWorkspaceSave = false; // Real path available; no need to save to workspace
+      logger.debug(`[ContentConverter] Using path property: ${filePath}`);
     }
-    
-    // 🔧 FIX: for cases with only file name, need other mechanism to ensure file is saved to workspace
-    // Mark in comment here, actual file save logic should be handled during message send
+
+    // 🔧 FIX: For filename-only cases, the file must be saved to the workspace via another mechanism
+    // The actual file save logic should be handled when the message is sent
     if (needsWorkspaceSave) {
-      console.warn(`[ContentConverter] ⚠️ File ${file.name} has only file name, needs to be saved to workspace during message send`);
+      logger.warn(`[ContentConverter] ⚠️ File ${file.name} has filename only; needs to be saved to workspace when message is sent`);
     }
-    
+
     return ContentPartFactory.createFile({
       fileName: file.name,
       filePath: filePath,
@@ -634,52 +571,52 @@ export class ContentConverter {
     });
   }
 
-  // Create other type content part from File object - metadata only, no content reading
+  // Create other file type content part from a File object — metadata only, content not read
   static async fileToOthersContent(file: File): Promise<OthersContentPart> {
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
-    
-    // 🔥 FIX: use same path handling logic as fileToFileContent
-    let filePath = file.name; // Default to file name
-    let needsWorkspaceSave = true; // Default to needing workspace save
-    
-    // 🔥 First priority: check for full path attached via Electron API
+
+    // 🔥 FIX: Use the same path handling logic as fileToFileContent
+    let filePath = file.name; // Default to filename
+    let needsWorkspaceSave = true; // Default: needs saving to workspace
+
+    // 🔥 First priority: Check whether a full path was attached via the Electron API
     if ((file as any).fullPath && (file as any).fullPath !== file.name) {
       filePath = (file as any).fullPath;
-      needsWorkspaceSave = false; // Has full path, no need to save to workspace
-      console.log(`[ContentConverter] 🔥 Others file using full path from Electron API: ${filePath}`);
+      needsWorkspaceSave = false; // Full path available; no need to save to workspace
+      logger.debug(`[ContentConverter] 🔥 Others file using full path from Electron API: ${filePath}`);
     }
-    // Second priority: check for relative path info (may exist when dragging folders)
+    // Second priority: Check for relative path info (may be present when dragging a folder)
     else if ((file as any).webkitRelativePath) {
       filePath = (file as any).webkitRelativePath;
-      needsWorkspaceSave = false; // Has relative path from folder drag, no need to save
-      console.log(`[ContentConverter] Others file using webkitRelativePath: ${filePath}`);
+      needsWorkspaceSave = false; // Relative path means it came from folder drag; no need to save
+      logger.debug(`[ContentConverter] Others file using webkitRelativePath: ${filePath}`);
     }
-    // Third priority: Electron environment may have path property, different from file name
+    // Third priority: Electron environment may have a path property different from the filename
     else if ((file as any).path && (file as any).path !== file.name) {
       filePath = (file as any).path;
-      needsWorkspaceSave = false; // Has real path, no need to save to workspace
-      console.log(`[ContentConverter] Others file using path property: ${filePath}`);
+      needsWorkspaceSave = false; // Real path available; no need to save to workspace
+      logger.debug(`[ContentConverter] Others file using path property: ${filePath}`);
     }
-    
+
     if (needsWorkspaceSave) {
-      console.warn(`[ContentConverter] ⚠️ Others file ${file.name} has only file name, needs to be saved to workspace during message send`);
+      logger.warn(`[ContentConverter] ⚠️ Others file ${file.name} has filename only; needs to be saved to workspace when message is sent`);
     }
-    
+
     return ContentPartFactory.createOthers({
       fileName: file.name,
-      filePath: filePath,  // 🔥 FIX: pass correct file path
+      filePath: filePath,  // 🔥 FIX: pass the correct file path
       fileSize: file.size,
       mimeType: FileProcessor.getMimeType(file),
       lastModified: file.lastModified,
       fileExtension: fileExtension,
-      description: `Other type file: ${file.name} (${fileExtension.toUpperCase()} format)`,
+      description: `Other file type: ${file.name} (${fileExtension.toUpperCase()})`,
       detail: 'auto'
     });
   }
 
-  // Create Office document content part from File object - metadata reference only
+  // Create Office document content part from a File object — retain only metadata reference
   static async fileToOfficeContent(file: File): Promise<OfficeContentPart> {
-    console.log(`[ContentConverter] fileToOfficeContent called:`, {
+    logger.debug(`[ContentConverter] fileToOfficeContent called:`, {
       name: file.name,
       type: file.type,
       size: file.size,
@@ -690,31 +627,31 @@ export class ContentConverter {
       throw new Error(`Unsupported Office file format: ${file.type || file.name}`);
     }
 
-    // 🔥 FIX: use same path handling logic as fileToFileContent
-    let filePath = file.name; // Default to file name
-    let needsWorkspaceSave = true; // Default to needing workspace save
-    
-    // 🔥 First priority: check for full path attached via Electron API
+    // 🔥 FIX: Use the same path handling logic as fileToFileContent
+    let filePath = file.name; // Default to filename
+    let needsWorkspaceSave = true; // Default: needs saving to workspace
+
+    // 🔥 First priority: Check whether a full path was attached via the Electron API
     if ((file as any).fullPath && (file as any).fullPath !== file.name) {
       filePath = (file as any).fullPath;
-      needsWorkspaceSave = false; // Has full path, no need to save to workspace
-      console.log(`[ContentConverter] 🔥 Office file using full path from Electron API: ${filePath}`);
+      needsWorkspaceSave = false; // Full path available; no need to save to workspace
+      logger.debug(`[ContentConverter] 🔥 Office file using full path from Electron API: ${filePath}`);
     }
-    // Second priority: check for relative path info (may exist when dragging folders)
+    // Second priority: Check for relative path info (may be present when dragging a folder)
     else if ((file as any).webkitRelativePath) {
       filePath = (file as any).webkitRelativePath;
-      needsWorkspaceSave = false; // Has relative path from folder drag, no need to save
-      console.log(`[ContentConverter] Office file using webkitRelativePath: ${filePath}`);
+      needsWorkspaceSave = false; // Relative path means it came from folder drag; no need to save
+      logger.debug(`[ContentConverter] Office file using webkitRelativePath: ${filePath}`);
     }
-    // Third priority: Electron environment may have path property, different from file name
+    // Third priority: Electron environment may have a path property different from the filename
     else if ((file as any).path && (file as any).path !== file.name) {
       filePath = (file as any).path;
-      needsWorkspaceSave = false; // Has real path, no need to save to workspace
-      console.log(`[ContentConverter] Office file using path property: ${filePath}`);
+      needsWorkspaceSave = false; // Real path available; no need to save to workspace
+      logger.debug(`[ContentConverter] Office file using path property: ${filePath}`);
     }
-    
+
     if (needsWorkspaceSave) {
-      console.warn(`[ContentConverter] ⚠️ Office file ${file.name} has only file name, needs to be saved to workspace during message send`);
+      logger.warn(`[ContentConverter] ⚠️ Office file ${file.name} has filename only; needs to be saved to workspace when message is sent`);
     }
 
     const extension = file.name.split('.').pop()?.toLowerCase();
@@ -764,23 +701,23 @@ export class ContentAnalyzer {
         case 'file':
           fileCount++;
           totalSize += part.metadata.fileSize;
-          // In file reference mode, content length is not calculated since content is not pre-read
+          // File reference mode: do not measure content length since content is not pre-loaded
           break;
         case 'office':
           officeCount++;
           totalSize += part.metadata.fileSize;
           break;
         case 'others':
-          othersCount++; // others type counted separately
+          othersCount++; // Count "others" type separately
           totalSize += part.metadata.fileSize;
-          // others type does not read content, only calculates metadata size
+          // "Others" type: content not read; only metadata size counted
           break;
       }
     });
 
-    // Simple token estimation (1 token ≈ 4 characters)
+    // Simple token estimate (1 token ≈ 4 characters)
     // In file reference mode, file tokens need to be dynamically calculated via readFileTool
-    const estimatedTokens = Math.ceil(textLength / 4) + imageCount * 100 + fileCount * 50 + officeCount * 60 + othersCount * 10; // others type is metadata only, lower token consumption
+    const estimatedTokens = Math.ceil(textLength / 4) + imageCount * 100 + fileCount * 50 + officeCount * 60 + othersCount * 10; // "others" type uses only metadata; lower token cost
 
     return {
       textLength,
@@ -793,7 +730,7 @@ export class ContentAnalyzer {
     };
   }
 
-  // Check if content exceeds limits
+  // Check whether content exceeds limits
   static checkLimits(content: UnifiedContentPart[]): {
     valid: boolean;
     errors: string[];
@@ -813,14 +750,14 @@ export class ContentAnalyzer {
       warnings.push(`Estimated token count is high: ${analysis.estimatedTokens}`);
     }
 
-    // Check content count
+    // Check content quantity
     if (analysis.imageCount > 10) {
-      warnings.push(`Image count is high: ${analysis.imageCount}`);
+      warnings.push(`Large number of images: ${analysis.imageCount}`);
     }
 
     const totalDocumentCount = analysis.fileCount + analysis.officeCount;
     if (totalDocumentCount > 20) {
-      warnings.push(`File count is high: ${totalDocumentCount}`);
+      warnings.push(`Large number of files: ${totalDocumentCount}`);
     }
 
     return {
@@ -833,7 +770,7 @@ export class ContentAnalyzer {
 
 // ===== Utility Function Exports =====
 
-// Generate unique ID
+// Generate a unique ID
 export const generateId = (prefix = 'content'): string => {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
@@ -841,11 +778,11 @@ export const generateId = (prefix = 'content'): string => {
 // Format file size
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
-  
+
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
@@ -859,7 +796,7 @@ export const formatLineCount = (lines: number): string => {
 export const getFileIconClass = (mimeType: string, fileName: string): string => {
   if (mimeType.startsWith('image/')) return 'icon-image';
   if (mimeType.startsWith('text/')) return 'icon-text';
-  
+
   const ext = fileName.toLowerCase().split('.').pop();
   const iconMap: Record<string, string> = {
     // Web technologies
@@ -890,8 +827,8 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'ini': 'icon-config',
     'cfg': 'icon-config',
     'conf': 'icon-config',
-    
-    // Documentation and markup
+
+    // Documents and markup
     'md': 'icon-markdown',
     'rst': 'icon-markdown',
     'txt': 'icon-text',
@@ -905,8 +842,8 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'asciidoc': 'icon-markdown',
     'wiki': 'icon-text',
     'mediawiki': 'icon-text',
-    
-    // Programming languages - C/C++ family
+
+    // Programming languages — C/C++ family
     'c': 'icon-c',
     'cc': 'icon-cpp',
     'cpp': 'icon-cpp',
@@ -916,8 +853,8 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'hpp': 'icon-h',
     'hxx': 'icon-h',
     'h++': 'icon-h',
-    
-    // Programming languages - Mainstream
+
+    // Programming languages — mainstream
     'py': 'icon-python',
     'pyw': 'icon-python',
     'pyi': 'icon-python',
@@ -960,7 +897,7 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'dart': 'icon-dart',
     'flutter': 'icon-dart',
     'lua': 'icon-lua',
-    
+
     // Shell and scripts
     'sh': 'icon-shell',
     'bash': 'icon-shell',
@@ -973,23 +910,23 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'psd1': 'icon-powershell',
     'bat': 'icon-batch',
     'cmd': 'icon-batch',
-    
+
     // Assembly and system
     'asm': 'icon-assembly',
     's': 'icon-assembly',
     'S': 'icon-assembly',
-    
-    // Database
+
+    // Databases
     'sql': 'icon-database',
     'mysql': 'icon-database',
     'pgsql': 'icon-database',
     'sqlite': 'icon-database',
-    
-    // Container and deployment
+
+    // Containers and deployment
     'dockerfile': 'icon-docker',
     'containerfile': 'icon-docker',
-    
-    // Configuration files
+
+    // Config files
     'env': 'icon-config',
     'envrc': 'icon-config',
     'editorconfig': 'icon-config',
@@ -1012,7 +949,7 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'ant': 'icon-ant',
     'properties': 'icon-properties',
     'lock': 'icon-lock',
-    
+
     // Data formats
     'csv': 'icon-csv',
     'tsv': 'icon-csv',
@@ -1022,7 +959,7 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'out': 'icon-log',
     'err': 'icon-log',
     'trace': 'icon-log',
-    
+
     // Other formats
     'patch': 'icon-diff',
     'diff': 'icon-diff',
@@ -1035,6 +972,6 @@ export const getFileIconClass = (mimeType: string, fileName: string): string => 
     'key': 'icon-key',
     'pub': 'icon-key'
   };
-  
+
   return iconMap[ext || ''] || 'icon-file';
 };

@@ -19,15 +19,15 @@ export interface LogEntry {
 
 // Configuration Interface
 export interface UnifiedLoggerConfig {
-  // Maximum cache object capacity
-  LOGGER_CACHE_MAX_SIZE: number; // Default dev: 10, production: 10000
-  
+  // Maximum capacity of a cache object
+  LOGGER_CACHE_MAX_SIZE: number; // Default dev: 10, prod: 10000
+
   // Log directory
   LOGGER_DIRECTORY: string; // Default: user profile directory
-  
+
   // Enabled log levels
   LOGGER_LEVELS: LogLevel[]; // Default: ['DEBUG', 'INFO', 'WARN', 'ERROR']
-  
+
   // Console output
   LOGGER_ENABLE_CONSOLE: boolean; // Default: true
 }
@@ -108,7 +108,7 @@ function generateLogId(): string {
 // Environment detection helper
 export function getEnvironmentBasedConfig(): Partial<UnifiedLoggerConfig> {
   const isDevelopment = process.env.NODE_ENV !== 'production';
-  
+
   return {
     LOGGER_CACHE_MAX_SIZE: isDevelopment ? 10 : 2000,
     LOGGER_ENABLE_CONSOLE: true

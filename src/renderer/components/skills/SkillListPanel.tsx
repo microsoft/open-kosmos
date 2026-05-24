@@ -1,16 +1,17 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import { SkillConfig } from '../../lib/userData/types'
 import { isBuiltinSkill } from '../../../shared/constants/builtinSkills'
 import '../../styles/ServerCard.css'
+import ListSearchBox from '../ui/ListSearchBox'
 
 interface SkillListPanelProps {
   skills: SkillConfig[]
   selectedSkill: SkillConfig | null
   isLoading: boolean
-  onSelectSkill: (skill: SkillConfig) => void
+  onSelectSkill: (skill: SkillConfig | null) => void
   onSkillMenuToggle?: (skillName: string, buttonElement: HTMLElement) => void
 }
 
@@ -46,6 +47,7 @@ const SkillCard: React.FC<SkillCardProps> = ({
   onMenuClick
 }) => {
   const isBuiltin = isBuiltinSkill(skill.name)
+  const isPlugin = skill.source === 'PLUGIN' || skill.name.startsWith('plugin--')
 
   return (
     <div
@@ -59,6 +61,7 @@ const SkillCard: React.FC<SkillCardProps> = ({
               <div className="skill-card-title-row">
                 <span className="skill-card-name">{skill.name}</span>
                 {isBuiltin && <span className="builtin-badge">Built-in</span>}
+                {isPlugin && <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)', opacity: 0.85 }}>Plugin</span>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'row', gap: '6px', alignItems: 'center' }}>
                 {skill.version && (
@@ -70,14 +73,16 @@ const SkillCard: React.FC<SkillCardProps> = ({
               </div>
             </div>
           </div>
-          <div className="skill-menu-container">
-            <button
-              className="skill-menu-btn"
-              onClick={onMenuClick}
-            >
-              <MoreHorizontal size={16} strokeWidth={1.5} />
-            </button>
-          </div>
+          {!isPlugin && (
+            <div className="skill-menu-container">
+              <button
+                className="skill-menu-btn"
+                onClick={onMenuClick}
+              >
+                <MoreHorizontal size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -91,6 +96,52 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
   onSelectSkill,
   onSkillMenuToggle
 }) => {
+  // Search filter — hooks must be at top level, before any early returns
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Sort skills: built-in skills first, then the rest
+  const sortedSkills = useMemo(() => [...skills].sort((a, b) => {
+    const aBuiltin = isBuiltinSkill(a.name)
+    const bBuiltin = isBuiltinSkill(b.name)
+    if (aBuiltin && !bBuiltin) return -1
+    if (!aBuiltin && bBuiltin) return 1
+    return 0
+  }), [skills])
+
+  const filteredSkills = searchQuery
+    ? sortedSkills.filter(s => s.name.includes(searchQuery))
+    : sortedSkills
+
+  // Stable identity for filtered list — catches same-length content changes
+  const filteredIdentity = useMemo(
+    () => filteredSkills.map(s => s.name).join('\0'),
+    [filteredSkills]
+  )
+
+  // Keep selection in sync with filtered results (also handles initial selection)
+  // Depend on selectedSkill?.name so external selection changes (e.g. skills:selectSkill event) are caught
+  useEffect(() => {
+    if (filteredSkills.length === 0) {
+      if (selectedSkill) {
+        onSelectSkill(null)
+      }
+      return
+    }
+    if (!selectedSkill) {
+      onSelectSkill(filteredSkills[0])
+      return
+    }
+    const currentInFiltered = filteredSkills.some(s => s.name === selectedSkill.name)
+    if (!currentInFiltered) {
+      // External selection of an off-filter item — clear search to reveal it
+      if (searchQuery && sortedSkills.some(s => s.name === selectedSkill.name)) {
+        setSearchQuery('')
+        return
+      }
+      onSelectSkill(filteredSkills[0])
+    }
+  }, [searchQuery, filteredIdentity, selectedSkill?.name])
+
   const handleMenuClick = (skill: SkillConfig, e: React.MouseEvent) => {
     e.stopPropagation()
     if (onSkillMenuToggle) {
@@ -117,19 +168,15 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
     )
   }
 
-  // Sort skills: built-in skills first, then the rest
-  const sortedSkills = [...skills].sort((a, b) => {
-    const aBuiltin = isBuiltinSkill(a.name)
-    const bBuiltin = isBuiltinSkill(b.name)
-    if (aBuiltin && !bBuiltin) return -1
-    if (!aBuiltin && bBuiltin) return 1
-    return 0
-  })
-
   return (
     <div className="skill-list-container">
       <div className="skill-cards">
-        {sortedSkills.map((skill) => (
+        <ListSearchBox
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search skills..."
+        />
+        {filteredSkills.map((skill) => (
           <SkillCard
             key={skill.name}
             skill={skill}

@@ -1,17 +1,17 @@
 /**
  * @deprecated This tool is DEPRECATED. Use `write_file` instead.
- * 
+ *
  * CreateFileTool built-in tool (deprecated)
- * 
+ *
  * ⚠️ DEPRECATION NOTICE:
  * This tool has been superseded by `write_file` which provides all the same
  * functionality plus additional features (append, prepend, insert modes).
- * 
+ *
  * Migration: Use `write_file` with mode='overwrite' (default) for identical behavior.
- * 
+ *
  * Original functionality:
- * - Provides file creation capability for LLM to invoke proactively
- * - Resolves issues with execute_command when handling special characters
+ * - Provides file creation capability for LLM-initiated calls
+ * - Works around issues with execute_command when handling special characters
  */
 
 import * as fs from 'fs/promises';
@@ -21,20 +21,20 @@ import { getUnifiedLogger, UnifiedLogger } from '../../unifiedLogger';
 
 export interface CreateFileToolArgs {
   // Required parameters
-  filePath: string;           // Full path of the file
+  filePath: string;           // Full path to the file
   content: string;            // File content (raw string, no escaping needed)
-  
+
   // Optional parameters
   encoding?: BufferEncoding;  // File encoding, default 'utf-8'
-  overwrite?: boolean;        // Whether to overwrite existing files, default true
+  overwrite?: boolean;        // Whether to overwrite existing file, default true
   createDirectories?: boolean; // Whether to auto-create parent directories, default true
-  validateJson?: boolean;     // For JSON files, whether to validate JSON format
+  validateJson?: boolean;     // For JSON files, validate JSON format validity
 }
 
 export interface CreateFileToolResult {
   success: boolean;
   filePath: string;           // Path of the created file
-  size: number;               // File size (bytes)
+  size: number;               // File size in bytes
   created: boolean;           // Whether newly created (false means an existing file was overwritten)
   encoding: string;           // Encoding used
   contentValid?: boolean;     // JSON validation result (only when validateJson=true)
@@ -44,7 +44,7 @@ export interface CreateFileToolResult {
 // File size limit: 10MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-// Allowed file extensions for creation (security whitelist)
+// Allowed file extensions (security whitelist)
 const ALLOWED_EXTENSIONS = [
   '.json', '.md', '.txt', '.csv', '.xml', '.yaml', '.yml',
   '.html', '.css', '.js', '.ts', '.jsx', '.tsx',
@@ -52,7 +52,7 @@ const ALLOWED_EXTENSIONS = [
   '.sh', '.bat', '.ps1', '.cmd',
   '.log', '.ini', '.conf', '.config', '.env',
   '.gitignore', '.dockerignore', '.editorconfig',
-  '' // Allow files without extensions
+  '' // Allow files without an extension
 ];
 
 export class CreateFileTool {
@@ -64,7 +64,7 @@ export class CreateFileTool {
   static async execute(args: CreateFileToolArgs): Promise<CreateFileToolResult> {
     const startTime = Date.now();
     const executionId = `create_file_${startTime}`;
-    
+
     this.logger.info(
       `CreateFileTool execution started`,
       'CreateFileTool',
@@ -72,7 +72,7 @@ export class CreateFileTool {
     );
 
     try {
-      // 1. Argument validation
+      // 1. Validate arguments
       const validation = this.validateArgs(args);
       if (!validation.isValid) {
         this.logger.error(
@@ -96,7 +96,7 @@ export class CreateFileTool {
       const overwrite = args.overwrite !== false; // default true
       const createDirectories = args.createDirectories !== false; // default true
 
-      // 3. Check if file already exists
+      // 3. Check whether the file already exists
       let fileExists = false;
       try {
         await fs.access(normalizedPath);
@@ -170,7 +170,7 @@ export class CreateFileTool {
       // 8. Verify write result
       const stats = await fs.stat(normalizedPath);
       const writtenContent = await fs.readFile(normalizedPath, { encoding });
-      
+
       if (writtenContent !== args.content) {
         this.logger.error(
           `Content verification failed - written content does not match`,
@@ -199,12 +199,12 @@ export class CreateFileTool {
       this.logger.info(
         `CreateFileTool execution completed successfully`,
         'CreateFileTool',
-        { 
-          executionId, 
-          filePath: normalizedPath, 
-          size: stats.size, 
+        {
+          executionId,
+          filePath: normalizedPath,
+          size: stats.size,
           created: !fileExists,
-          durationMs: Date.now() - startTime 
+          durationMs: Date.now() - startTime
         }
       );
 
@@ -233,8 +233,8 @@ export class CreateFileTool {
    * Argument validation
    */
   private static validateArgs(args: CreateFileToolArgs): { isValid: boolean; error?: string } {
-    // Check required parameters
-    if (!args.filePath|| typeof args.filePath !== 'string') {
+    // Check required arguments
+    if (!args.filePath || typeof args.filePath !== 'string') {
       return { isValid: false, error: 'filePath is required and must be a string' };
     }
 
@@ -249,22 +249,22 @@ export class CreateFileTool {
     // Check file size
     const contentSize = Buffer.byteLength(args.content, args.encoding || 'utf-8');
     if (contentSize > MAX_FILE_SIZE) {
-      return { 
-        isValid: false, 
-        error: `Content size (${contentSize} bytes) exceeds maximum allowed (${MAX_FILE_SIZE} bytes)` 
+      return {
+        isValid: false,
+        error: `Content size (${contentSize} bytes) exceeds maximum allowed (${MAX_FILE_SIZE} bytes)`
       };
     }
 
     // Check file extension
     const ext = path.extname(args.filePath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return { 
-        isValid: false, 
-        error: `File extension "${ext}" is not allowed. Allowed extensions: ${ALLOWED_EXTENSIONS.filter(e => e).join(', ')}` 
+      return {
+        isValid: false,
+        error: `File extension "${ext}" is not allowed. Allowed extensions: ${ALLOWED_EXTENSIONS.filter(e => e).join(', ')}`
       };
     }
 
-    // Check if path contains dangerous patterns
+    // Check whether the path contains dangerous patterns
     const dangerousPatterns = [
       /\.\.\//,           // Directory traversal
       /^\/etc\//i,        // Linux system directories

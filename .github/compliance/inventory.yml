@@ -1,0 +1,7 @@
+inventory:
+- source: DirectOwners
+  items:
+  - id: yanhu@example.com
+  - id: dingxiao@example.com
+  - id: menghuihu@example.com
+  isProduction: false

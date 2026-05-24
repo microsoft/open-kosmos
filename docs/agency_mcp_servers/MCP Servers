@@ -1,0 +1,362 @@
+Read time: 2 minutes
+
+Agency MCP Servers
+Overview
+Agency provides built-in MCP (Model Context Protocol) servers that extend your AI agent with tools for Azure DevOps, Kusto, code search, and more. There are two ways to use them:
+
+--mcp flag — Quick, single-use configuration on the command line
+MCP config — Persistent configuration in agent definitions or config files using the agency mcp command
+Quick Start with --mcp
+The --mcp flag on agency copilot and agency claude is the fastest way to add MCP servers to a session.
+
+Basic Usage
+Pass a built-in MCP name to enable it:
+
+agency copilot --mcp ado
+agency copilot --mcp kusto --mcp es-chat
+Passing Arguments
+You can pass CLI arguments to the MCP server by quoting the entire value. The arguments are the same as those available on the agency mcp <name> command.
+
+Note
+The quoting style depends on your shell. Use single quotes on macOS/Linux and double quotes on Windows.
+
+macOS/Linux:
+
+# Specify an ADO organization explicitly
+agency copilot --mcp 'ado --organization office'
+
+# Narrow ADO to specific toolsets
+agency copilot --mcp 'ado --organization office --toolsets core,repositories,pipelines,search'
+
+# Configure Kusto with a specific cluster
+agency copilot --mcp 'kusto --service-uri https://mycluster.kusto.windows.net --database mydb'
+
+# Use Bluebird (pass --mini for mini mode)
+agency copilot --mcp 'bluebird --mini'
+Windows:
+
+# Specify an ADO organization explicitly
+agency copilot --mcp "ado --organization office"
+
+# Narrow ADO to specific toolsets
+agency copilot --mcp "ado --organization office --toolsets core,repositories,pipelines,search"
+
+# Configure Kusto with a specific cluster
+agency copilot --mcp "kusto --service-uri https://mycluster.kusto.windows.net --database mydb"
+
+# Use Bluebird (pass --mini for mini mode)
+agency copilot --mcp "bluebird --mini"
+Run agency mcp <name> --help to see the available options for each MCP server.
+
+Aliasing for Multiple Instances
+To use the same MCP server multiple times with different configurations, prefix the value with an alias:
+
+macOS/Linux:
+
+agency copilot \
+  --mcp 'ado_office: ado --organization office' \
+  --mcp 'ado_mseng: ado --organization mseng'
+Windows:
+
+agency copilot ^
+  --mcp "ado_office: ado --organization office" ^
+  --mcp "ado_mseng: ado --organization mseng"
+This creates two separate ADO MCP server instances, each connecting to a different organization. Without an alias, the MCP name is used as the key, and a second --mcp ado would override the first.
+
+Available Built-in MCPs
+Name	Description	VS Code
+ado	Azure DevOps MCP server	Install in VS Code Install in VS Code Insiders
+bluebird	Bluebird / Engineering Copilot	Install in VS Code Install in VS Code Insiders
+es-chat	ES Chat MCP server	Install in VS Code Install in VS Code Insiders
+msft-learn	Microsoft Learn MCP server	Install in VS Code Install in VS Code Insiders
+s360-breeze	S360 Breeze MCP server	Install in VS Code Install in VS Code Insiders
+service-tree	ServiceTree MCP server	Install in VS Code Install in VS Code Insiders
+icm	ICM (Incident Manager) MCP server	Install in VS Code Install in VS Code Insiders
+watson	Watson MCP server	Install in VS Code Install in VS Code Insiders
+fluent	Fluent MCP server	Install in VS Code Install in VS Code Insiders
+security-context	Azure Security Context MCP (https://aka.ms/security-ai)	Install in VS Code Install in VS Code Insiders
+graph	Microsoft MCP Server for Enterprise (Graph)	Install in VS Code Install in VS Code Insiders
+kusto	Azure Kusto MCP server	Install in VS Code Install in VS Code Insiders
+workiq	WorkIQ MCP server (M365 Copilot integration)	Install in VS Code Install in VS Code Insiders
+teams	Microsoft Teams MCP server	Install in VS Code Install in VS Code Insiders
+sharepoint	Microsoft SharePoint MCP server	Install in VS Code Install in VS Code Insiders
+onedrive	Microsoft OneDrive MCP server	Install in VS Code Install in VS Code Insiders
+mail	Microsoft Mail MCP server	Install in VS Code Install in VS Code Insiders
+calendar	Microsoft Calendar MCP server	Install in VS Code Install in VS Code Insiders
+cloudbuild	CloudBuild MCP server	Install in VS Code Install in VS Code Insiders
+word	Microsoft Word MCP server	Install in VS Code Install in VS Code Insiders
+planner	Microsoft Planner MCP server	Install in VS Code Install in VS Code Insiders
+m365-user	Microsoft Graph user details, manager, team, and direct reports	Install in VS Code Install in VS Code Insiders
+m365-copilot	Search across M365 content including documents, emails, sites, files, and chats	Install in VS Code Install in VS Code Insiders
+enghub	EngineeringHub (eng.ms) — search docs, TSGs, and ServiceTree	Install in VS Code Install in VS Code Insiders
+logger	Emit custom App Insights events and write to a sandboxed per-session log folder	Install in VS Code Install in VS Code Insiders
+Tip
+Agency MCP servers handle authentication automatically via EntraID. No tokens or credentials needed.
+
+MCP Config Resolution
+When you run agency copilot or agency claude, Agency reads MCP server configurations from multiple sources and merges them before passing the result to the underlying engine. When two sources define the same MCP name, the higher-priority source wins.
+
+Priority	Source	Description
+1 (lowest)	Global defaults	Bluebird is included automatically when in an ADO repository
+2	~/.copilot/mcp-config.json	User-level global config
+3	Agency config	agency.toml / agency.yaml files (global, org, or project-level)
+4	Agent frontmatter	mcp-servers defined in the loaded agent's YAML
+5 (highest)	--mcp CLI flag	MCP servers specified on the command line
+Note
+.vscode/mcp.json is no longer read during MCP resolution. The first time you run agency copilot or agency claude in a repository that has this file, Agency offers a one-time migration to move servers into the repository's Agency config file (typically agency.toml). After migration, Agency config is the recommended place for repository-level MCP configuration. VS Code itself continues to read .vscode/mcp.json for its own MCP support — do not delete the file if VS Code still needs it.
+
+For example, if agency.toml defines an ado MCP and you also pass --mcp 'ado --organization office' (macOS/Linux) or --mcp "ado --organization office" (Windows), the CLI flag takes precedence and the agency.toml entry is overridden.
+
+Note
+MCPs are loaded once at session start. If you modify a config file during a session, restart the session for changes to take effect.
+
+Configuring MCPs in Config Files
+Beyond the --mcp flag, you can configure MCP servers persistently in config files. These files are read by Agency during resolution (see above) and are also read directly by the underlying engines (Copilot CLI, Claude Code, VS Code).
+
+Agency Config — Recommended
+The recommended way to persistently enable MCP servers is through Agency config files (agency.toml or agency.yaml). These files are layered — you can define MCPs globally (~/.agency/), per-org, or per-project, and values in closer files override distant ones.
+
+Set via CLI (easiest):
+
+Note
+Use single quotes on macOS/Linux and double quotes on Windows when passing arguments to --mcp.
+
+macOS/Linux:
+
+# Add an MCP to your project config
+agency config set --mcp ado
+
+# Add with arguments
+agency config set --mcp 'kusto --service-uri https://mycluster.kusto.windows.net --database mydb'
+
+# Add globally (applies to all repos)
+agency config set --global --mcp icm
+
+# Add multiple MCPs with an alias
+agency config set --mcp ado --mcp 'ado_office: ado --organization office'
+Windows:
+
+# Add an MCP to your project config
+agency config set --mcp ado
+
+# Add with arguments
+agency config set --mcp "kusto --service-uri https://mycluster.kusto.windows.net --database mydb"
+
+# Add globally (applies to all repos)
+agency config set --global --mcp icm
+
+# Add multiple MCPs with an alias
+agency config set --mcp ado --mcp "ado_office: ado --organization office"
+Or edit the config file directly:
+
+agency.toml:
+
+[mcps.builtins.ado]
+type = "ado"
+
+[mcps.builtins.ado_office]
+type = "ado"
+organization = "office"
+toolsets = ["core", "repositories", "pipelines", "search"]
+
+[mcps.builtins.kusto]
+type = "kusto"
+service-uri = "https://mycluster.kusto.windows.net"
+database = "mydb"
+agency.yaml:
+
+mcps:
+  builtins:
+    ado:
+      type: ado
+    ado_office:
+      type: ado
+      organization: office
+      toolsets: [core, repositories, pipelines, search]
+    kusto:
+      type: kusto
+      service-uri: https://mycluster.kusto.windows.net
+      database: mydb
+Run agency mcp <name> --help to see the available options for each MCP server. See Agency Config for full details on config file discovery and layering.
+
+Note
+The JSON key for MCP servers differs by config format. Agency accepts all variants (servers, mcpServers, mcp-servers) for flexibility, but you should use the convention expected by the engine that reads the file natively.
+
+.vscode/mcp.json — Legacy Repository Config (Migrated Automatically)
+Important
+.vscode/mcp.json is no longer read by Agency at runtime. The first time you run agency copilot or agency claude in a repository that has this file, Agency offers a one-time migration wizard to move servers into the repository's Agency config file (typically agency.toml). Use Agency config for new repository-level MCP configuration. Note that VS Code itself still reads .vscode/mcp.json for its own MCP support, so do not delete the file if VS Code needs it.
+
+If your repository still has a .vscode/mcp.json, it uses the "servers" key:
+
+{
+  "servers": {
+    "ado": {
+      "command": "agency",
+      "args": ["mcp", "ado", "--organization", "myorg"]
+    },
+    "kusto": {
+      "command": "agency",
+      "args": [
+        "mcp",
+        "kusto",
+        "--service-uri",
+        "https://mycluster.kusto.windows.net"
+      ]
+    }
+  }
+}
+~/.copilot/mcp-config.json — User Global Config
+Place an mcp-config.json file at ~/.copilot/mcp-config.json for MCP servers you want available in all sessions:
+
+{
+  "mcpServers": {
+    "kusto": {
+      "command": "agency",
+      "args": [
+        "mcp",
+        "kusto",
+        "--service-uri",
+        "https://mycluster.kusto.windows.net"
+      ]
+    }
+  }
+}
+Agent Frontmatter — Agent-Level Config
+Add mcpServers to your agent YAML frontmatter. The command and args fields reference the agency mcp command:
+
+---
+name: ado-agent
+description: Manages Azure DevOps work items and pull requests
+mcpServers:
+  ado:
+    type: local
+    command: agency
+    args: ["mcp", "ado", "--organization", "myorg"]
+    tools: ["*"]
+---
+You are an Azure DevOps specialist. Use the ADO MCP tools to help users.
+See MCP Servers in Custom Agents for full details on agent-level MCP configuration, tool restrictions, and server types.
+
+The agency mcp Command
+The agency mcp <name> command launches individual MCP servers as stdio processes. This is the command you reference when configuring MCP servers in config files.
+
+agency mcp <COMMAND>
+
+Commands:
+  ado               Launch Azure DevOps MCP server
+  kusto             Launch Azure Kusto MCP server
+  bluebird          Launch Engineering Copilot MCP server
+  icm               Launch ICM MCP server
+  security-context  Azure Security Context MCP
+  es-chat           Launch ES Chat MCP server
+  msft-learn        Launch Microsoft Learn MCP server
+  workiq            Launch WorkIQ MCP server
+  teams             Launch Microsoft Teams MCP server
+  mail              Launch Microsoft Mail MCP server
+  calendar          Launch Microsoft Calendar MCP server
+  cloudbuild        Launch CloudBuild MCP server
+  word              Launch Microsoft Word MCP server
+  planner           Launch Microsoft Planner MCP server
+  m365-user         Launch Microsoft Graph user MCP server
+  m365-copilot      Launch M365 Copilot search MCP server
+  logger            Launch Logger MCP server
+  remote            Launch a stdio MCP proxy to an HTTP MCP server (with EntraID auth)
+  local             Launch a stdio MCP proxy to a local MCP server
+  npx               Launch a stdio MCP proxy via npx
+  calculator        Launch a local calculator MCP
+  stack             Launch a local FIFO stack MCP
+Run agency mcp <name> --help to see configuration options for a specific server.
+
+Pipeline Authentication with Workload Identity Federation (WIF)
+For detailed information on configuring and using Workload Identity Federation (WIF) for pipeline authentication, see MCP Auth in Pipelines.
+
+A Special Note on ado and bluebird
+When using agency copilot or agency claude in an Azure DevOps repository, these MCP servers are configured automatically:
+
+bluebird — Engineering Copilot / Bluebird is included by default. It allows engineers to understand large, complex codebases, improve them faster, and enhance development work.
+
+ado — The Azure DevOps MCP server auto-detects your organization from the git remote. You can override this with --mcp 'ado --organization myorg' or by configuring it explicitly in a config file.
+
+To reduce tool surface and context size, you can narrow ADO to specific toolsets via --toolsets (for example, --toolsets core,repositories,pipelines,search). The same option is available in agency.toml / agency.yaml using toolsets.
+
+Bluebird Authentication in Managed Identity Pipelines
+In pipeline environments, Bluebird authenticates using SYSTEM_ACCESSTOKEN by default. However, if your pipeline overrides SYSTEM_ACCESSTOKEN with a managed identity token (e.g., to access a cross-org repo), this conflicts with the ADO MCP's OIDC flow, which also reads SYSTEM_ACCESSTOKEN.
+
+To resolve this, set AGENCY_BLUEBIRD_AUTH_TOKEN with the managed identity token. Bluebird will use it instead of SYSTEM_ACCESSTOKEN, leaving the original pipeline token available for the ADO MCP's OIDC authentication.
+
+Token resolution priority for Bluebird (stdio/pipeline mode):
+
+AGENCY_BLUEBIRD_AUTH_TOKEN (explicit override)
+SYSTEM_ACCESSTOKEN (pipeline default)
+azureauth interactive flow (local dev only)
+Logger MCP
+The Logger MCP provides agents with two capabilities: emitting custom events to Application Insights and reading/writing files in a sandboxed per-session directory.
+
+Tools
+Tool	Description
+log_event	Emit a custom event to Application Insights with an arbitrary JSON payload. The session_id is injected authoritatively and cannot be overridden.
+write_file	Write a UTF-8 file inside the logger sandbox. Parent directories are created automatically.
+read_file	Read a UTF-8 file from the logger sandbox (up to 1 MiB by default).
+list_files	List files in the sandbox (optionally recursive).
+copy_file	Copy any on-disk file into the sandbox. The source path is unrestricted; only the destination must be sandbox-relative.
+Configuration
+Option	Default	Description
+--connection-string	AGENCY_LOGGER_APPINSIGHTS_CONNECTION_STRING env var	Application Insights connection string for log_event. Individual calls may override this per-call.
+--filestore-dir-name	agency_mcp_logger_files	Name of the sandbox directory created under the Agency log folder.
+Usage
+# Enable for a session
+agency copilot --mcp logger
+
+# With a specific connection string
+agency copilot --mcp "logger --connection-string InstrumentationKey=..."
+
+# Add to Agency config
+agency config set --mcp logger
+Security Model
+session_id enforcement: The MCP injects the authoritative session ID from AGENCY_SESSION_ID into every log_event call. Any caller-supplied session_id or agency.*/agency_ prefixed attributes are stripped before emission.
+Sandbox safety: All file paths (write_file, read_file, list_files, copy_file destination) are validated to prevent path traversal — .., absolute paths, Windows UNC paths, drive-relative paths, alternate data streams, and reserved device names (CON, PRN, etc.) are all rejected.
+copy_file source: The copy_file source parameter accepts any path the process can read. This mirrors the filesystem access the calling agent already has — it is a staging convenience, not a new privilege boundary.
+Using Agency MCPs with Claude Code Directly
+If you're using Claude Code directly (not via agency claude), you can add Agency MCP servers manually:
+
+# Azure DevOps
+claude mcp add --transport stdio ado -- agency mcp ado
+
+# Bluebird
+claude mcp add --transport stdio bluebird -- agency mcp bluebird
+
+# Bluebird mini mode
+claude mcp add --transport stdio bluebird -- agency mcp bluebird --mini
+
+# WorkIQ (M365 Copilot)
+claude mcp add --transport stdio workiq -- agency mcp workiq
+
+# Security Context
+claude mcp add --transport stdio security-context -- agency mcp security-context
+
+# Microsoft Teams
+claude mcp add --transport stdio teams -- agency mcp teams
+
+# Microsoft Mail
+claude mcp add --transport stdio mail -- agency mcp mail
+
+# Microsoft Calendar
+claude mcp add --transport stdio calendar -- agency mcp calendar
+
+# CloudBuild
+claude mcp add --transport stdio cloudbuild -- agency mcp cloudbuild
+
+# Microsoft Word
+claude mcp add --transport stdio word -- agency mcp word
+
+# Microsoft Planner
+claude mcp add --transport stdio planner -- agency mcp planner
+
+# M365 User (Graph user details, manager, team, reports)
+claude mcp add --transport stdio m365-user -- agency mcp m365-user
+
+# M365 Copilot (search across M365 content)
+claude mcp add --transport stdio m365-copilot -- agency mcp m365-copilot
+
+# Logger (App Insights events and sandboxed file storage)
+claude mcp add --transport stdio logger -- agency mcp logger

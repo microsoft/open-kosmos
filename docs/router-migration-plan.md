@@ -1,20 +1,19 @@
-# Page Router Migration Technical Document
+# Router Migration Technical Document
 
 ## 1. Background and Current State Analysis
 
-The current Kosmos project's main window page switching relies entirely on state management within React components. It primarily controls the visibility of different components through multiple state variables in `App.tsx`.
+The Kosmos project's main window currently relies entirely on React component internal state management for page switching. This is primarily controlled by multiple state variables in `App.tsx` that govern the visibility of different components.
 
 ### 1.1 Current Implementation
 
-In `src/renderer/App.tsx`, the page rendering logic depends on the following state:
+In `src/renderer/App.tsx`, the rendering logic mainly depends on these states:
 
-*   `isAuthenticated`: Whether the user is authenticated.
-*   `showStartup`: Whether to show the startup page.
-*   `startupValidationResult`: Startup validation result, used to determine whether to show the login page, error page, or auto-login.
-*   `dataReady`: Whether data loading is complete.
-*   `window.location.hash`: Used only for determining window type.
+*   `isAuthenticated`: whether the user is authenticated.
+*   `showStartup`: whether to show the startup page.
+*   `startupValidationResult`: startup validation result, used to decide whether to show the login page, error page, or auto-login.
+*   `dataReady`: whether data has finished loading.
 
-The rendering logic is filled with extensive `if/else` conditions:
+The rendering logic is filled with a large number of `if/else` conditions:
 
 ```tsx
 // Pseudocode example
@@ -27,40 +26,40 @@ return <AgentPage />;
 
 ### 1.2 Existing Problems
 
-1.  **Severe logic coupling**: Page navigation logic is tightly coupled with business state (such as authentication, data loading), making `App.tsx` bloated and difficult to maintain.
-2.  **Poor extensibility**: Every new page requires introducing new state variables and modifying the rendering logic.
-3.  **Lack of routing capabilities**:
-    *   Cannot directly access specific pages via URL (although URL navigation needs are weaker in Electron applications, it is very useful for development debugging and certain feature transitions).
+1.  **Tightly coupled logic**: Page navigation logic is tightly coupled with business state (such as authentication, data loading), making `App.tsx` bloated and hard to maintain.
+2.  **Poor extensibility**: Adding a new page requires introducing new state variables and modifying the rendering condition logic.
+3.  **Lack of routing capability**:
+    *   Cannot directly access specific pages via URL (though URL navigation needs are weaker in Electron apps, it is very useful during development/debugging and certain feature jumps).
     *   Lacks history management (forward/back).
     *   Cannot leverage standard patterns like Route Guards for access control.
-4.  **Difficult deep linking**: Hard to implement direct navigation from external sources (such as system notifications, other windows) to specific views within the application.
+4.  **Deep linking is difficult**: Hard to implement direct jumps from external sources (e.g., system notifications, other windows) to specific views within the app.
 
 ## 2. Migration Goals
 
-Introduce a standard routing management library to separate page navigation logic from component state, achieving:
+Introduce a standard routing management library to extract page navigation logic from component state, achieving:
 
 1.  **Declarative route definitions**: Clearly define the mapping between URLs and components.
-2.  **Decouple navigation from state**: Use routing hooks for page transitions instead of modifying global state.
-3.  **Unified layout management**: Leverage nested routes for consistent layouts (such as sidebar, top bar).
-4.  **Better extensibility**: Adding new pages only requires registering routes, without modifying core rendering logic.
+2.  **Decouple navigation from state**: Use routing hooks for page navigation instead of modifying global state.
+3.  **Unified layout management**: Use nested routes to implement a unified Layout (e.g., sidebar, top bar).
+4.  **Better extensibility**: Adding a new page only requires registering a route, without modifying core rendering logic.
 
-## 3. Technical Approach
+## 3. Technical Plan
 
 ### 3.1 Core Library Selection
 
-The project already has `react-router-dom` (v6.30.1) installed, so we will use it directly for the migration.
+The project already has `react-router-dom` (v6.30.1) installed; use this library directly for migration.
 
-**Note**: The `@types/react-router-dom` version in `package.json` is `^5.3.3`, which is incompatible with v6. It needs to be upgraded to the v6 type definitions (usually included in the `react-router-dom` v6 main package, or install `@types/react-router-dom@latest`; in practice, v6 includes its own type definitions, so the old `@types` package may need to be removed).
+**Note**: The `@types/react-router-dom` version in `package.json` is `^5.3.3`, which is incompatible with v6. It needs to be upgraded to the type definitions for v6 (usually included in the `react-router-dom` v6 main package; v6 comes with its own type definitions, so the old `@types` package may need to be removed).
 
-### 3.2 Routing Mode
+### 3.2 Router Mode
 
 Use **`HashRouter`**.
 
-*   **Reason**: Electron applications typically load local files (`file://` protocol). `BrowserRouter` relies on the HTML5 History API, which can cause path resolution issues under the `file://` protocol (unless complex server rewrite rules are configured). `HashRouter` uses the URL hash portion (`#/path/to/page`), which is the most stable approach in Electron environments and requires no additional configuration.
+*   **Reason**: Electron apps typically load local files (`file://` protocol). `BrowserRouter` relies on the HTML5 History API, which can cause path resolution issues under the `file://` protocol (unless complex server rewrite rules are configured). `HashRouter` uses the URL's hash portion (`#/path/to/page`), which is most stable in Electron environments and requires no additional configuration.
 
 ### 3.3 Route Structure Design
 
-The recommended route structure is as follows:
+Recommended route structure:
 
 ```
 /                   -> Root path, redirects based on state
@@ -75,22 +74,20 @@ The recommended route structure is as follows:
   /agent/settings   -> Settings page (SettingsPage)
 ```
 
-**Note**: The screenshot window has its own independent entry file (`screenshot.html` / `screenshot.tsx`) and does not share the main window's routing system, so it does not need to be configured here.
-
 ### 3.4 Route Guards
 
-Create a `RequireAuth` component to protect routes that require authentication (such as `/agent`).
+Create a `RequireAuth` component to protect routes that require authentication (e.g., `/agent`).
 
 ## 4. Migration Implementation Steps
 
-### Step 1: Dependency Adjustments
+### Step 1: Dependency Adjustment
 
 1.  Remove incompatible type definitions: `npm uninstall @types/react-router-dom` (v6 includes its own types).
-2.  Ensure the `react-router-dom` version is correct.
+2.  Verify the `react-router-dom` version is correct.
 
 ### Step 2: Create Route Configuration Component
 
-Create `src/renderer/routes/AppRoutes.tsx` to define all routes.
+Create `src/renderer/routes/AppRoutes.tsx` and define all routes.
 
 ```tsx
 import React from 'react';
@@ -104,7 +101,7 @@ import { McpView } from '../components/mcp/McpView';
 import { SkillsView } from '../components/skills/SkillsView';
 import { MemoryView } from '../components/memory/MemoryView';
 import { SettingsPage } from '../components/pages/SettingsPage';
-import { RequireAuth } from './RequireAuth'; // Needs to be created
+import { RequireAuth } from './RequireAuth'; // needs to be created
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -134,7 +131,7 @@ export const AppRoutes: React.FC = () => {
 };
 ```
 
-### Step 3: Implement Route Guards
+### Step 3: Implement Route Guard
 
 Create `src/renderer/routes/RequireAuth.tsx`.
 
@@ -148,7 +145,7 @@ export const RequireAuth: React.FC = () => {
   const location = useLocation();
 
   if (loading) {
-    return <div>Loading...</div>; // Or a unified Loading component
+    return <div>Loading...</div>; // or a unified Loading component
   }
 
   if (!isAuthenticated) {
@@ -162,7 +159,7 @@ export const RequireAuth: React.FC = () => {
 
 ### Step 4: Refactor App.tsx
 
-Wrap the application with `HashRouter` and remove the original state-based conditional logic.
+Wrap the application with `HashRouter` and remove the original state-based condition logic.
 
 ```tsx
 import { HashRouter } from 'react-router-dom';
@@ -189,7 +186,7 @@ const App: React.FC = () => {
 
 ### Step 5: Refactor Page Components
 
-Modify `StartupPage`, `SignInPage`, and other components, replacing the original `onComplete` or `setStartupValidationResult` callback logic with navigation using `useNavigate`.
+Modify `StartupPage`, `SignInPage`, and other components; replace the original `onComplete` or `setStartupValidationResult` callbacks with `useNavigate` for navigation.
 
 **Example (StartupPage):**
 
@@ -207,9 +204,9 @@ if (result.recommendedAction === StartupAction.SHOW_USER_SELECTION) {
 }
 ```
 
-## 5. Sub-routes Refactoring
+## 5. Sub-component Route Refactoring (Sub-routes Refactoring)
 
-In addition to the top-level routing in `App.tsx`, `AgentPage` and its child components (`AppLayout`, `ContentContainer`) also contain extensive view switching logic that needs to be refactored into nested routes.
+In addition to the top-level routes in `App.tsx`, `AgentPage` and its sub-components (`AppLayout`, `ContentContainer`) also contain a large amount of view-switching logic that needs to be refactored into nested routes.
 
 ### 5.1 Current State Analysis
 
@@ -219,22 +216,22 @@ In addition to the top-level routing in `App.tsx`, `AgentPage` and its child com
 *   **`LeftNavigation`**: Switches views via `setActiveView`.
 *   **`ContentContainer`**: Renders different components (`ChatView`, `McpView`, etc.) based on `activeView`.
 
-This pattern forces `ContentContainer` to receive all props required by its child views and pass them through (prop drilling), increasing coupling between components.
+This pattern forces `ContentContainer` to receive all Props needed by sub-views and pass them through (Prop Drilling), increasing coupling between components.
 
-### 5.2 Refactoring Approach
+### 5.2 Refactoring Plan
 
 1.  **`AgentPage` as a layout component**:
-    *   `AgentPage` will serve as the layout component for the `/agent` route.
-    *   It will continue to be responsible for fetching global chat state (such as `messages`, `streamingMessage`) and passing it to child routes via `Outlet` context.
+    *   `AgentPage` will serve as the Layout component for the `/agent` route.
+    *   It will continue to be responsible for fetching global chat state (such as `messages`, `streamingMessage`) and passing it to sub-routes via the `Outlet` context.
 
 2.  **`AppLayout` & `ContentContainer`**:
     *   `AppLayout` remains unchanged, responsible for the overall layout structure.
-    *   `ContentContainer` will no longer switch components based on `activeView`, but will instead directly render `<Outlet />`.
-    *   Remove the extensive prop drilling in `ContentContainer`, and instead have child view components obtain data directly using Context or Hooks.
+    *   `ContentContainer` will no longer switch components based on `activeView`, but will directly render `<Outlet />`.
+    *   Remove the heavy Prop drilling from `ContentContainer`; sub-view components should directly use Context or Hooks to get data.
 
 3.  **`LeftNavigation`**:
     *   Replace click events (`onClick`) with the `NavLink` component.
-    *   `NavLink` automatically handles the active state (active class), eliminating the need to manually check `activeView`.
+    *   `NavLink` handles active state (active class) automatically, without manually checking `activeView`.
 
     ```tsx
     // Before
@@ -247,7 +244,7 @@ This pattern forces `ContentContainer` to receive all props required by its chil
     ```
 
 4.  **Data passing optimization**:
-    *   For data like `messages` needed by `ChatView`, it can be obtained via `useOutletContext`, or elevated to an independent Context (`ChatContext`). Since `AgentPage` already holds this state, using the `Outlet` context property provides a smooth transition.
+    *   For `messages` and other data needed by `ChatView`, it can be obtained via `useOutletContext`, or lifted into a separate Context (`ChatContext`). Since `AgentPage` already holds this state, using the `Outlet` context attribute is a smooth transition approach.
 
     ```tsx
     // AgentPage.tsx
@@ -257,20 +254,19 @@ This pattern forces `ContentContainer` to receive all props required by its chil
     const { messages } = useOutletContext<ChatContextType>();
     ```
 
-## 6. Risks and Considerations
+## 6. Risks and Notes
 
-1.  **State passing**: The original `startupValidationResult` was passed via Props. After the migration, it needs to be passed through React Router's `state` property, or managed in a global Context (such as `StartupContext`). For complex startup data, using Context or a global Store is recommended.
-2.  **Screenshot window**: The screenshot window is a separate Electron window that may carry a specific hash when loaded. Ensure `HashRouter` handles this correctly.
-3.  **Lifecycle**: Route transitions cause components to unmount and remount. Check whether any components depend on the assumption of "always existing" (for example, certain `useEffect` hooks that run only once at app startup). If state persistence is needed, the state may need to be elevated to Context or managed with a state management library.
-4.  **Style compatibility**: Ensure that route containers (`Routes`, `Outlet`) do not break existing CSS layouts (such as `flex`, `h-screen`, etc.).
+1.  **State passing**: The original `startupValidationResult` was passed via Props. After migration, it needs to be passed via React Router's `state` attribute, or placed in a global Context (such as `StartupContext`). For complex startup data, using Context or a global Store is recommended.
+2.  **Lifecycle**: Route switching causes components to unmount and remount. Check whether any components rely on the assumption of "always being present" (e.g., some `useEffect` that runs only once when the app starts). If state needs to be preserved, it may be necessary to lift state to Context or use a state management library.
+3.  **Style compatibility**: Ensure routing containers (`Routes`, `Outlet`) do not break existing CSS layouts (e.g., `flex`, `h-screen`, etc.).
 
 ## 7. Summary
 
-By introducing `react-router-dom`, the Kosmos project will gain standard routing management capabilities, resulting in a cleaner code structure and a solid foundation for future multi-page feature extensions (such as settings pages, independent chat windows, etc.).
+By introducing `react-router-dom`, the Kosmos project will gain standard routing management capabilities. The code structure will be cleaner, laying a solid foundation for future multi-page feature expansion (such as settings pages, standalone chat windows, etc.).
 
 ## 8. Implementation Progress Tracking (TODO List)
 
-### Phase 1: Basic Environment and Top-Level Routing
+### Phase 1: Basic Environment and Top-Level Routes
 
 - [x] **Dependency management**
     - [x] Remove incompatible `@types/react-router-dom` (v5).
@@ -282,33 +278,32 @@ By introducing `react-router-dom`, the Kosmos project will gain standard routing
 
 - [x] **App.tsx refactoring**
     - [x] Introduce `HashRouter`.
-    - [x] Remove state variables used for page switching such as `showStartup`, `startupValidationResult`, etc.
+    - [x] Remove `showStartup`, `startupValidationResult`, and other states used for page switching.
     - [x] Replace original conditional rendering logic with `<AppRoutes />`.
 
 - [x] **Page component adaptation (top-level)**
-    - [x] `StartupPage`: Replace `onComplete` callback with `useNavigate` navigation.
-    - [x] `SignInPage`: Navigate to `/agent` using `useNavigate` after successful login.
-    - [x] `DataLoadingPage`: Navigate after loading completes.
-    - [x] Verify screenshot standalone window routing works correctly.
+    - [x] `StartupPage`: replace `onComplete` callback with `useNavigate` navigation.
+    - [x] `SignInPage`: use `useNavigate` to navigate to `/agent` after login.
+    - [x] `DataLoadingPage`: navigate after loading completes.
 
 ### Phase 2: Sub-routes and Layout Refactoring (AgentPage)
 
 - [ ] **AgentPage refactoring (Layout)**
-    - [ ] Refactor `AgentPage` to use `<Outlet />` for rendering child content.
-    - [ ] Pass shared state such as `messages`, `streamingMessage` via `Outlet.context` or Context API.
+    - [ ] Change `AgentPage` to render sub-content using `<Outlet />`.
+    - [ ] Pass shared state like `messages`, `streamingMessage` via `Outlet.context` or Context API.
 
 - [ ] **AppLayout & ContentContainer refactoring**
-    - [ ] `ContentContainer`: Remove `activeView` conditional logic, render `<Outlet />` directly.
-    - [ ] Clean up props no longer needed for prop drilling in `ContentContainer`.
+    - [ ] `ContentContainer`: remove `activeView` check; directly render `<Outlet />`.
+    - [ ] Clean up Prop drilling from `ContentContainer` that is no longer needed.
 
 - [ ] **LeftNavigation refactoring**
-    - [ ] Replace `onClick` event handlers with `<NavLink>` for view switching.
+    - [ ] Use `<NavLink>` to replace `onClick` event handler for view switching.
     - [ ] Remove `activeView` state from `LayoutProvider` (if no longer needed).
 
-- [ ] **Child view component adaptation**
-    - [ ] `ChatView`: Adapt to obtain data from `useOutletContext`.
-    - [ ] `McpView`: Adapt to route parameters (if applicable).
-    - [ ] `SkillsView`, `MemoryView`, `SettingsPage`: Ensure they render correctly under sub-routes.
+- [ ] **Sub-view component adaptation**
+    - [ ] `ChatView`: adapt to get data from `useOutletContext`.
+    - [ ] `McpView`: adapt to route parameters (if any).
+    - [ ] `SkillsView`, `MemoryView`, `SettingsPage`: ensure they render correctly as sub-routes.
 
 ## 5. Implementation Summary (Completed)
 
@@ -352,5 +347,3 @@ The router migration was successfully completed on December 24, 2025.
     ```tsx
     navigate('/login', { state: { startupResult } });
     ```
-
-

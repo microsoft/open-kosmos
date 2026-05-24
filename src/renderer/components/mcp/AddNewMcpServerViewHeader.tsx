@@ -43,7 +43,7 @@ const AddNewMcpServerViewHeader: React.FC<AddNewMcpServerViewHeaderProps> = ({
         <span className="header-name">{title}</span>
       </div>
       <div className="header-actions">
-        {/* Right side can add other action buttons, currently empty */}
+        {/* Additional action buttons can be added here on the right side */}
       </div>
     </div>
   )

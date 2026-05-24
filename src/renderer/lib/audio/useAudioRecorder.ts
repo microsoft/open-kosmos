@@ -8,6 +8,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[UseAudioRecorder]');
 
 export interface AudioRecorderOptions {
   /** Target sample rate (Whisper requires 16000 Hz) */
@@ -100,7 +102,7 @@ export function useAudioRecorder(
       setState(prev => ({ ...prev, hasPermission: true, error: null }));
       return true;
     } catch (err) {
-      console.error('[AudioRecorder] Permission denied:', err);
+      logger.error('[AudioRecorder] Permission denied:', err);
       setState(prev => ({
         ...prev,
         hasPermission: false,
@@ -175,7 +177,7 @@ export function useAudioRecorder(
       };
 
       mediaRecorder.onerror = (event: Event) => {
-        console.error('[AudioRecorder] Error:', event);
+        logger.error('[AudioRecorder] Error:', event);
         setState(prev => ({ ...prev, error: 'Recording error occurred' }));
       };
 
@@ -198,7 +200,7 @@ export function useAudioRecorder(
 
         // Auto-stop if max duration reached
         if (elapsed >= maxDuration) {
-          console.log('[AudioRecorder] Max duration reached, stopping...');
+          logger.debug('[AudioRecorder] Max duration reached, stopping...');
           // Will be stopped externally
         }
       }, 100);
@@ -207,7 +209,7 @@ export function useAudioRecorder(
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
 
     } catch (err) {
-      console.error('[AudioRecorder] Failed to start:', err);
+      logger.error('[AudioRecorder] Failed to start:', err);
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Failed to start recording',

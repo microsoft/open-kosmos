@@ -1,8 +1,7 @@
 const path = require('path');
 const webpack = require('webpack');
 
-const brandConfig = require('./scripts/brand-config');
-const { config: appConfig } = brandConfig;
+const appConfig = require('./brands/openkosmos/config.json');
 
 // Load environment variables from .env.local (or DOTENV_CONFIG_PATH for E2E test builds)
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' });
@@ -20,8 +19,9 @@ module.exports = (env, argv) => {
   target: 'electron-main',
   entry: {
     main: './src/main/bootstrap.ts',
-    preload: './src/main/preload.ts',
-    'preload.screenshot': './src/main/preload-screenshot/entry.ts',
+    preload: './src/preload/main.ts',
+    'preload.toolbar': './src/preload/toolbar.ts',
+    'preload.screenshot': './src/preload/screenshot.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist/main'),
@@ -43,20 +43,30 @@ module.exports = (env, argv) => {
             loader: 'ts-loader',
             options: {
               configFile: 'tsconfig.main.json',
+              compilerOptions: { noEmit: false, outDir: './dist/main', rootDir: './src' },
             },
           },
         ],
+        exclude: [/node_modules/, /\.test\.ts$/, /\.spec\.ts$/, /__tests__/, /src\/preload/],
+      },
+      {
+        test: /\.ts$/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig.preload.json',
+              compilerOptions: { noEmit: false, outDir: './dist/main', rootDir: './src' },
+            },
+          },
+        ],
+        include: [/src\/preload/],
         exclude: [/node_modules/, /\.test\.ts$/, /\.spec\.ts$/, /__tests__/],
       },
       {
         // Handle .node files (native modules)
         test: /\.node$/,
         use: 'node-loader',
-      },
-      {
-        // Handle .md files as raw text strings (for edge prompt resources)
-        test: /\.md$/,
-        type: 'asset/source',
       },
     ],
   },
@@ -67,9 +77,13 @@ module.exports = (env, argv) => {
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
       'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(process.env.DEVELOPMENT_BASE_CDN_URL),
       'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(process.env.PRODUCTION_BASE_CDN_URL),
+      'process.env.RELEASE_CDN_URL': JSON.stringify(process.env.RELEASE_CDN_URL),
       'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
-      'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
+      'process.env.BRAND_NAME': JSON.stringify('openkosmos'),
       'process.env.APP_NAME': JSON.stringify(appConfig.productName),
+      'process.env.APP_ID': JSON.stringify(appConfig.appId),
+      'process.env.DEVELOPMENT_RELAY_SERVICE_URL': JSON.stringify(process.env.DEVELOPMENT_RELAY_SERVICE_URL || ''),
+      'process.env.PRODUCTION_RELAY_SERVICE_URL': JSON.stringify(process.env.PRODUCTION_RELAY_SERVICE_URL || ''),
       'process.env.USER_DATA_NAME': JSON.stringify(appConfig.userDataName || appConfig.productName),
       'process.env.PRESET_MODEL_GPT4O_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT4O_NAME),
       'process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME),
@@ -82,6 +96,8 @@ module.exports = (env, argv) => {
       'process.env.PRESET_MODEL_GPT41_API_KEY': JSON.stringify(process.env.PRESET_MODEL_GPT41_API_KEY),
       'process.env.PRESET_MODEL_GPT41_API_VERSION': JSON.stringify(process.env.PRESET_MODEL_GPT41_API_VERSION),
       'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(process.env.HISTORY_PROMPT_QUEUE_SIZE),
+      // Active User tracking threshold (minutes), default 5 min
+      'process.env.ACTIVE_USER_THRESHOLD_MIN': JSON.stringify(process.env.ACTIVE_USER_THRESHOLD_MIN || ''),
     })
   ],
   node: {
@@ -102,22 +118,22 @@ module.exports = (env, argv) => {
       const nativeModules = [
         'sharp',
         'onnxruntime-node',
-        'better-sqlite3',
-        'sqlite-vec',
         '@xenova/transformers',
         'fsevents',
         'cpu-features',
-        // Playwright and browser automation
+        // Playwright and browser automation — MUST stay external.
+        // These are resolved from node_modules at runtime (outside asar via asarUnpack).
+        // "playwright" kept for dev/E2E tests; "playwright-core" is the runtime dep.
+        // If you move playwright-core out of package.json `dependencies`, all browser
+        // automation (CDP auth, web search) will silently break in packaged builds.
         'playwright',
         'playwright-core',
         'chromium-bidi',
+        'bufferutil',
         'utf-8-validate',
         'selection-hook', // Add selection-hook to native modules
         // node-screenshots window detection native addon
         'node-screenshots',
-        // Azure MSAL native broker runtime (contains .node and .dylib files)
-        '@azure/msal-node-runtime',
-        '@azure/msal-node-extensions',
         // Whisper speech-to-text native addon
         '@kutalia/whisper-node-addon',
         // Additional AI/ML modules that may contain native bindings

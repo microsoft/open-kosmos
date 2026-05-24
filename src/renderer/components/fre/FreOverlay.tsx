@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import FreWelcomeView, { FrePromotedAgent } from './FreWelcomeView';
 import FreSettingUpView, { SetupFlowType } from './FreSettingUpView';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[FreOverlay]');
 
 interface FreOverlayProps {
   onSkip: () => void;
@@ -12,21 +14,23 @@ type FreView = 'welcome' | 'setup';
 /**
  * FRE (First Run Experience) Overlay Component
  * Coordinator component that manages view switching between Welcome and Setting Up views
- * 
- * 1. Shows Welcome View first (agent selection)
- * 2. Then shows Setting Up View
- * 3. Completes FRE
+ *
+ * Flow:
+ *   1. Shows Welcome View first (agent selection)
+ *   2. Then shows Setting Up View
+ *   3. Completes FRE
  */
 const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
-  // Start with welcome view
-  const [currentView, setCurrentView] = useState<FreView>('welcome');
-  
+
+  // Skip welcome view (agent library removed), go directly to basic setup
+  const [currentView, setCurrentView] = useState<FreView>('setup');
+
   // Selected agent from welcome view (null = skip/basic setup)
   const [selectedAgent, setSelectedAgent] = useState<FrePromotedAgent | null>(null);
-  
+
   // Setup flow type based on selection
   const [setupFlowType, setSetupFlowType] = useState<SetupFlowType>('basic');
-  
+
   // State to track if we're on Windows (for title bar height)
   const [isWindows, setIsWindows] = useState(false);
 
@@ -54,18 +58,20 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
    * Sets the setup flow type based on selected agent and transitions to setup view
    */
   const handleSelectAgent = (agent: FrePromotedAgent) => {
-    console.log('[FRE] Agent selected from Welcome View:', agent.name);
+    logger.debug('[FRE] Agent selected from Welcome View:', agent.name);
     setSelectedAgent(agent);
-    
+
     // Determine setup flow type based on agent name
     const agentNameLower = agent.name.toLowerCase();
-    if (agentNameLower.includes('design')) {
+    if (agentNameLower.includes('pm agent')) {
+      setSetupFlowType('pm-agent');
+    } else if (agentNameLower.includes('design')) {
       setSetupFlowType('design-agent');
     } else {
-      // Default flow for promoted agents
+      // Default to pm-agent flow for promoted agents
       setSetupFlowType('pm-agent');
     }
-    
+
     // Transition to setup view
     setCurrentView('setup');
   };
@@ -75,7 +81,7 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
    * Sets basic setup flow and transitions to setup view
    */
   const handleSkipWelcome = () => {
-    console.log('[FRE] User skipped Welcome View, starting basic setup');
+    logger.debug('[FRE] User skipped Welcome View, starting basic setup');
     setSelectedAgent(null);
     setSetupFlowType('basic');
     setCurrentView('setup');
@@ -83,10 +89,10 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
 
   /**
    * Handle setup completion from Setting Up View
-   * Complete FRE (freDone already set in FreSettingUpView)
+   * Completes FRE (freDone already set in FreSettingUpView)
    */
   const handleSetupComplete = () => {
-    console.log('[FRE] Setup complete, closing FRE overlay');
+    logger.debug('[FRE] Setup complete, closing FRE overlay');
     onSkip();
   };
 

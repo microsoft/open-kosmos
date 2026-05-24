@@ -24,7 +24,7 @@ export const RequireAuth: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    // Redirect to login page, saving current location for post-login redirect
+    // Redirect to the login page, preserving the current location so we can navigate back after login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

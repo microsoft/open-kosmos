@@ -10,3 +10,4 @@ export { default as AttachMenuDropdown } from './AttachMenuDropdown';
 export { default as ChatSessionDropdownMenu } from './ChatSessionDropdownMenu';
 export { default as FileTreeNodeContextMenu } from './FileTreeNodeContextMenu';
 export { default as ImageGalleryContextMenu } from './ImageGalleryContextMenu';
+export { default as SubAgentsAddMenuDropdown } from './SubAgentsAddMenuDropdown';

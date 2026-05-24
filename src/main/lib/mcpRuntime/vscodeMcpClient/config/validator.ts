@@ -1,19 +1,19 @@
 /**
- * Configuration Validator
+ * Configuration validator
  * VSCode MCP Client configuration validation and compatibility checking
  */
 
-import { 
+import {
   McpServerConfig,
   ConfigValidationReport,
   ValidationRuleResult,
   ImportValidationResult,
   VSCodeMCPServerConfig,
-  KosmosAppMCPServerConfig,
-  TransportType 
+  OpenKosmosAppMCPServerConfig,
+  TransportType
 } from './types';
 
-// ==================== Validation Rule Interface ====================
+// ==================== Validation rule interface ====================
 
 export interface ValidationRule {
   name: string;
@@ -21,7 +21,7 @@ export interface ValidationRule {
   severity: 'error' | 'warning' | 'info';
 }
 
-// ==================== Main Validation Functions ====================
+// ==================== Main validation functions ====================
 
 /**
  * Validate a single MCP server configuration
@@ -34,7 +34,7 @@ export function validateMcpServerConfig(config: McpServerConfig): ConfigValidati
   // Run all validation rules
   for (const rule of validationRules) {
     const result = rule.validate(config);
-    
+
     if (!result.passed && result.message) {
       switch (rule.severity) {
         case 'error':
@@ -64,7 +64,7 @@ export function validateMcpServerConfig(config: McpServerConfig): ConfigValidati
 }
 
 /**
- * Batch validate multiple configurations for batch import
+ * Validate multiple configurations for batch import
  */
 export function validateBatchImport(configs: McpServerConfig[]): ImportValidationResult {
   const allErrors: string[] = [];
@@ -75,7 +75,7 @@ export function validateBatchImport(configs: McpServerConfig[]): ImportValidatio
   for (const config of configs) {
     const report = validateMcpServerConfig(config);
     reports.push(report);
-    
+
     allErrors.push(...report.errors.map(err => `${config.name}: ${err}`));
     allWarnings.push(...report.warnings.map(warn => `${config.name}: ${warn}`));
   }
@@ -103,7 +103,7 @@ export function validateVSCodeConfigBeforeImport(
   serverName: string,
   vscodeConfig: VSCodeMCPServerConfig
 ): ValidationRuleResult {
-  // Check if configuration is disabled
+  // Check whether the configuration is disabled
   if (vscodeConfig.disabled === true) {
     return {
       passed: false,
@@ -111,7 +111,7 @@ export function validateVSCodeConfigBeforeImport(
     };
   }
 
-  // Check if required fields exist
+  // Check whether required fields exist
   const hasStdioConfig = !!(vscodeConfig.command || vscodeConfig.args);
   const hasHttpConfig = !!vscodeConfig.url;
 
@@ -147,7 +147,7 @@ export function validateVSCodeConfigBeforeImport(
   return { passed: true };
 }
 
-// ==================== Validation Rule Definitions ====================
+// ==================== Validation rule definitions ====================
 
 /**
  * Validation rules for MCP server configuration
@@ -204,7 +204,7 @@ const validationRules: ValidationRule[] = [
     severity: 'warning',
     validate: (config) => {
       if (config.transport === 'stdio' || !config.url) return { passed: true };
-      
+
       try {
         new URL(config.url);
         return { passed: true };
@@ -225,7 +225,7 @@ const validationRules: ValidationRule[] = [
       const validNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9\-_]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
       return {
         passed: validNamePattern.test(config.name),
-        message: !validNamePattern.test(config.name) 
+        message: !validNamePattern.test(config.name)
           ? 'Server name should only contain alphanumeric characters, hyphens, and underscores' : undefined
       };
     }
@@ -237,15 +237,15 @@ const validationRules: ValidationRule[] = [
     severity: 'warning',
     validate: (config) => {
       if (config.transport !== 'stdio' || !config.command) return { passed: true };
-      
-      // Check if command looks like a valid executable
+
+      // Check whether the command looks like a valid executable
       const commonExecutables = ['node', 'python', 'python3', 'npm', 'npx', 'uvx', 'uv', 'cargo', 'go'];
       const command = config.command.toLowerCase();
-      
-      const isCommonExecutable = commonExecutables.some(exec => 
+
+      const isCommonExecutable = commonExecutables.some(exec =>
         command === exec || command.endsWith(`/${exec}`) || command.endsWith(`\\${exec}.exe`)
       );
-      
+
       return {
         passed: isCommonExecutable || command.includes('/') || command.includes('\\'),
         message: !isCommonExecutable && !command.includes('/') && !command.includes('\\')
@@ -262,16 +262,16 @@ const validationRules: ValidationRule[] = [
       if (!config.env || Object.keys(config.env).length === 0) {
         return { passed: true };
       }
-      
+
       // Check for sensitive data in environment variables
       const sensitiveKeys = ['password', 'secret', 'token', 'key', 'api_key'];
-      const hasSensitiveData = Object.keys(config.env).some(key => 
+      const hasSensitiveData = Object.keys(config.env).some(key =>
         sensitiveKeys.some(sensitive => key.toLowerCase().includes(sensitive))
       );
-      
+
       return {
         passed: true,
-        message: hasSensitiveData ? 'Configuration contains environment variables that may contain sensitive data' : undefined
+        message: hasSensitiveData ? 'Configuration contains environment variables that may hold sensitive data' : undefined
       };
     }
   },
@@ -287,7 +287,7 @@ const validationRules: ValidationRule[] = [
           message: 'Transport type is SSE but URL does not contain "sse"'
         };
       }
-      
+
       return { passed: true };
     }
   },
@@ -298,7 +298,7 @@ const validationRules: ValidationRule[] = [
     severity: 'warning',
     validate: (config) => {
       if (!config.workingDirectory) return { passed: true };
-      
+
       // Basic path validation
       if (config.workingDirectory.includes('..')) {
         return {
@@ -306,29 +306,29 @@ const validationRules: ValidationRule[] = [
           message: 'Working directory should not contain relative path components'
         };
       }
-      
+
       return { passed: true };
     }
   }
 ];
 
-// ==================== Utility Functions ====================
+// ==================== Utility functions ====================
 
 /**
- * Calculate configuration quality score
+ * Calculate the quality score for a configuration
  */
 function calculateQualityScore(
-  config: McpServerConfig, 
-  errors: string[], 
+  config: McpServerConfig,
+  errors: string[],
   warnings: string[]
 ): number {
   let score = 100;
 
-  // Error and warning deductions
-  score -= errors.length * 20;  // Deduct 20 points per error
-  score -= warnings.length * 5; // Deduct 5 points per warning
+  // Deduct points for errors and warnings
+  score -= errors.length * 20;  // 20 points per error
+  score -= warnings.length * 5; // 5 points per warning
 
-  // Good practice bonuses
+  // Bonus points for good practices
   if (config.name && config.name.length > 3) score += 5;
   if (config.env && Object.keys(config.env).length > 0) score += 5;
   if (config.transport === 'stdio' && config.args && config.args.length > 0) score += 5;
@@ -389,7 +389,7 @@ function checkForConflicts(configs: McpServerConfig[]): string[] {
   return warnings;
 }
 
-// ==================== Validation Summary and Suggestions ====================
+// ==================== Validation summary and suggestions ====================
 
 /**
  * Get validation summary for import preview
@@ -405,7 +405,7 @@ export function getValidationSummary(reports: ConfigValidationReport[]): {
   const validServers = reports.filter(r => r.isValid).length;
   const totalErrors = reports.reduce((sum, r) => sum + r.errors.length, 0);
   const totalWarnings = reports.reduce((sum, r) => sum + r.warnings.length, 0);
-  const averageScore = totalServers > 0 
+  const averageScore = totalServers > 0
     ? Math.round(reports.reduce((sum, r) => sum + r.score, 0) / totalServers)
     : 0;
 
@@ -428,7 +428,7 @@ export function suggestConfigFixes(report: ConfigValidationReport): string[] {
     if (error.includes('Server name is required')) {
       suggestions.push('Add a descriptive server name');
     } else if (error.includes('requires command')) {
-      suggestions.push('Specify the command to execute (e.g., "python", "node", "uvx")');
+      suggestions.push('Specify the command to execute (e.g. "python", "node", "uvx")');
     } else if (error.includes('requires URL')) {
       suggestions.push('Provide a valid HTTP/SSE endpoint URL');
     } else if (error.includes('Invalid transport type')) {
@@ -438,11 +438,11 @@ export function suggestConfigFixes(report: ConfigValidationReport): string[] {
 
   for (const warning of report.warnings) {
     if (warning.includes('Invalid URL format')) {
-      suggestions.push('Check URL format (should start with http:// or https://)');
+      suggestions.push('Check the URL format (should start with http:// or https://)');
     } else if (warning.includes('Server name should only contain')) {
       suggestions.push('Use only alphanumeric characters, hyphens, and underscores');
-    } else if (warning.includes('Command may not be a valid')) {
-      suggestions.push('Verify the command is installed and accessible');
+    } else if (warning.includes('Command may not be')) {
+      suggestions.push('Verify that the command is installed and accessible');
     }
   }
 
@@ -462,9 +462,9 @@ export function validateVSCodeConfig(input: string, format: 'settings.json' | 'm
 
   try {
     const parsedConfig = JSON.parse(input);
-    
+
     let servers: Record<string, any> = {};
-    
+
     if (format === 'settings.json') {
       if (!parsedConfig.mcp) {
         errors.push('Missing "mcp" section in settings.json');
@@ -491,11 +491,11 @@ export function validateVSCodeConfig(input: string, format: 'settings.json' | 'm
       }
 
       const config = serverConfig as any;
-      
-      // Check for command/args (stdio) or url (http/sse)
+
+      // Check whether command/args (stdio) or url (http/sse) is present
       const hasStdioConfig = config.command || config.args;
       const hasHttpConfig = config.url;
-      
+
       if (!hasStdioConfig && !hasHttpConfig) {
         errors.push(`Server "${serverName}" is missing required configuration (command/args or url)`);
         continue;
@@ -513,17 +513,17 @@ export function validateVSCodeConfig(input: string, format: 'settings.json' | 'm
       serverCount
     };
   } catch (parseError) {
-    errors.push(`Invalid JSON format: ${parseError instanceof Error ? parseError.message : 'parse error'}`);
+    errors.push(`Invalid JSON format: ${parseError instanceof Error ? parseError.message : 'Parse error'}`);
     return { isValid: false, errors, serverCount: 0 };
   }
 }
 
-// ==================== Type Conversion Validation ====================
+// ==================== Type conversion and validation ====================
 
 /**
- * Convert configuration to Kosmos format for validation
+ * Convert configuration to OpenKosmos format for validation
  */
-export function convertToKosmosFormat(config: McpServerConfig): KosmosAppMCPServerConfig {
+export function convertToOpenKosmosFormat(config: McpServerConfig): OpenKosmosAppMCPServerConfig {
   return {
     name: config.name,
     transport: config.transport === 'http' ? 'StreamableHttp' : (config.transport as any),

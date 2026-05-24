@@ -1,9 +1,9 @@
 // src/renderer/components/chat/toolCallViews/WebSearchToolCallView.tsx
-// Web Search tool call custom view component
+// Custom view component for Web Search tool calls
 
 import React from 'react';
 import { ToolCallViewProps, WebSearchToolResult, WebSearchToolArgs, WebSearchResultItem } from './types';
-import { MessageHelper } from '../../../types/chatTypes';
+import { MessageHelper } from '@shared/types/chatTypes';
 
 /**
  * Parse tool call arguments
@@ -41,7 +41,7 @@ const groupResultsByQuery = (
   // Initialize empty arrays for all queries
   queries.forEach(q => grouped.set(q, []));
 
-  // Assign results to their corresponding queries
+  // Assign results to their corresponding query
   results.forEach(result => {
     const query = result.query || queries[0] || 'Search';
     if (!grouped.has(query)) {
@@ -54,7 +54,7 @@ const groupResultsByQuery = (
 };
 
 /**
- * Get website favicon URL
+ * Get favicon URL for a website
  */
 const getFaviconUrl = (url: string): string => {
   try {
@@ -66,7 +66,7 @@ const getFaviconUrl = (url: string): string => {
 };
 
 /**
- * Search result row component - single line layout: favicon + title | URL
+ * Search result row component - single-line layout: favicon + title | URL
  */
 const SearchResultRow: React.FC<{ result: WebSearchResultItem }> = ({ result }) => {
   const handleClick = () => {
@@ -97,11 +97,12 @@ const SearchResultRow: React.FC<{ result: WebSearchResultItem }> = ({ result }) 
 
 /**
  * Web Search Tool Call custom view
- * Displays search queries and results
+ * Displays search queries and search results
  */
 export const WebSearchToolCallView: React.FC<ToolCallViewProps> = ({
   toolCall,
   toolResult,
+  executionStatus,
 }) => {
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
@@ -114,7 +115,8 @@ export const WebSearchToolCallView: React.FC<ToolCallViewProps> = ({
   }
 
   const queries = args.queries;
-  const isExecuting = !toolResult;
+  const isExecuting = executionStatus === 'executing';
+  const isInterrupted = executionStatus === 'interrupted';
 
   // Group results by query
   const groupedResults = result?.results
@@ -132,6 +134,8 @@ export const WebSearchToolCallView: React.FC<ToolCallViewProps> = ({
               <span className="web-search-query-text">{query}</span>
               {isExecuting && queryIndex === 0 ? (
                 <span className="web-search-loading">Searching...</span>
+              ) : isInterrupted && queryIndex === 0 ? (
+                <span className="web-search-loading">Interrupted</span>
               ) : (
                 queryResults.length > 0 && (
                   <span className="web-search-result-count">{queryResults.length} results</span>

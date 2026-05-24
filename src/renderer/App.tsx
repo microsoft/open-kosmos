@@ -9,6 +9,9 @@ import {
 } from './components/ui/ToastProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import WindowsTitleBar from './components/layout/WindowsTitleBar';
+import WindowZoomHotkeys from './components/layout/WindowZoomHotkeys';
+import McpAuthConsentDialog from './components/mcp/McpAuthConsentDialog';
+import RequestOAuthClientIdDialog from './components/mcp/RequestOAuthClientIdDialog';
 import { useMcpConnectionFailureToast } from './lib/mcp/useMcpConnectionFailureToast';
 import { createLogger } from './lib/utilities/logger';
 
@@ -21,8 +24,8 @@ logger.debug('App component loaded');
  * Must be used inside ToastProvider
  */
 const McpConnectionFailureToastListener: React.FC = () => {
-  useMcpConnectionFailureToast();
-  return null;
+  const dialog = useMcpConnectionFailureToast();
+  return dialog;
 };
 
 const AppContent: React.FC = () => {
@@ -30,6 +33,9 @@ const AppContent: React.FC = () => {
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       {/* McpConnectionFailureToastListener must be inside HashRouter because it uses useNavigate */}
       <McpConnectionFailureToastListener />
+      <WindowZoomHotkeys />
+      <McpAuthConsentDialog />
+      <RequestOAuthClientIdDialog />
       <div className="h-screen flex flex-col overflow-hidden">
         <WindowsTitleBar />
         <div className="flex-1 min-h-0">
@@ -65,7 +71,7 @@ const App: React.FC = () => {
           setIsAppReady(true); // Fallback
         }
       } catch (e) {
-        console.error('Readiness check failed', e);
+        logger.error('Readiness check failed', e);
         setIsAppReady(true); // Fail open
       }
     };
@@ -141,7 +147,7 @@ const App: React.FC = () => {
       handleTokenMonitorEvent as EventListener,
     );
 
-    // General auth:monitor event
+    // Generic auth:monitor event
     window.addEventListener(
       'auth:monitor',
       handleTokenMonitorEvent as EventListener,
@@ -189,18 +195,20 @@ const App: React.FC = () => {
   }
 
   // 🚀 Loading Screen (Wait for Backend Services)
+  // ToolBar window bypasses this check if needed, or follows same flow
+  // We check isAppReady for everyone to ensure backend is ready
   if (!isAppReady) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#1c1c1c] text-white gap-6 select-none app-drag-region">
         {/* Logo/Icon Area */}
         <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 animate-pulse flex items-center justify-center shadow-lg shadow-purple-500/20">
+          <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-blue-500 to-purple-600 animate-pulse flex items-center justify-center shadow-lg shadow-purple-500/20">
              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
              </svg>
           </div>
         </div>
-        
+
         {/* Loading Text */}
         <div className="flex flex-col items-center gap-2">
           <div className="text-neutral-200 font-medium text-lg tracking-wide">OpenKosmos</div>
@@ -220,13 +228,15 @@ const App: React.FC = () => {
   return (
     <ToastProvider>
       <ToastContextSetter />
-      <AuthProvider>
-        <ReauthProvider>
-          <ProfileDataProvider>
-            <AppContent />
-          </ProfileDataProvider>
-        </ReauthProvider>
-      </AuthProvider>
+      
+        <AuthProvider>
+          <ReauthProvider>
+            <ProfileDataProvider>
+              <AppContent />
+            </ProfileDataProvider>
+          </ReauthProvider>
+        </AuthProvider>
+      
     </ToastProvider>
   );
 };

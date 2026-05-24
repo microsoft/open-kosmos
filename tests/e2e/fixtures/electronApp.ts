@@ -9,7 +9,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 
 /**
- * E2E Test Fixture Type Definitions
+ * E2E test fixture type definitions
  */
 type ElectronFixtures = {
   /** Electron application instance */
@@ -21,18 +21,18 @@ type ElectronFixtures = {
 };
 
 /**
- * Create an isolated test userData directory
- * Each test uses an independent directory to avoid interference
+ * Create an isolated test userData directory.
+ * Each test uses an independent directory to avoid cross-test interference.
  */
 function createTestUserDataDir(): string {
-  const dirName = `openkosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `kosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
 }
 
 /**
- * Clean up test userData directory
+ * Clean up the test userData directory.
  */
 function cleanupTestUserDataDir(dirPath: string): void {
   try {
@@ -43,11 +43,11 @@ function cleanupTestUserDataDir(dirPath: string): void {
 }
 
 /**
- * Get Electron app root directory path
+ * Get the Electron app root directory path.
  *
- * Returns the project root instead of a specific JS file, so that Electron reads
- * the root package.json (where "main" points to dist/main/main.js), correctly
- * resolving APIs like app.getVersion() that depend on package.json.
+ * Returns the project root directory rather than a specific JS file, so that Electron
+ * reads the root-level package.json (whose "main" field points to dist/main/main.js),
+ * which correctly resolves APIs that depend on package.json such as app.getVersion().
  */
 function getElectronEntryPath(): string {
   const projectRoot = path.resolve(__dirname, '../../..');
@@ -64,7 +64,7 @@ function getElectronEntryPath(): string {
 }
 
 export const test = base.extend<ElectronFixtures>({
-  // Fixture: Isolated test userData directory
+  // Fixture: isolated test userData directory
   testUserDataDir: async ({}, use) => {
     const dir = createTestUserDataDir();
     await use(dir);
@@ -86,12 +86,12 @@ export const test = base.extend<ElectronFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        // Specify the full userData path directly, bypassing webpack DefinePlugin compile-time replacement.
-        // In bootstrap.ts, process['env']['KOSMOS_TEST_USER_DATA_PATH']
-        // is read at runtime, taking priority over the DefinePlugin-injected USER_DATA_NAME.
+        // Specify the full userData path directly, bypassing webpack DefinePlugin compile-time substitution.
+        // bootstrap.ts reads this value at runtime via process['env']['KOSMOS_TEST_USER_DATA_PATH'],
+        // which takes priority over the USER_DATA_NAME injected by DefinePlugin.
         KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
       },
-      // Electron startup timeout
+      // Electron launch timeout
       timeout: 30_000,
     });
 
@@ -117,13 +117,13 @@ export const test = base.extend<ElectronFixtures>({
     }
   },
 
-  // Fixture: Main window Page object (app ready state)
+  // Fixture: main window Page object (waits for app ready)
   mainWindow: async ({ electronApp }, use) => {
-    // Wait for first window to appear
+    // Wait for the first window to appear
     const window = await electronApp.firstWindow();
 
-    // Wait for app ready — App.tsx shows "Initializing Core Services..." when isAppReady=false
-    // Waiting for that text to disappear means backend services have finished initializing
+    // Wait for app ready — App.tsx shows "Initializing Core Services..." when isAppReady=false.
+    // Waiting for this text to disappear means backend services have finished initializing.
     try {
       await window.waitForFunction(
         () => {
@@ -136,7 +136,7 @@ export const test = base.extend<ElectronFixtures>({
         { timeout: 30_000 },
       );
     } catch {
-      // If timed out, print current page content for debugging
+      // If timed out, print the current page content to aid debugging
       const bodyText = await window
         .locator('body')
         .textContent()

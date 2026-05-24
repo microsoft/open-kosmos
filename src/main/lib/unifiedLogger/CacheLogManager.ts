@@ -1,7 +1,7 @@
 /**
  * Unified Logger System - Cache Log Manager (Singleton)
  *
- * Class CacheLog - Responsible for managing the caching of log entries
+ * Class cache-log - Responsible for managing the caching of log entries
  */
 
 import { UnifiedLoggerConfig } from './types';
@@ -11,11 +11,11 @@ import { PendingSaveQueue } from './PendingSaveQueue';
 
 export class CacheLogManager {
   private static instance: CacheLogManager;
-  private currentCacheObject: CacheObject; // Global cache object variable a
+  private currentCacheObject: CacheObject; // Global cache object variable 'a'
   private pendingLogQueue: PendingLogQueue;
   private pendingSaveQueue: PendingSaveQueue;
   private saveLogManager: any; // Will be set via dependency injection
-  private maxCapacity: number; // Obtained from environment variable
+  private maxCapacity: number; // Read from environment variables
   private config: UnifiedLoggerConfig;
 
   private constructor(config: UnifiedLoggerConfig, pendingLogQueue: PendingLogQueue) {
@@ -23,15 +23,15 @@ export class CacheLogManager {
     this.maxCapacity = config.LOGGER_CACHE_MAX_SIZE;
     this.pendingLogQueue = pendingLogQueue;
     this.pendingSaveQueue = new PendingSaveQueue();
-    
+
     // Initialize an empty cache object A
     this.currentCacheObject = new CacheObject(this.maxCapacity);
   }
 
   /**
-   * Get singleton instance
-   * @param config - Configuration object (only used during first creation)
-   * @param pendingLogQueue - Pending cache log queue (only used during first creation)
+   * Get the singleton instance
+   * @param config - Configuration object (only used on first creation)
+   * @param pendingLogQueue - Pending log queue (only used on first creation)
    * @returns CacheLogManager instance
    */
   public static getInstance(config?: UnifiedLoggerConfig, pendingLogQueue?: PendingLogQueue): CacheLogManager {
@@ -45,7 +45,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Set reference to the save log manager (dependency injection)
+   * Set the reference to the save log manager (dependency injection)
    * @param saveLogManager - SaveLogManager instance
    */
   public setSaveLogManager(saveLogManager: any): void {
@@ -53,7 +53,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Get reference to the pending save queue
+   * Get a reference to the pending save queue
    * @returns PendingSaveQueue instance
    */
   public getPendingSaveQueue(): PendingSaveQueue {
@@ -61,7 +61,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Receive notification from AddLog, triggering the cache log method
+   * Receive a notification from "add log" and trigger the cache log method
    */
   public notifyNewLogAdded(): void {
     try {
@@ -74,29 +74,29 @@ export class CacheLogManager {
    * Core caching logic
    */
   private cacheLogEntries(): void {
-    // While(cache object a.Length is less than max capacity && pending cache log queue is not empty)
+    // While (cache object a.Length < maxCapacity && pending log queue is not empty)
     while (!this.currentCacheObject.isFull() && !this.pendingLogQueue.isEmpty()) {
-      // Sequentially dequeue logEntry from cache log queue and store in a
+      // Dequeue logEntry from the cache log queue and store it in a
       const logEntry = this.pendingLogQueue.dequeue();
       if (logEntry) {
         const added = this.currentCacheObject.addLog(logEntry);
         if (!added) {
-          // If addition fails, re-enqueue the log
+          // If adding fails, re-enqueue the log
           this.pendingLogQueue.enqueue(logEntry);
           break;
         }
       }
     }
 
-    // If a reaches the preset maximum capacity
+    // If a has reached the preset maximum capacity
     if (this.currentCacheObject.isFull()) {
       // Add a to the pending save queue
       this.pendingSaveQueue.enqueue(this.currentCacheObject);
 
-      // a = new CacheObject B
+      // a = new cache object B
       this.currentCacheObject = new CacheObject(this.maxCapacity);
 
-      // Notify SaveLog that there are objects pending save
+      // Notify "save log" that there is a pending save object
       if (this.saveLogManager && typeof this.saveLogManager.notifyPendingSaveAvailable === 'function') {
         this.saveLogManager.notifyPendingSaveAvailable();
       }
@@ -104,17 +104,17 @@ export class CacheLogManager {
   }
 
   /**
-   * Manually trigger flush (for "logs to disk" and app shutdown)
+   * Manually trigger a flush (used for "logs to disk" and app shutdown)
    */
-  public forceFlush(): void {
+  public forceFlush(notifySaveManager: boolean = true): void {
     try {
-      // Manually add cache objects that "have not reached capacity && are non-empty" to the pending save queue
+      // Manually add cache objects that have not yet reached capacity and are non-empty to the pending save queue
       if (!this.currentCacheObject.isEmpty()) {
         this.pendingSaveQueue.enqueue(this.currentCacheObject);
         this.currentCacheObject = new CacheObject(this.maxCapacity);
 
-        // Stop caching, notify SaveLog
-        if (this.saveLogManager && typeof this.saveLogManager.notifyPendingSaveAvailable === 'function') {
+        // Stop caching, notify "save log"
+        if (notifySaveManager && this.saveLogManager && typeof this.saveLogManager.notifyPendingSaveAvailable === 'function') {
           this.saveLogManager.notifyPendingSaveAvailable();
         }
       }
@@ -123,8 +123,8 @@ export class CacheLogManager {
   }
 
   /**
-   * Get current active cache object information
-   * @returns Current cache object statistics
+   * Get information about the currently active cache object
+   * @returns Statistics for the current cache object
    */
   public getCurrentCacheObjectInfo(): ReturnType<CacheObject['getStats']> {
     return this.currentCacheObject.getStats();
@@ -163,20 +163,20 @@ export class CacheLogManager {
    */
   public updateConfig(newConfig: Partial<UnifiedLoggerConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    
-    // If max capacity changed, need to create a new cache object
+
+    // If max capacity changes, create a new cache object
     if (newConfig.LOGGER_CACHE_MAX_SIZE && newConfig.LOGGER_CACHE_MAX_SIZE !== this.maxCapacity) {
       this.maxCapacity = newConfig.LOGGER_CACHE_MAX_SIZE;
-      
-      // If current cache object is not empty, move it to the pending save queue first
+
+      // If the current cache object is not empty, move it to the pending save queue first
       if (!this.currentCacheObject.isEmpty()) {
         this.pendingSaveQueue.enqueue(this.currentCacheObject);
       }
-      
-      // Create new cache object
+
+      // Create a new cache object
       this.currentCacheObject = new CacheObject(this.maxCapacity);
-      
-      // Notify save manager
+
+      // Notify the save manager
       if (this.saveLogManager && typeof this.saveLogManager.notifyPendingSaveAvailable === 'function') {
         this.saveLogManager.notifyPendingSaveAvailable();
       }
@@ -184,7 +184,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Get current configuration
+   * Get the current configuration
    * @returns Current configuration object
    */
   public getConfig(): UnifiedLoggerConfig {
@@ -200,7 +200,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Get detailed information of the pending save queue (for debugging)
+   * Get detailed information about the pending save queue (for debugging)
    * @returns Queue detailed information
    */
   public getPendingSaveQueueInfo(): ReturnType<PendingSaveQueue['getDetailedInfo']> {
@@ -208,7 +208,7 @@ export class CacheLogManager {
   }
 
   /**
-   * Validate CacheLogManager integrity
+   * Validate the integrity of CacheLogManager
    * @returns Validation result
    */
   public validateIntegrity(): { isValid: boolean; errors: string[] } {
@@ -269,14 +269,14 @@ export class CacheLogManager {
   }
 
   /**
-   * Reset singleton instance (primarily for testing)
+   * Reset the singleton instance (primarily for testing)
    */
   public static resetInstance(): void {
     CacheLogManager.instance = undefined as any;
   }
 
   /**
-   * Check if initialized
+   * Check whether the manager has been initialized
    * @returns Whether it is initialized
    */
   public static isInitialized(): boolean {

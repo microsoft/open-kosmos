@@ -1,20 +1,21 @@
 /**
- * Feature Flag Cache Manager (Renderer Process)
- * 
- * Architecture:
- * - Backend (Main Process) is the single source of truth for Feature Flags
- * - Feature flags are defined by developers in the backend, or passed via command-line arguments
- * - Frontend has read-only access, synced from backend on startup
- * - localStorage cache serves as a fallback
+ * Feature Flag cache manager (Renderer Process)
+ *
+ * Architecture notes:
+ * - Backend (Main Process) is the single source of truth for feature flags
+ * - Feature flags are defined by developers in the backend, or passed via CLI arguments
+ * - Frontend is read-only; flags are synced from the backend at startup
+ * - localStorage cache is used as a fallback
  */
 
-import { BRAND_NAME } from '@shared/constants/branding';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[FeatureFlagCacheManager]');
 
 type FeatureFlagName = string;
 type FeatureFlagsValues = Record<FeatureFlagName, boolean>;
 
-const STORAGE_KEY = `${BRAND_NAME}_feature_flags_cache`;
-const CACHE_VERSION_KEY = `${BRAND_NAME}_feature_flags_cache_version`;
+const STORAGE_KEY = 'openkosmos_feature_flags_cache';
+const CACHE_VERSION_KEY = 'openkosmos_feature_flags_cache_version';
 const CURRENT_CACHE_VERSION = '1.0';
 
 class FeatureFlagCacheManager {
@@ -37,11 +38,11 @@ class FeatureFlagCacheManager {
 
   /**
    * Initialize the cache manager
-   * Should be called on application startup to sync the latest flags data from the backend
+   * Should be called at app startup to sync the latest flags from the backend
    */
   public async initialize(): Promise<void> {
     if (this.initialized) {
-      console.log('[FeatureFlagsCache] Already initialized, skipping...');
+      logger.debug('[FeatureFlagsCache] Already initialized, skipping...');
       return;
     }
 
@@ -55,7 +56,7 @@ class FeatureFlagCacheManager {
   }
 
   private async doInitialize(): Promise<void> {
-    console.log('[FeatureFlagsCache] Initializing feature flags cache manager...');
+    logger.debug('[FeatureFlagsCache] Initializing feature flags cache manager...');
 
     try {
       // Check cache version
@@ -63,31 +64,31 @@ class FeatureFlagCacheManager {
       const needsUpdate = cachedVersion !== CURRENT_CACHE_VERSION;
 
       if (needsUpdate) {
-        console.log('[FeatureFlagsCache] Cache version mismatch, clearing old cache...');
+        logger.debug('[FeatureFlagsCache] Cache version mismatch, clearing old cache...');
         localStorage.removeItem(STORAGE_KEY);
       }
 
-      // Fetch the latest flags data from the backend
+      // Fetch latest flags from the backend
       await this.syncFromBackend();
 
       // Update cache version
       localStorage.setItem(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION);
 
       this.initialized = true;
-      console.log('[FeatureFlagsCache] Initialization complete');
+      logger.debug('[FeatureFlagsCache] Initialization complete');
     } catch (error) {
-      console.error('[FeatureFlagsCache] Initialization failed:', error);
-      // If sync fails, try loading old cache from localStorage
+      logger.error('[FeatureFlagsCache] Initialization failed:', error);
+      // If sync fails, attempt to load old cache from localStorage
       this.loadFromLocalStorage();
       this.initialized = true;
     }
   }
 
   /**
-   * Sync the latest flags data from the backend
+   * Sync the latest flags from the backend
    */
   private async syncFromBackend(): Promise<void> {
-    console.log('[FeatureFlagsCache] Syncing flags from backend...');
+    logger.debug('[FeatureFlagsCache] Syncing flags from backend...');
 
     try {
       const flagsResult = await window.electronAPI.featureFlags.getAllFlags();
@@ -98,11 +99,11 @@ class FeatureFlagCacheManager {
       this.flags = flagsResult.data || {};
       this.saveToLocalStorage();
 
-      console.log('[FeatureFlagsCache] Successfully synced flags from backend', {
+      logger.debug('[FeatureFlagsCache] Successfully synced flags from backend', {
         flagCount: Object.keys(this.flags).length,
       });
     } catch (error) {
-      console.error('[FeatureFlagsCache] Failed to sync from backend:', error);
+      logger.error('[FeatureFlagsCache] Failed to sync from backend:', error);
       throw error;
     }
   }
@@ -118,7 +119,7 @@ class FeatureFlagCacheManager {
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
     } catch (error) {
-      console.error('[FeatureFlagsCache] Failed to save to localStorage:', error);
+      logger.error('[FeatureFlagsCache] Failed to save to localStorage:', error);
     }
   }
 
@@ -131,28 +132,28 @@ class FeatureFlagCacheManager {
       if (cachedData) {
         const parsedData = JSON.parse(cachedData);
         this.flags = parsedData.flags || {};
-        console.log('[FeatureFlagsCache] Loaded from localStorage', {
+        logger.debug('[FeatureFlagsCache] Loaded from localStorage', {
           flagCount: Object.keys(this.flags).length,
         });
       }
     } catch (error) {
-      console.error('[FeatureFlagsCache] Failed to load from localStorage:', error);
+      logger.error('[FeatureFlagsCache] Failed to load from localStorage:', error);
     }
   }
 
   /**
-   * Check if a feature flag is enabled (synchronous method)
+   * Check whether a feature flag is enabled (synchronous)
    */
   public isEnabled(name: string): boolean {
     if (!this.initialized) {
-      console.warn('[FeatureFlagsCache] Not initialized, returning false for', name);
+      logger.warn('[FeatureFlagsCache] Not initialized, returning false for', name);
       return false;
     }
     return this.flags[name] ?? false;
   }
 
   /**
-   * Get all flags values
+   * Get all flag values
    */
   public getAllFlags(): FeatureFlagsValues {
     if (!this.initialized) {
@@ -162,7 +163,7 @@ class FeatureFlagCacheManager {
   }
 
   /**
-   * Check if initialized
+   * Check whether the manager has been initialized
    */
   public get isInitialized(): boolean {
     return this.initialized;

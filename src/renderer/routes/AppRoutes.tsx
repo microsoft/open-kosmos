@@ -9,16 +9,22 @@ import McpView from '../components/mcp/McpView';
 import AddNewMcpServerView from '../components/mcp/AddNewMcpServerView';
 import ImportVscodeMcpServerView from '../components/mcp/ImportVscodeMcpServerView';
 import SkillsView from '../components/skills/SkillsView';
-import MemoryView from '../components/memory/MemoryView';
+import PluginManagementView from '../components/plugin/PluginManagementView';
+import SubAgentsView from '../components/subAgents/SubAgentsView';
+import CreateSubAgentView from '../components/subAgents/CreateSubAgentView';
+import EditSubAgentView from '../components/subAgents/EditSubAgentView';
 import SettingsPage from '../components/pages/SettingsPage';
 import RuntimeSettingsView from '../components/settings/RuntimeSettingsView';
 import VoiceInputSettingsView from '../components/settings/VoiceInputSettingsView';
 import ScreenshotSettingsView from '../components/settings/ScreenshotSettingsView';
 import AboutAppView from '../components/settings/AboutAppView';
 import BrowserControlView from '../components/settings/BrowserControlView';
+import MemexView from '../components/settings/MemexView';
+import ArchivedAgentsView from '../components/settings/ArchivedAgentsView';
 import AgentChatEditingView from '../components/chat/agent-area/AgentChatEditingView';
 import AgentChatCreationView from '../components/chat/agent-area/AgentChatCreationView';
 import CreateCustomAgentView from '../components/chat/agent-area/CreateCustomAgentView';
+// PM Studio Project Agent Creation
 import { RequireAuth } from './RequireAuth';
 import { useFeatureFlag } from '../lib/featureFlags';
 import {
@@ -112,9 +118,20 @@ const DataLoadingWrapper: React.FC = () => {
 
 export const AppRoutes: React.FC = () => {
   const navigate = useNavigate();
-  
+  const location = useLocation();
+
   // Chrome Extension / Browser Control route (controlled by feature flag)
   const browserControlEnabled = useFeatureFlag('browserControl');
+  // Remote Channel route (controlled by feature flag)
+
+  // Sub-Agent route (controlled by feature flag)
+  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
+
+  // Plugin route (controlled by feature flag)
+  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
+
+  // Memex Memory route controlled by feature flag
+  const memexMemoryEnabled = useFeatureFlag('openkosmosFeatureMemexMemory');
 
   // Listen for navigation events from main process
   useEffect(() => {
@@ -128,6 +145,14 @@ export const AppRoutes: React.FC = () => {
     const cleanup = window.electronAPI?.on('navigate:to', handleNavigate);
     return cleanup;
   }, [navigate]);
+
+  useEffect(() => {
+    void window.electronAPI?.recordCrashBreadcrumb?.('route-change', {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+    });
+  }, [location.hash, location.pathname, location.search]);
 
   return (
     <Routes>
@@ -144,12 +169,13 @@ export const AppRoutes: React.FC = () => {
           <Route path="chat" element={<ChatView />} />
           <Route path="chat/creation" element={<AgentChatCreationView />} />
           <Route path="chat/creation/custom-agent" element={<CreateCustomAgentView />} />
+          {/* PM Studio Project Agent Creation Routes */}
           <Route path="chat/:chatId" element={<ChatView />} />
           <Route path="chat/:chatId/:sessionId" element={<ChatView />} />
           <Route path="chat/:chatId/settings" element={<AgentChatEditingView />} />
           <Route path="chat/:chatId/settings/*" element={<AgentChatEditingView />} />
         </Route>
-        
+
         {/* Settings Routes - separate from agent */}
         <Route path="/settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="mcp" replace />} />
@@ -161,12 +187,26 @@ export const AppRoutes: React.FC = () => {
           <Route path="mcp/import-vscode" element={<ImportVscodeMcpServerView />} />
           <Route path="runtime" element={<RuntimeSettingsView />} />
           <Route path="skills" element={<SkillsView />} />
-          <Route path="memory" element={<MemoryView />} />
+          {pluginsEnabled && (
+            <Route path="plugins" element={<PluginManagementView />} />
+          )}
+          {subAgentEnabled && (
+            <>
+              <Route path="sub-agents" element={<SubAgentsView />} />
+              <Route path="sub-agents/new" element={<CreateSubAgentView />} />
+              <Route path="sub-agents/edit/:subAgentName" element={<EditSubAgentView />} />
+            </>
+          )}
           <Route path="about" element={<AboutAppView />} />
+          <Route path="archived-agents" element={<ArchivedAgentsView />} />
           {/* Browser Control route controlled by feature flag */}
           {browserControlEnabled && (
             <Route path="browser-control" element={<BrowserControlView />} />
           )}
+          {memexMemoryEnabled && (
+            <Route path="memex" element={<MemexView />} />
+          )}
+          {/* Remote Channel route controlled by feature flag */}
         </Route>
       </Route>
 

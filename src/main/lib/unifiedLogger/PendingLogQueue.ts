@@ -1,6 +1,6 @@
 /**
  * Refactored Logger System - Pending Log Queue
- * 
+ *
  * Queue for storing log entries that are waiting to be cached
  */
 
@@ -11,14 +11,14 @@ export class PendingLogQueue {
 
   /**
    * Add a log entry to the pending cache queue
-   * @param logEntry - Log entry to add
+   * @param logEntry - The log entry to add
    */
   enqueue(logEntry: LogEntry): void {
     this.queue.push(logEntry);
   }
 
   /**
-   * Dequeue a log entry (FIFO - First In First Out)
+   * Dequeue a log entry from the queue (FIFO - first in, first out)
    * @returns The first log entry in the queue, or null if the queue is empty
    */
   dequeue(): LogEntry | null {
@@ -29,7 +29,7 @@ export class PendingLogQueue {
   }
 
   /**
-   * Check if the queue is empty
+   * Check whether the queue is empty
    * @returns Whether the queue is empty
    */
   isEmpty(): boolean {
@@ -37,8 +37,8 @@ export class PendingLogQueue {
   }
 
   /**
-   * Get queue length
-   * @returns Number of log entries in the queue
+   * Get the queue length
+   * @returns The number of log entries in the queue
    */
   size(): number {
     return this.queue.length;
@@ -92,20 +92,20 @@ export class PendingLogQueue {
   }
 
   /**
-   * Get log entries within a specified time range (without removing)
+   * Get log entries within a specified time range (without removing them)
    * @param startTime - Start time
    * @param endTime - End time
-   * @returns Array of log entries within the time range
+   * @returns Array of log entries matching the time range
    */
   getLogsByTimeRange(startTime: Date, endTime: Date): LogEntry[] {
-    return this.queue.filter(entry => 
+    return this.queue.filter(entry =>
       entry.timestamp >= startTime && entry.timestamp <= endTime
     );
   }
 
   /**
-   * Get entries of specified log levels (without removing)
-   * @param levels - Array of log levels to filter
+   * Get entries of specified log levels (without removing them)
+   * @param levels - Array of log levels to filter by
    * @returns Array of log entries matching the specified levels
    */
   getLogsByLevels(levels: string[]): LogEntry[] {
@@ -113,7 +113,7 @@ export class PendingLogQueue {
   }
 
   /**
-   * Batch dequeue a specified number of log entries
+   * Dequeue a specified number of log entries in batch
    * @param count - Number of entries to dequeue
    * @returns Array of dequeued log entries
    */
@@ -127,7 +127,7 @@ export class PendingLogQueue {
   }
 
   /**
-   * Batch enqueue log entries
+   * Enqueue log entries in batch
    * @param logEntries - Array of log entries to add
    */
   enqueueBatch(logEntries: LogEntry[]): void {
@@ -135,7 +135,7 @@ export class PendingLogQueue {
   }
 
   /**
-   * Estimate queue memory usage (bytes)
+   * Estimate the memory usage of the queue (in bytes)
    * @returns Estimated memory usage
    */
   private estimateMemoryUsage(): number {
@@ -143,15 +143,15 @@ export class PendingLogQueue {
       return 0;
     }
 
-    // Estimate the average size of a single LogEntry
+    // Estimate average size of a single LogEntry
     const sampleEntry = this.queue[0];
     const entrySize = JSON.stringify(sampleEntry).length * 2; // Unicode characters are approximately 2 bytes
-    
+
     return this.queue.length * entrySize;
   }
 
   /**
-   * Validate queue integrity
+   * Validate the integrity of the queue
    * @returns Validation result
    */
   validateIntegrity(): { isValid: boolean; errors: string[] } {
@@ -195,8 +195,8 @@ export class PendingLogQueue {
   }
 
   /**
-   * Get detailed queue information (for debugging)
-   * @returns Detailed queue information
+   * Get detailed information about the queue (for debugging)
+   * @returns Detailed information about the queue
    */
   getDetailedInfo(): {
     size: number;

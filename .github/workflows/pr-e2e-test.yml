@@ -21,8 +21,7 @@ env:
 jobs:
   e2e-test:
     name: E2E Tests
-    # Use ubuntu for fast CI; Electron runs headless via xvfb
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -37,15 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Electron tests use the bundled Electron binary — no Playwright browsers needed.
-      # Only install system dependencies required by Electron on headless Linux.
-      - name: Install system dependencies for Electron
-        run: npx playwright install-deps
-
       # pretest:e2e builds with DOTENV_CONFIG_PATH=.env.test
-      # xvfb-run provides a virtual X11 display for Electron on headless Linux
       - name: Run E2E Tests
-        run: xvfb-run --auto-servernum -- npm run test:e2e --max-failures=1 
+        run: npm run test:e2e --max-failures=1
         env:
           BRAND: openkosmos
 

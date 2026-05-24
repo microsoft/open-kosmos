@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Test Script - Call the GitHub Copilot Chat Model List API
- * Based on the vscode-copilot-chat project implementation
+ * Test script — calls the GitHub Copilot Chat model list API.
+ * Based on the vscode-copilot-chat project implementation.
  */
 
 const https = require('https');
@@ -16,24 +16,24 @@ try {
     TOKENS = getTokens();
     validateTokens(TOKENS);
 } catch (error) {
-    console.error('❌ Failed to load authentication info:', error.message);
+    console.error('❌ Failed to load auth info:', error.message);
     process.exit(1);
 }
 
-// GitHub Copilot API endpoint - based on CAPI client implementation
+// GitHub Copilot API endpoint — based on the CAPI client implementation
 const COPILOT_CAPI_BASE = 'https://api.githubcopilot.com';
 const MODELS_ENDPOINT = '/models';
 
 /**
- * Generate request ID
+ * Generate a request ID.
  */
 function generateRequestId() {
   return crypto.randomUUID();
 }
 
 /**
- * Generate request HMAC (if needed)
- * Based on the vscode-copilot-chat implementation
+ * Generate a request HMAC (if needed).
+ * Based on the vscode-copilot-chat implementation.
  */
 function createRequestHMAC(secret) {
   if (!secret) return undefined;
@@ -44,7 +44,7 @@ function createRequestHMAC(secret) {
 }
 
 /**
- * Send HTTPS request
+ * Send an HTTPS request.
  */
 function makeHttpsRequest(options, postData = null) {
   return new Promise((resolve, reject) => {
@@ -88,17 +88,17 @@ function makeHttpsRequest(options, postData = null) {
 }
 
 /**
- * Get Copilot model list
- * Based on the ModelMetadataFetcher implementation
+ * Fetch the Copilot model list.
+ * Based on the ModelMetadataFetcher implementation.
  */
 async function fetchCopilotModels() {
   const requestId = generateRequestId();
   const hmac = createRequestHMAC(process.env.HMAC_SECRET);
-  
-  console.log('📋 Starting to fetch GitHub Copilot model list...');
+
+  console.log('📋 Fetching GitHub Copilot model list...');
   console.log(`🔗 Request ID: ${requestId}`);
-  
-  // Build request headers, based on the CAPI client's _mixinHeaders implementation
+
+  // Build request headers based on the CAPI client _mixinHeaders implementation
   const headers = {
     'Authorization': `Bearer ${TOKENS.access}`,
     'X-Request-Id': requestId,
@@ -108,7 +108,7 @@ async function fetchCopilotModels() {
     'User-Agent': 'VSCode-Copilot-Chat-Test-Script/1.0.0',
     'Accept': 'application/json',
     'Content-Type': 'application/json',
-    // Required headers for the CAPI client
+    // Required headers for CAPI client
     'VScode-SessionId': 'test-session-' + Date.now(),
     'VScode-MachineId': 'test-machine-' + Date.now(),
     'Editor-Plugin-Version': 'copilot-chat/1.0.0',
@@ -127,14 +127,14 @@ async function fetchCopilotModels() {
     path: MODELS_ENDPOINT,
     method: 'GET',
     headers: headers,
-    timeout: 30000 // 30 second timeout
+    timeout: 30000 // 30-second timeout
   };
   
   try {
     console.log('🚀 Sending request to:', `${COPILOT_CAPI_BASE}${MODELS_ENDPOINT}`);
     const response = await makeHttpsRequest(options);
     
-    console.log(`📊 Response status code: ${response.statusCode}`);
+    console.log(`📊 Response status: ${response.statusCode}`);
     console.log('📋 Response headers:', JSON.stringify(response.headers, null, 2));
     
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -143,8 +143,8 @@ async function fetchCopilotModels() {
       if (response.data && response.data.data) {
         const models = response.data.data;
         console.log(`🎯 Found ${models.length} models:\n`);
-        
-        // Group and display by model family
+
+        // Group by model family for display
         const modelsByFamily = {};
         
         models.forEach(model => {
@@ -181,39 +181,39 @@ async function fetchCopilotModels() {
         console.log(`💾 Full model data saved to: ${outputFile}`);
         
       } else {
-        console.log('⚠️ Response data format does not match expectations');
+        console.log('⚠️ Response data format is unexpected');
         console.log('Raw response:', response.rawData);
       }
-      
+
     } else if (response.statusCode === 401) {
-      console.error('❌ Authentication failed - please check if the access token is valid');
+      console.error('❌ Authentication failed — check that the access token is valid');
     } else if (response.statusCode === 403) {
-      console.error('❌ Insufficient permissions - may need different permissions or the token has expired');
+      console.error('❌ Insufficient permissions — may need different permissions or the token has expired');
     } else if (response.statusCode === 429) {
-      console.error('❌ Too many requests - please try again later');
+      console.error('❌ Too many requests — please retry later');
     } else {
-      console.error(`❌ Request failed, status code: ${response.statusCode}`);
-      console.error('Response content:', response.rawData);
+      console.error(`❌ Request failed with status: ${response.statusCode}`);
+      console.error('Response body:', response.rawData);
     }
     
   } catch (error) {
     console.error('❌ Request error:', error.message);
-    
+
     // Provide troubleshooting suggestions
     console.log('\n🔍 Troubleshooting suggestions:');
-    console.log('1. Check network connection');
-    console.log('2. Verify the access token is valid and not expired');
+    console.log('1. Check network connectivity');
+    console.log('2. Verify that the access token is valid and not expired');
     console.log('3. Confirm the token has permission to access the Copilot API');
-    console.log('4. Check if the API endpoint is correct');
+    console.log('4. Check that the API endpoint is correct');
   }
 }
 
 
 /**
- * Main function
+ * Main function.
  */
 async function main() {
-  console.log('🚀 GitHub Copilot Model List Fetch Test Script');
+  console.log('🚀 GitHub Copilot model list test script');
   console.log('===================================\n');
   
   printTokenInfo(TOKENS);

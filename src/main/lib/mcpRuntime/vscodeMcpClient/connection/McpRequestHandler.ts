@@ -88,10 +88,10 @@ export class McpRequestHandler extends EventEmitter {
     cacheConfig: Partial<CacheConfig> = {}
   ) {
     super();
-    
+
     this.connection = connection;
     this.cacheConfig = { ...DEFAULT_CACHE_CONFIG, ...cacheConfig };
-    
+
     this.setupConnectionListeners();
   }
 
@@ -100,13 +100,13 @@ export class McpRequestHandler extends EventEmitter {
   /**
    * List available tools
    */
-  async listTools(options?: { 
-    cursor?: string; 
-    useCache?: boolean; 
-    signal?: AbortSignal 
+  async listTools(options?: {
+    cursor?: string;
+    useCache?: boolean;
+    signal?: AbortSignal
   }): Promise<McpTool[]> {
     const cacheKey = `tools_list_${options?.cursor || 'default'}`;
-    
+
     if (options?.useCache !== false) {
       const cached = this.getFromCache<McpTool[]>(cacheKey);
       if (cached) {
@@ -153,7 +153,7 @@ export class McpRequestHandler extends EventEmitter {
     };
 
     const requestId = this.generateRequestId();
-    
+
     if (options?.onProgress) {
       this.activeRequests.set(requestId, {
         requestId,
@@ -168,9 +168,9 @@ export class McpRequestHandler extends EventEmitter {
       const result = await this.executeRequest<ToolsCallResult>(
         MCP_METHODS.TOOLS_CALL,
         request,
-        { 
+        {
           timeout: options?.timeout,
-          signal: options?.signal 
+          signal: options?.signal
         }
       );
 
@@ -188,13 +188,13 @@ export class McpRequestHandler extends EventEmitter {
   /**
    * List available resources
    */
-  async listResources(options?: { 
-    cursor?: string; 
-    useCache?: boolean; 
-    signal?: AbortSignal 
+  async listResources(options?: {
+    cursor?: string;
+    useCache?: boolean;
+    signal?: AbortSignal
   }): Promise<McpResource[]> {
     const cacheKey = `resources_list_${options?.cursor || 'default'}`;
-    
+
     if (options?.useCache !== false) {
       const cached = this.getFromCache<McpResource[]>(cacheKey);
       if (cached) {
@@ -236,7 +236,7 @@ export class McpRequestHandler extends EventEmitter {
     options?: { useCache?: boolean; signal?: AbortSignal }
   ): Promise<any> {
     const cacheKey = `resource_${uri}`;
-    
+
     if (options?.useCache !== false) {
       const cached = this.getFromCache<any>(cacheKey);
       if (cached) {
@@ -266,13 +266,13 @@ export class McpRequestHandler extends EventEmitter {
   /**
    * List available prompts
    */
-  async listPrompts(options?: { 
-    cursor?: string; 
-    useCache?: boolean; 
-    signal?: AbortSignal 
+  async listPrompts(options?: {
+    cursor?: string;
+    useCache?: boolean;
+    signal?: AbortSignal
   }): Promise<McpPrompt[]> {
     const cacheKey = `prompts_list_${options?.cursor || 'default'}`;
-    
+
     if (options?.useCache !== false) {
       const cached = this.getFromCache<McpPrompt[]>(cacheKey);
       if (cached) {
@@ -435,7 +435,7 @@ export class McpRequestHandler extends EventEmitter {
 
     } catch (error) {
       this.stats.errors++;
-      
+
       this.emit(McpRequestHandler.EVENTS.REQUEST_FAILED, {
         method,
         params,
@@ -466,17 +466,17 @@ export class McpRequestHandler extends EventEmitter {
       case MCP_METHODS.NOTIFICATIONS_TOOLS_LIST_CHANGED:
         this.clearCache('tools_list');
         break;
-      
+
       case MCP_METHODS.NOTIFICATIONS_RESOURCES_LIST_CHANGED:
         this.clearCache('resources_list');
         break;
-      
+
       case MCP_METHODS.NOTIFICATIONS_RESOURCES_UPDATED:
         if (notification.params?.uri) {
           this.clearCache(`resource_${notification.params.uri}`);
         }
         break;
-      
+
       case MCP_METHODS.NOTIFICATIONS_PROMPTS_LIST_CHANGED:
         this.clearCache('prompts_list');
         break;

@@ -1,6 +1,6 @@
 /**
  * Refactored Logger System - Pending Save Queue
- * 
+ *
  * Queue for storing cache objects that are waiting to be saved to disk
  */
 
@@ -10,15 +10,15 @@ export class PendingSaveQueue {
   private queue: CacheObject[] = [];
 
   /**
-   * Add a cache object pending save
-   * @param cacheObject - Cache object to add to the save queue
+   * Add a cache object to the pending save queue
+   * @param cacheObject - The cache object to add to the save queue
    */
   enqueue(cacheObject: CacheObject): void {
     this.queue.push(cacheObject);
   }
 
   /**
-   * Get the next cache object pending save (FIFO - First In First Out)
+   * Get the next cache object to be saved (FIFO - first in, first out)
    * @returns The first cache object in the queue, or null if the queue is empty
    */
   dequeue(): CacheObject | null {
@@ -29,7 +29,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Check if there are objects pending save
+   * Check whether there are objects pending save
    * @returns Whether the queue is empty
    */
   isEmpty(): boolean {
@@ -37,8 +37,8 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Get queue length
-   * @returns Number of cache objects in the queue
+   * Get the queue length
+   * @returns The number of cache objects in the queue
    */
   size(): number {
     return this.queue.length;
@@ -97,7 +97,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Get detailed information of all cache objects pending save
+   * Get detailed information about all pending cache objects
    * @returns Array of cache object information
    */
   getAllCacheInfo(): Array<{
@@ -122,7 +122,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Batch dequeue a specified number of cache objects
+   * Dequeue a specified number of cache objects in batch
    * @param count - Number of cache objects to dequeue
    * @returns Array of dequeued cache objects
    */
@@ -136,7 +136,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Batch enqueue cache objects
+   * Enqueue cache objects in batch
    * @param cacheObjects - Array of cache objects to add
    */
   enqueueBatch(cacheObjects: CacheObject[]): void {
@@ -144,7 +144,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Find a cache object by ID
+   * Find a cache object by its ID
    * @param id - Cache object ID
    * @returns The found cache object, or null if not found
    */
@@ -153,8 +153,8 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Remove a cache object by ID
-   * @param id - ID of the cache object to remove
+   * Remove a cache object by its ID
+   * @param id - The ID of the cache object to remove
    * @returns Whether the removal was successful
    */
   removeById(id: string): boolean {
@@ -170,10 +170,10 @@ export class PendingSaveQueue {
    * Get cache objects created within a specified time range
    * @param startTime - Start time
    * @param endTime - End time
-   * @returns Array of cache objects within the time range
+   * @returns Array of cache objects matching the time range
    */
   getCachesByTimeRange(startTime: Date, endTime: Date): CacheObject[] {
-    return this.queue.filter(cache => 
+    return this.queue.filter(cache =>
       cache.createdAt >= startTime && cache.createdAt <= endTime
     );
   }
@@ -182,7 +182,7 @@ export class PendingSaveQueue {
    * Get cache objects with utilization within a specified range
    * @param minUtilization - Minimum utilization (0-100)
    * @param maxUtilization - Maximum utilization (0-100)
-   * @returns Array of cache objects within the utilization range
+   * @returns Array of cache objects matching the utilization range
    */
   getCachesByUtilization(minUtilization: number, maxUtilization: number): CacheObject[] {
     return this.queue.filter(cache => {
@@ -192,7 +192,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Estimate queue memory usage (bytes)
+   * Estimate the memory usage of the queue (in bytes)
    * @returns Estimated memory usage
    */
   private estimateMemoryUsage(): number {
@@ -205,7 +205,7 @@ export class PendingSaveQueue {
     for (const cache of this.queue) {
       // Base object overhead
       totalMemory += 200; // Estimated overhead of the object itself
-      
+
       // Log data
       for (const log of cache.logs) {
         const logSize = JSON.stringify(log).length * 2; // Unicode characters are approximately 2 bytes
@@ -217,7 +217,7 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Validate queue integrity
+   * Validate the integrity of the queue
    * @returns Validation result
    */
   validateIntegrity(): { isValid: boolean; errors: string[] } {
@@ -242,7 +242,7 @@ export class PendingSaveQueue {
         continue;
       }
 
-      // Validate cache object integrity
+      // Validate the integrity of the cache object
       const cacheValidation = cache.validateIntegrity();
       if (!cacheValidation.isValid) {
         errors.push(`Cache object at index ${i} failed validation: ${cacheValidation.errors.join(', ')}`);
@@ -263,8 +263,8 @@ export class PendingSaveQueue {
   }
 
   /**
-   * Get detailed queue information (for debugging)
-   * @returns Detailed queue information
+   * Get detailed information about the queue (for debugging)
+   * @returns Detailed information about the queue
    */
   getDetailedInfo(): {
     size: number;
@@ -289,7 +289,7 @@ export class PendingSaveQueue {
         capacity: stats.maxCapacity,
         utilization: stats.utilization,
         createdAt: stats.createdAt,
-        memoryUsage: JSON.stringify(cache.logs).length * 2 // Estimate
+        memoryUsage: JSON.stringify(cache.logs).length * 2 // estimate
       };
     });
 

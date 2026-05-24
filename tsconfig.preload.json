@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["src/preload/**/*", "src/shared/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/renderer",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

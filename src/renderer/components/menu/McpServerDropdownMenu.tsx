@@ -1,11 +1,12 @@
 import React, { useLayoutEffect } from 'react';
 import { Pencil, Play, Pause, RotateCw, Trash2 } from 'lucide-react';
 import { useProfileData } from '../userData/userDataProvider';
+import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 
 interface McpServerDropdownMenuProps {
   mcpServerMenuRef: React.RefObject<HTMLDivElement>;
   serverName: string;
-  position: { top: number; left: number };
+  position: AnchoredDropdownPosition;
   onConnect?: (serverName: string) => void;
   onDisconnect?: (serverName: string) => void;
   onReconnect?: (serverName: string) => void;
@@ -26,59 +27,44 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
   onClose,
 }) => {
   const { mcpServers } = useProfileData();
-  
-  // Find the current server
+
+  // Find current server
   const currentServer = mcpServers.find((s: any) => s.name === serverName);
-  
-  // Check if it's a built-in server
+
+  // Check if this is a built-in server
   const BUILTIN_SERVER_NAME = 'builtin-tools';
   const isBuiltinServer = serverName === BUILTIN_SERVER_NAME;
   
-  // If it's a built-in server, don't show the menu
-  if (isBuiltinServer) {
+  // Check if this is a plugin server
+  const isPluginServer = currentServer?.source === 'PLUGIN' || serverName.startsWith('plugin--');
+  
+  // If it is a built-in server or plugin server, do not show the menu
+  if (isBuiltinServer || isPluginServer) {
     return null;
   }
-  
-  // Get operation functions from window object (if not provided via props)
+
+  // Get operation functions from window object (if not provided in props)
   const mcpOps = (window as any).__mcpServerOperations;
   const finalOnConnect = onConnect || mcpOps?.onConnect;
   const finalOnDisconnect = onDisconnect || mcpOps?.onDisconnect;
   const finalOnReconnect = onReconnect || mcpOps?.onReconnect;
   const finalOnDelete = onDelete || mcpOps?.onDelete;
   const finalOnEdit = onEdit || mcpOps?.onEdit;
-  
+
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
     if (mcpServerMenuRef.current) {
-      const rect = mcpServerMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      // Check if we have triggerTop info (passed via position prop extension)
-      const triggerTop = (position as any).triggerTop;
-      
-      if (rect.bottom > windowHeight - padding) {
-        // If it overflows bottom, try to position above the trigger
-        if (triggerTop !== undefined) {
-           const newTop = triggerTop - rect.height - 4;
-           // Ensure we don't go off the top either
-           mcpServerMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        } else {
-           // Fallback to just shifting up if no trigger info
-           const newTop = windowHeight - rect.height - padding;
-           mcpServerMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        }
-      }
+      adjustAnchoredDropdownToViewport(mcpServerMenuRef.current, position);
     }
   }, [position]);
 
   // Get server status and available actions
   const getAvailableActions = () => {
     if (!currentServer) return { connect: true, disconnect: false, reconnect: false };
-    
+
     const status = currentServer.status || 'disconnected';
     const hasError = !!currentServer.error;
-    
+
     switch (status) {
       case 'disconnected':
         return { connect: true, disconnect: false, reconnect: false };
@@ -88,18 +74,18 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
         return { connect: false, disconnect: true, reconnect: true };
       case 'connecting':
       case 'disconnecting':
-        // 🔧 Fix: disable all actions when in connecting/disconnecting state
+        // Fix: disable all actions in connecting/disconnecting state
         return { connect: false, disconnect: false, reconnect: false };
       default:
         return { connect: true, disconnect: false, reconnect: false };
     }
   };
-  
+
   const availableActions = getAvailableActions();
-  
-  // Check if any action handlers are available
+
+  // Check if any action function is available
   const hasAnyAction = finalOnConnect || finalOnDisconnect || finalOnReconnect || finalOnEdit || finalOnDelete;
-  
+
   return (
     <div
       ref={mcpServerMenuRef}
@@ -110,13 +96,13 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
       }}
       role="menu"
     >
-      {/* If all action handlers are undefined, show a hint */}
+      {/* If all action functions are undefined, show a hint */}
       {!hasAnyAction && (
         <div className="dropdown-menu-item" style={{ opacity: 0.6, cursor: 'default' }}>
           No actions available
         </div>
       )}
-      
+
       {availableActions.connect && finalOnConnect && (
         <button
           className="dropdown-menu-item"
@@ -168,7 +154,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            // 🔧 Fix: disable Edit action when in connecting/disconnecting state
+            // Fix: disable Edit action in connecting/disconnecting state
             if (currentServer?.status === 'connecting' || currentServer?.status === 'disconnecting') {
               return;
             }

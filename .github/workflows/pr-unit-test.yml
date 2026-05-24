@@ -1,0 +1,44 @@
+name: PR Unit Tests
+
+# Run unit tests for every pull request to catch regressions early.
+# Tests run in a Node environment and validate core logic in isolation.
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        run: npm test
+
+      # Upload test results on failure for debugging
+      - name: Upload unit test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: tests/unit/test-results/
+          retention-days: 7

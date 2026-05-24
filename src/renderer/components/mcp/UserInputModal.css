@@ -1,12 +1,12 @@
 /* UserInputModal.css - User input modal styles
-   Follows system unified design specification, consistent with Modal.css and Common.css */
+   Follows the system unified design spec, consistent with Modal.css and Common.css */
 
 /* ===========================
    Modal container size overrides
    =========================== */
 
 .user-input-modal {
-  /* Use Modal.css standard size - 900px, 90% */
+  /* Use the standard Modal.css size - 900px, 90% */
   height: auto;
   max-height: 80vh;
 }
@@ -22,7 +22,7 @@
 }
 
 .modal-description {
-  /* Text styles consistent with system */
+  /* Text styles consistent with the system */
   font-family: inherit;
   font-size: 14px;
   font-weight: 410;
@@ -66,7 +66,7 @@
 }
 
 .user-input-label {
-  /* Label styles consistent with system */
+  /* Label styles consistent with the system */
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -180,26 +180,7 @@
   transform: translateY(1px);
 }
 
-/* Email input */
-.email-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.email-icon {
-  position: absolute;
-  left: 12px;
-  color: #9CA3AF;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.email-input {
-  padding-left: 40px;
-}
-
-/* Boolean select */
+/* Boolean value selector */
 .boolean-select {
   cursor: pointer;
 }
@@ -210,11 +191,11 @@
 }
 
 /* ===========================
-   Bottom button styles
+   Footer button styles
    =========================== */
 
 .user-input-modal .modal-footer {
-  /* Use standard modal-footer styles */
+  /* Use the standard modal-footer styles */
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -230,7 +211,7 @@
 }
 
 .user-input-modal .btn-secondary {
-  /* Secondary button styles - consistent with system */
+  /* Secondary button styles - consistent with the system */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -266,7 +247,7 @@
 }
 
 .user-input-modal .btn-primary {
-  /* Primary button styles - consistent with system */
+  /* Primary button styles - consistent with the system */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -304,7 +285,7 @@
 }
 
 /* ===========================
-   Dark mode support
+   Dark mode adaptation
    =========================== */
 
 /* ===========================
@@ -318,28 +299,28 @@
     max-width: none;
     max-height: none;
   }
-  
+
   .user-input-modal .modal-body {
     padding: 20px 16px;
   }
-  
+
   .user-input-modal .modal-footer {
     padding: 16px;
     flex-direction: column-reverse;
     gap: 8px;
   }
-  
+
   .user-input-modal .btn-primary,
   .user-input-modal .btn-secondary {
     width: 100%;
     justify-content: center;
   }
-  
+
   .folder-input-wrapper {
     flex-direction: column;
     gap: 8px;
   }
-  
+
   .folder-select-btn {
     width: 100%;
   }
@@ -354,7 +335,7 @@
   .folder-select-btn {
     border-width: 2px;
   }
-  
+
   .user-input-modal .btn-primary,
   .user-input-modal .btn-secondary {
     border-width: 2px;
@@ -368,7 +349,7 @@
   .user-input-modal .btn-secondary {
     transition: none;
   }
-  
+
   .folder-select-btn:active,
   .user-input-modal .btn-primary:active,
   .user-input-modal .btn-secondary:active {

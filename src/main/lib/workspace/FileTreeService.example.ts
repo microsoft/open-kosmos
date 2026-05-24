@@ -7,23 +7,23 @@ import { getFileTreeService, FileTreeService, FileTreeQuery } from './FileTreeSe
 import * as path from 'path';
 
 /**
- * Example 1: Get the complete file tree
+ * Example 1: Get the full file tree
  */
 async function example1_GetFullTree() {
-  
+
   const service = getFileTreeService();
-  const workspaceRoot = process.cwd(); // Or specify a specific path
-  
+  const workspaceRoot = process.cwd(); // or specify a concrete path
+
   const query: FileTreeQuery = {
     folder: workspaceRoot,
     includeHidden: false,
     useGitignore: true
   };
-  
+
   const result = await service.getFileTree(query);
-  
-  
-  // Print direct children of the root directory
+
+
+  // Print the direct children of the root directory
   result.root.children?.slice(0, 10).forEach(child => {
   });
 }
@@ -32,17 +32,17 @@ async function example1_GetFullTree() {
  * Example 2: Get TypeScript files only
  */
 async function example2_GetTypeScriptFiles() {
-  
+
   const service = getFileTreeService();
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
-    includePattern: '*.ts,*.tsx',  // Only include TS files
-    excludePattern: '*.test.ts,*.spec.ts' // Exclude test files
+    includePattern: '*.ts,*.tsx',  // include only TS files
+    excludePattern: '*.test.ts,*.spec.ts' // exclude test files
   };
-  
+
   const result = await service.getFileTree(query);
-  
+
   result.flatList.slice(0, 10).forEach(file => {
   });
 }
@@ -51,34 +51,34 @@ async function example2_GetTypeScriptFiles() {
  * Example 3: Limit scan depth
  */
 async function example3_LimitDepth() {
-  
+
   const service = getFileTreeService();
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
-    maxDepth: 2  // Only scan 2 levels deep
+    maxDepth: 2  // scan only 2 levels deep
   };
-  
+
   const result = await service.getFileTree(query);
-  
+
 }
 
 /**
- * Example 4: Quickly get file list (without building tree)
+ * Example 4: Quickly get a flat file list (without building a tree)
  */
 async function example4_GetFlatList() {
-  
+
   const service = getFileTreeService();
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
-    includePattern: '*.md'  // Only Markdown files
+    includePattern: '*.md'  // Markdown files only
   };
-  
+
   const startTime = Date.now();
   const files = await service.getFileList(query);
   const duration = Date.now() - startTime;
-  
+
   files.slice(0, 5).forEach(file => {
   });
 }
@@ -87,18 +87,18 @@ async function example4_GetFlatList() {
  * Example 5: Include file metadata
  */
 async function example5_WithMetadata() {
-  
+
   const service = getFileTreeService();
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
     includePattern: 'package.json',
-    includeMetadata: true  // Include size and modification time
+    includeMetadata: true  // include size and modification time
   };
-  
+
   const result = await service.getFileTree(query);
-  
-  // Traverse tree to find package.json
+
+  // Traverse the tree to find package.json
   function findPackageJson(node: any): any {
     if (node.name === 'package.json') {
       return node;
@@ -111,7 +111,7 @@ async function example5_WithMetadata() {
     }
     return null;
   }
-  
+
   const packageJson = findPackageJson(result.root);
   if (packageJson) {
   }
@@ -121,48 +121,48 @@ async function example5_WithMetadata() {
  * Example 6: Event listeners
  */
 async function example6_EventListeners() {
-  
+
   const service = getFileTreeService();
-  
-  // Listen for tree build complete event
+
+  // Listen for the tree-built event
   service.on('treeBuilt', (stats) => {
   });
-  
-  // Listen for metadata load complete event
+
+  // Listen for the metadata-loaded event
   service.on('metadataLoaded', () => {
   });
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
     maxDepth: 1,
     includeMetadata: true
   };
-  
+
   await service.getFileTree(query);
 }
 
 /**
- * Example 7: Cache mechanism demo
+ * Example 7: Caching demonstration
  */
 async function example7_CachingDemo() {
-  
+
   const service = getFileTreeService();
-  
+
   const query: FileTreeQuery = {
     folder: process.cwd(),
     maxDepth: 2
   };
-  
+
   // First call (cache miss)
   const result1 = await service.getFileTree(query);
-  
+
   // Second call (cache hit)
   const result2 = await service.getFileTree(query);
-  
-  // Clear cache
+
+  // Clear the cache
   service.clearCache();
-  
-  // Third call (rebuild)
+
+  // Third call (rebuilds)
   const result3 = await service.getFileTree(query);
 }
 
@@ -170,24 +170,24 @@ async function example7_CachingDemo() {
  * Example 8: Multi-project scenario
  */
 async function example8_MultiProject() {
-  
+
   const service = getFileTreeService();
-  
+
   const projects = [
     '/path/to/project1',
     '/path/to/project2',
     '/path/to/project3'
   ];
-  
-  
+
+
   const startTime = Date.now();
   const results = await Promise.all(
-    projects.map(folder => 
+    projects.map(folder =>
       service.getFileTree({ folder, maxDepth: 3 })
     )
   );
   const duration = Date.now() - startTime;
-  
+
   results.forEach((result, index) => {
   });
 }
@@ -196,19 +196,19 @@ async function example8_MultiProject() {
  * Example 9: Performance comparison - FileTreeService vs traditional recursive scan
  */
 async function example9_PerformanceComparison() {
-  
+
   const service = getFileTreeService();
   const workspaceRoot = process.cwd();
-  
-  // Method 1: Using FileTreeService (based on ripgrep)
+
+  // Method 1: use FileTreeService (ripgrep-based)
   const start1 = Date.now();
-  const result1 = await service.getFileTree({ 
+  const result1 = await service.getFileTree({
     folder: workspaceRoot,
     maxDepth: 5
   });
   const duration1 = Date.now() - start1;
-  
-  // Method 2: Traditional Node.js fs recursive scan (for comparison)
+
+  // Method 2: traditional Node.js fs recursive scan (for reference)
 }
 
 /**
@@ -223,9 +223,9 @@ async function runAllExamples() {
     await example5_WithMetadata();
     await example6_EventListeners();
     await example7_CachingDemo();
-    // await example8_MultiProject(); // Requires actual project paths
+    // await example8_MultiProject(); // requires actual project paths
     await example9_PerformanceComparison();
-    
+
   } catch (error) {
   }
 }

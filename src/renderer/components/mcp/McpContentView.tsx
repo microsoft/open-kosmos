@@ -46,12 +46,12 @@ const McpContentView: React.FC<McpContentViewProps> = ({
   mcpServerMenuState
 }) => {
   // Builtin tools are now initialized in main process automatically
-  
+
   // Get URL parameters
   const [searchParams, setSearchParams] = useSearchParams()
   const selectServerFromUrl = searchParams.get('selectServer')
 
-  // Selected server (default: built-in tools server)
+  // Selected server (defaults to the built-in tools server)
   const [selectedServer, setSelectedServer] = useState<MCPServerExtended | null>({
     name: 'builtin-tools',
     transport: 'stdio' as const,
@@ -64,14 +64,14 @@ const McpContentView: React.FC<McpContentViewProps> = ({
     tools: [],
     error: undefined
   })
-  
+
   // Selected tool
   const [selectedTool, setSelectedTool] = useState<MCPTool | null>(null)
-  
-  // View state: 'list' shows tool list, 'detail' shows tool details
+
+  // View state: 'list' shows tool list, 'detail' shows tool detail
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list')
 
-  // Handle URL parameter selectServer, auto-select the corresponding server
+  // Handle URL parameter selectServer — auto-select the corresponding server
   useEffect(() => {
     if (selectServerFromUrl && servers.length > 0) {
       const targetServer = servers.find(s => s.name === selectServerFromUrl)
@@ -86,10 +86,10 @@ const McpContentView: React.FC<McpContentViewProps> = ({
     }
   }, [selectServerFromUrl, servers, setSearchParams])
 
-  // When servers change, update selected server (but keep built-in tools server selection)
+  // When servers change, update the selected server (but keep the built-in tools server selection)
   React.useEffect(() => {
     if (selectedServer && selectedServer.name !== 'builtin-tools') {
-      // If currently selected server is not the built-in tools server and it was deleted
+      // If the currently selected server is not the built-in tools server, and that server has been deleted
       if (!servers.find(s => s.name === selectedServer.name)) {
         // Fall back to the built-in tools server
         setSelectedServer({
@@ -110,7 +110,7 @@ const McpContentView: React.FC<McpContentViewProps> = ({
 
   // Get tools for the selected server
   const [builtinTools, setBuiltinTools] = React.useState<MCPTool[]>([])
-  
+
   React.useEffect(() => {
     if (selectedServer?.name === 'builtin-tools') {
       const fetchBuiltinTools = async () => {
@@ -127,16 +127,16 @@ const McpContentView: React.FC<McpContentViewProps> = ({
       setBuiltinTools([])
     }
   }, [selectedServer])
-  
+
   const selectedServerTools = useMemo(() => {
-    // If it's the built-in tools server, use the IPC-fetched tool list
+    // If it's the built-in tools server, use the tool list fetched via IPC
     if (selectedServer?.name === 'builtin-tools') {
       return builtinTools
     }
     return selectedServer?.tools || []
   }, [selectedServer, builtinTools])
 
-  // When selected server changes, auto-select the first tool
+  // When the selected server changes, auto-select the first tool
   React.useEffect(() => {
     if (selectedServerTools.length > 0) {
       setSelectedTool(selectedServerTools[0])
@@ -146,7 +146,7 @@ const McpContentView: React.FC<McpContentViewProps> = ({
   }, [selectedServerTools])
 
   // Handle server selection
-  const handleServerSelect = useCallback((server: MCPServerExtended) => {
+  const handleServerSelect = useCallback((server: MCPServerExtended | null) => {
     setSelectedServer(server)
   }, [])
 
@@ -155,13 +155,13 @@ const McpContentView: React.FC<McpContentViewProps> = ({
     setSelectedTool(tool)
     setViewMode('detail') // Switch to detail view
   }, [])
-  
+
   // Handle back to list
   const handleBackToList = useCallback(() => {
     setViewMode('list')
   }, [])
 
-  // Wrap server actions to maintain selected state after operation
+  // Wrap server operations to maintain selection state after operation
   const handleConnect = useCallback((serverName: string) => {
     onConnect(serverName)
   }, [onConnect])
@@ -184,7 +184,7 @@ const McpContentView: React.FC<McpContentViewProps> = ({
 
   return (
     <div className="mcp-content-view">
-      {/* Left side: Server list */}
+      {/* Left: Server list */}
       <div className="server-list-panel">
         <McpServerListView
           servers={servers}

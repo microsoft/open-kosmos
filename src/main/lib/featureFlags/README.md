@@ -2,82 +2,82 @@
 
 ## Overview
 
-Feature Flags is a developer tool for controlling feature availability. Flag states are defined by developers on the backend or passed via command-line arguments.
+Feature Flags are developer tools used to control feature availability. Flag states are defined by developers in the backend, or passed via command-line arguments.
 
 ## Naming Convention
 
-All Feature Flags use the unified `kosmosFeatureXXXXX` naming format:
+All feature flags use the unified `openkosmosFeatureXXXXX` naming format:
 
 ```typescript
-'kosmosFeatureDevTools'
-'kosmosFeatureDebugLogging'
-'kosmosFeatureExperimentalChat'
+'openkosmosFeatureDevTools'
+'openkosmosFeatureDebugLogging'
+'openkosmosFeatureExperimentalChat'
 ```
 
 ## Defining Feature Flag Default Values
 
-### 1. Static Boolean Value
+### 1. Static Boolean
 
 ```typescript
 {
-  name: 'kosmosFeatureDevTools',
-  description: 'Developer Tools Panel',
-  defaultValue: false,  // Static value
+  name: 'openkosmosFeatureDevTools',
+  description: 'Developer tools panel',
+  defaultValue: false,  // static value
 },
 ```
 
 ### 2. Dynamic Logic Function
 
-Dynamically computed based on context (development environment, brand, platform):
+Dynamically computed based on context (dev environment, brand, platform):
 
 ```typescript
 {
-  name: 'kosmosFeatureDebugLogging',
-  description: 'Debug Logging',
-  // Only enabled in development environment
+  name: 'openkosmosFeatureDebugLogging',
+  description: 'Debug logging',
+  // Enable only in development environment
   defaultValue: (ctx) => ctx.isDev,
 },
 
 {
-  name: 'kosmosFeatureExperimentalChat',
-  description: 'Experimental Chat Feature',
-  // Only enabled in development environment
-  defaultValue: (ctx) => ctx.isDev,
+  name: 'openkosmosFeatureExperimentalChat',
+  description: 'Experimental chat feature',
+  // Enable only in dev environment
+  defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos',
 },
 ```
 
-### Context (FeatureFlagContext) includes:
+### Context (FeatureFlagContext) Fields:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `isDev` | boolean | Whether it is a development environment |
-| `brandName` | string | Current brand (e.g., kosmos) |
+| `isDev` | boolean | Whether running in a development environment |
+| `brandName` | string | Current brand name (e.g. `openkosmos`) |
 | `platform` | NodeJS.Platform | Platform (darwin, win32, linux) |
 
-## Command-Line Argument Override
+## Command-Line Overrides
 
-Command-line arguments take higher priority than default values:
+Command-line arguments take precedence over default values:
 
 ```bash
 # Windows
-app.exe --enable-features=kosmosFeatureDevTools,kosmosFeatureDebugLogging
+app.exe --enable-features=openkosmosFeatureDevTools,openkosmosFeatureDebugLogging
 
 # macOS
-./OpenKosmos.app/Contents/MacOS/OpenKosmos --enable-features=kosmosFeatureDevTools
+./KOSMOS.app/Contents/MacOS/KOSMOS --enable-features=openkosmosFeatureDevTools
 
 # Development environment
-npm run dev -- --enable-features=kosmosFeatureDevTools,kosmosFeatureMcpDebug
+npm run dev -- --enable-features=openkosmosFeatureDevTools,openkosmosFeatureMcpDebug
 ```
 
-## Usage in Code
+## Using Flags in Code
 
 ### Main Process
 
 ```typescript
 import { isFeatureEnabled } from './lib/featureFlags';
 
-if (isFeatureEnabled('kosmosFeatureDevTools')) {
-  // Enable developer tools related features
+if (isFeatureEnabled('openkosmosFeatureDevTools')) {
+  // Enable developer tools functionality
 }
 ```
 
@@ -87,61 +87,60 @@ if (isFeatureEnabled('kosmosFeatureDevTools')) {
 import { useFeatureFlag } from '../lib/featureFlags';
 
 function MyComponent() {
-  const isDevToolsEnabled = useFeatureFlag('kosmosFeatureDevTools');
-  
+  const isDevToolsEnabled = useFeatureFlag('openkosmosFeatureDevTools');
+
   if (!isDevToolsEnabled) return null;
-  
+
   return <DevToolsPanel />;
 }
 ```
 
 ## Adding a New Flag
 
-### 1. Add Type in types.ts
+### 1. Add the type in `types.ts`
 
 ```typescript
-export type FeatureFlagName = 
-  | 'kosmosFeatureDevTools'
-  | 'kosmosFeatureMyNewFeature'  // Add new name
+export type FeatureFlagName =
+  | 'openkosmosFeatureDevTools'
+  | 'openkosmosFeatureMyNewFeature'  // add new name
   ;
 ```
 
-### 2. Add Configuration in featureFlagDefinitions.ts
+### 2. Add the definition in `featureFlagDefinitions.ts`
 
 ```typescript
 {
-  name: 'kosmosFeatureMyNewFeature',
-  description: 'My New Feature',
-  defaultValue: false,  // Or use (ctx) => ctx.isDev to restrict to development environment only
+  name: 'openkosmosFeatureMyNewFeature',
+  description: 'My new feature',
+  defaultValue: false,  // or use (ctx) => ctx.isDev to restrict to dev only
 },
 ```
 
 ## Defined Flags
 
-| Flag | Description | Default Value |
-|------|-------------|---------------|
-| `kosmosFeatureDevTools` | Developer Tools | `false` |
-| `kosmosFeatureDebugLogging` | Debug Logging | `(ctx) => ctx.isDev` |
-| `kosmosFeaturePerformanceMetrics` | Performance Metrics | `false` |
-| `kosmosFeatureExperimentalChat` | Experimental Chat | `(ctx) => ctx.isDev` |
-| `kosmosFeatureNewModelSelector` | New Model Selector | `false` |
-| `kosmosFeatureMemoryV2` | Memory V2 | `false` |
-| `kosmosFeatureMockApi` | Mock API | `(ctx) => ctx.isDev` |
-| `kosmosFeatureMcpDebug` | MCP Debug | `false` |
+| Flag | Description | Default |
+|------|-------------|---------|
+| `openkosmosFeatureDevTools` | Developer tools | `false` |
+| `openkosmosFeatureDebugLogging` | Debug logging | `(ctx) => ctx.isDev` |
+| `openkosmosFeaturePerformanceMetrics` | Performance metrics | `false` |
+| `openkosmosFeatureExperimentalChat` | Experimental chat | `(ctx) => ctx.isDev && brandName=kosmos` |
+| `openkosmosFeatureNewModelSelector` | New model selector | `false` |
+| `openkosmosFeatureMemoryV2` | Memory V2 | `false` |
+| `openkosmosFeatureMockApi` | Mock API | `(ctx) => ctx.isDev` |
+| `openkosmosFeatureMcpDebug` | MCP debug | `false` |
 
 ## File Structure
 
 ```
 src/main/lib/featureFlags/
-├── index.ts                    # Export entry
-├── types.ts                    # Type definitions (includes FeatureFlagContext)
+├── index.ts                    # Export entry point
+├── types.ts                    # Type definitions (including FeatureFlagContext)
 ├── featureFlagDefinitions.ts   # Flag configuration
 ├── featureFlagManager.ts       # Backend manager
 └── README.md
 
 src/renderer/lib/featureFlags/
-├── index.ts                    # Export entry
+├── index.ts                    # Export entry point
 ├── featureFlagCacheManager.ts  # Frontend cache
-└── useFeatureFlag.ts           # React Hooks
+└── useFeatureFlag.ts           # React hooks
 ```
-

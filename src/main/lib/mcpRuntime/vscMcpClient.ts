@@ -9,6 +9,23 @@ interface Tool {
   name: string;
   description?: string;
   inputSchema: any;
+  annotations?: any;
+  alwaysLoad?: boolean;
+  searchHint?: string;
+}
+
+/** Map raw MCP tool (with _meta) to internal Tool shape */
+function mapMcpTool(tool: any): Tool {
+  return {
+    name: tool.name,
+    description: tool.description || "",
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+    alwaysLoad: tool._meta?.['anthropic/alwaysLoad'] === true,
+    searchHint: typeof tool._meta?.['anthropic/searchHint'] === 'string'
+      ? tool._meta['anthropic/searchHint'].replace(/\s+/g, ' ').trim() || undefined
+      : undefined,
+  };
 }
 
 /**
@@ -25,12 +42,12 @@ export class VscMcpClient {
 
   constructor(mcpServer: McpServerConfig) {
     this.server = mcpServer;
-    
-    // Commands and environment variables are managed uniformly by TerminalInstance
-    // Only pass the original configuration here, without any command conversion or environment variable injection
-    // - internal mode: TerminalInstance will add the bin directory to PATH, and shim scripts will handle command mapping
-    // - system mode: TerminalInstance uses the system PATH, commands are executed directly
-    
+
+    // Commands and environment variables are managed uniformly by TerminalInstance.
+    // Pass only the raw config here; do not perform any command transformation or environment variable injection.
+    // - internal mode: TerminalInstance adds the bin directory to PATH; the shim script handles command mapping.
+    // - system mode: TerminalInstance uses the system PATH; commands are executed directly.
+
     // Convert McpServerConfig to VscodeMcpServerConfig
     // Aligned with VS Code: no initialization timeout or retry mechanism
     const vscodeMcpConfig: VscodeMcpServerConfig = {
@@ -40,40 +57,44 @@ export class VscMcpClient {
       command: mcpServer.command,
       args: mcpServer.args || [],
       url: mcpServer.url,
+      headers: mcpServer.headers,
       env: mcpServer.env as Record<string, string> | undefined,
       timeout: 3600000,
+      // Forward original cfg so the HTTP transport can construct a
+      // OpenKosmosOAuthProvider that knows the server's oauth.* options.
+      mcpServerConfig: mcpServer,
     };
-    
+
     this.mcp = new VscodeMcpClient(vscodeMcpConfig);
     this.lastError = null;
 
 
     // Log complete MCP server configuration details
-    
+
     if (mcpServer.command) {
     }
-    
+
     if (mcpServer.args && mcpServer.args.length > 0) {
     } else {
     }
-    
+
     if (mcpServer.url) {
     }
-    
+
     if (mcpServer.env && Object.keys(mcpServer.env).length > 0) {
       Object.entries(mcpServer.env).forEach(([key, value]) => {
       });
     } else {
     }
-    
+
   }
 
   async connectToServer(): Promise<string | Error> {
     try {
-      
+
       // Set up event listeners
       this.mcp.on('stateChange', (state) => {
-        
+
         if (state.state === 'error') {
           const errorMsg = state.message || 'Unknown connection error';
           this.lastError = new Error(errorMsg);
@@ -90,13 +111,9 @@ export class VscMcpClient {
 
       // Get available tools
       const toolsResult = this.mcp.getTools();
-      this.tools = toolsResult.map((tool: any) => ({
-        name: tool.name,
-        description: tool.description || "",
-        inputSchema: tool.inputSchema,
-      }));
+      this.tools = toolsResult.map(mapMcpTool);
 
-      
+
       this.lastError = null;
       return "connected";
     } catch (e) {
@@ -115,37 +132,33 @@ export class VscMcpClient {
     if (!this.isConnected) {
       return [];
     }
-    
+
     try {
       // Get tools from server
       const toolsResult = this.mcp.getTools();
-      this.tools = toolsResult.map((tool: any) => ({
-        name: tool.name,
-        description: tool.description || "",
-        inputSchema: tool.inputSchema,
-      }));
-      
+      this.tools = toolsResult.map(mapMcpTool);
+
       return this.tools;
     } catch (error) {
       return this.tools; // Return cached tools
     }
   }
-  
+
   /**
    * Execute a tool with the given name and arguments
-   * 
+   *
    * @param toolName - The name of the tool to execute
    * @param toolArgs - The arguments to pass to the tool
    * @returns The tool's response content as a string
    */
-  async executeTool({ toolName, toolArgs }: { toolName: string, toolArgs: { [key: string]: unknown } }): Promise<string> {
+  async executeTool({ toolName, toolArgs, signal }: { toolName: string, toolArgs: { [key: string]: unknown }, signal?: AbortSignal }): Promise<string> {
     try {
       if (!this.isConnected) {
         throw new Error('Client is not connected to server');
       }
 
-      const result = await this.mcp.callTool(toolName, toolArgs);
-      
+      const result = await this.mcp.callTool(toolName, toolArgs, { signal });
+
       // Return the content from the tool result - handle different response formats
       if (typeof result === 'string') {
         return result;
@@ -171,12 +184,12 @@ export class VscMcpClient {
       throw e instanceof Error ? e : new Error(String(e));
     }
   }
-  
+
   async cleanup(): Promise<void> {
     const cleanupStart = Date.now();
     const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
-    
+
+
     try {
       // Disconnect from server if connected
       if (this.isConnected) {
@@ -185,15 +198,15 @@ export class VscMcpClient {
         } catch (error) {
         }
       }
-      
+
     } finally {
       // Clear references
-      
+
       this.tools = [];
       this.lastError = null;
       this.isConnected = false;
       this.serverId = null;
-      
+
       const cleanupDuration = Date.now() - cleanupStart;
     }
   }

@@ -8,6 +8,18 @@ export interface FileExistsResult {
   error?: string
 }
 
+export interface DirectoryEntry {
+  name: string
+  isDirectory: boolean
+  isFile: boolean
+}
+
+export interface DirectoryListResult {
+  success: boolean
+  entries?: DirectoryEntry[]
+  error?: string
+}
+
 export interface FileReadResult {
   success: boolean
   content?: string
@@ -48,13 +60,34 @@ export async function checkFileExists(filePath: string): Promise<FileExistsResul
       const exists = await window.electronAPI.fs.exists(filePath)
       return { exists }
     }
-    
+
     // Fallback: if no IPC available, assume file doesn't exist
     return { exists: false, error: 'File system access not available' }
   } catch (error) {
     return {
       exists: false,
       error: `Error checking file existence: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+}
+
+/**
+ * List direct children of a directory
+ */
+export async function listDirectory(dirPath: string): Promise<DirectoryListResult> {
+  try {
+    if (window.electronAPI?.fs?.listDir) {
+      return await window.electronAPI.fs.listDir(dirPath)
+    }
+
+    return {
+      success: false,
+      error: 'File system access not available'
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Error listing directory: ${error instanceof Error ? error.message : String(error)}`
     }
   }
 }
@@ -119,7 +152,7 @@ export async function readFileContent(
     // Use Electron's IPC to read file content
     if (window.electronAPI?.fs?.readFile) {
       const result = await window.electronAPI.fs.readFile(filePath, encoding)
-      
+
       if (result.success) {
         return {
           success: true,
@@ -155,7 +188,7 @@ export async function getFileStats(filePath: string): Promise<FileStatsResult> {
     // Use Electron's IPC to get file stats
     if (window.electronAPI?.fs?.stat) {
       const result = await window.electronAPI.fs.stat(filePath)
-      
+
       if (result.success && result.stats) {
         return {
           success: true,
@@ -197,7 +230,7 @@ export async function expandPath(path: string): Promise<string> {
     if (window.electronAPI?.fs?.expandPath) {
       return await window.electronAPI.fs.expandPath(path)
     }
-    
+
     // Fallback: return original path
     return path
   } catch (error) {
@@ -233,16 +266,16 @@ export function isValidFilePath(filePath: string): boolean {
  */
 export function normalizePath(filePath: string): string {
   if (!filePath) return ''
-  
+
   // Replace backslashes with forward slashes for consistency
   let normalized = filePath.replace(/\\/g, '/')
-  
+
   // Remove duplicate slashes
   normalized = normalized.replace(/\/+/g, '/')
-  
+
   // Trim leading/trailing whitespace
   normalized = normalized.trim()
-  
+
   return normalized
 }
 
@@ -251,16 +284,16 @@ export function normalizePath(filePath: string): string {
  */
 export function getFileExtension(filePath: string): string {
   if (!filePath) return ''
-  
+
   const normalized = normalizePath(filePath)
   const lastDot = normalized.lastIndexOf('.')
   const lastSlash = normalized.lastIndexOf('/')
-  
+
   // If dot is before the last slash, or there's no dot, return empty string
   if (lastDot === -1 || lastDot < lastSlash) {
     return ''
   }
-  
+
   return normalized.substring(lastDot + 1).toLowerCase()
 }
 
@@ -277,14 +310,14 @@ export function hasFileExtension(filePath: string, extensions: string[]): boolea
  */
 export function getFileName(filePath: string): string {
   if (!filePath) return ''
-  
+
   const normalized = normalizePath(filePath)
   const lastSlash = normalized.lastIndexOf('/')
-  
+
   if (lastSlash === -1) {
     return normalized
   }
-  
+
   return normalized.substring(lastSlash + 1)
 }
 
@@ -293,14 +326,14 @@ export function getFileName(filePath: string): string {
  */
 export function getDirectory(filePath: string): string {
   if (!filePath) return ''
-  
+
   const normalized = normalizePath(filePath)
   const lastSlash = normalized.lastIndexOf('/')
-  
+
   if (lastSlash === -1) {
     return ''
   }
-  
+
   return normalized.substring(0, lastSlash)
 }
 
@@ -309,11 +342,11 @@ export function getDirectory(filePath: string): string {
  */
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
-  
+
   const units = ['B', 'KB', 'MB', 'GB']
   const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024))
   const size = bytes / Math.pow(1024, unitIndex)
-  
+
   return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
@@ -344,12 +377,12 @@ export interface BatchFileCheckResult {
  */
 export async function batchCheckFiles(filePaths: string[]): Promise<BatchFileCheckResult[]> {
   const results: BatchFileCheckResult[] = []
-  
+
   for (const filePath of filePaths) {
     try {
       const existsResult = await checkFileExists(filePath)
       const accessResult = await checkFileReadable(filePath)
-      
+
       let size: number | undefined
       if (existsResult.exists && accessResult.readable) {
         const statsResult = await getFileStats(filePath)
@@ -357,7 +390,7 @@ export async function batchCheckFiles(filePaths: string[]): Promise<BatchFileChe
           size = statsResult.stats?.size
         }
       }
-      
+
       results.push({
         filePath,
         exists: existsResult.exists,
@@ -374,7 +407,7 @@ export async function batchCheckFiles(filePaths: string[]): Promise<BatchFileChe
       })
     }
   }
-  
+
   return results
 }
 

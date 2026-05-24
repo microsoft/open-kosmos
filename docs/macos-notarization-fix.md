@@ -2,12 +2,12 @@
 
 ## Problem Diagnosis
 
-The previous CI builds had critical issues:
+The previous CI builds had serious issues:
 
-1. ✅ **Codesign Succeeded** - Code signing worked correctly
-2. ❌ **Notarization was only submitted, not awaited** - `APPLE_NOTARIZE_WAIT=false`
-3. ❌ **No Stapled Notarization Ticket** - App was missing the notarization ticket
-4. ❌ **Gatekeeper Warning After User Download** - "Apple could not verify OpenKosmos is free of malware"
+1. ✅ **Codesign succeeded** — Code signing was completely normal
+2. ❌ **Notarization was only submitted, not waited for** — `APPLE_NOTARIZE_WAIT=false`
+3. ❌ **No stapled notarization ticket** — App was missing the notarization ticket
+4. ❌ **Gatekeeper warning on user download** — "Apple could not verify OpenKosmos is free of malware"
 
 ### Key Log Evidence
 
@@ -18,23 +18,23 @@ Status: undefined
 ```
 
 This means:
-- Only the notarization request was submitted; the process did not wait for Apple to complete the review
-- Status shows `undefined` - it is unknown whether Apple passed the check
+- Only the notarization request was submitted; Apple's review was never waited for
+- Status shows `undefined` — it is unknown whether Apple passed the check
 - The packaged `.app`/`.dmg` was not truly notarized
-- Users will see a Gatekeeper warning upon download
+- Gatekeeper warns users on download
 
 ---
 
 ## Fix
 
-### 1️⃣ CI Pipeline Changes
+### 1️⃣ CI Pipeline Change
 
 **File**: [.github/workflows/release.yml](.github/workflows/release.yml)
 
-**Modified Location**: 
-- Line 403: `build-macos-openkosmos` job
+**Change locations**: 
+- Line 403: `build-macos-kosmos` job
 
-**Changes**:
+**Change**:
 ```diff
 - # 🔑 Disable notarization wait to avoid GitHub Actions timeout
 - # electron-builder will submit the notarization request but not wait for completion
@@ -48,9 +48,9 @@ This means:
 
 **File**: [scripts/notarize.js](../scripts/notarize.js)
 
-The script already has full support (no modifications needed):
+The script already has full support (no changes needed):
 
-1. **Codesign Verification** (`verifyCodesign`)
+1. **Codesign verification** (`verifyCodesign`)
    ```bash
    codesign --verify --deep --strict --verbose=2 "OpenKosmos.app"
    ```
@@ -69,7 +69,7 @@ The script already has full support (no modifications needed):
      --output-format json
    ```
 
-4. **Poll Status Until Completion** (30-second intervals, up to 30 minutes)
+4. **Poll status until complete** (30-second interval, up to 30 minutes)
    ```bash
    xcrun notarytool info "$SUBMISSION_ID" \
      --apple-id "$APPLE_ID" \
@@ -78,29 +78,29 @@ The script already has full support (no modifications needed):
      --output-format json
    ```
 
-5. **Staple Ticket to App**
+5. **Staple ticket to App**
    ```bash
    xcrun stapler staple "OpenKosmos.app"
    xcrun stapler validate "OpenKosmos.app"
    ```
 
 6. **Package DMG/ZIP**
-   - electron-builder will automatically use the stapled App for packaging
+   - electron-builder will automatically package using the already-stapled App
 
 ---
 
-## Verification Methods
+## Verification
 
-### Locally Verify Signed and Notarized App
+### Locally Verify a Signed and Notarized App
 
 ```bash
-# 1. Verify code signature
+# 1. Verify code signing
 codesign --verify --deep --strict --verbose=2 "OpenKosmos.app"
 
 # 2. Verify Hardened Runtime
 codesign -dv --verbose=4 "OpenKosmos.app" 2>&1 | grep -i runtime
 
-# 3. Verify stapled ticket
+# 3. Verify Staple ticket
 xcrun stapler validate "OpenKosmos.app"
 
 # 4. Verify Gatekeeper assessment
@@ -109,7 +109,7 @@ spctl -a -vvv -t execute "OpenKosmos.app"
 
 ### CI Build Log Checkpoints
 
-Expected log output:
+Expect to see the following logs:
 
 ```text
 🍎 Starting macOS notarization (using notarytool with polling)...
@@ -152,13 +152,13 @@ Expected log output:
 
 ---
 
-## Frequently Asked Questions
+## FAQ
 
-### Q1: Will the CI time out?
+### Q1: Will CI time out?
 
-**A**: Usually not. Apple notarization typically takes 1-5 minutes, 15 minutes at most. The script has a 30-minute timeout, which is more than sufficient. The GitHub Actions macOS runner has a default timeout of 60 minutes.
+**A**: Usually not. Apple notarization typically takes 1–5 minutes, up to 15 minutes. The script has a 30-minute timeout, which is more than sufficient. The GitHub Actions macOS runner default timeout is 60 minutes.
 
-### Q2: What if notarization fails?
+### Q2: What if Notarization fails?
 
 **A**: The script will automatically retrieve and print detailed logs:
 
@@ -169,13 +169,13 @@ xcrun notarytool log "$SUBMISSION_ID" \
   --password "$APPLE_APP_SPECIFIC_PASSWORD"
 ```
 
-Common failure reasons:
+Common failure causes:
 - Hardened Runtime not enabled
-- Entitlements missing or incorrect
+- Missing or incorrect Entitlements
 - Dependent libraries not properly signed
 - Use of disallowed APIs
 
-### Q3: How to manually check notarization status?
+### Q3: How do I manually check Notarization status?
 
 **A**: Use the Submission ID from the CI logs:
 
@@ -186,23 +186,23 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
   --password "$APPLE_APP_SPECIFIC_PASSWORD"
 ```
 
-### Q4: What if users still report warnings?
+### Q4: Users are still seeing warnings. What should I do?
 
 **A**: Check the following:
-1. Whether the DMG/ZIP contains the stapled App
-2. Whether the user downloaded from the correct Release channel
+1. Does the DMG/ZIP contain the already-stapled App?
+2. Is the user downloading from the correct release channel?
 3. Verify the released files:
    ```bash
-   # Extract the DMG/ZIP and verify the App
+   # Extract DMG/ZIP, then verify the App
    xcrun stapler validate "OpenKosmos.app"
    spctl -a -vvv -t execute "OpenKosmos.app"
    ```
 
 ---
 
-## Next Release Checklist
+## Pre-Release Checklist
 
-- [ ] CI environment variables are correctly configured:
+- [ ] CI environment variables configured correctly:
   - `APPLE_ID`
   - `APPLE_APP_SPECIFIC_PASSWORD`
   - `APPLE_TEAM_ID`
@@ -210,7 +210,7 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
   - `CSC_KEY_PASSWORD`
   - `APPLE_NOTARIZE_WAIT=true` ✅
 
-- [ ] Build logs show the complete flow:
+- [ ] Build log shows the complete flow:
   - ✅ Codesign verification passed
   - ✅ Notarization accepted
   - ✅ Stapling complete
@@ -223,8 +223,8 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
   ```
 
 - [ ] Post-release user verification:
-  - Download the DMG/ZIP
-  - Double-click to open, no Gatekeeper warning
+  - Download DMG/ZIP
+  - Double-click to open; no Gatekeeper warning
   - Runs normally
 
 ---
@@ -240,5 +240,4 @@ xcrun notarytool info "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
 
 **Fix Date**: 2026-01-14  
 **Fix Version**: Next release (v1.13.19+)  
-**Scope of Impact**: macOS OpenKosmos builds
-
+**Scope**: macOS OpenKosmos builds

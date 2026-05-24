@@ -60,7 +60,7 @@ export const MCP_METHODS = {
   PROMPTS_LIST: 'prompts/list',
   PROMPTS_GET: 'prompts/get',
   LOGGING_SET_LEVEL: 'logging/setLevel',
-  
+
   // Server to Client
   NOTIFICATIONS_INITIALIZED: 'notifications/initialized',
   NOTIFICATIONS_CANCELLED: 'notifications/cancelled',
@@ -70,7 +70,7 @@ export const MCP_METHODS = {
   NOTIFICATIONS_RESOURCES_LIST_CHANGED: 'notifications/resources/list_changed',
   NOTIFICATIONS_TOOLS_LIST_CHANGED: 'notifications/tools/list_changed',
   NOTIFICATIONS_PROMPTS_LIST_CHANGED: 'notifications/prompts/list_changed',
-  
+
   // Bidirectional
   ROOTS_LIST: 'roots/list',
   SAMPLING_CREATE: 'sampling/create',
@@ -349,7 +349,7 @@ export type McpResponseType<T extends McpMethod> = McpRequestResponseMap[T][1];
 export const MCP_PROTOCOL_VERSION = '2024-11-05';
 
 export const MCP_CLIENT_INFO = {
-  name: 'KosmosMcpClient',
+  name: 'OpenKosmosMcpClient',
   version: '2.0.0',
 } as const;
 
@@ -380,7 +380,7 @@ export const MCP_SCHEMAS: Record<string, ValidationSchema> = {
     },
     required: ['protocolVersion', 'capabilities', 'clientInfo'],
   },
-  
+
   ToolsCallRequest: {
     type: 'object',
     properties: {
@@ -389,7 +389,7 @@ export const MCP_SCHEMAS: Record<string, ValidationSchema> = {
     },
     required: ['name'],
   },
-  
+
   ResourcesReadRequest: {
     type: 'object',
     properties: {
@@ -397,7 +397,7 @@ export const MCP_SCHEMAS: Record<string, ValidationSchema> = {
     },
     required: ['uri'],
   },
-  
+
   PromptsGetRequest: {
     type: 'object',
     properties: {
@@ -442,29 +442,29 @@ export function createInternalError(details?: string): JsonRpcError {
 // ==================== Type Guards ====================
 
 export function isJsonRpcRequest(message: any): message is JsonRpcRequest {
-  return message && 
-    message.jsonrpc === '2.0' && 
+  return message &&
+    message.jsonrpc === '2.0' &&
     typeof message.method === 'string' &&
     ('id' in message);
 }
 
 export function isJsonRpcResponse(message: any): message is JsonRpcResponse {
-  return message && 
-    message.jsonrpc === '2.0' && 
+  return message &&
+    message.jsonrpc === '2.0' &&
     ('result' in message || 'error' in message) &&
     ('id' in message);
 }
 
 export function isJsonRpcNotification(message: any): message is JsonRpcNotification {
-  return message && 
-    message.jsonrpc === '2.0' && 
+  return message &&
+    message.jsonrpc === '2.0' &&
     typeof message.method === 'string' &&
     !('id' in message);
 }
 
 export function isJsonRpcMessage(message: any): message is JsonRpcMessage {
-  return isJsonRpcRequest(message) || 
-    isJsonRpcResponse(message) || 
+  return isJsonRpcRequest(message) ||
+    isJsonRpcResponse(message) ||
     isJsonRpcNotification(message);
 }
 

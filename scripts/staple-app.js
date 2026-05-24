@@ -1,5 +1,5 @@
 // Staple notarization ticket to macOS app
-// Standalone script for the package-macos job in GitHub Actions
+// Standalone script for the GitHub Actions package-macos job
 
 const { execSync } = require('child_process');
 const path = require('path');
@@ -23,7 +23,7 @@ function stapleApp(appPath) {
   }
 }
 
-// Verify whether staple was successful
+// Verify staple succeeded
 function verifyStaple(appPath) {
   console.log('🔍 Verifying staple...');
   try {

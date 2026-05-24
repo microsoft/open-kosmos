@@ -64,11 +64,11 @@ class ValueAtom<T> {
     return state;
   }
 
-  public useDataOnly(): T {
+  public useData(): T {
     return useContext(Context)(this).use();
   }
 
-  public useData(): [T, Change<T>] {
+  public use(): [T, Change<T>] {
     const { use, change } = useContext(Context)(this);
     return [use(), change];
   }
@@ -112,11 +112,11 @@ class ActionAtom<T, A> {
     return state as any;
   }
 
-  public useDataOnly(): T {
+  public useData(): T {
     return useContext(Context)(this).use();
   }
 
-  public useData(): [T, A] {
+  public use(): [T, A] {
     const { use, actions } = useContext(Context)(this);
     return [use(), actions];
   }
@@ -143,7 +143,7 @@ class ComputedAtom<T> {
     return state;
   }
 
-  public useData(): T {
+  public use(): T {
     return useContext(Context)(this).use();
   }
 }

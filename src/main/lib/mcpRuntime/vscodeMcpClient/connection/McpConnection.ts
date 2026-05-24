@@ -91,7 +91,7 @@ export class McpConnection extends EventEmitter {
     config: Partial<ConnectionConfig> = {}
   ) {
     super();
-    
+
     this.serverDefinition = { ...serverDefinition };
     this.config = { ...DEFAULT_CONNECTION_CONFIG, ...config };
   }

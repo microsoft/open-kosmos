@@ -17,6 +17,9 @@ import ResolveablePromise from '@shared/resolveable-promise';
 import type { SaveToFileResult, DisplayInfo, CaptureResult } from '@shared/ipc/screenshot';
 import { getWindowFrames } from './windowFrames';
 
+const DEV_SERVER_PORT = process.env.DEV_SERVER_PORT || '39017';
+const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] || `http://localhost:${DEV_SERVER_PORT}`;
+
 const logger = getUnifiedLogger();
 
 /** Selection rectangle */
@@ -56,7 +59,7 @@ export class ScreenshotManager {
 
   private displays = new Map<number, DisplayCapture>();
   private capturePromise: ResolveablePromise<CaptureResult> | null = null;
-  private captureReadyPromise: Promise<void> = Promise.reject().catch(() => {/* initial state: not ready */});
+  private captureReadyPromise: Promise<void> = Promise.reject();
   private activeDisplayId: number | null = null;
   private mainWindow: BrowserWindow | null = null;
 
@@ -95,11 +98,11 @@ export class ScreenshotManager {
 
   async checkScreenCapturePermission(): Promise<boolean> {
     if (process.platform !== 'darwin') return true;
-    
+
     const status = systemPreferences.getMediaAccessStatus('screen');
     logger.info(`[ScreenshotManager] Screen capture permission status: ${status}`);
     if (status === 'granted') return true;
-    
+
     const dialogResult = await dialog.showMessageBox({
       type: 'info',
       title: 'Screen Recording Permission Required',
@@ -109,7 +112,7 @@ export class ScreenshotManager {
       defaultId: 0,
       cancelId: 1,
     }) as unknown as { response: number };
-    
+
     if (dialogResult.response === 0) {
       shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
     }
@@ -182,7 +185,7 @@ export class ScreenshotManager {
         window.setAlwaysOnTop(true, 'screen-saver');
         window.show();
         window.focus();
-        
+
         const screenshot = screenshots[index];
         const cachedJpeg = screenshot.toJPEG(90);
         this.displays.set(display.id, {
@@ -288,7 +291,7 @@ export class ScreenshotManager {
    */
   private async createDisplayWindowForParallel(display: Electron.Display): Promise<WindowReadyState> {
     const { bounds, id } = display;
-    
+
     const windowOptions: BrowserWindowConstructorOptions = {
       x: bounds.x,
       y: bounds.y,
@@ -324,9 +327,11 @@ export class ScreenshotManager {
         resolve();
       });
     });
-    
+
     if (this.isDev) {
-      await window.loadURL(`http://localhost:3000/screenshot.html?displayId=${id}`);
+      // Both Vite and webpack use screenshot.html
+      const htmlFile = 'screenshot.html';
+      await window.loadURL(`${DEV_SERVER_URL}/${htmlFile}?displayId=${id}`);
     } else {
       // ⚠️ Do NOT append query params directly to the file path!
       // Electron's loadFile internally uses pathToFileURL(), which encodes '?' as '%3F',

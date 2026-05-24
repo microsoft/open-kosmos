@@ -3,11 +3,11 @@ import '../../styles/ErrorBar.css';
 import { MODEL_CATEGORIES } from '../../lib/models/ghcModels';
 import { profileDataManager } from '../../lib/userData';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
+import { logger } from '@renderer/lib';
 
 interface ErrorBarProps {
   errorMessage: string;
   chatSessionId: string;
-  onRetry: (chatSessionId: string) => void;
 }
 
 /**
@@ -22,7 +22,7 @@ function getCurrentModelForSession(chatSessionId: string): string | null {
 }
 
 /**
- * Check if the model is a Claude series model
+ * Check whether the model is from the Claude family
  */
 function isClaudeModel(modelId: string): boolean {
   return MODEL_CATEGORIES.claude.some(
@@ -31,7 +31,7 @@ function isClaudeModel(modelId: string): boolean {
 }
 
 /**
- * Generate fix suggestions based on error message and current model
+ * Generate fix suggestion based on error message and current model
  * @param errorMessage Error message text
  * @param chatSessionId Current ChatSession ID
  * @returns Fix suggestion text, or null if none
@@ -61,7 +61,7 @@ function getFixSuggestion(errorMessage: string, chatSessionId: string): string |
     return 'This is usually caused by network interruption during streaming. Please check your VPN/network connection and click Retry.';
   }
 
-  // 🔥 500 Internal server error
+  // 🔥 500 internal server error
   if (
     lowerMsg.includes('internal error') ||
     lowerMsg.includes('server internal error') ||
@@ -70,7 +70,7 @@ function getFixSuggestion(errorMessage: string, chatSessionId: string): string |
     return 'Server encountered an internal error. This may be caused by overly long context or complex tool calls. Try starting a new conversation or simplifying your request.';
   }
 
-  // 🔥 Truncation related errors
+  // 🔥 Truncation-related errors
   if (
     lowerMsg.includes('truncat') ||
     lowerMsg.includes('incomplete json')
@@ -84,11 +84,38 @@ function getFixSuggestion(errorMessage: string, chatSessionId: string): string |
 /**
  * ErrorBar - Error notification bar component
  *
- * Displayed above ChatInput, similar to ApprovalBar
- * Shows error message on the left, Retry button on the right
+ * Displayed above ChatInput
+ * Shows error message on the left and Retry button on the right
  * Automatically shows fix suggestions when known error patterns are detected
  */
-const ErrorBar: React.FC<ErrorBarProps> = ({ errorMessage, chatSessionId, onRetry }) => {
+const ErrorBar: React.FC<ErrorBarProps> = ({ errorMessage, chatSessionId }) => {
+  const onRetry = async (chatSessionId: string) => {
+    logger.debug('[ErrorBar] 🔄 Retrying chat...', { chatSessionId });
+
+    // First clear error message to dismiss ErrorBar
+    agentChatSessionCacheManager.clearErrorMessage(chatSessionId);
+
+    try {
+      // Call the backend to retry
+      const result = await window.electronAPI.agentChat.retryChat(chatSessionId);
+
+      // 🔥 Check the success field of the returned result
+      if (!result.success) {
+        logger.error('[ErrorBar] ❌ Retry failed:', result.error);
+        // If retry fails, restore error message
+        agentChatSessionCacheManager.setErrorMessage(chatSessionId, result.error || 'Retry failed');
+        return;
+      }
+
+      logger.debug('[ErrorBar] ✅ Retry completed successfully');
+    } catch (error) {
+      logger.error('[ErrorBar] ❌ Retry failed with exception:', error);
+      // If retry fails, restore the error message
+      const retryErrorMessage = error instanceof Error ? error.message : String(error);
+      agentChatSessionCacheManager.setErrorMessage(chatSessionId, retryErrorMessage);
+    }
+  }
+
   const handleRetry = () => {
     onRetry(chatSessionId);
   };

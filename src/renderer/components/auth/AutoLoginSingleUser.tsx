@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StartupValidationResult } from '../../types/startupValidationTypes';
 import { createLogger } from '../../lib/utilities/logger';
+import { AuthManagerProxy } from "../../lib/auth/authManagerProxy";
 
 const logger = createLogger('[AutoLoginSingleUser]');
 
@@ -10,7 +11,7 @@ interface AutoLoginSingleUserProps {
   onFailure?: (error: Error) => void;
 }
 
-export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({ 
+export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({
   startupValidationResult,
   onSuccess,
   onFailure
@@ -21,13 +22,12 @@ export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({
         // Get the only valid user
         const validUser = startupValidationResult.stage2.validUsers[0];
         if (validUser && validUser.authData) {
-          
+
           // Set current auth via AuthManager
-          const { AuthManagerProxy } = await import('../../lib/auth/authManagerProxy');
           const authManager = new AuthManagerProxy();
           await authManager.setCurrentAuth(validUser.authData);
-          
-          // Trigger auth success event to let app enter normal data loading flow
+
+          // Dispatch auth success event to let the app enter the normal data loading flow
           window.dispatchEvent(new CustomEvent('ghc:authSuccess', {
             detail: {
               authData: validUser.authData,
@@ -40,19 +40,19 @@ export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({
             throw new Error('No valid user found for auto-login');
         }
       } catch (error) {
-        logger.error('[AutoLoginSingleUser] Auto-login failed:', error);
-        // If auto-login fails, trigger error event
+        logger.error('[AutoLoginSingleUser] Auto login failed:', error);
+        // If auto login fails, dispatch error event
         window.dispatchEvent(new CustomEvent('autoLogin:failed', {
           detail: { error: error instanceof Error ? error.message : 'Auto login failed' }
         }));
         if (onFailure) onFailure(error instanceof Error ? error : new Error(String(error)));
       }
     };
-    
+
     autoLoginSingleUser();
   }, [startupValidationResult, onSuccess, onFailure]);
 
-  // Show loading state while waiting for auto-login to complete
+  // Show loading state while waiting for auto login to complete
   return (
     <div className="h-full flex flex-col glass-container">
       <div className="flex-1 flex items-center justify-center">

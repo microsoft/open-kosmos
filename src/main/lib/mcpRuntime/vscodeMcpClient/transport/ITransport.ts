@@ -14,7 +14,7 @@ export interface ITransport {
   readonly onMessage: (callback: (message: string) => void) => () => void;
   readonly onError: (callback: (error: Error) => void) => () => void;
   readonly onClose: (callback: () => void) => () => void;
-  
+
   connect(): Promise<void>;
   send(message: string): void;
   close(): Promise<void>;

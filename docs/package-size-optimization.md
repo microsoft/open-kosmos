@@ -2,68 +2,68 @@
 
 ## 📊 Current Problem Analysis
 
-Your installer reaches 200MB mainly due to the following dependencies:
+Your installation package reaching 200 MB is mainly due to the following dependencies:
 
 ### Large Dependencies (Sorted by Size)
 
-1. **playwright (80-100MB)** ⚠️ Biggest issue
-   - Contains complete browser engines for Chromium/Firefox/WebKit
-   - Recommendation: If you only need web scraping, consider replacing with a lightweight alternative
+1. **playwright (80–100 MB)** ⚠️ Biggest issue
+   - Includes complete Chromium/Firefox/WebKit browser engines
+   - Recommendation: if only basic web scraping is needed, consider replacing with a lightweight alternative
 
-2. **@xenova/transformers (50-80MB)** ⚠️
+2. **@xenova/transformers (50–80 MB)** ⚠️
    - AI model library, includes pre-trained model files
-   - Recommendation: Load models on demand instead of bundling all of them
+   - Recommendation: load models on demand; do not bundle all of them
 
-3. **neo4j-driver (20-30MB)**
+3. **neo4j-driver (20–30 MB)**
    - Graph database driver
-   - Can be removed if graph database features are not needed
+   - Can be removed if graph database functionality is not used
 
-4. **jsdom (15-20MB)**
+4. **jsdom (15–20 MB)**
    - DOM parsing library
-   - Consider whether a full DOM implementation is really necessary
+   - Consider whether a full DOM implementation is truly needed
 
-5. **@vscode/ripgrep + sqlite3 (10-15MB each)**
-   - Native modules, essential functional dependencies
+5. **@vscode/ripgrep + sqlite3 (10–15 MB each)**
+   - Native modules; required functional dependencies
 
-## 🎯 Optimization Plans
+## 🎯 Optimization Options
 
-### Plan 1: Use Optimized Configuration (Estimated Reduction: 30-50MB)
+### Option 1: Use Optimized Configuration (Expected reduction: 30–50 MB)
 
 ```bash
-# Build with the optimized configuration
+# Package with the optimized configuration
 npm run build && electron-builder --config electron-builder.optimized.yml
 ```
 
-The optimized configuration has been created at `electron-builder.optimized.yml`, with the following key optimizations:
+An optimized configuration has been created at `electron-builder.optimized.yml`, with the following main optimizations:
 - Exclude all source maps
 - Exclude test files and sample code
 - Exclude documentation files
 - Use maximum compression
 - Exclude Playwright browser engines
 
-### Plan 2: Remove/Replace Large Dependencies (Estimated Reduction: 100-150MB)
+### Option 2: Remove/Replace Large Dependencies (Expected reduction: 100–150 MB)
 
 #### 2.1 Playwright Alternatives
 
-If you only need basic web scraping functionality:
+If only basic web scraping is needed:
 
 ```bash
 # Remove playwright
 npm uninstall playwright
 
-# Use lightweight alternatives
-npm install puppeteer-core  # ~5MB, does not include a browser
+# Use a lightweight alternative
+npm install puppeteer-core  # ~5 MB, does not include browser
 # or
-npm install cheerio axios   # ~2MB, HTML parsing only
+npm install cheerio axios   # ~2 MB, HTML parsing only
 ```
 
 #### 2.2 Transformers Optimization
 
 ```bash
-# If local AI models are not needed, remove it
+# If local AI models are not needed, remove the package
 npm uninstall @xenova/transformers
 
-# Or configure on-demand loading (dynamic import in code)
+# Or configure for on-demand loading (dynamic import in code)
 ```
 
 #### 2.3 Neo4j Optimization
@@ -73,7 +73,7 @@ npm uninstall @xenova/transformers
 npm uninstall neo4j-driver
 ```
 
-### Plan 3: On-Demand Loading Strategy
+### Option 3: On-Demand Loading Strategy
 
 Modify the `files` configuration in [`package.json`](package.json:169):
 
@@ -92,9 +92,9 @@ Modify the `files` configuration in [`package.json`](package.json:169):
 }
 ```
 
-### Plan 4: Split Optional Features
+### Option 4: Split Optional Features
 
-Move large dependencies to `optionalDependencies`:
+Set large dependencies as `optionalDependencies`:
 
 ```json
 {
@@ -106,21 +106,21 @@ Move large dependencies to `optionalDependencies`:
 }
 ```
 
-Then check availability in code and load dynamically.
+Then check for availability in code and load dynamically.
 
-## 🔧 Implementation Steps
+## 🔧 Concrete Implementation Steps
 
-### Step 1: Test with the Optimized Configuration
+### Step 1: Test with Optimized Configuration
 
 ```bash
-# First, test the effect of the optimized configuration
+# First test the effect of the optimized configuration
 npm run build
 electron-builder --config electron-builder.optimized.yml --win --x64
 ```
 
-Check the generated installer size; an estimated reduction of 30-50MB is expected.
+Check the generated installation package size; expected reduction is 30–50 MB.
 
-### Step 2: Analyze Dependency Usage
+### Step 2: Inspect Dependency Usage
 
 ```bash
 # Analyze which dependencies are actually used
@@ -144,51 +144,51 @@ npx grep-search "neo4j" src --exclude-dir=node_modules
 
 ### Step 4: Code-Level Optimization
 
-If these libraries are essential, consider lazy loading:
+If these libraries are required, consider lazy loading:
 
 ```typescript
 // Bad practice
 import playwright from 'playwright';
 
-// Good practice - load on demand
+// Good practice — load on demand
 async function useBrowser() {
   const playwright = await import('playwright');
-  // Use playwright
+  // use playwright
 }
 ```
 
 ## 📉 Expected Results
 
-| Optimization Plan | Estimated Size Reduction | Effort | Risk |
-|-------------------|--------------------------|--------|------|
-| Optimized Configuration | 30-50MB | Low | Low |
-| Remove Playwright | 80-100MB | Medium | Medium |
-| Remove Transformers | 50-80MB | Medium | Medium |
-| Remove Neo4j | 20-30MB | Low | Low |
-| Combined Optimization | 100-150MB | High | Medium |
+| Optimization Option | Expected Size Reduction | Effort | Risk |
+|---------|------------|--------|------|
+| Optimized configuration | 30–50 MB | Low | Low |
+| Remove Playwright | 80–100 MB | Medium | Medium |
+| Remove Transformers | 50–80 MB | Medium | Medium |
+| Remove Neo4j | 20–30 MB | Low | Low |
+| Combined optimization | 100–150 MB | High | Medium |
 
-## ⚠️ Important Notes
+## ⚠️ Notes
 
-1. **Feature Validation**: Before removing any dependency, ensure it does not affect core functionality
-2. **Testing**: Perform thorough testing after each optimization
-3. **Incremental Optimization**: Start with the optimized configuration, then consider removing dependencies
+1. **Functional verification**: Before removing any dependency, ensure it won't affect core functionality
+2. **Testing**: Perform a full test after each optimization
+3. **Incremental optimization**: Start with the optimized configuration before considering removing dependencies
 4. **Backup**: Back up the current `package.json` before optimizing
 
 ## 🚀 Quick Start
 
-1. First, test the effect using the optimized configuration:
+1. First test the effect with the optimized configuration:
    ```bash
    npm run build && electron-builder --config electron-builder.optimized.yml
    ```
 
-2. Check the generated installer size
+2. Check the generated installation package size
 
 3. Decide whether to remove large dependencies based on actual needs
 
 4. Test and verify incrementally
 
-## 📝 Future Recommendations
+## 📝 Follow-up Recommendations
 
-- Consider moving large resources such as AI models and browser engines to cloud-based downloads
-- Implement a lazy loading mechanism to download required components on first launch
-- Regularly audit dependencies and remove packages that are no longer used
+- Consider moving large resources such as AI models and browser engines to cloud downloads
+- Implement a lazy-loading mechanism that downloads required components on first launch
+- Periodically audit dependencies and remove packages that are no longer used

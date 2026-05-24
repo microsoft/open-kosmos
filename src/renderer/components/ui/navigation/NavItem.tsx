@@ -45,7 +45,7 @@ const NavItem: React.FC<NavItemProps> = ({
     }
   };
 
-  // Compute aria-label: only use label when it is a string
+  // Compute aria-label: only use it when label is a string
   const computedAriaLabel = ariaLabel || (typeof label === 'string' ? label : undefined);
 
   return (

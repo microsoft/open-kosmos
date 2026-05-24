@@ -9,7 +9,7 @@ interface ShortcutRecorderProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  /** Require shortcut to include a modifier key (Ctrl/Cmd/Alt/Shift) */
+  /** Requires shortcut to include a modifier key (Ctrl/Cmd/Alt/Shift) */
   requireModifier?: boolean;
 }
 
@@ -244,7 +244,7 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
           ref={inputRef}
           tabIndex={0}
           className={`
-            flex-1 px-3 py-2 rounded-lg border transition-all duration-200 focus:outline-none
+            flex-1 px-3 py-2 rounded-lg border transition-all duration-200 focus:outline-hidden
             ${
               isRecording
                 ? 'bg-[#272320]/5 border-[#272320] ring-2 ring-[#272320]/20'

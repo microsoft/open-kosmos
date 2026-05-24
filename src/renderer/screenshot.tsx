@@ -4,15 +4,17 @@ import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
 import './styles/Screenshot.css';
 
-// Import screenshot main component
+// Import the main screenshot component
 import { App } from './screenshot/index';
+import { createLogger } from './lib/utilities/logger';
+const logger = createLogger('[Screenshot]');
 
-// Render application
+// Render the app
 const container = document.getElementById('root');
 if (container) {
-  console.log('📸 [SCREENSHOT] Root element found, creating React root');
+  logger.debug('📸 [SCREENSHOT] Root element found, creating React root');
   const root = createRoot(container);
   root.render(<App />);
 } else {
-  console.error('📸 [SCREENSHOT] Failed to find root element');
+  logger.error('📸 [SCREENSHOT] Failed to find root element');
 }

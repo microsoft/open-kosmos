@@ -1,5 +1,5 @@
 // src/renderer/components/auth/ReauthDialog.tsx
-// Full-screen re-authentication dialog - based on UpdateDialog implementation
+// Full-screen re-authentication Dialog - modeled after UpdateDialog
 import React from 'react';
 import {
   Dialog,
@@ -23,9 +23,9 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
   userMessage,
   onGitHubCopilotLogin
 }) => {
-  // Prevent dialog from closing - cannot dismiss
+  // Prevent Dialog from closing - cannot be dismissed
   const handleOpenChange = (open: boolean) => {
-    // Force stay open, do not allow user to close
+    // Force keep open, do not allow user to close
     if (open === false) {
       return; // Prevent closing
     }
@@ -44,7 +44,7 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
       case 'token_refresh_failed_should_clear_session':
         return 'Token refresh failed, session has expired';
       default:
-        return 'Authentication has expired';
+        return 'Authentication expired';
     }
   };
 
@@ -53,7 +53,7 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
       open={isOpen}
       onOpenChange={handleOpenChange}
     >
-      <DialogContent className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm w-screen h-screen max-w-none">
+      <DialogContent className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-sm w-screen h-screen max-w-none">
         <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 p-8 border border-gray-200">
           <DialogHeader className="text-center mb-8">
             <div className="flex justify-center mb-4">
@@ -70,15 +70,15 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Authentication expired info */}
+            {/* Auth expired info */}
             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
               <div className="flex items-start">
-                <div className="flex-shrink-0 mr-3">
+                <div className="shrink-0 mr-3">
                   <span className="text-red-600 text-xl">⚠️</span>
                 </div>
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-red-800 mb-1">
-                    Authentication Session Expired
+                    Authentication session has expired
                   </h4>
                   <p className="text-sm text-red-700">
                     {userMessage || 'Your authentication token has expired or is invalid. Please sign in again to continue using the app.'}
@@ -87,15 +87,15 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
               </div>
             </div>
 
-            {/* Explanation info */}
+            {/* Explanatory info */}
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <div className="flex items-start">
-                <div className="flex-shrink-0 mr-3">
+                <div className="shrink-0 mr-3">
                   <span className="text-blue-600 text-xl">ℹ️</span>
                 </div>
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-blue-800 mb-1">
-                    Why is re-authentication needed?
+                    Why re-authentication is required
                   </h4>
                   <p className="text-sm text-blue-700">
                     To protect your account security, authentication tokens expire periodically. Please sign in again via GitHub Copilot to continue using all features.
@@ -104,7 +104,7 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
               </div>
             </div>
 
-            {/* Login button */}
+            {/* Sign-in button */}
             <div className="space-y-4">
               <Button
                 onClick={handleGitHubLogin}
@@ -112,9 +112,9 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
                 size="lg"
               >
                 <div className="flex items-center justify-center gap-3">
-                  <svg 
-                    className="w-5 h-5" 
-                    fill="currentColor" 
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
                     viewBox="0 0 24 24"
                     aria-hidden="true"
                   >
@@ -124,7 +124,7 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
                       clipRule="evenodd"
                     />
                   </svg>
-                  <span>Sign in with GitHub Copilot</span>
+                  <span>Sign in via GitHub Copilot</span>
                 </div>
               </Button>
 
@@ -137,11 +137,11 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
             </div>
           </div>
 
-          {/* Bottom notice */}
+          {/* Footer hint */}
           <div className="mt-8 pt-6 border-t border-gray-200">
             <div className="bg-yellow-50 p-3 rounded-lg">
               <p className="text-xs text-yellow-700 text-center">
-                💡 This dialog cannot be closed. You must complete re-authentication to continue using the app
+                💡 This dialog cannot be closed. Re-authentication must be completed before continuing to use the app.
               </p>
             </div>
           </div>

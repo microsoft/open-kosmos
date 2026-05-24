@@ -30,32 +30,32 @@ Error: Process completed with exit code 1.
 
 ## Root Cause Analysis
 
-### 2025-12-20 New: package-lock.json Sync Issue
+### 2025-12-20 Addition: package-lock.json Sync Issue
 
-1. **Dependency Sync Failure**: `package.json` and `package-lock.json` files are out of sync, causing `npm ci` to fail to find locked version information for certain dependency packages
-2. **Missing Dependency Entries**: Multiple packages including `electron-rebuild@3.2.9` are missing corresponding entries in the lock file
-3. **CI/CD Environment Differences**: The Windows build task lacked a package-lock sync check, while the macOS build task already had this mechanism
+1. **Dependency sync failure**: `package.json` and `package-lock.json` are out of sync, causing `npm ci` to be unable to find locked version information for certain packages
+2. **Missing dependency entries**: Multiple packages such as `electron-rebuild@3.2.9` are missing entries in the lock file
+3. **CI/CD environment discrepancy**: The Windows build job lacked a package-lock sync check, while the macOS build job already had this mechanism
 
 ### Historical Issues (Fixed)
 
-1. **Build Environment Issue**: Compiling the `better-sqlite3` native module on Windows requires specific build tools and environment configuration
-2. **Dependency Conflicts**: `electron-rebuild` may encounter path, permission, or build toolchain issues on Windows
-3. **Insufficient Error Handling**: The original CI/CD configuration lacked multiple rebuild strategies and error recovery mechanisms
+1. **Compilation environment issue**: Compiling the `better-sqlite3` native module on Windows requires specific build tools and environment configuration
+2. **Dependency conflict**: `electron-rebuild` may encounter path, permission, or toolchain issues on Windows
+3. **Insufficient error handling**: The original CI/CD configuration lacked multiple rebuild strategies and error recovery mechanisms
 
 ## Solution
 
-### 2025-12-20 New: package-lock.json Sync Fix
+### 2025-12-20 Addition: package-lock.json Sync Fix
 
 #### A. Add package-lock.json Sync Check Step
 
-Added a sync check consistent with macOS to the Windows build task in [`.github/workflows/release.yml`](.github/workflows/release.yml):
+A sync check consistent with macOS was added to the Windows build job in [`.github/workflows/release.yml`](.github/workflows/release.yml):
 
 ```yaml
 - name: Check and fix package-lock.json sync
   run: |
     Write-Host "Checking package-lock.json synchronization..." -ForegroundColor Green
     
-    # Try using npm ci; if it fails, use npm install to regenerate the lock file
+    # Try npm ci; if it fails, regenerate the lock file with npm install
     try {
       $dryRunResult = npm ci --dry-run 2>&1
       if ($LASTEXITCODE -eq 0) {
@@ -67,7 +67,7 @@ Added a sync check consistent with macOS to the Windows build task in [`.github/
       Write-Host "⚠️ package-lock.json is out of sync with package.json" -ForegroundColor Yellow
       Write-Host "Regenerating package-lock.json..." -ForegroundColor Yellow
       
-      # Back up existing package-lock.json (if it exists)
+      # Back up the existing package-lock.json (if present)
       if (Test-Path "package-lock.json") {
         Copy-Item "package-lock.json" "package-lock.json.backup"
         Write-Host "📋 Backed up existing package-lock.json" -ForegroundColor Gray
@@ -85,44 +85,44 @@ Added a sync check consistent with macOS to the Windows build task in [`.github/
 
 #### B. Step Execution Order
 
-- **Location**: Placed before the "Install dependencies" step
+- **Position**: Placed before the "Install dependencies" step
 - **Logic**:
   1. Use `npm ci --dry-run` to detect sync issues
-  2. If out-of-sync is detected, automatically back up and regenerate the lock file
-  3. Ensure the subsequent `npm ci` can execute normally
+  2. If out of sync is detected, automatically back up and regenerate the lock file
+  3. Ensure subsequent `npm ci` can execute normally
 
-### Historical Solutions (Implemented)
+### Historical Solution (Already Implemented)
 
 ### 1. Create a Dedicated Windows Rebuild Script
 
-Created the [`scripts/rebuild-native-windows.ps1`](../scripts/rebuild-native-windows.ps1) script, which includes:
+[`scripts/rebuild-native-windows.ps1`](../scripts/rebuild-native-windows.ps1) was created with:
 
-- **Multiple Rebuild Strategies**: 
+- **Multiple rebuild strategies**: 
   - Method 1: `electron-rebuild`
   - Method 2: `npm rebuild`
   - Method 3: Reinstall `better-sqlite3`
 
-- **Environment Detection and Configuration**:
-  - Automatically set Visual Studio 2022 environment variables
-  - Configure npm and node-gyp parameters
-  - Clean caches and temporary files
+- **Environment detection and configuration**:
+  - Automatically sets Visual Studio 2022 environment variables
+  - Configures npm and node-gyp parameters
+  - Clears cache and temporary files
 
-- **Detailed Verification**:
-  - Functional testing to verify better-sqlite3 availability
-  - Error logs and status reports
+- **Detailed verification**:
+  - Functional test to verify better-sqlite3 availability
+  - Error logging and status reporting
 
 ### 2. Improved CI/CD Workflow
 
-The following improvements were made in [`.github/workflows/release.yml`](.github/workflows/release.yml):
+The following improvements were made to [`.github/workflows/release.yml`](.github/workflows/release.yml):
 
 #### A. Enhanced Build Tool Setup
 ```yaml
 - name: Setup Windows Build Tools
   shell: powershell
   run: |
-    # Check pre-installed build tools (GitHub runners usually come pre-installed)
+    # Check pre-installed build tools (GitHub runners usually have them pre-installed)
     # Check Visual Studio installation
-    # Install Windows SDK only if needed
+    # Only install Windows SDK when needed
     # ⚠️ Note: No longer using npm config set, as it causes invalid option errors
 ```
 
@@ -136,17 +136,17 @@ The following improvements were made in [`.github/workflows/release.yml`](.githu
   continue-on-error: true
 ```
 
-#### C. Added Error Tolerance Mechanism
-- `continue-on-error: true` allows the build to continue when native module rebuild fails
+#### C. Added Error Tolerance
+- `continue-on-error: true` allows the build to continue even if native module rebuild fails
 - Multi-layer error detection and reporting
-- Detailed log output for easier problem diagnosis
+- Detailed log output for easier diagnosis
 
-#### D. Fixed npm config Invalid Option Error (2025-12-20)
+#### D. Fix npm config Invalid Option Error (2025-12-20)
 **Problem**: CI/CD reported `npm error 'msvs_version' is not a valid npm option`
 **Solution**:
 - Removed invalid `npm config set msvs_version 2022` and `npm config set python python`
-- Used GitHub Actions environment variables: `echo "npm_config_msvs_version=2022" >> $env:GITHUB_ENV`
-- Optimized build tool detection to prioritize pre-installed tools on GitHub runners, reducing unnecessary installations
+- Used GitHub Actions environment variables instead: `echo "npm_config_msvs_version=2022" >> $env:GITHUB_ENV`
+- Optimized build tool detection to prefer pre-installed tools on GitHub runners, reducing unnecessary installations
 
 ### 3. Build Environment Optimization
 
@@ -170,7 +170,7 @@ env:
 ## Usage
 
 ### In CI/CD
-This fix takes effect automatically in the Windows build job, no additional configuration needed.
+This fix takes effect automatically in the Windows build job — no additional configuration required.
 
 ### In Local Development (Windows)
 ```powershell
@@ -183,44 +183,44 @@ npm run build
 
 ## Verification Steps
 
-1. **Check Build Logs**: Review the rebuild step status in the CI/CD output
-2. **Functional Verification**: The script automatically tests better-sqlite3 functionality
-3. **Application Startup Test**: The built application should be able to start normally and use database functionality
+1. **Check build logs**: Review the rebuild step status in the CI/CD output
+2. **Functional verification**: The script automatically tests better-sqlite3 functionality
+3. **Application startup test**: The built application should start normally and be able to use database functionality
 
-## Expected Results
+## Expected Outcome
 
 ### 2025-12-20 New Fix Results
 
-- ✅ **Resolved npm ci EUSAGE Error**: Automatically detects and fixes package-lock.json sync issues
-- ✅ **Unified CI/CD Behavior**: Windows and macOS build tasks now have consistent dependency management logic
-- ✅ **Automatic Dependency Sync**: Automatically regenerates the lock file when out-of-sync is detected
-- ✅ **Reduced Build Failures**: Prevents build failures caused by dependency sync issues
+- ✅ **Resolves npm ci EUSAGE error**: Automatically detects and fixes package-lock.json sync issues
+- ✅ **Unified CI/CD behavior**: Windows and macOS build jobs now have consistent dependency management logic
+- ✅ **Automatic dependency sync**: Automatically regenerates the lock file when out-of-sync is detected
+- ✅ **Reduced build failures**: Prevents build failures caused by dependency sync issues
 
-### Historical Fix Results (Implemented)
+### Historical Fix Results (Already Achieved)
 
-- ✅ **Improved Build Success Rate**: Multiple rebuild strategies ensure at least one method succeeds
-- ✅ **Better Error Diagnosis**: Detailed log output for easier problem identification
-- ✅ **Automatic Error Recovery**: Automatically tries other methods when one fails
-- ✅ **Build Stability**: `continue-on-error` prevents a single component from blocking the entire build pipeline
+- ✅ **Improved build success rate**: Multiple rebuild strategies ensure at least one method succeeds
+- ✅ **Better error diagnosis**: Detailed log output for easier issue location
+- ✅ **Automatic error recovery**: Automatically tries other methods when one fails
+- ✅ **Build stability**: `continue-on-error` prevents a single component from blocking the entire build process
 
 ## Related Files
 
-- [`scripts/rebuild-native-windows.ps1`](../scripts/rebuild-native-windows.ps1) - Windows-specific rebuild script
-- [`.github/workflows/release.yml`](.github/workflows/release.yml) - CI/CD workflow configuration
-- [`scripts/README-NATIVE-FIX.md`](../scripts/README-NATIVE-FIX.md) - macOS native module fix guide
-- [`package.json`](../package.json) - Project dependencies and script configuration
+- [`scripts/rebuild-native-windows.ps1`](../scripts/rebuild-native-windows.ps1) — Windows-specific rebuild script
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) — CI/CD workflow configuration
+- [`scripts/README-NATIVE-FIX.md`](../scripts/README-NATIVE-FIX.md) — macOS native module fix guide
+- [`package.json`](../package.json) — Project dependencies and script configuration
 
 ## Technical Details
 
 ### better-sqlite3 Module
 - **Type**: Node.js native extension (C++)
-- **Build Requirements**: Visual Studio Build Tools, Windows SDK, Python
-- **Architecture Support**: x64, ARM64
-- **Purpose**: Used with sqlite-vec for vector storage
+- **Compilation requirements**: Visual Studio Build Tools, Windows SDK, Python
+- **Architecture support**: x64, ARM64
+- **Purpose**: Vector storage in conjunction with sqlite-vec
 
 ### Build Toolchain
 - **Visual Studio 2022**: C++ compiler
-- **Windows SDK**: Windows API header files and libraries
+- **Windows SDK**: Windows API headers and libraries
 - **Python 3.11**: node-gyp build script support
 - **Node.js 18**: Runtime environment
 
@@ -230,7 +230,7 @@ npm run build
 1. Check Windows SDK installation status
 2. Verify Visual Studio Build Tools availability
 3. Confirm Python version compatibility
-4. Clean npm cache: `npm cache clean --force`
+4. Clear npm cache: `npm cache clean --force`
 
 ### Log Analysis
 Look for the following key information in the CI/CD output:

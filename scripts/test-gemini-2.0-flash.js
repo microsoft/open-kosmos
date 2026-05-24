@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 
 /**
- * GitHub Copilot Gemini 2.0 Flash Model API Test Script
+ * GitHub Copilot Gemini 2.0 Flash model call test script
  * Based on vscode-copilot-chat implementation
  */
 
 const https = require('https');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
-// GitHub Copilot auth info - set environment variables or replace with actual tokens
+// GitHub Copilot authentication info — set environment variables or replace with actual tokens
 const TOKENS = {
     "refresh": process.env.GITHUB_COPILOT_REFRESH_TOKEN || "YOUR_REFRESH_TOKEN_HERE",
     "access": process.env.GITHUB_COPILOT_ACCESS_TOKEN || "YOUR_ACCESS_TOKEN_HERE",
-    "expires": parseInt(process.env.GITHUB_COPILOT_TOKEN_EXPIRES) || Date.now() + 24 * 60 * 60 * 1000 // Defaults to 24 hours from now
+    "expires": parseInt(process.env.GITHUB_COPILOT_TOKEN_EXPIRES) || Date.now() + 24 * 60 * 60 * 1000 // default expires in 24 hours
 };
 
 // Verify tokens are set
 if (TOKENS.refresh === "YOUR_REFRESH_TOKEN_HERE" || TOKENS.access === "YOUR_ACCESS_TOKEN_HERE") {
-    console.error('❌ Please set GitHub Copilot auth info:');
+    console.error('❌ Please set GitHub Copilot authentication info:');
     console.error('   export GITHUB_COPILOT_REFRESH_TOKEN="your_refresh_token"');
     console.error('   export GITHUB_COPILOT_ACCESS_TOKEN="your_access_token"');
     console.error('   export GITHUB_COPILOT_TOKEN_EXPIRES="timestamp"');
     process.exit(1);
 }
 
-// Model ID (based on fetched model list)
+// Model ID (based on retrieved model list)
 const GEMINI_2_0_FLASH_MODEL = 'gemini-2.0-flash-001';
 
 // CAPI endpoint configuration
@@ -61,9 +61,9 @@ function createChatCompletionRequest(messages, modelId = GEMINI_2_0_FLASH_MODEL,
  */
 function sendChatRequest(requestBody) {
     return new Promise((resolve, reject) => {
-        const requestId = uuidv4();
-        const sessionId = uuidv4();
-        const machineId = uuidv4();
+        const requestId = randomUUID();
+        const sessionId = randomUUID();
+        const machineId = randomUUID();
         
         const postData = JSON.stringify(requestBody);
         
@@ -126,27 +126,27 @@ function sendChatRequest(requestBody) {
  * Main test function
  */
 async function testGemini20Flash() {
-    console.log('🚀 Starting Gemini 2.0 Flash model API test...\n');
-    
+    console.log('🚀 Starting Gemini 2.0 Flash model call test...\n');
+
     try {
-        // Check token expiration time
+        // Check token expiry
         const now = Date.now();
         if (now >= TOKENS.expires) {
             console.warn('⚠️  Warning: Access token may have expired');
         } else {
             const remaining = Math.floor((TOKENS.expires - now) / 1000 / 60 / 60);
-            console.log(`✅ Token valid for: ${remaining} hours`);
+            console.log(`✅ Token validity remaining: ${remaining} hours`);
         }
 
         // Test messages
         const messages = [
             {
                 role: "user",
-                content: "Hello! Please describe the main features and advantages of the Google Gemini 2.0 Flash model."
+                content: "Hello! Please introduce the main features and advantages of Google Gemini 2.0 Flash."
             }
         ];
 
-        console.log('📝 Request message:', JSON.stringify(messages, null, 2));
+        console.log('📝 Request messages:', JSON.stringify(messages, null, 2));
         console.log(`🎯 Target model: ${GEMINI_2_0_FLASH_MODEL}\n`);
 
         // Create request
@@ -172,9 +172,9 @@ async function testGemini20Flash() {
             console.log('-------------------');
             console.log(assistantMessage.content);
             console.log('-------------------');
-            
+
             if (response.usage) {
-                console.log('\n📊 Token usage stats:');
+                console.log('\n📊 Token usage statistics:');
                 console.log(`   Input tokens: ${response.usage.prompt_tokens}`);
                 console.log(`   Output tokens: ${response.usage.completion_tokens}`);
                 console.log(`   Total tokens: ${response.usage.total_tokens}`);
@@ -197,11 +197,11 @@ async function testGemini20Flash() {
  */
 async function testStreamingResponse() {
     console.log('\n🌊 Starting streaming response test...\n');
-    
+
     const messages = [
         {
-            role: "user", 
-            content: "Please write a short poem about artificial intelligence with a sense of rhythm."
+            role: "user",
+            content: "Please write a short poem about artificial intelligence with rhythm."
         }
     ];
 
@@ -212,9 +212,9 @@ async function testStreamingResponse() {
     });
 
     return new Promise((resolve, reject) => {
-        const requestId = uuidv4();
-        const sessionId = uuidv4();
-        const machineId = uuidv4();
+        const requestId = randomUUID();
+        const sessionId = randomUUID();
+        const machineId = randomUUID();
         
         const postData = JSON.stringify(requestBody);
         
@@ -245,11 +245,11 @@ async function testStreamingResponse() {
             
             res.on('data', (chunk) => {
                 buffer += chunk.toString();
-                
+
                 // Process SSE data
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || '';
-                
+
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         const data = line.slice(6);
@@ -289,18 +289,18 @@ if (require.main === module) {
             console.log('=' .repeat(60));
             console.log('🤖 GitHub Copilot Gemini 2.0 Flash Model Test');
             console.log('=' .repeat(60));
-            
+
             // Basic chat test
             await testGemini20Flash();
-            
+
             console.log('\n' + '='.repeat(60));
-            
+
             // Streaming response test
             await testStreamingResponse();
-            
+
             console.log('\n' + '='.repeat(60));
             console.log('🎊 All tests complete!');
-            
+
         } catch (error) {
             console.error('\n❌ Program execution failed:', error.message);
             process.exit(1);

@@ -1,7 +1,7 @@
 /**
- * Fuzzy Scorer - Migrated from VSCode
+ * Fuzzy Scorer - migrated from VSCode
  * Provides high-quality fuzzy matching and scoring algorithms
- * 
+ *
  * Based on VSCode's fuzzyScorer.ts implementation
  * File: vscode/src/vs/base/common/fuzzyScorer.ts
  */
@@ -103,7 +103,7 @@ const CharCode_Backslash = 92;    // \
 const CharCode_Underline = 95;    // _
 const CharCode_Dash = 45;         // -
 const CharCode_Period = 46;       // .
-const CharCode_Space = 32;        //  
+const CharCode_Space = 32;        //
 const CharCode_SingleQuote = 39;  // '
 const CharCode_DoubleQuote = 34;  // "
 const CharCode_Colon = 58;        // :
@@ -156,11 +156,11 @@ function stripWildcards(pattern: string): string {
 function matchesPrefix(query: string, target: string): IMatch[] | undefined {
   const queryLower = query.toLowerCase();
   const targetLower = target.toLowerCase();
-  
+
   if (targetLower.startsWith(queryLower)) {
     return [{ start: 0, end: query.length }];
   }
-  
+
   return undefined;
 }
 

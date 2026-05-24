@@ -1,303 +1,300 @@
-import React, { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react';
-import { Message, ToolCall } from '../../types/chatTypes';
-import MessageComponent from './Message';
-import { ToolCallsSection } from './ToolCallsSection';
-import { PresentedFile } from './PresentedFilesCard';
-import { CachedFilePath } from '../../lib/chat/agentChatSessionCacheManager';
+import React, { useRef, useEffect, useCallback, memo, useMemo, useState, useLayoutEffect, useReducer } from 'react';
+import { Message, UserMessage } from '@shared/types/chatTypes';
+import { type ChatStatus, CurrentSessionInteractiveRequest } from '../../lib/chat/agentChatSessionCacheManager';
 import '../../styles/ChatContainer.css';
-import { useMessages, extractFilePathsFromText } from '../../lib/chat/agentChatSessionCacheManager';
+import { useToast } from '../ui/ToastProvider';
+import { EditingMessageState, editMessageAtom } from './edit-message.atom';
+import { getChatRenderItemStableKey, isVisibleChatRenderItem, ChatRenderItemComponent, type ChatRenderItem, useRenderItems, hasTextContent } from './ChatRenderItem';
 
 interface ChatContainerProps {
   messages: Message[];
   allMessages: Message[]; // All messages including tool messages for context
   streamingMessageId?: string; // ID of the message currently being streamed
-  onSystemPromptClick?: () => void; // Callback when system prompt message is clicked
-  onApprovalResponse?: (approved: boolean) => void; // Callback for approval requests
-  workspacePath?: string; // Workspace path for resolving relative file paths
-  chatStatus?: {
-    chatId: string;
-    chatStatus: 'idle' | 'sending_response' | 'compressing_context' | 'compressed_context' | 'received_response';
-    agentName?: string;
-  } | null; // Chat status support
-  // Override messages for replay - takes priority over useMessages() hook
-  overrideMessages?: Message[];
+  chatId?: string;
+  chatSessionId?: string;
+  chatStatus?: ChatStatus;
+  editingMessage?: EditingMessageState | null;
+  canEditUserMessage?: boolean;
 }
 
-// Helper: check if an assistant message has only tool_calls with no text content
-const isToolCallOnlyMessage = (message: Message): boolean => {
-  if (message.role !== 'assistant') return false;
-  if (!message.tool_calls || message.tool_calls.length === 0) return false;
+const FOLLOW_LATEST_THRESHOLD_PX = 40;
 
-  // Check whether there is any text content
-  const hasTextContent = message.content.some(part => {
-    if (part.type === 'text') {
-      const text = (part as any).text || '';
-      return text.trim().length > 0;
-    }
-    return false;
-  });
-
-  return !hasTextContent;
-};
-
-// Helper: check if an assistant message has text content (may also have tool_calls)
-const hasTextContent = (message: Message): boolean => {
-  return message.content.some(part => {
-    if (part.type === 'text') {
-      const text = (part as any).text || '';
-      return text.trim().length > 0;
-    }
-    return false;
-  });
-};
-
-const ChatContainerInner: React.FC<ChatContainerProps> = ({
-  messages: propMessages,
-  allMessages,
-  streamingMessageId,
-  onSystemPromptClick,
-  onApprovalResponse,
-  workspacePath,
-  chatStatus,
-  overrideMessages
-}) => {
+function useAutoScroll(
+  chatSessionId: string | null | undefined,
+  messages: Message[],
+  pendingInteractiveRequest: { interactionId?: string } | null | undefined,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [forceUpdate, setForceUpdate] = React.useState(0);
+  const messageFlowRef = useRef<HTMLDivElement>(null);
+  const previousChatSessionIdRef = useRef<string | null | undefined>(undefined);
+  const previousMessageCountRef = useRef<number | null>(null);
+  const previousPendingInteractiveRequestIdRef = useRef<string | null>(null);
+  const latestScrollFrameRef = useRef<number | null>(null);
+  const trailingLatestScrollFrameRef = useRef<number | null>(null);
+  const latestScrollTimeoutRef = useRef<number | null>(null);
+  const latestScrollStabilizeUntilRef = useRef(0);
+  const userScrolledAwayRef = useRef(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
-  // Use the useMessages hook to get the flat message array
-  const hookMessages = useMessages();
-  // Use overrideMessages during replay, otherwise fall back to hook data
-  const messages = overrideMessages ?? hookMessages;
+  // The parent owns the active session message list.
+  const latestMessageRole = messages[messages.length - 1]?.role;
 
-  // File path existence cache: key = filePath, value = exists
-  const [fileExistsCache, setFileExistsCache] = useState<Record<string, boolean>>({});
-
-  // Check whether a loading indicator should be shown
-  const shouldShowLoading = useCallback(() => {
-    if (chatStatus?.chatStatus === 'sending_response') {
-      return true;
+  const handleContainerScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
     }
-    if (chatStatus?.chatStatus === 'compressing_context') {
-      return true;
+    const distanceFromLatest =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const scrolledAway = distanceFromLatest > FOLLOW_LATEST_THRESHOLD_PX;
+    userScrolledAwayRef.current = scrolledAway;
+    setShowJumpToLatest((prev) => (prev === scrolledAway ? prev : scrolledAway));
+  }, []);
+
+  const scrollToLatestPosition = useCallback((reason: string, options?: { force?: boolean }) => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
     }
-    if (chatStatus?.chatStatus === 'compressed_context') {
-      return true;
+
+    // Respect user's reading position: if they scrolled up, don't drag them back.
+    // Forced calls (session change, new user message, interactive request) override this.
+    if (!options?.force && userScrolledAwayRef.current) {
+      return;
     }
-    return false;
-  }, [chatStatus?.chatStatus]);
 
-  // Build render items directly from messages, with tool-call merging support
-  const renderItems = useMemo(() => {
-    // tool-calls-section type for rendering merged tool calls
-    type LocalRenderItem = {
-      type: 'system' | 'say-hi' | 'user' | 'assistant' | 'tool-calls-section';
-      message?: Message;
-      index: number;
-      // Fields specific to tool-calls-section
-      toolCalls?: ToolCall[];
-      sectionKey?: string;
-      // Presented files attached to the last assistant message
-      presentedFiles?: PresentedFile[];
-      // File paths extracted from assistant text (fallback when no presentedFiles)
-      extractedFilePaths?: string[];
-    };
+    container.scrollTop = container.scrollHeight;
+  }, []);
 
-    const items: LocalRenderItem[] = [];
-    let pendingToolCalls: ToolCall[] = [];
-    let pendingPresentedFiles: PresentedFile[] = [];
-    let toolCallsSectionCounter = 0;
+  const openLatestScrollStabilizationWindow = useCallback(() => {
+    latestScrollStabilizeUntilRef.current = Date.now() + 1500;
+  }, []);
 
-    // Track the last assistant message index for attaching presentedFiles
-    let lastAssistantItemIndex = -1;
+  const isWithinLatestScrollStabilizationWindow = useCallback(() => {
+    return Date.now() <= latestScrollStabilizeUntilRef.current;
+  }, []);
 
-    // Helper: extract present_deliverables tool calls as PresentedFiles
-    const extractPresentedFiles = (toolCalls: ToolCall[]): PresentedFile[] => {
-      const files: PresentedFile[] = [];
-      toolCalls.forEach(tc => {
-        if (tc.function.name === 'present_deliverables') {
-          try {
-            const args = JSON.parse(tc.function.arguments || '{}');
-            if (args.filePaths && Array.isArray(args.filePaths)) {
-              files.push({
-                filePath: JSON.stringify(args.filePaths),
-                description: args.description || 'Final deliverables'
-              });
-            }
-          } catch {
-            // Skip on parse failure
-          }
-        }
+  const clearPendingLatestScroll = useCallback(() => {
+    if (latestScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(latestScrollFrameRef.current);
+      latestScrollFrameRef.current = null;
+    }
+
+    if (trailingLatestScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(trailingLatestScrollFrameRef.current);
+      trailingLatestScrollFrameRef.current = null;
+    }
+
+    if (latestScrollTimeoutRef.current !== null) {
+      window.clearTimeout(latestScrollTimeoutRef.current);
+      latestScrollTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleLatestScroll = useCallback((options?: { force?: boolean }) => {
+    if (options?.force) {
+      userScrolledAwayRef.current = false;
+      setShowJumpToLatest(false);
+    }
+
+    openLatestScrollStabilizationWindow();
+    clearPendingLatestScroll();
+    scrollToLatestPosition('immediate', options);
+
+    latestScrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollToLatestPosition('raf-1', options);
+      latestScrollFrameRef.current = null;
+
+      trailingLatestScrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollToLatestPosition('raf-2', options);
+        trailingLatestScrollFrameRef.current = null;
       });
-      return files;
-    };
+    });
 
-    // Helper: flush pending tool calls before a user/system message, then attach presented files to the last assistant
-    const flushPendingItems = () => {
-      if (pendingToolCalls.length > 0) {
-        // Extract present tool calls first
-        const newPresentedFiles = extractPresentedFiles(pendingToolCalls);
-        pendingPresentedFiles.push(...newPresentedFiles);
+    latestScrollTimeoutRef.current = window.setTimeout(() => {
+      scrollToLatestPosition('timeout-180ms', options);
+      latestScrollTimeoutRef.current = null;
+    }, 180);
+  }, [clearPendingLatestScroll, openLatestScrollStabilizationWindow, scrollToLatestPosition]);
 
-        items.push({
-          type: 'tool-calls-section',
-          toolCalls: [...pendingToolCalls],
-          sectionKey: `tool-section-${toolCallsSectionCounter++}`,
-          index: items.length
-        });
-        pendingToolCalls = [];
-      }
-      // Attach presented files to the last assistant message
-      if (pendingPresentedFiles.length > 0 && lastAssistantItemIndex >= 0) {
-        items[lastAssistantItemIndex].presentedFiles = [...pendingPresentedFiles];
-        pendingPresentedFiles = [];
-      }
-    };
+  const handleJumpToLatestClick = useCallback(() => {
+    scheduleLatestScroll({ force: true });
+    setShowJumpToLatest(false);
+  }, [scheduleLatestScroll]);
 
-    messages.forEach((message, index) => {
-      // Skip tool messages (they will be looked up as tool results by ToolCallsSection)
-      if (message.role === 'tool') {
+  // Scroll to the latest message only for the initial load, session changes, or appended messages.
+  // This avoids viewport jumps during ordinary UI-only rerenders such as entering inline edit mode.
+  useEffect(() => {
+    const previousChatSessionId = previousChatSessionIdRef.current;
+    const previousMessageCount = previousMessageCountRef.current;
+    const currentChatSessionId = chatSessionId ?? null;
+    const isFirstRender = previousMessageCount === null;
+    const didChatSessionChange = currentChatSessionId !== previousChatSessionId;
+    const didMessageCountIncrease = previousMessageCount !== null && messages.length > previousMessageCount;
+    const shouldForceLatestScroll = isFirstRender || didChatSessionChange || latestMessageRole === 'user';
+
+    if (messages.length > 0 && (isFirstRender || didChatSessionChange || didMessageCountIncrease)) {
+      scheduleLatestScroll({ force: shouldForceLatestScroll });
+    }
+
+    previousChatSessionIdRef.current = currentChatSessionId;
+    previousMessageCountRef.current = messages.length;
+    return clearPendingLatestScroll;
+  }, [chatSessionId, clearPendingLatestScroll, latestMessageRole, messages.length, scheduleLatestScroll]);
+
+  useEffect(() => {
+    const currentPendingInteractiveRequestId = pendingInteractiveRequest?.interactionId ?? null;
+    const previousPendingInteractiveRequestId = previousPendingInteractiveRequestIdRef.current;
+
+    if (
+      currentPendingInteractiveRequestId &&
+      currentPendingInteractiveRequestId !== previousPendingInteractiveRequestId
+    ) {
+      scheduleLatestScroll({ force: true });
+    }
+
+    previousPendingInteractiveRequestIdRef.current = currentPendingInteractiveRequestId;
+  }, [pendingInteractiveRequest?.interactionId, scheduleLatestScroll]);
+
+  // Create content change callback for streaming messages
+  const handleContentChange = useCallback((newContent: string, heightChanged: boolean) => {
+    if (!heightChanged) {
+      return;
+    }
+
+    scheduleLatestScroll();
+  }, [scheduleLatestScroll]);
+
+  useEffect(() => {
+    const observedFlow = messageFlowRef.current;
+    if (!observedFlow || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (!isWithinLatestScrollStabilizationWindow()) {
         return;
       }
 
-      if (message.role === 'system') {
-        // Flush pending tool calls and presented files before a system message
-        flushPendingItems();
-        items.push({ type: 'system', message, index });
-      } else if (message.role === 'user') {
-        // Flush pending tool calls and presented files before a user message
-        flushPendingItems();
-        items.push({ type: 'user', message, index });
-      } else if (message.role === 'assistant') {
-        const msgHasText = hasTextContent(message);
-        const msgHasTools = message.tool_calls && message.tool_calls.length > 0;
-
-        // Check whether this is a say-hi message
-        if (message.id?.startsWith('say-hi-')) {
-          // Flush pending tool calls and presented files before a say-hi message
-          flushPendingItems();
-          items.push({ type: 'say-hi', message, index });
-        } else if (msgHasText) {
-          // Assistant message that has text content
-          // First flush any previously accumulated tool calls
-          if (pendingToolCalls.length > 0) {
-            // Extract present tool calls first
-            const newPresentedFiles = extractPresentedFiles(pendingToolCalls);
-            pendingPresentedFiles.push(...newPresentedFiles);
-
-            items.push({
-              type: 'tool-calls-section',
-              toolCalls: [...pendingToolCalls],
-              sectionKey: `tool-section-${toolCallsSectionCounter++}`,
-              index: items.length
-            });
-            pendingToolCalls = [];
-          }
-          // Render the message; also extract file paths from assistant text as fallback
-          const textContent = message.content
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.text || '')
-            .join('\n');
-          const extractedPaths = textContent ? extractFilePathsFromText(textContent) : [];
-          items.push({ type: 'assistant', message, index, extractedFilePaths: extractedPaths });
-          // Track last assistant message index for presentedFiles
-          lastAssistantItemIndex = items.length - 1;
-
-          // Collect tool calls from this message
-          if (msgHasTools) {
-            pendingToolCalls.push(...message.tool_calls!);
-          }
-        } else if (msgHasTools) {
-          // Message has only tool_calls with no text — collect tool calls, do not render
-          pendingToolCalls.push(...message.tool_calls!);
-        }
-        // If there is neither text nor tool_calls, skip the message
-      }
+      scrollToLatestPosition('resize-observer');
     });
 
-    // Flush any remaining tool calls and presented files at the end
-    flushPendingItems();
+    observer.observe(observedFlow);
 
-    console.log('🎯 [ChatContainer] Built render items from messages:', {
-      total: items.length,
-      messageCount: messages.length,
-      toolCallsSections: items.filter(i => i.type === 'tool-calls-section').length,
-      assistantWithPresentedFiles: items.filter(i => i.type === 'assistant' && i.presentedFiles && i.presentedFiles.length > 0).length,
-      note: 'With tool calls merging and presented files attached to assistant'
-    });
+    return () => {
+      observer.disconnect();
+    };
+  }, [isWithinLatestScrollStabilizationWindow, scrollToLatestPosition]);
 
-    return items;
-  }, [messages]);
+  return {
+    containerRef,
+    messageFlowRef,
+    showJumpToLatest,
+    handleContainerScroll,
+    handleJumpToLatestClick,
+    handleContentChange,
+    isWithinLatestScrollStabilizationWindow,
+    scrollToLatestPosition,
+  };
+}
+
+async function hasFile(p: string) {
+  try {
+    if (window.electronAPI?.fs?.exists) {
+      return await window.electronAPI.fs.exists(p);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function useFileExistsCache(
+  renderItems: ChatRenderItem[],
+  chatId: string | undefined
+) {
+  // File path existence cache: key = filePath, value = exists
+  const [fileExistsCache, setFileExistsCache] = useState<Record<string, boolean>>({});
+
+  // Clear file exists cache when chat session changes so files are re-checked
+  useEffect(() => {
+    setFileExistsCache({});
+  }, [chatId]);
 
   // Asynchronously check whether extracted file paths from assistant messages exist on disk
   useEffect(() => {
-    const allExtractedPaths = new Set<string>();
+    const all = new Set<string>();
     renderItems.forEach(item => {
       if (item.type === 'assistant' && item.extractedFilePaths) {
-        item.extractedFilePaths.forEach(p => allExtractedPaths.add(p));
+        item.extractedFilePaths.forEach(p => all.add(p));
       }
     });
 
     // Find paths that have not yet been checked
-    const uncheckedPaths = [...allExtractedPaths].filter(p => !(p in fileExistsCache));
-    if (uncheckedPaths.length === 0) return;
+    const unchecked = [...all].filter(p => !(p in fileExistsCache));
+    if (unchecked.length === 0) return;
 
     let cancelled = false;
+    let retryTimer = 0;
+
     (async () => {
       const results: Record<string, boolean> = {};
+      const missing: string[] = [];
       await Promise.all(
-        uncheckedPaths.map(async (filePath) => {
-          try {
-            if (window.electronAPI?.fs?.exists) {
-              results[filePath] = await window.electronAPI.fs.exists(filePath);
-            } else {
-              results[filePath] = false;
-            }
-          } catch {
-            results[filePath] = false;
-          }
+        unchecked.map(async (filePath) => {
+          const exists = await hasFile(filePath);
+          results[filePath] = exists;
+          if (!exists) missing.push(filePath);
         })
       );
-      if (!cancelled) {
-        setFileExistsCache(prev => ({ ...prev, ...results }));
-      }
+      if (cancelled) return;
+      setFileExistsCache(prev => ({ ...prev, ...results }));
+      if (missing.length === 0) return;
+      retryTimer = window.setTimeout(async () => {
+        if (cancelled || !window.electronAPI.fs) return;
+        const retryResults: Record<string, boolean> = {};
+        await Promise.allSettled(
+          missing.map(async (filePath) => {
+            retryResults[filePath] = await window.electronAPI.fs!.exists(filePath);
+          })
+        );
+        if (!cancelled && Object.keys(retryResults).length > 0) {
+          setFileExistsCache(prev => ({ ...prev, ...retryResults }));
+        }
+      }, 2000);
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+    };
   }, [renderItems]);
 
-  // Optimization: only log when the component first renders or the message count changes
-  const lastMessageCount = React.useRef(0);
-  const lastChatStatus = React.useRef<string | undefined>(undefined);
-  const shouldLogRender = messages.length !== lastMessageCount.current;
-  const chatStatusChanged = chatStatus?.chatStatus !== lastChatStatus.current;
+  return fileExistsCache;
+}
 
-  if (shouldLogRender) {
-    lastMessageCount.current = messages.length;
-  }
+function useActivitySlot(
+  renderItems: ChatRenderItem[],
+  streamingMessageId: string | undefined,
+  allMessages: Message[],
+  chatStatus: ChatContainerProps['chatStatus'],
+  messages: Message[],
+) {
+  const previousVisibleRenderItemsLengthRef = useRef(0);
+  const previousLatestVisibleRenderItemKeyRef = useRef<string>('none');
+  const previousHadActivitySlotRef = useRef(false);
+  const forceUpdate = useReducer((x) => x + 1, 0)[1];
 
-  if (chatStatusChanged) {
-    lastChatStatus.current = chatStatus?.chatStatus;
-  }
-
-  // Initial scroll to top when component mounts (since we're using column-reverse)
-  useEffect(() => {
-    if (containerRef.current && messages.length > 0) {
-      containerRef.current.scrollTop = 0;
-    }
-  }, []);
+  const shouldShowLoading = chatStatus === 'compressed_context' || chatStatus === 'compressing_context' || chatStatus === 'sending_response';
 
   // Watch window visibility changes to ensure the loading indicator re-renders after the window regains focus
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden && shouldShowLoading()) {
-        setForceUpdate(prev => prev + 1);
-      }
+      if (!document.hidden && shouldShowLoading) forceUpdate();
     };
 
     const handleFocus = () => {
-      if (shouldShowLoading()) {
-        setForceUpdate(prev => prev + 1);
-      }
+      if (shouldShowLoading) forceUpdate();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -307,20 +304,7 @@ const ChatContainerInner: React.FC<ChatContainerProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [chatStatus]);
-
-  // Scroll to top when new messages arrive
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = 0;
-    }
-  }, [messages.length]);
-
-  // Create content change callback for streaming messages
-  const handleContentChange = useCallback((newContent: string, heightChanged: boolean) => {
-    // Since we're using column-reverse and messages expand upward,
-    // we don't need to force scroll here
-  }, []);
+  }, [shouldShowLoading]);
 
   // Check whether a top-level loading indicator should be shown
   const shouldShowTopLevelLoading = useCallback(() => {
@@ -328,24 +312,8 @@ const ChatContainerInner: React.FC<ChatContainerProps> = ({
     const hasUserMessage = renderItems.some(item => item.type === 'user');
 
     // Show at top if there are no messages (or no user messages) while loading
-    return shouldShowLoading() && (!hasMessages || !hasUserMessage);
+    return shouldShowLoading && (!hasMessages || !hasUserMessage);
   }, [renderItems, shouldShowLoading]);
-
-  // Get the loading indicator label text
-  const getLoadingMessageText = () => {
-    if (!chatStatus?.chatStatus) return null;
-
-    switch (chatStatus.chatStatus) {
-      case 'sending_response':
-        return null;
-      case 'compressing_context':
-        return 'Compressing';
-      case 'compressed_context':
-        return null;
-      default:
-        return null;
-    }
-  };
 
   // Determine whether the boundary container should be rendered
   const shouldShowBoundaryContainer = useCallback(() => {
@@ -355,7 +323,7 @@ const ChatContainerInner: React.FC<ChatContainerProps> = ({
   // Check if loading indicator should be shown after last message
   // Fix: In agentic loop, show loading before each assistant message starts streaming
   const shouldShowLoadingAfterLastMessage = useCallback(() => {
-    if (!shouldShowLoading()) return false;
+    if (!shouldShowLoading) return false;
 
     // Fix: Check if an assistant message is currently streaming by looking up the message role
     // Find the streaming message in allMessages by its ID
@@ -371,168 +339,225 @@ const ChatContainerInner: React.FC<ChatContainerProps> = ({
     return true;
   }, [shouldShowLoading, streamingMessageId, allMessages]);
 
+  const shouldReserveActivitySlotAfterHide = useCallback(() => {
+    if (!streamingMessageId) {
+      return false;
+    }
+
+    const streamingMessage = allMessages.find(msg => msg.id === streamingMessageId);
+    if (!streamingMessage || streamingMessage.role !== 'assistant') {
+      return false;
+    }
+
+    const hasVisibleAssistantText = hasTextContent(streamingMessage);
+    const hasVisibleToolCalls = (streamingMessage.tool_calls || []).some(toolCall => {
+      const toolCallId = toolCall.id?.trim();
+      const toolName = toolCall.function.name?.trim();
+      return Boolean(toolCallId || toolName);
+    });
+
+    return !hasVisibleAssistantText && !hasVisibleToolCalls;
+  }, [streamingMessageId, allMessages]);
+
+  const visibleRenderItems = useMemo(() => {
+    return renderItems.filter(isVisibleChatRenderItem);
+  }, [renderItems]);
+
+  const latestVisibleRenderItemKey = useMemo(() => {
+    return getChatRenderItemStableKey(visibleRenderItems[visibleRenderItems.length - 1]);
+  }, [visibleRenderItems]);
+
+  const shouldKeepStickyActivitySlot = useMemo(() => {
+    if (shouldShowTopLevelLoading() || shouldShowLoadingAfterLastMessage() || shouldReserveActivitySlotAfterHide()) {
+      return false;
+    }
+
+    if (!previousHadActivitySlotRef.current) {
+      return false;
+    }
+
+    return previousVisibleRenderItemsLengthRef.current === visibleRenderItems.length &&
+      previousLatestVisibleRenderItemKeyRef.current === latestVisibleRenderItemKey;
+  }, [latestVisibleRenderItemKey, shouldReserveActivitySlotAfterHide, shouldShowLoadingAfterLastMessage, shouldShowTopLevelLoading, visibleRenderItems.length]);
+
+  const renderItemsWithActivity = useMemo<ChatRenderItem[]>(() => {
+    if (shouldShowTopLevelLoading()) {
+      return renderItems;
+    }
+
+    const activityType = shouldShowLoadingAfterLastMessage()
+      ? 'activity-loading'
+      : shouldReserveActivitySlotAfterHide()
+        ? 'activity-placeholder'
+        : shouldKeepStickyActivitySlot
+          ? 'activity-placeholder'
+          : null;
+
+    if (!activityType) {
+      return renderItems;
+    }
+
+    return [
+      ...renderItems,
+      {
+        type: activityType,
+        index: renderItems.length,
+        sectionKey: `chat-${activityType}`,
+      },
+    ];
+  }, [renderItems, shouldKeepStickyActivitySlot, shouldShowTopLevelLoading, shouldShowLoadingAfterLastMessage, shouldReserveActivitySlotAfterHide]);
+
+  useEffect(() => {
+    previousVisibleRenderItemsLengthRef.current = visibleRenderItems.length;
+    previousLatestVisibleRenderItemKeyRef.current = latestVisibleRenderItemKey;
+    previousHadActivitySlotRef.current = renderItemsWithActivity.some(
+      item => item.type === 'activity-loading' || item.type === 'activity-placeholder'
+    );
+  }, [latestVisibleRenderItemKey, renderItemsWithActivity, visibleRenderItems.length]);
+
+  return {
+    renderItemsWithActivity,
+    shouldShowTopLevelLoading,
+    shouldShowBoundaryContainer,
+  };
+}
+
+const ChatContainerInner: React.FC<ChatContainerProps> = ({
+  messages,
+  allMessages,
+  streamingMessageId,
+  chatId,
+  chatSessionId,
+  chatStatus,
+  editingMessage,
+  canEditUserMessage,
+}) => {
+  const pendingInteractiveRequest = CurrentSessionInteractiveRequest.use();
+  const {
+    containerRef,
+    messageFlowRef,
+    showJumpToLatest,
+    handleContainerScroll,
+    handleJumpToLatestClick,
+    handleContentChange,
+    isWithinLatestScrollStabilizationWindow,
+    scrollToLatestPosition,
+  } = useAutoScroll(chatSessionId, messages, pendingInteractiveRequest);
+
+  // Build render items directly from messages, with tool-call merging support
+  const renderItems = useRenderItems(allMessages, chatSessionId, messages, pendingInteractiveRequest);
+  const fileExistsCache = useFileExistsCache(renderItems, chatId);
+  const {
+    renderItemsWithActivity,
+    shouldShowTopLevelLoading,
+    shouldShowBoundaryContainer,
+  } = useActivitySlot(renderItems, streamingMessageId, allMessages, chatStatus, messages);
+
+  const toast = useToast();
+  const editMessageActions = editMessageAtom.useChange();
+  const handleStartEdit = useCallback((message: UserMessage) => {
+    editMessageActions.start(chatSessionId!, message, toast);
+  }, [chatSessionId, toast]);
+
+  const isCompressing = chatStatus === 'compressing_context';
+  const renderLoadingIndicator = useCallback((className?: string) => {
+    let loadingText = '';
+    if (isCompressing) {
+      loadingText = 'Compressing...';
+    }
+
+    if (loadingText) {
+      return (
+        <div className={`loading-text ${className || ''}`.trim()}>
+          {loadingText}&nbsp;
+          <div className="typing-indicator inline">
+            <div className="dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`typing-indicator ${className || ''}`.trim()}>
+        <div className="dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    );
+  }, [isCompressing]);
+
+  useLayoutEffect(() => {
+    if (messages.length === 0 || !isWithinLatestScrollStabilizationWindow()) return;
+    scrollToLatestPosition('layout-effect');
+  }, [chatSessionId, isWithinLatestScrollStabilizationWindow, messages.length, renderItemsWithActivity.length, scrollToLatestPosition]);
+
   return (
-    <div className="chat-container-reverse" ref={containerRef}>
-      {/* Fixed boundary container */}
-      {shouldShowBoundaryContainer() && (
-        <div className={`message-boundary-container ${shouldShowTopLevelLoading() ? 'has-loading' : ''}`}>
-          {shouldShowTopLevelLoading() && (
-            <div className="message assistant-message loading-message fixed-boundary">
-              <div className="message-content">
-                <div className="flex items-start">
-                  <div className="flex-1">
-                    {getLoadingMessageText() ? (
-                      <div className="loading-text">
-                        {getLoadingMessageText()}&nbsp;
-                        <div className="typing-indicator inline">
-                          <div className="dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                          </div>
-                        </div>
+    <div className="chat-container-with-overlay">
+      <div className="chat-container-reverse" ref={containerRef} onScroll={handleContainerScroll}>
+        <div className="chat-message-flow-reverse" ref={messageFlowRef}>
+          {/* Fixed boundary container */}
+          {shouldShowBoundaryContainer() && (
+            <div className={`message-boundary-container ${shouldShowTopLevelLoading() ? 'has-loading' : ''}`}>
+              {shouldShowTopLevelLoading() && (
+                <div className="message assistant-message loading-message fixed-boundary">
+                  <div className="message-content">
+                    <div className="flex w-full min-w-0 max-w-full items-start">
+                      <div className="min-w-0 max-w-full flex-1">
+                        {renderLoadingIndicator()}
                       </div>
-                    ) : (
-                      <div className="typing-indicator">
-                        <div className="dots">
-                          <span></span>
-                          <span></span>
-                          <span></span>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
+
+          {renderItemsWithActivity.reduceRight((acc, item, index) => {
+            const rendered = (
+              <ChatRenderItemComponent
+                key={getChatRenderItemStableKey(item)}
+                item={item}
+                isLast={index === renderItemsWithActivity.length - 1}
+                renderLoadingIndicator={renderLoadingIndicator}
+                chatStatus={chatStatus}
+                editingMessage={editingMessage}
+                onSaveEditedMessage={editMessageActions.save}
+                onCancelEdit={editMessageActions.cancel}
+                onStartEdit={handleStartEdit}
+                canEditUserMessage={canEditUserMessage}
+                streamingMessageId={streamingMessageId}
+                fileExistsCache={fileExistsCache}
+                handleContentChange={handleContentChange}
+              />
+            );
+            return (acc.push(rendered), acc);
+          }, [] as React.ReactNode[])}
         </div>
+      </div>
+      {showJumpToLatest && (
+        <button
+          type="button"
+          className="chat-jump-to-latest-button"
+          onClick={handleJumpToLatestClick}
+          aria-label="Scroll to latest message"
+          title="Scroll to latest message"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3.5 4L8 8.5L12.5 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M3.5 8.5L8 13L12.5 8.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       )}
-
-      {/* Loading indicator shown after the last message */}
-      {shouldShowLoadingAfterLastMessage() && (
-        <div style={{
-          padding: '16px 0px',
-        }}>
-          {getLoadingMessageText() ? (
-            <div className="loading-text">
-              {getLoadingMessageText()}&nbsp;
-              <div className="typing-indicator inline">
-                <div className="dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="typing-indicator">
-              <div className="dots">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Iterate over render items; tool calls are merged into sections */}
-      {(() => {
-        // Reverse so the most recent message appears at the top (column-reverse layout)
-        const reversedItems = [...renderItems].reverse();
-
-        return reversedItems.map((item, index) => {
-          const { type, message, toolCalls, sectionKey, presentedFiles } = item;
-
-          // Render merged ToolCallsSection
-          if (type === 'tool-calls-section' && toolCalls && toolCalls.length > 0) {
-            return (
-              <ToolCallsSection
-                key={sectionKey || `tool-section-${index}`}
-                toolCalls={toolCalls}
-                allMessages={allMessages}
-                messageId={sectionKey}
-              />
-            );
-          }
-
-          if (type === 'system' && message) {
-            return (
-              <MessageComponent
-                key={`system_${message.id || index}`}
-                message={message}
-                allMessages={allMessages}
-                isStreaming={false}
-                onSystemPromptClick={onSystemPromptClick}
-                workspacePath={workspacePath}
-                chatStatus={chatStatus}
-              />
-            );
-          }
-
-          if (type === 'say-hi' && message) {
-            return (
-              <MessageComponent
-                key={`say-hi_${message.id || index}`}
-                message={message}
-                allMessages={allMessages}
-                isStreaming={false}
-                workspacePath={workspacePath}
-                chatStatus={chatStatus}
-              />
-            );
-          }
-
-          if (type === 'user' && message) {
-            return (
-              <MessageComponent
-                key={`user_${chatStatus?.chatId || 'default'}_${message.id || index}`}
-                message={message}
-                allMessages={allMessages}
-                isStreaming={false}
-                onSystemPromptClick={onSystemPromptClick}
-                workspacePath={workspacePath}
-                chatStatus={chatStatus}
-              />
-            );
-          }
-
-          if (type === 'assistant' && message) {
-            const isStreaming = streamingMessageId === message.id;
-
-            // Fallback: when there are no presentedFiles, build cachedFilePaths from paths extracted from assistant text
-            const hasPresentedFiles = presentedFiles && presentedFiles.length > 0;
-            const extractedFilePaths = item.extractedFilePaths || [];
-            const cachedFilePaths: CachedFilePath[] = (!hasPresentedFiles && extractedFilePaths.length > 0)
-              ? extractedFilePaths.map(p => ({
-                  path: p,
-                  exists: fileExistsCache[p] ?? true // Default true until the async check completes
-                }))
-              : [];
-
-            return (
-              <MessageComponent
-                key={`assistant_${chatStatus?.chatId || 'default'}_${message.id || index}`}
-                message={message}
-                isStreaming={isStreaming}
-                onContentChange={isStreaming ? handleContentChange : undefined}
-                presentedFiles={presentedFiles}
-                cachedFilePaths={cachedFilePaths}
-              />
-            );
-          }
-
-          return null;
-        });
-      })()}
     </div>
   );
 };
 
-// Wrap with memo to avoid unnecessary re-renders
 const ChatContainer: React.FC<ChatContainerProps> = memo(ChatContainerInner);
-
 ChatContainer.displayName = 'ChatContainer';
-
 export default ChatContainer;

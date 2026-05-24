@@ -7,9 +7,7 @@ export interface SystemPromptWriterResponse {
   success: boolean;
   originalPrompt?: string;
   improvedPrompt?: string;
-  strategy?: 'A' | 'B' | 'C'; // A: Simple expansion, B: Detailed optimization, C: Warning
-  expansionNote?: string; // Explanation of supplemented content when strategy is A
-  improvements?: string[];
+  changeSummary?: string[];
   warnings?: string[];
   errors?: string[];
   rawResponse?: string;
@@ -30,125 +28,132 @@ export interface SystemPromptWriterParams {
  * Uses Azure OpenAI API to improve and optimize system prompts
  */
 export class SystemPromptLlmWriter {
-  // System prompt for the System Prompt Writer
-  private static readonly SYSTEM_PROMPT = `# Intelligent System Prompt Optimization Expert
+  private static readonly SYSTEM_PROMPT = `# Identity
 
-You are a professional system prompt optimization expert. You need to intelligently analyze user input and provide corresponding processing solutions.
+You are a System Prompt Polish Expert.
 
-## Core Processing Logic
+Your only job is to improve user-written system prompts so they are clearer, more structured, more precise, and more effective for modern LLMs, while preserving the user's original intent, scope, and constraints.
 
-### 1. Input Content Analysis
-First analyze the type of user input content:
-- **Simple Description**: Only role names and basic descriptions (e.g., "data analyst", "help me write code")
-- **Detailed Information**: Contains specific tasks, constraints, output formats, and other detailed requirements
-- **Invalid Information**: Blank, meaningless text, or overly vague content
+You are not a product designer, not a requirements generator, and not a role inventor.
+Do not replace the user's prompt with a different prompt concept.
+Do not add new capabilities, tools, workflows, or persona traits unless they are clearly implied by the user's original text and are necessary to remove ambiguity.
 
-### 2. Processing Strategies
+Your writing standards should align with common best practices reflected in official guidance from Anthropic and OpenAI:
+- be clear and direct
+- prefer positive, actionable instructions over purely negative prohibitions
+- make output expectations explicit
+- structure complex prompts with clear sections
+- preserve the user's intent instead of rewriting from scratch
+- avoid unnecessary verbosity and overengineering
 
-#### Strategy A: Simple Description Expansion
-When users only provide role names or simple descriptions:
-1. Create a complete system prompt based on common role responsibilities and best practices
-2. Include: role definition, core skills, working methods, output format, and considerations
-3. Add a friendly reminder at the end explaining which key information was supplemented based on understanding
-4. Suggest users provide more specific information to get a more suitable prompt
+# Primary Task
 
-#### Strategy B: Detailed Information Optimization
-When users provide detailed information:
-1. Maintain the user's original intent and requirements
-2. Optimize structure and expression
-3. Supplement missing important elements
-4. Ensure logical consistency
+Given a user-provided system prompt draft, return a polished version that:
+- preserves the original purpose
+- resolves ambiguity
+- removes redundancy and contradictions
+- improves instruction ordering and grouping
+- makes behavioral expectations more testable
+- adds structure only when it materially improves reliability
+- stays as simple as possible
 
-#### Strategy C: Warning Response
-When users input invalid information:
-1. Return warning information
-2. Guide users on how to provide valid input
+# Operating Rules
 
-### 3. Markdown Format Requirements
-- All system prompts must use markdown format
-- Use appropriate heading levels, lists, code blocks, etc.
-- Ensure readability and clear structure
+## 1. Preserve Intent
+Treat the user's original prompt as the source of truth.
+Keep the same assistant purpose, target use case, and core restrictions.
+If something is underspecified, make the smallest reasonable clarification rather than redesigning the prompt.
 
-## Output Format Requirements
+## 2. Prefer Minimal Necessary Changes
+Do not over-rewrite.
+Do not turn a short prompt into a bloated framework unless the original clearly needs more structure.
+If the prompt is already strong, make only light edits.
 
-Strictly return in the following JSON format, do not add any additional explanatory text, markdown markers, or code block markers:
+## 3. Improve Instruction Quality
+When useful:
+- replace vague phrases like "be helpful", "be professional", or "be concise" with concrete behavioral guidance
+- convert negative-only instructions into positive alternatives when that improves compliance
+- make the scope of instructions explicit
+- separate must-do rules from optional style guidance
+- remove duplicated or conflicting rules
+
+## 4. Improve Structure
+Use section headers only when they improve readability or reliability.
+Typical useful sections include:
+- Identity
+- Instructions
+- Output Format
+- Tool Use
+- Safety Boundaries
+- Context
+- Examples
+
+Do not force all sections into every prompt.
+Use only the sections the prompt actually needs.
+
+## 5. Examples
+Add examples only if they materially improve reliability for a complex behavior, formatting rule, or edge case.
+Do not add examples to simple prompts unless clearly beneficial.
+
+## 6. Tool and Agent Behavior
+If the prompt is clearly for an agentic assistant with tools, make the following clearer when needed:
+- when to use tools versus answer directly
+- what to do when the user's intent is ambiguous
+- what actions require caution or confirmation
+- how to communicate progress or limitations
+
+Do not invent tool policies if the prompt is not for a tool-using agent.
+
+## 7. Tone and Style
+Preserve the user's intended tone unless it is too vague to be actionable.
+Write polished system prompts in professional, natural English.
+Avoid filler, hype, and generic AI phrasing.
+
+# Output Requirements
+
+Return valid JSON only. Do not use markdown fences.
+
+Use exactly this schema:
 
 {
   "success": true,
-  "improvedPrompt": "Optimized system prompt in markdown format",
-  "strategy": "A|B|C",
-  "expansionNote": "When strategy is A, explain the supplemented content",
-  "warnings": ["Warning messages"],
+  "improvedPrompt": "the polished system prompt",
+  "changeSummary": [
+    "short explanation of important change 1",
+    "short explanation of important change 2"
+  ],
+  "warnings": [],
   "errors": []
 }
 
-**Important**: Return pure JSON object directly, do not wrap with markdown code blocks.`;
+# Quality Bar
 
-  private static readonly WRITING_PROMPT = `Please analyze the following user input and provide corresponding System Prompt optimization:
+Before finalizing, check the improved prompt against these questions:
+- Does it preserve the user's original intent?
+- Is it clearer than the original?
+- Is it more actionable and less ambiguous?
+- Did it avoid unnecessary additions?
+- Would a model follow it more reliably than the original?
 
-Input content:`;
+If the answer to any of these is no, revise before returning.
 
-  /**
-   * Analyze user input type
-   * @param userInput User input
-   * @returns Input analysis result
-   */
-  private static analyzeUserInput(userInput: string): {
-    type: 'simple' | 'detailed' | 'invalid';
-    confidence: number;
-    suggestion: string;
-  } {
-    const trimmedInput = userInput.trim();
-    
-    // Check if input is invalid
-    if (!trimmedInput || trimmedInput.length < 3) {
-      return {
-        type: 'invalid',
-        confidence: 1.0,
-        suggestion: 'Please provide specific role names or descriptions, for example: "Data Analyst", "Python Programming Assistant", etc.'
-      };
-    }
+# Failure Handling
 
-    // Check if input is simple (only role name or brief description)
-    const simplePatterns = [
-      /^[\u4e00-\u9fa5]{2,10}$/,  // Chinese role names
-      /^[a-zA-Z\s]{3,20}$/,      // English role names
-      /^.{3,30}$(?!.*[：:])(?!.*要求)(?!.*格式)(?!.*输出)/  // Brief description without detailed requirements (Chinese: 要求=requirements, 格式=format, 输出=output)
-    ];
+If the input is empty, meaningless, or not actually a system prompt draft, return:
 
-    // Check if input contains detailed specification keywords (Chinese + English)
-    const detailedKeywords = [
-      '要求', '输出格式', '注意事项', '约束', '规则', '步骤', '流程',  // Chinese: requirements, output format, notes, constraints, rules, steps, process
-      'requirement', 'format', 'output', 'constraint', 'rule', 'step',
-      '：', ':', '。', '；', ';', '\n'
-    ];
+{
+  "success": false,
+  "improvedPrompt": "",
+  "changeSummary": [],
+  "warnings": [
+    "Please provide a usable system prompt draft to polish."
+  ],
+  "errors": []
+}`;
 
-    const hasDetailedKeywords = detailedKeywords.some(keyword => 
-      trimmedInput.toLowerCase().includes(keyword.toLowerCase())
-    );
+  private static readonly WRITING_PROMPT = `Polish the following system prompt draft while preserving the user's original intent.
 
-    if (hasDetailedKeywords || trimmedInput.length > 100) {
-      return {
-        type: 'detailed',
-        confidence: 0.8,
-        suggestion: 'Will optimize your detailed description, improving structure and expression while maintaining original intent'
-      };
-    }
-
-    if (simplePatterns.some(pattern => pattern.test(trimmedInput))) {
-      return {
-        type: 'simple',
-        confidence: 0.9,
-        suggestion: 'Will generate a complete System Prompt based on role understanding'
-      };
-    }
-
-    return {
-      type: 'simple',
-      confidence: 0.6,
-      suggestion: 'Will attempt to understand your description and generate corresponding System Prompt'
-    };
-  }
+System prompt draft:`;
 
   /**
    * Improve system prompt
@@ -156,35 +161,24 @@ Input content:`;
    * @returns Improved system prompt response
    */
   static async improveSystemPrompt(userInputPrompt: string): Promise<SystemPromptWriterResponse> {
-    // First analyze user input
-    const inputAnalysis = this.analyzeUserInput(userInputPrompt);
+    const trimmedPrompt = userInputPrompt.trim();
 
-    // If input is invalid, return warning directly
-    if (inputAnalysis.type === 'invalid') {
+    if (!trimmedPrompt || trimmedPrompt.length < 3) {
       return {
         success: false,
-        strategy: 'C',
         warnings: [
-          'Input content is too simple or invalid.',
-          inputAnalysis.suggestion,
-          'Example valid inputs:',
-          '• Simple description: "Python Programming Assistant", "Data Analyst"',
-          '• Detailed description: "I need an AI assistant to help write Python code, requirements...output format..."'
+          'Please provide a usable system prompt draft to polish.'
         ],
         errors: []
       };
     }
 
     try {
-      // Build complete prompt with context
       const contextualPrompt = `${this.WRITING_PROMPT}
 
-"${userInputPrompt}"
-
-User input analysis:
-- Type: ${inputAnalysis.type === 'simple' ? 'Simple description' : 'Detailed description'}
-- Suggested strategy: ${inputAnalysis.type === 'simple' ? 'Strategy A (Expansion)' : 'Strategy B (Optimization)'}
-- Confidence: ${inputAnalysis.confidence}`;
+    """
+    ${trimmedPrompt}
+    """`;
 
       // Call LLM API
       const llmParams: SystemPromptWriterParams = {
@@ -194,7 +188,7 @@ User input analysis:
         temperature: 0.7
       };
 
-      // Use claude-haiku-4.5 model for system prompt optimization
+      // Use the claude-haiku-4.5 model for system prompt optimization
       const rawResponse = await ghcModelApi.callModel(
         'claude-haiku-4.5',
         llmParams.prompt,
@@ -208,7 +202,7 @@ User input analysis:
       try {
         // More robust JSON extraction and cleanup logic
         let cleanedResponse = rawResponse.trim();
-        
+
         // Remove markdown code block markers
         cleanedResponse = cleanedResponse
           .replace(/```json\s*/g, '')
@@ -219,7 +213,7 @@ User input analysis:
         // Find content between first { and last }
         const firstBrace = cleanedResponse.indexOf('{');
         const lastBrace = cleanedResponse.lastIndexOf('}');
-        
+
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const jsonContent = cleanedResponse.substring(firstBrace, lastBrace + 1);
           parsedResponse = JSON.parse(jsonContent);
@@ -227,8 +221,9 @@ User input analysis:
           // If complete JSON structure not found, try to parse cleaned content directly
           parsedResponse = JSON.parse(cleanedResponse);
         }
-        
+
         parsedResponse.rawResponse = rawResponse;
+        parsedResponse.originalPrompt = userInputPrompt;
 
       } catch (parseError) {
         // If parsing fails, return error response
@@ -260,14 +255,12 @@ User input analysis:
       return false;
     }
 
-    // For strategy C (warning), no improved prompt needed
-    if (response.strategy === 'C') {
+    if (!response.improvedPrompt) {
       return !!(response.warnings && response.warnings.length > 0);
     }
 
-    // Check required fields for strategies A and B
-    if (!response.improvedPrompt) {
-      return false;
+    if (!response.improvedPrompt.trim()) {
+      return !!(response.warnings && response.warnings.length > 0);
     }
 
     // Validate markdown format (simple check)
@@ -302,7 +295,6 @@ User input analysis:
     examples: Array<{
       type: string;
       input: string;
-      expectedStrategy: string;
       description: string;
     }>;
     tips: string[];
@@ -311,36 +303,32 @@ User input analysis:
       title: 'Intelligent System Prompt Optimizer Usage Guide',
       examples: [
         {
-          type: 'Simple Role Description',
-          input: 'Python Programming Assistant',
-          expectedStrategy: 'Strategy A (Intelligent Expansion)',
-          description: 'Generate complete system prompt based on role understanding, including skill definition, working methods, output format, etc.'
+          type: 'Light Polish',
+          input: 'You are a coding assistant. Be accurate, concise, and helpful. Ask follow-up questions when needed.',
+          description: 'Tighten vague phrasing, reduce redundancy, and improve instruction clarity without changing the assistant role.'
         },
         {
-          type: 'Simple Task Description',
-          input: 'Help me write code',
-          expectedStrategy: 'Strategy A (Intelligent Expansion)',
-          description: 'Supplement specific skill requirements, coding standards, response format and other details based on task type'
+          type: 'Structural Polish',
+          input: 'You are a support agent. Answer product questions, stay polite, do not guess, and keep answers short. Use tools when necessary.',
+          description: 'Reorganize mixed rules into clear sections and make tool-use conditions more explicit.'
         },
         {
-          type: 'Detailed Requirements Description',
-          input: 'I need a data analysis assistant, requirements: 1. Proficient in Python and SQL 2. Able to generate visualization charts 3. Output format should include analysis process',
-          expectedStrategy: 'Strategy B (Structure Optimization)',
-          description: 'Maintain original requirements, optimize expression structure, supplement missing elements, ensure logical clarity'
+          type: 'Agent Prompt Polish',
+          input: 'You are an agent that can search files and run commands. Complete tasks autonomously, but do not do anything risky without confirmation.',
+          description: 'Clarify autonomy boundaries, risky-action rules, and expected operating behavior for a tool-using agent.'
         },
         {
           type: 'Invalid Input',
           input: 'a',
-          expectedStrategy: 'Strategy C (Provide Guidance)',
-          description: 'Identify invalid input, provide specific improvement suggestions and examples'
+          description: 'Reject unusable input and ask for a real system prompt draft to polish.'
         }
       ],
       tips: [
-        '💡 Simple description: Just provide role name or basic function, AI will intelligently expand',
-        '📝 Detailed description: Provide specific requirements, constraints, output format, etc., AI will optimize structure',
-        '⚠️  Avoid overly simple input, such as single letters or meaningless text',
-        '🎯 Generated System Prompt will be returned in Markdown format for easy reading and use',
-        '🔄 If results are unsatisfactory, provide more specific information to regenerate'
+        'Paste an actual system prompt draft instead of a role name or one-line idea.',
+        'The optimizer preserves your intent and focuses on clarity, structure, and instruction quality.',
+        'If your draft is already strong, expect small edits rather than a full rewrite.',
+        'For agent prompts, include any tool, safety, or output requirements you already care about.',
+        'Avoid meaningless or extremely short input.'
       ]
     };
   }

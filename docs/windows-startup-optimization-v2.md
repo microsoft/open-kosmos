@@ -1,20 +1,20 @@
-# Windows Startup Performance Optimization Plan V2 - Deep Optimization
+# Windows Startup Performance Optimization V2 - Deep Optimization
 
-> This document is a deep supplement to [windows-startup-optimization.md](./windows-startup-optimization.md), providing a more comprehensive optimization analysis for main.ts.
+> This document is a deep supplement to [windows-startup-optimization.md](./windows-startup-optimization.md), providing a more comprehensive optimization analysis targeting main.ts.
 
 ## 📊 In-Depth Analysis of Current Code
 
 ### Already Optimized ✅
 
-Based on the existing code, the following optimizations **have already been implemented**:
+Based on the existing code, the following optimizations have **already been implemented**:
 
-1. **Analytics Parallel Initialization** - Analytics in `onReady` is already executed in parallel via IIFE
-2. **AgentChat Lazy Loading** - Uses `setImmediate` for deferred loading in `ready-to-show`
-3. **Window Priority Display** - `mainWindow.show()` is called immediately after `ready-to-show`
+1. **Analytics parallel initialization** - analytics in `onReady` is already executed in parallel via IIFE
+2. **AgentChat lazy loading** - uses `setImmediate` for deferred loading in `ready-to-show`
+3. **Window-first display** - `mainWindow.show()` is called immediately after `ready-to-show`
 
-### Areas Still Requiring Optimization 🔴
+### Still Needs Optimization 🔴
 
-The following issues still exist and severely impact startup performance on Windows:
+The following issues still exist and will severely impact startup performance on Windows:
 
 ---
 
@@ -35,12 +35,12 @@ import { registerScreenshotIPC } from './lib/screenshot';
 
 ### Problem Analysis
 
-These modules **execute code at import time**:
+These modules **execute at import time**:
 
-| Module | Side Effects at Import | Impact |
-|--------|----------------------|--------|
+| Module | Side effects at import time | Impact |
+|------|------------------|------|
 | `profileCacheManager` | Creates singleton instance | Medium |
-| `runtimeManager` | Creates singleton + calls `createLogger()` + reads config file | High |
+| `runtimeManager` | Creates singleton + calls `createLogger()` + reads config files | High |
 | `createLogger` | May initialize log directory | Medium |
 | `mainAuthManager` | Creates singleton instance | Medium |
 | `mainTokenMonitor` | Creates singleton + imports entire auth module | High |
@@ -68,7 +68,7 @@ async function getProfileCacheManager() {
 
 ---
 
-## 🔥 Issue 2: Synchronous dotenv Loading (Lines 43-57)
+## 🔥 Issue 2: Synchronous dotenv Loading (lines 43-57)
 
 ### Current Code
 
@@ -92,13 +92,13 @@ for (const envPath of possibleEnvPaths) {
 ### Problem Analysis
 
 - `fs.existsSync` is a **synchronous blocking** call
-- Windows Defender scans each file access
+- Windows Defender scans every file access
 - Scanning 3 paths = 3 I/O operations + 3 security scans
 
 ### Optimization Plan
 
 ```typescript
-// Load asynchronously only in development, without blocking startup
+// Load asynchronously in development only, without blocking startup
 if (process.env.NODE_ENV === 'development') {
   setImmediate(async () => {
     const possibleEnvPaths = [
@@ -113,7 +113,7 @@ if (process.env.NODE_ENV === 'development') {
         console.log('[Startup] Loaded .env.local from:', envPath);
         break;
       } catch {
-        // File does not exist, continue to next
+        // File not found, try next
       }
     }
   });
@@ -122,7 +122,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ---
 
-## 🔥 Issue 3: Synchronous electron-reload Initialization (Lines 63-87)
+## 🔥 Issue 3: Synchronous electron-reload Initialization (lines 63-87)
 
 ### Current Code
 
@@ -136,7 +136,7 @@ if (process.env.NODE_ENV === 'development') {
     
     electronReload(watchPath, {
       electron: require.resolve('electron'),  // 🔥 Synchronous require.resolve
-      // ...configuration
+      // ...config
     });
   } catch (error) {
     console.error('[Hot Reload] ❌ Failed:', error);
@@ -148,7 +148,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ```typescript
 if (process.env.NODE_ENV === 'development') {
-  // Defer to the next event loop iteration
+  // Defer to next event loop tick
   setImmediate(() => {
     try {
       const electronReload = require('electron-reload');
@@ -169,7 +169,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ---
 
-## 🔥 Issue 4: Logger Synchronously Initialized Before Window (Lines 90-101)
+## 🔥 Issue 4: Logger Synchronously Initialized Before Window (lines 90-101)
 
 ### Current Code
 
@@ -178,7 +178,7 @@ let advancedLogger: any;
 const initLogger = () => {
   const logDirectory = path.join(app.getPath('userData'), 'logs');
   resetGlobalLogger();
-  advancedLogger = createLogger();  // 🔥 May create directories and open file handles
+  advancedLogger = createLogger();  // 🔥 May create directories, open file handles
   advancedLogger.updateConfig({ LOGGER_DIRECTORY: logDirectory });
 };
 ```
@@ -212,7 +212,7 @@ function getLogger() {
   return _advancedLogger;
 }
 
-// Use setImmediate to defer in the constructor
+// Use setImmediate to defer in constructor
 constructor() {
   // ...
   setImmediate(() => {
@@ -223,15 +223,15 @@ constructor() {
 
 ---
 
-## 🔥 Issue 5: Heavy ElectronApp Constructor (Lines 104-155)
+## 🔥 Issue 5: Heavy ElectronApp Constructor (lines 104-155)
 
-### Current Issues
+### Current Problem
 
 ```typescript
 constructor() {
   console.time('[Startup] ElectronApp constructor');
   
-  // PATH environment variable setup - OK, very fast
+  // PATH environment variable setup - OK, fast
   
   // 🔥 Feature Flag initialization - uses async IIFE, but still in constructor
   (async () => {
@@ -239,7 +239,7 @@ constructor() {
     featureFlagManager.initialize();
   })();
   
-  this.setupEventHandlers();  // 🔥 Registers numerous IPC handlers
+  this.setupEventHandlers();  // 🔥 Registers many IPC handlers
   setImmediate(() => this.initSelectionHook());  // ✅ Already optimized
   
   // 🔥 Logger initialization
@@ -263,12 +263,12 @@ constructor() {
   
   this.isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
   
-  // 🚀 Minimize event handler registration - only register startup essentials
+  // 🚀 Minimal event handler registration - only register what's required for startup
   this.setupMinimalEventHandlers();
   
   console.timeEnd('[Startup] ElectronApp constructor');
   
-  // All other initialization deferred until after onReady
+  // Defer all other initialization until after onReady
 }
 
 private setupMinimalEventHandlers(): void {
@@ -278,7 +278,7 @@ private setupMinimalEventHandlers(): void {
   app.on('before-quit', this.onBeforeQuit.bind(this));
 }
 
-// Other IPC handlers registered after window is shown
+// Register other IPC handlers after window is shown
 private async setupDeferredHandlers(): Promise<void> {
   // Register these handlers after the window is shown
   this.registerAuthHandlers();
@@ -292,24 +292,24 @@ private async setupDeferredHandlers(): Promise<void> {
 
 ## 📋 Optimization Implementation Checklist
 
-### Phase 1: Zero-Risk Quick Optimizations (Estimated Benefit: 30-50%)
+### Phase 1: Zero-Risk Quick Wins (estimated gain 30-50%)
 
-- [ ] Convert dotenv to asynchronous loading
+- [ ] Convert dotenv to async loading
 - [ ] Defer electron-reload to setImmediate
 - [ ] Convert Logger to lazy initialization
 - [ ] Move Feature Flag initialization to after onReady
 
-### Phase 2: Medium-Risk Optimizations (Estimated Additional Benefit: 20-30%)
+### Phase 2: Medium-Risk Optimizations (estimated additional gain 20-30%)
 
 - [ ] Convert `profileCacheManager` to dynamic import
-- [ ] Convert `mainAuthManager` to dynamic import  
+- [ ] Convert `mainAuthManager` to dynamic import
 - [ ] Convert `mainTokenMonitor` to dynamic import
 - [ ] Register IPC handlers in batches
 
-### Phase 3: Architecture-Level Optimizations (Long-Term)
+### Phase 3: Architecture-Level Optimizations (long-term)
 
-- [ ] Extract IPC handlers into separate modules
-- [ ] Convert singleton pattern to factory functions
+- [ ] Extract IPC handlers into independent modules
+- [ ] Replace singleton pattern with factory functions
 - [ ] Webpack configuration optimization (code splitting)
 - [ ] Consider using v8-compile-cache
 
@@ -320,7 +320,7 @@ private async setupDeferredHandlers(): Promise<void> {
 ### Test Commands
 
 ```powershell
-# 1. Add Defender exclusion for testing
+# 1. Add Defender exclusion test
 Add-MpPreference -ExclusionPath "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos"
 
 # 2. Cold start after clearing Node module cache
@@ -329,14 +329,14 @@ Remove-Item -Recurse -Force "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos\Cac
 # 3. Record startup time
 $sw = [Diagnostics.Stopwatch]::StartNew()
 Start-Process "C:\Users\$env:USERNAME\AppData\Local\OpenKosmos\OpenKosmos.exe"
-# Manually record when the window appears
+# Manually record when window appears
 ```
 
 ### Target Metrics
 
 | Metric | Current Estimate | Target |
-|--------|-----------------|--------|
-| First Frame Display (Window Show) | 5-10s | < 2s |
+|------|----------|------|
+| First Frame (Window Show) | 5-10s | < 2s |
 | Fully Interactive | 10-15s | < 5s |
 | Background Initialization Complete | - | < 10s |
 

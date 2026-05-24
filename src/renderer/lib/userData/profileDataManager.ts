@@ -2,26 +2,31 @@ import {
   ProfileCacheData,
   ProfileCacheDataV2,
   ProfileDataListener,
-  ProfileSyncResponse,
-  GhcModel,
   type Profile,
   type ProfileV2,
-  type McpServerConfig,
-  type ChatConfig,
   type ChatConfigRuntime,
   type ChatAgent,
   type ChatSession,
-  type ContextEnhancement,
-  type SkillConfig
+  type StarredChatSessionIndexItem,
+  type SkillConfig,
+  type SubAgentConfig
 } from './types'
+import { agentChatSessionCacheManager } from '../chat/agentChatSessionCacheManager'
+import { createLogger } from '../utilities/logger';
+import { mcpClientCacheManager } from "../mcp/mcpClientCacheManager";
+const logger = createLogger('[ProfileDataManager]');
+
+const isScheduledSession = (session: Partial<ChatSession> | null | undefined): boolean => {
+  return !!session?.schedulerJobId && session.schedulerJobId.trim().length > 0
+}
 
 /**
  * ProfileDataManager - Refactored for data synchronization only
- * 
+ *
  * 🆕 Refactoring notes:
  * - MCP server runtime state management has been migrated to mcpClientCacheManager
  * - profileDataManager no longer caches or manages MCP runtime state
- * - All MCP-related read-only access methods have been marked as deprecated and will delegate directly to mcpClientCacheManager
+ * - All MCP-related read-only access methods have been marked as deprecated and delegate directly to mcpClientCacheManager
  *
  * Responsibilities:
  * 1. Sync profile data from ProfileCacheManager (main process)
@@ -41,9 +46,9 @@ export class ProfileDataManager {
   private static instance: ProfileDataManager
   private cache: ProfileCacheDataV2
   private listeners: ProfileDataListener[] = []
-  private refreshPromise: Promise<void> | null = null
   private userAlias: string | null = null
-  
+  private chatSessionReadStatusUpdatedAt: Map<string, number> = new Map()
+
   // Historical prompt queue management
   private promptHistory: string[] = []
   private promptCursor: number = -1 // -1 indicates pointing to queue tail (E position)
@@ -51,18 +56,16 @@ export class ProfileDataManager {
   private readonly HISTORY_PROMPT_QUEUE_SIZE: number = parseInt(process.env.HISTORY_PROMPT_QUEUE_SIZE || '20')
 
   private constructor() {
-    // 🆕 Refactored: removed mcp_servers and mcp_runtime_states
     // MCP data is now independently managed by mcpClientCacheManager
     this.cache = {
       profile: null,
-      mcp_servers: [], // 🚨 Deprecated: kept for type compatibility
-      mcp_runtime_states: [], // 🚨 Deprecated: kept for type compatibility
       chats: [],
       skills: [],
+      subAgents: [],
       lastUpdated: 0,
       isInitialized: false
     }
-    
+
     // 🔧 FIX: Setup IPC listeners immediately when ProfileDataManager is created
     // This ensures listeners are ready BEFORE any IPC messages are sent from main process
     this.setupDataSyncListeners()
@@ -120,7 +123,7 @@ export class ProfileDataManager {
     this.listeners.forEach((listener, index) => {
       listener(cacheSnapshot)
     })
-    
+
     this.pendingNotification = false
     this.notificationTimeout = null
   }
@@ -148,25 +151,47 @@ export class ProfileDataManager {
     // Will be set to true only when first sync from ProfileCacheManager succeeds
     this.cache = {
       profile: null,
-      mcp_servers: [], // 🚨 Deprecated
-      mcp_runtime_states: [], // 🚨 Deprecated
       chats: [],
       skills: [],
+      subAgents: [],
       lastUpdated: Date.now(),
       isInitialized: false  // 🔧 Keep false until first successful sync
     }
-    
 
-    // 🔧 NEW FIX: Actively request profile data sync from main process
-    // This solves the issue where mainWindow refresh causes frontend to wait forever
+
+    // 🔧 FIX: Actively pull profile data from main process as a reliable fallback.
+    // Background: main process sends `profile:cacheUpdated` BEFORE `auth_set`, so when this
+    // method is called the push-based notification has already been silently dropped
+    // (userAlias was empty at the time). The `profile:getProfile` IPC triggers
+    // `forceNotifyProfileDataManager` on the main side (push), but we also directly use
+    // the returned data here so initialization succeeds even if the push is lost (e.g.
+    // machine woke from sleep mid-IPC, window not found, etc.).
+    //
+    // A 15-second timeout guards against indefinite hangs when the machine suspends while
+    // the IPC invoke is in-flight (observed: Windows ARM connected-standby after ~6 min).
     try {
       if (window.electronAPI && window.electronAPI.profile) {
-        const result = await window.electronAPI.profile.getProfile(userAlias);
-        if (result.success) {
-        } else {
+        const timeoutMs = 15000;
+        let timeoutHandle: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(new Error(`getProfile timed out after ${timeoutMs}ms`)), timeoutMs)
+        });
+        const result = await Promise.race([
+          window.electronAPI.profile.getProfile(userAlias),
+          timeoutPromise,
+        ]);
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        // Directly apply the returned profile so isInitialized is set even when the
+        // push-based `profile:cacheUpdated` event was missed.
+        if (result.success && result.data && !this.cache.isInitialized) {
+          this.handleProfileCacheUpdate({ alias: userAlias, profile: result.data, timestamp: Date.now() });
         }
       }
     } catch (error) {
+      // Non-fatal: push-based profile:cacheUpdated may still arrive via forceNotifyProfileDataManager
+      logger.warn('[ProfileDataManager] getProfile fallback failed or timed out:', error instanceof Error ? error.message : String(error));
     }
 
   }
@@ -174,7 +199,7 @@ export class ProfileDataManager {
   // Set up listeners for data sync from main process
   // 🆕 Refactored: MCP state listening has been migrated to mcpClientCacheManager
   private setupDataSyncListeners(): void {
-    
+
     // 🆕 Refactored: MCP state listening has been migrated to mcpClientCacheManager
     // No longer listening for mcp:serverStatesUpdated events here
 
@@ -183,19 +208,30 @@ export class ProfileDataManager {
       window.electronAPI.profile.onCacheUpdated((data: {alias: string; profile: any; timestamp: number}) => {
         this.handleProfileCacheUpdate(data)
       })
-      
+
       // 🔥 New: Listen for auto-select ChatSession IPC events
       window.electronAPI.profile.onAutoSelectChatSession((data: {alias: string; chatId: string; chatSessionId: string; timestamp: number}) => {
         this.handleAutoSelectChatSession(data)
       })
-      
-      // 🔥 New: Listen for ChatSession list update IPC events (for refreshing list after Fork and similar operations)
-      if (window.electronAPI.profile.onChatSessionUpdated) {
-        window.electronAPI.profile.onChatSessionUpdated((data: {alias: string; chatId: string; sessions: any[]; loadedMonths: string[]; hasMore: boolean; nextMonthIndex: number; timestamp: number}) => {
-          this.handleChatSessionUpdated(data)
+
+      if (window.electronAPI.profile.onChatSessionStoreSessionCreated) {
+        window.electronAPI.profile.onChatSessionStoreSessionCreated((data: {alias: string; chatId: string; session: ChatSession; timestamp: number}) => {
+          this.handleChatSessionStoreSessionCreated(data)
         })
       }
-      
+
+      if (window.electronAPI.profile.onChatSessionStoreMetadataPatched) {
+        window.electronAPI.profile.onChatSessionStoreMetadataPatched((data: {alias: string; chatId: string; chatSessionId: string; metadata: ChatSession; timestamp: number}) => {
+          this.handleChatSessionStoreMetadataPatched(data)
+        })
+      }
+
+      if (window.electronAPI.profile.onChatSessionStoreSessionDeleted) {
+        window.electronAPI.profile.onChatSessionStoreSessionDeleted((data: {alias: string; chatId: string; chatSessionId: string; timestamp: number}) => {
+          this.handleChatSessionStoreSessionDeleted(data)
+        })
+      }
+
     } else {
     }
   }
@@ -205,42 +241,62 @@ export class ProfileDataManager {
 
     // Only update if this is for the current user
     if (this.userAlias && data.alias === this.userAlias) {
-      
+      if (data.timestamp < this.cache.lastUpdated) {
+        logger.warn('[ProfileDataManager] Ignoring stale profile:cacheUpdated event', {
+          eventTimestamp: data.timestamp,
+          cacheLastUpdated: this.cache.lastUpdated,
+          alias: data.alias,
+        })
+        return
+      }
+
       // 🔧 FIX: Mark as initialized on first successful sync from ProfileCacheManager
       const wasNotInitialized = !this.cache.isInitialized
-      
+
       this.cache.profile = data.profile
       this.cache.lastUpdated = data.timestamp
-      
+
       if (data.profile === null) {
         // Clear all cached data
         this.cache.chats = []
         this.cache.skills = []
-        // 🆕 Refactored: no longer managing mcp_servers and mcp_runtime_states
+        this.cache.subAgents = []
       } else {
         // Update chat configurations
         this.cache.chats = data.profile.chats || []
-        
+
         // Update skills configurations
         this.cache.skills = data.profile.skills || []
-        
-        // 🆕 Refactored: sync MCP server configs to mcpClientCacheManager
-        // profileDataManager is no longer responsible for MCP configuration
+
+        // 🆕 Update sub-agents configurations
+        // Profile push contains SubAgentIndex[] (lightweight: name, version, source only).
+        // We need to fetch full SubAgentConfig[] via IPC to get display_name, emoji, description, etc.
+        const subAgentIndex = data.profile.sub_agents || []
+        if (subAgentIndex.length > 0) {
+          // Set lightweight data first so the count is visible immediately
+          this.cache.subAgents = subAgentIndex as SubAgentConfig[]
+          // Then fetch full configs asynchronously
+          this.fetchFullSubAgentConfigs()
+        } else {
+          this.cache.subAgents = []
+        }
+
+        // 🆕 Refactored: MCP server config sync to mcpClientCacheManager
+        // profileDataManager is no longer responsible for MCP config
         if (data.profile.mcp_servers && Array.isArray(data.profile.mcp_servers)) {
-          // Lazy-load mcpClientCacheManager and sync configs
-          import('../mcp/mcpClientCacheManager').then(({ mcpClientCacheManager }) => {
+          try {
             mcpClientCacheManager.updateServerConfigs(data.profile!.mcp_servers)
-          }).catch(err => {
-            console.error('[ProfileDataManager] Failed to sync MCP configs:', err)
-          })
+          } catch (err) {
+            logger.error('[ProfileDataManager] Failed to sync MCP configs:', err)
+          }
         }
       }
-      
+
       // 🔧 FIX: Set isInitialized to true after first successful sync
       if (wasNotInitialized) {
         this.cache.isInitialized = true
       }
-      
+
       this.notifyListeners(true) // Immediate notification for profile updates
     } else {
     }
@@ -251,77 +307,196 @@ export class ProfileDataManager {
   private handleAutoSelectChatSession(data: {alias: string; chatId: string; chatSessionId: string; timestamp: number}): void {
     // Only handle events for the current user
     if (this.userAlias && data.alias === this.userAlias) {
-      
-      // Validate that chatId and chatSessionId exist
+
+      // Verify chatId and chatSessionId exist
       const chat = this.cache.chats.find(c => c.chat_id === data.chatId);
       if (!chat) {
-        console.warn('[ProfileDataManager] Auto-select failed: chat not found', {
+        logger.warn('[ProfileDataManager] Auto-select failed: chat not found', {
           chatId: data.chatId,
           availableChats: this.cache.chats.map(c => c.chat_id)
         });
         return;
       }
-      
+
       const chatSession = chat.chatSessions?.find(s => s.chatSession_id === data.chatSessionId);
       if (!chatSession) {
-        console.warn('[ProfileDataManager] Auto-select failed: chatSession not found', {
+        logger.warn('[ProfileDataManager] Auto-select failed: chatSession not found', {
           chatId: data.chatId,
           chatSessionId: data.chatSessionId,
           availableSessions: chat.chatSessions?.map(s => s.chatSession_id) || []
         });
         return;
       }
-      
+
       // ⚠️ Deprecated: currentChatSessionId management has been migrated to agentChatSessionCacheManager
       // This event is now handled by agentChatSessionCacheManager
     }
   }
 
-  // 🔥 New: Handle ChatSession list update IPC events (for refreshing list after Fork and similar operations)
-  private handleChatSessionUpdated(data: {alias: string; chatId: string; sessions: ChatSession[]; loadedMonths: string[]; hasMore: boolean; nextMonthIndex: number; timestamp: number}): void {
-    // Only handle events for the current user
-    if (this.userAlias && data.alias === this.userAlias) {
-      console.log('[ProfileDataManager] Received chatSession:updated event', {
-        chatId: data.chatId,
-        sessionsCount: data.sessions?.length || 0,
-        hasMore: data.hasMore
-      });
-      
-      // Find the corresponding chat config
-      const chatIndex = this.cache.chats.findIndex(c => c.chat_id === data.chatId);
-      if (chatIndex < 0) {
-        console.warn('[ProfileDataManager] ChatSession update failed: chat not found', {
-          chatId: data.chatId,
-          availableChats: this.cache.chats.map(c => c.chat_id)
-        });
-        return;
-      }
-      
-      // 🔥 Key fix: Create a new chats array reference to ensure React can detect changes
-      // Issue: Original code only updated array elements, but the array reference didn't change, causing useMemo not to recalculate
-      const updatedChat = {
-        ...this.cache.chats[chatIndex],
-        chatSessions: data.sessions || []
-      };
-      
-      // Create a new chats array, replacing the updated chat
-      this.cache.chats = [
-        ...this.cache.chats.slice(0, chatIndex),
-        updatedChat,
-        ...this.cache.chats.slice(chatIndex + 1)
-      ];
-      
-      // Update cache timestamp
-      this.cache.lastUpdated = data.timestamp || Date.now();
-      
-      console.log('[ProfileDataManager] ChatSessions updated successfully', {
-        chatId: data.chatId,
-        newSessionsCount: this.cache.chats[chatIndex].chatSessions?.length || 0
-      });
-      
-      // Notify listeners that data has been updated
-      this.notifyListeners(true); // Use immediate mode to notify instantly
+  private buildStarredChatSessionIndexItem(
+    chatId: string,
+    session: Partial<ChatSession>,
+    fallbackStarredAt?: string,
+  ): StarredChatSessionIndexItem | null {
+    const chat = this.cache.chats.find(candidate => candidate.chat_id === chatId)
+    if (!chat || !session.chatSession_id || !session.title || !session.last_updated) {
+      return null
     }
+
+    return {
+      chatId,
+      chatSessionId: session.chatSession_id,
+      title: session.title,
+      lastUpdated: session.last_updated,
+      readStatus: session.readStatus,
+      source: session.source,
+      agentName: chat.agent?.name || 'Unnamed Agent',
+      agentEmoji: chat.agent?.emoji,
+      agentAvatar: chat.agent?.avatar,
+      agentSource: chat.agent?.source,
+      agentVersion: chat.agent?.version,
+      starredAt: session.starredAt || fallbackStarredAt || new Date().toISOString(),
+    }
+  }
+
+  private syncStarredChatSessionInProfile(
+    chatId: string,
+    session: Partial<ChatSession>,
+  ): void {
+    if (!this.cache.profile || !session.chatSession_id) {
+      return
+    }
+
+    const currentItems = this.cache.profile['starred-chat-sessions'] || []
+    const existingItem = currentItems.find(item => item.chatSessionId === session.chatSession_id)
+    const shouldRemove = isScheduledSession(session) || session.starred === false
+    const shouldTrack = session.starred === true || !!existingItem
+
+    if (!shouldRemove && !shouldTrack) {
+      return
+    }
+
+    let nextItems = currentItems.filter(item => item.chatSessionId !== session.chatSession_id)
+    if (!shouldRemove) {
+      const nextItem = this.buildStarredChatSessionIndexItem(chatId, session, existingItem?.starredAt)
+      if (!nextItem) {
+        return
+      }
+      nextItems = [nextItem, ...nextItems].sort(
+        (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime(),
+      )
+    }
+
+    this.cache.profile = {
+      ...this.cache.profile,
+      ['starred-chat-sessions']: nextItems,
+    }
+  }
+
+  private removeStarredChatSessionFromProfile(chatSessionId: string): void {
+    if (!this.cache.profile) {
+      return
+    }
+
+    const currentItems = this.cache.profile['starred-chat-sessions'] || []
+    const nextItems = currentItems.filter(item => item.chatSessionId !== chatSessionId)
+    if (nextItems.length === currentItems.length) {
+      return
+    }
+
+    this.cache.profile = {
+      ...this.cache.profile,
+      ['starred-chat-sessions']: nextItems,
+    }
+  }
+
+  private handleChatSessionStoreSessionCreated(data: {alias: string; chatId: string; session: ChatSession; timestamp: number}): void {
+    if (!(this.userAlias && data.alias === this.userAlias)) {
+      return
+    }
+
+    const chatIndex = this.cache.chats.findIndex(c => c.chat_id === data.chatId)
+    if (chatIndex < 0) {
+      return
+    }
+
+    const existingSessions = this.cache.chats[chatIndex].chatSessions || []
+    const updatedSessions = [...existingSessions.filter(session => session.chatSession_id !== data.session.chatSession_id), data.session]
+      .sort((a, b) => new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+
+    this.cache.chats = [
+      ...this.cache.chats.slice(0, chatIndex),
+      {
+        ...this.cache.chats[chatIndex],
+        chatSessions: updatedSessions,
+      },
+      ...this.cache.chats.slice(chatIndex + 1)
+    ]
+    this.syncStarredChatSessionInProfile(data.chatId, data.session)
+    this.cache.lastUpdated = Math.max(this.cache.lastUpdated, data.timestamp || Date.now())
+    this.notifyListeners(true)
+  }
+
+  private handleChatSessionStoreMetadataPatched(data: {alias: string; chatId: string; chatSessionId: string; metadata: ChatSession; timestamp: number}): void {
+    if (!(this.userAlias && data.alias === this.userAlias)) {
+      return
+    }
+
+    const chatIndex = this.cache.chats.findIndex(c => c.chat_id === data.chatId)
+    if (chatIndex < 0) {
+      return
+    }
+
+    const existingSessions = this.cache.chats[chatIndex].chatSessions || []
+    const sessionIndex = existingSessions.findIndex(session => session.chatSession_id === data.chatSessionId)
+    const nextSessions = [...existingSessions]
+
+    if (sessionIndex >= 0) {
+      nextSessions[sessionIndex] = {
+        ...nextSessions[sessionIndex],
+        ...data.metadata,
+      }
+    } else {
+      nextSessions.push(data.metadata)
+    }
+
+    this.cache.chats = [
+      ...this.cache.chats.slice(0, chatIndex),
+      {
+        ...this.cache.chats[chatIndex],
+        chatSessions: nextSessions.sort((a, b) => new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()),
+      },
+      ...this.cache.chats.slice(chatIndex + 1)
+    ]
+    this.syncStarredChatSessionInProfile(data.chatId, data.metadata)
+    this.cache.lastUpdated = Math.max(this.cache.lastUpdated, data.timestamp || Date.now())
+    this.notifyListeners(true)
+  }
+
+  private handleChatSessionStoreSessionDeleted(data: {alias: string; chatId: string; chatSessionId: string; timestamp: number}): void {
+    if (!(this.userAlias && data.alias === this.userAlias)) {
+      return
+    }
+
+    const chatIndex = this.cache.chats.findIndex(c => c.chat_id === data.chatId)
+    if (chatIndex < 0) {
+      return
+    }
+
+    const existingSessions = this.cache.chats[chatIndex].chatSessions || []
+    const updatedSessions = existingSessions.filter(session => session.chatSession_id !== data.chatSessionId)
+
+    this.cache.chats = [
+      ...this.cache.chats.slice(0, chatIndex),
+      {
+        ...this.cache.chats[chatIndex],
+        chatSessions: updatedSessions,
+      },
+      ...this.cache.chats.slice(chatIndex + 1)
+    ]
+    this.removeStarredChatSessionFromProfile(data.chatSessionId)
+    this.cache.lastUpdated = Math.max(this.cache.lastUpdated, data.timestamp || Date.now())
+    this.notifyListeners(true)
   }
 
   // Refresh all data from ProfileCacheManager (without full reinitialization)
@@ -330,22 +505,21 @@ export class ProfileDataManager {
     if (!this.userAlias) {
       throw new Error('User alias not set, cannot refresh data')
     }
-    
-    
+
+
     try {
       // 🔧 Fix: Refresh Profile data first (including ChatSessions)
       if (window.electronAPI?.profile?.getProfile) {
         const profileResponse = await window.electronAPI.profile.getProfile(this.userAlias)
         if (profileResponse.success) {
-          // getProfile will trigger the profile:cacheUpdated event, so no need to manually update cache
+          // getProfile triggers profile:cacheUpdated event, so no need to manually update cache
         } else {
         }
       }
-      
+
       // 🆕 Refactored: MCP state refresh is handled by mcpClientCacheManager
-      const { mcpClientCacheManager } = await import('../mcp/mcpClientCacheManager')
       await mcpClientCacheManager.refresh()
-      
+
     } catch (error) {
     }
   }
@@ -356,46 +530,45 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get current user alias
-   * Usage: Used when frontend API calls require the user alias parameter
+   * Get the current user alias
+   * Usage: When frontend API calls require the user alias parameter
    */
   getCurrentUserAlias(): string | null {
     return this.userAlias
   }
 
-  // ========== V2 Chat Configuration Management Methods ==========
-  
+  // ========== V2 Chat Config Management Methods ==========
+
   /**
-   * Get all Chat configurations
+   * Get all Chat configs
    */
   getChatConfigs(): ChatConfigRuntime[] {
     return [...this.cache.chats]
   }
 
   /**
-   * Get the currently active Chat configuration
-   * Function: In a multi-Chat environment, determine which Chat the user is currently using
+   * Get the currently active Chat config
+   * Purpose: In a multi-Chat environment, determine which Chat the user is currently using
    * Usage: Display current Chat's Agent config in UI, use corresponding model and MCP servers when sending messages
    *
    * ⚠️ Note: currentChatId management has been migrated to agentChatSessionCacheManager
-   * This method retrieves currentChatId from agentChatSessionCacheManager to find the Chat config
+   * This method obtains currentChatId from agentChatSessionCacheManager to find the Chat config
    */
   getCurrentChat(): ChatConfigRuntime | null {
     // Get the real currentChatId from agentChatSessionCacheManager
-    const { agentChatSessionCacheManager } = require('../chat/agentChatSessionCacheManager');
     const currentChatId = agentChatSessionCacheManager.getCurrentChatId();
-    
+
     if (!currentChatId) {
-      // If no current Chat is set, return the first Chat by default
+      // If no current Chat is set, default to returning the first Chat
       return this.cache.chats.length > 0 ? this.cache.chats[0] : null
     }
     return this.cache.chats.find(chat => chat.chat_id === currentChatId) || null
   }
-  
-  // ========== V2 Agent Related Methods (based on current Chat) ==========
-  
+
+  // ========== V2 Agent Methods (based on current Chat) ==========
+
   /**
-   * Get the Agent configuration for the current Chat
+   * Get the current Chat's Agent config
    */
   getCurrentAgent(): ChatAgent | null {
     const currentChat = this.getCurrentChat()
@@ -403,7 +576,7 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the Agent model for the current Chat
+   * Get the current Chat's Agent model
    * Important: This is the only way to get the model in V2, replacing the V1 selectedModel concept
    * V1: profile.ghcAuth.selectedModel (global)
    * V2: profile.chats[current].agent.model (per Chat)
@@ -414,9 +587,9 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the Agent model for a specific Chat
+   * Get the Agent model for a specified Chat
    * @param chatId - Chat ID
-   * @returns The Agent model for the Chat, or null if it doesn't exist
+   * @returns The Agent model for the Chat, or null if not found
    */
   getSelectedModel(chatId: string): string | null {
     const chat = this.cache.chats.find(c => c.chat_id === chatId)
@@ -424,7 +597,24 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the MCP server configurations assigned to the current Chat's Agent
+   * Get the per-chat reasoning effort selected by the user.
+   * Returns `undefined` when no effort has been chosen (the agent should not send
+   * a `reasoning_effort` parameter in that case). Values are canonicalized to
+   * lowercase on write, so new tiers (e.g. `minimal`) are surfaced without
+   * code changes.
+   */
+  getReasoningEffort(chatId: string): string | undefined {
+    const chat = this.cache.chats.find(c => c.chat_id === chatId)
+    const value = chat?.agent?.reasoningEffort
+    if (typeof value !== 'string' || value.length === 0) return undefined
+    // Defensive lowercase on read so any value written by other paths (sync,
+    // eval harness, CDN agents) still matches the canonical lowercase form
+    // used by capability gating and the request layer.
+    return value.toLowerCase()
+  }
+
+  /**
+   * Get the MCP server configs assigned to the current Chat's Agent
    * V2: Each Agent only uses its assigned subset of MCP servers, including tool selection
    * Return format: [{ name: string, tools: string[] }, ...]
    */
@@ -434,41 +624,43 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the Context Enhancement configuration for the current Chat's Agent
-   * Returns memory-related configuration, including search_memory and generate_memory settings
+   * Get the Context Enhancement config for the current Chat's Agent
+   * Returns memory-related config, including search_memory and generate_memory settings
    */
-  getCurrentAgentContextEnhancement(): ContextEnhancement | null {
+  getCurrentAgentContextEnhancement(): Record<string, unknown> | null {
     const agent = this.getCurrentAgent()
     return agent?.context_enhancement || null
   }
 
   /**
    * Check if the current Agent has memory search enabled
+   * Note: Memory (mem0) has been removed; always returns false.
    */
   isMemorySearchEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
+    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
     return contextEnhancement?.search_memory?.enabled || false
   }
 
   /**
    * Check if the current Agent has memory generation enabled
+   * Note: Memory (mem0) has been removed; always returns false.
    */
   isMemoryGenerationEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
+    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
     return contextEnhancement?.generate_memory?.enabled || false
   }
 
   /**
-   * Get the memory search configuration for the current Agent
+   * Get the current Agent's memory search config
    */
   getMemorySearchConfig(): {
     enabled: boolean;
     semantic_similarity_threshold: number;
     semantic_top_n: number
   } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
+    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
     const searchMemory = contextEnhancement?.search_memory
-    
+
     return {
       enabled: searchMemory?.enabled || false,
       semantic_similarity_threshold: searchMemory?.semantic_similarity_threshold || 0.0,
@@ -477,44 +669,44 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the memory generation configuration for the current Agent
+   * Get the current Agent's memory generation config
    */
   getMemoryGenerationConfig(): { enabled: boolean } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
+    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
     const generateMemory = contextEnhancement?.generate_memory
-    
+
     return {
       enabled: generateMemory?.enabled || false
     }
   }
 
-  // ❌ V2: Completely removed original GHC-related methods, ensuring no global selectedModel concept remains:
-  // ❌ getGHCModelData() - Deleted
-  // ❌ updateSelectedModel() - Deleted, replaced by ChatOps.updateChatAgent()
-  // ❌ Any method returning "selectedModel" - Deleted
+  // ❌ V2: Completely removed original GHC-related methods, ensuring no more global selectedModel concept:
+  // ❌ getGHCModelData() - Removed
+  // ❌ updateSelectedModel() - Removed, use ChatOps.updateChatAgent() instead
+  // ❌ Any methods returning "selectedModel" - Removed
 
   // ❌ Refactored: All MCP-related methods have been completely removed
-  // ❌ getMCPServers() - Deleted, use mcpClientCacheManager.getMCPServers()
-  // ❌ getMCPServerByName() - Deleted, use mcpClientCacheManager.getMCPServerByName()
-  // ❌ getMCPRuntimeStates() - Deleted, use mcpClientCacheManager.getMCPRuntimeStates()
-  // ❌ getMCPRuntimeState() - Deleted, use mcpClientCacheManager.getMCPRuntimeState()
-  // ❌ getAllMCPTools() - Deleted, use mcpClientCacheManager.getAllMCPTools()
-  // ❌ getAgentSpecificTools() - Deleted, use mcpClientCacheManager.getAgentSpecificTools()
-  // ❌ getCurrentAgentTools() - Deleted, use mcpClientCacheManager.getAgentSpecificTools()
-  // ❌ getAvailableTools() - Deleted, use mcpClientCacheManager
-  // ❌ getMCPStats() - Deleted, use mcpClientCacheManager.getMCPStats()
+  // ❌ getMCPServers() - Removed, use mcpClientCacheManager.getMCPServers()
+  // ❌ getMCPServerByName() - Removed, use mcpClientCacheManager.getMCPServerByName()
+  // ❌ getMCPRuntimeStates() - Removed, use mcpClientCacheManager.getMCPRuntimeStates()
+  // ❌ getMCPRuntimeState() - Removed, use mcpClientCacheManager.getMCPRuntimeState()
+  // ❌ getAllMCPTools() - Removed, use mcpClientCacheManager.getAllMCPTools()
+  // ❌ getAgentSpecificTools() - Removed, use mcpClientCacheManager.getAgentSpecificTools()
+  // ❌ getCurrentAgentTools() - Removed, use mcpClientCacheManager.getAgentSpecificTools()
+  // ❌ getAvailableTools() - Removed, use mcpClientCacheManager
+  // ❌ getMCPStats() - Removed, use mcpClientCacheManager.getMCPStats()
 
   // ========== Skills Data Access Methods ==========
 
   /**
-   * Get all Skills configurations
+   * Get all Skills configs
    */
   getSkills(): SkillConfig[] {
     return [...this.cache.skills]
   }
 
   /**
-   * Get Skill configuration by name
+   * Get Skill config by name
    * @param skillName - Skill name
    */
   getSkillByName(skillName: string): SkillConfig | null {
@@ -527,6 +719,53 @@ export class ProfileDataManager {
   getSkillsStats(): { totalSkills: number } {
     return {
       totalSkills: this.cache.skills.length
+    }
+  }
+
+  // ========== Sub-Agents Data Access Methods ==========
+
+  /**
+   * Fetch full SubAgentConfig[] via IPC (async).
+   * Called after profile push delivers lightweight SubAgentIndex[].
+   * Updates cache and notifies listeners so UI gets display_name, emoji, description, etc.
+   */
+  private fetchFullSubAgentConfigs(): void {
+    if (!window.electronAPI?.subAgent?.getAll) return
+    window.electronAPI.subAgent.getAll()
+      .then((result: { success: boolean; data?: SubAgentConfig[]; error?: string }) => {
+        if (result.success && Array.isArray(result.data)) {
+          this.cache.subAgents = result.data
+          this.notifyListeners(false) // Debounced notification to refresh UI
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn('[ProfileDataManager] Failed to fetch full sub-agent configs:', err)
+      })
+  }
+
+  /**
+   * Get all Sub-Agent configs
+   */
+  getSubAgents(): SubAgentConfig[] {
+    return [...(this.cache.subAgents || [])]
+  }
+
+  /**
+   * Get Sub-Agent config by name
+   * @param name - Sub-Agent name
+   */
+  getSubAgentByName(name: string): SubAgentConfig | undefined {
+    return (this.cache.subAgents || []).find(sa => sa.name === name)
+  }
+
+  /**
+   * Get Sub-Agents statistics
+   */
+  getSubAgentsStats(): { total: number; onDevice: number } {
+    const subAgents = this.cache.subAgents || []
+    return {
+      total: subAgents.length,
+      onDevice: subAgents.filter(sa => sa.source === 'ON-DEVICE').length,
     }
   }
 
@@ -547,9 +786,9 @@ export class ProfileDataManager {
   /**
    * Check if FRE (First Run Experience) needs to be shown
    * @returns If data is initialized and freDone is false, FRE needs to be shown
-   * 
+   *
    * 🔧 Key fix: Returns false when data is not initialized or profile is null,
-   * preventing FRE from being incorrectly shown when user logs out and logs back in due to cache being cleared
+   * preventing FRE from incorrectly showing when user logs out then logs back in due to cache being cleared
    */
   needsFRE(): boolean {
     // If data is not initialized or profile is null, don't show FRE
@@ -560,14 +799,14 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get the Skills used by the current Agent
+   * Get Skills used by the current Agent
    */
   getCurrentAgentSkills(): SkillConfig[] {
     const agent = this.getCurrentAgent()
     if (!agent || !agent.skills) {
       return []
     }
-    
+
     return agent.skills
       .map(skillName => this.getSkillByName(skillName))
       .filter((skill): skill is SkillConfig => skill !== null)
@@ -579,47 +818,46 @@ export class ProfileDataManager {
 
   // Cleanup method for sign-out
   cleanup(): void {
-    console.log('[ProfileDataManager] 🧹 Cleaning up for sign-out');
-    
+    logger.debug('[ProfileDataManager] 🧹 Cleaning up for sign-out');
+
     // Clean up notification timeout
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout)
       this.notificationTimeout = null
     }
     this.pendingNotification = false
-    
-    // 🔄 Removed: AgentChatManager has been migrated to the main process, no cleanup needed here
-    
+    this.chatSessionReadStatusUpdatedAt.clear()
+
+    // 🔄 Removed: AgentChatManager has been migrated to main process, no cleanup needed here
+
     this.cache = {
       profile: null,
-      mcp_servers: [], // 🚨 Deprecated
-      mcp_runtime_states: [], // 🚨 Deprecated
       chats: [],
       skills: [],
+      subAgents: [],
       lastUpdated: 0,
       isInitialized: false
     }
-    
+
     // 🔧 Key fix: Don't clear listeners, instead notify them that data has been cleared
-    // This allows React components to correctly respond to state changes
+    // This allows React components to properly respond to state changes
     this.notifyListeners(true)
-    
-    this.refreshPromise = null
+
     this.userAlias = null
-    
+
     // Clean up historical prompt data
     this.promptHistory = []
     this.promptCursor = -1
     this.currentEditingPrompt = ''
-    
-    console.log('[ProfileDataManager] ✅ Cleanup completed, listeners notified');
+
+    logger.debug('[ProfileDataManager] ✅ Cleanup completed, listeners notified');
   }
 
   // ========== ChatSessions Data Access Methods ==========
-  
+
   /**
-   * Get all ChatSessions for a specific Chat
-   * Only provides data access, not responsible for data management
+   * Get all ChatSessions for a specified Chat
+   * Provides data access only, not responsible for data management
    */
   getChatSessions(chatId: string): ChatSession[] {
     const chat = this.cache.chats.find(c => c.chat_id === chatId)
@@ -635,7 +873,7 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get a specific ChatSession within a given Chat
+   * Get a specific ChatSession within a specified Chat
    */
   getChatSession(chatId: string, chatSessionId: string): ChatSession | null {
     const chatSessions = this.getChatSessions(chatId)
@@ -652,7 +890,7 @@ export class ProfileDataManager {
   }
 
   /**
-   * Get ChatSessions statistics for a specific Chat
+   * Get ChatSessions statistics for a specified Chat
    */
   getChatSessionsStats(chatId: string): {
     totalChatSessions: number;
@@ -661,7 +899,7 @@ export class ProfileDataManager {
     newestChatSession: string | null;
   } {
     const chatSessions = this.getChatSessions(chatId)
-    
+
     if (chatSessions.length === 0) {
       return {
         totalChatSessions: 0,
@@ -717,26 +955,26 @@ export class ProfileDataManager {
    */
   addPromptToHistory(prompt: string): void {
     if (!prompt.trim()) return
-    
-    
+
+
     // Avoid adding duplicate prompts
     const lastPrompt = this.promptHistory[this.promptHistory.length - 1]
     if (lastPrompt === prompt.trim()) {
       return
     }
-    
+
     // Add to queue tail
     this.promptHistory.push(prompt.trim())
-    
+
     // Maintain queue size limit
     if (this.promptHistory.length > this.HISTORY_PROMPT_QUEUE_SIZE) {
       const removedPrompt = this.promptHistory.shift() // Remove oldest prompt
     }
-    
+
     // Reset cursor to queue tail (E position)
     this.promptCursor = -1
     this.currentEditingPrompt = ''
-    
+
   }
 
   /**
@@ -744,11 +982,11 @@ export class ProfileDataManager {
    * Called when up arrow key is pressed
    */
   getPreviousPrompt(): string | null {
-    
+
     if (this.promptHistory.length === 0) {
       return null
     }
-    
+
     // Move cursor towards queue head
     if (this.promptCursor === -1) {
       // Start from tail position, move to last prompt
@@ -759,9 +997,9 @@ export class ProfileDataManager {
     } else {
     }
     // If cursor is already 0, keep unchanged (already reached queue head)
-    
+
     const prompt = this.promptHistory[this.promptCursor]
-    
+
     return prompt
   }
 
@@ -770,16 +1008,16 @@ export class ProfileDataManager {
    * Called when down arrow key is pressed
    */
   getNextPrompt(): string | null {
-    
+
     if (this.promptHistory.length === 0) {
       return this.currentEditingPrompt || null
     }
-    
+
     if (this.promptCursor === -1) {
       // Already at queue tail, return current editing prompt
       return this.currentEditingPrompt || null
     }
-    
+
     // Move cursor towards queue tail
     if (this.promptCursor < this.promptHistory.length - 1) {
       this.promptCursor++
@@ -797,11 +1035,11 @@ export class ProfileDataManager {
    * Called when user modifies input box content
    */
   setCurrentEditingPrompt(prompt: string): void {
-    
+
     this.currentEditingPrompt = prompt
     // Reset cursor to queue tail (E position)
     this.promptCursor = -1
-    
+
   }
 
   /**
@@ -820,8 +1058,8 @@ export class ProfileDataManager {
       current: this.promptCursor,
       maxSize: this.HISTORY_PROMPT_QUEUE_SIZE
     }
-    
-    
+
+
     return stats
   }
 

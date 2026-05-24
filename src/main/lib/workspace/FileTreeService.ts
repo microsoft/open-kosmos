@@ -12,30 +12,28 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import { EventEmitter } from 'events';
+import { rgPath as rgPathFromPackage } from '@vscode/ripgrep';
 
 // Get ripgrep path (reuses the complete logic from RipgrepSearchEngine)
 function getRipgrepPath(): string {
-  const fsSync = require('fs');
-  
   try {
     // Method 1: Try to get path through @vscode/ripgrep package
-    const rgPathFromPackage = require('@vscode/ripgrep').rgPath;
-    
     // Check if path is valid
     if (rgPathFromPackage && fsSync.existsSync(rgPathFromPackage)) {
       return rgPathFromPackage;
     }
-    
+
   } catch (error) {
   }
-  
+
   // Method 2: Use process.cwd() as base path
   try {
     const platform = process.platform;
     const binaryName = platform === 'win32' ? 'rg.exe' : 'rg';
-    
-    
+
+
     // Possible paths list (using process.cwd() as base)
     const possiblePaths = [
       // Development environment: from current working directory
@@ -48,7 +46,7 @@ function getRipgrepPath(): string {
       path.join(__dirname, '..', '..', 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
       path.join(__dirname, '..', '..', '..', 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
     ];
-    
+
     // Try each possible path
     for (const testPath of possiblePaths) {
       const normalizedPath = path.normalize(testPath);
@@ -56,10 +54,10 @@ function getRipgrepPath(): string {
         return normalizedPath;
       }
     }
-    
+
   } catch (error) {
   }
-  
+
   return '';
 }
 
@@ -137,7 +135,7 @@ export class FileTreeService extends EventEmitter {
   constructor() {
     super();
     this.rgPath = rgPath;
-    
+
     if (!this.isAvailable()) {
     } else {
     }
@@ -157,7 +155,7 @@ export class FileTreeService extends EventEmitter {
    */
   async getFileTree(query: FileTreeQuery): Promise<FileTreeResult> {
     const cacheKey = this.getCacheKey(query);
-    
+
     // Check cache
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -173,13 +171,17 @@ export class FileTreeService extends EventEmitter {
     const startTime = Date.now();
 
     try {
-      // Use ripgrep --files to get all files
-      const files = await this.listFilesWithRipgrep(query);
-      
+      // Use ripgrep --files to get all files, fallback to Node.js readdir if ripgrep fails
+      let files: string[];
+      try {
+        files = await this.listFilesWithRipgrep(query);
+      } catch (rgError) {
+        files = await this.listFilesWithReaddir(query);
+      }
 
       // Build file tree structure
       const root = await this.buildTree(files, query);
-      
+
       // Collect statistics
       const stats: FileTreeStats = {
         totalFiles: files.length,
@@ -228,7 +230,7 @@ export class FileTreeService extends EventEmitter {
     }
 
     const args = this.buildRipgrepArgs(query);
-    
+
 
     return new Promise((resolve, reject) => {
       const files: string[] = [];
@@ -284,7 +286,7 @@ export class FileTreeService extends EventEmitter {
           resolve(files);
           return;
         }
-        
+
         // ripgrep exit codes: 0 = success, 1 = no matches found (still successful)
         if (code === 0 || code === 1) {
           resolve(files);
@@ -301,6 +303,42 @@ export class FileTreeService extends EventEmitter {
   }
 
   /**
+   * Fallback: list files using Node.js fs.readdir when ripgrep is unavailable or crashes.
+   */
+  private async listFilesWithReaddir(query: FileTreeQuery): Promise<string[]> {
+    const files: string[] = [];
+    const maxDepth = query.maxDepth ?? 50;
+    const excludes = new Set(
+      (query.excludePattern || 'node_modules,.git,dist,build,.next,out,coverage,.vscode,.idea,.DS_Store,Thumbs.db')
+        .split(',').map(p => p.trim()).filter(Boolean)
+    );
+
+    const walk = async (dir: string, relativePath: string, depth: number): Promise<void> => {
+      if (depth > maxDepth || files.length >= FileTreeService.MAX_FILES) return;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (excludes.has(entry.name)) continue;
+        if (!query.includeHidden && entry.name.startsWith('.')) continue;
+        const rel = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          await walk(path.join(dir, entry.name), rel, depth + 1);
+        } else if (entry.isFile()) {
+          files.push(rel);
+          if (files.length >= FileTreeService.MAX_FILES) return;
+        }
+      }
+    };
+
+    await walk(query.folder, '', 0);
+    return files;
+  }
+
+  /**
    * Build ripgrep command arguments
    */
   private buildRipgrepArgs(query: FileTreeQuery): string[] {
@@ -308,40 +346,22 @@ export class FileTreeService extends EventEmitter {
 
     // Core command: list files
     args.push('--files');
-    
+
     // Output format
     args.push('--color=never');
     args.push('--no-messages');
-    
+
     // Symbolic links
     args.push('--follow');
-    
+
     // Hidden files
     if (query.includeHidden) {
       args.push('--hidden');
     }
-    
+
     // Maximum depth
     if (query.maxDepth !== undefined) {
       args.push('--max-depth', String(query.maxDepth));
-    }
-
-    // Default exclude patterns (similar to VSCode)
-    const defaultExcludes = [
-      'node_modules',
-      '.git',
-      'dist',
-      'build',
-      'out',
-      '.next',
-      'coverage',
-      '.DS_Store',
-      'Thumbs.db',
-      '*.log'
-    ];
-
-    for (const pattern of defaultExcludes) {
-      args.push('--glob', `!${pattern}`);
     }
 
     // User-defined exclude patterns
@@ -396,16 +416,16 @@ export class FileTreeService extends EventEmitter {
       const parts = dirPath.split('/');
       const name = parts[parts.length - 1];
       const parentPath = parts.slice(0, -1).join('/');
-      
+
       const node: FileTreeNode = {
         path: dirPath,
         name,
         isDirectory: true,
         children: []
       };
-      
+
       nodeMap.set(dirPath, node);
-      
+
       const parent = nodeMap.get(parentPath);
       if (parent && parent.children) {
         parent.children.push(node);
@@ -417,13 +437,13 @@ export class FileTreeService extends EventEmitter {
       const parts = filePath.split('/');
       const name = parts[parts.length - 1];
       const parentPath = parts.slice(0, -1).join('/');
-      
+
       const node: FileTreeNode = {
         path: filePath,
         name,
         isDirectory: false
       };
-      
+
       const parent = nodeMap.get(parentPath);
       if (parent && parent.children) {
         parent.children.push(node);
@@ -446,12 +466,12 @@ export class FileTreeService extends EventEmitter {
     rootFolder: string
   ): Promise<void> {
     const nodes = Array.from(nodeMap.values());
-    
+
     // Batch processing to avoid opening too many files at once
     const batchSize = 100;
     for (let i = 0; i < nodes.length; i += batchSize) {
       const batch = nodes.slice(i, i + batchSize);
-      
+
       await Promise.all(
         batch.map(async (node) => {
           try {
@@ -465,7 +485,7 @@ export class FileTreeService extends EventEmitter {
         })
       );
     }
-    
+
     this.emit('metadataLoaded');
   }
 
@@ -474,13 +494,13 @@ export class FileTreeService extends EventEmitter {
    */
   private countDirectories(node: FileTreeNode): number {
     let count = node.isDirectory ? 1 : 0;
-    
+
     if (node.children) {
       for (const child of node.children) {
         count += this.countDirectories(child);
       }
     }
-    
+
     return count;
   }
 
@@ -513,7 +533,7 @@ export class FileTreeService extends EventEmitter {
       // Clear all caches
       this.cache.clear();
     }
-    
+
   }
 
   /**
@@ -529,7 +549,7 @@ export class FileTreeService extends EventEmitter {
     currentDepth: number = 0
   ): Promise<void> {
     const fullPath = path.join(rootFolder, relativePath);
-    
+
     // Check if maximum depth limit is exceeded
     if (query.maxDepth !== undefined && currentDepth >= query.maxDepth) {
       return;
@@ -539,10 +559,10 @@ export class FileTreeService extends EventEmitter {
     if (dirSet.size >= FileTreeService.MAX_FILES) {
       return;
     }
-    
+
     try {
       const entries = await fs.readdir(fullPath, { withFileTypes: true });
-      
+
       const subDirPromises: Promise<void>[] = [];
 
       for (const entry of entries) {
@@ -550,7 +570,7 @@ export class FileTreeService extends EventEmitter {
         if (!query.includeHidden && entry.name.startsWith('.')) {
           continue;
         }
-        
+
         // Skip default excluded directories
         const defaultExcludes = [
           'node_modules', '.git', 'dist', 'build', 'out',
@@ -559,13 +579,13 @@ export class FileTreeService extends EventEmitter {
         if (defaultExcludes.includes(entry.name)) {
           continue;
         }
-        
+
         // Only process directories
         if (entry.isDirectory()) {
           const childRelativePath = relativePath
             ? `${relativePath}/${entry.name}`
             : entry.name;
-          
+
           // Add to directory set
           dirSet.add(childRelativePath);
 

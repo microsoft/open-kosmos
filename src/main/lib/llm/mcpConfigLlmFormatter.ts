@@ -253,7 +253,7 @@ Output Requirements: Standard format MCP configuration JSON
 {
   "servers": {
     "my-python-script": {
-      "type": "stdio", 
+      "type": "stdio",
       "command": "python",
       "args": ["script.py"]
     }
@@ -266,7 +266,7 @@ Output Requirements: Standard format MCP configuration JSON
 \`\`\`json
 {
   "type": "stdio",
-  "command": "python", 
+  "command": "python",
   "args": ["script.py"]
 }
 \`\`\`
@@ -400,7 +400,7 @@ ${userInputMcpConfig}`;
         temperature: 0.3
       };
 
-      // Use claude-haiku-4.5 model for MCP configuration formatting
+      // Use the claude-haiku-4.5 model for MCP configuration formatting
       const rawResponse = await ghcModelApi.callModel(
         'claude-haiku-4.5',
         llmParams.prompt,
@@ -414,7 +414,7 @@ ${userInputMcpConfig}`;
       try {
         // More robust JSON extraction and cleanup logic
         let cleanedResponse = rawResponse.trim();
-        
+
         // Remove markdown code block markers
         cleanedResponse = cleanedResponse
           .replace(/```json\s*/g, '')
@@ -425,7 +425,7 @@ ${userInputMcpConfig}`;
         // Find content between first { and last }
         const firstBrace = cleanedResponse.indexOf('{');
         const lastBrace = cleanedResponse.lastIndexOf('}');
-        
+
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const jsonContent = cleanedResponse.substring(firstBrace, lastBrace + 1);
           parsedResponse = JSON.parse(jsonContent);
@@ -433,7 +433,7 @@ ${userInputMcpConfig}`;
           // If complete JSON structure not found, try to parse cleaned content directly
           parsedResponse = JSON.parse(cleanedResponse);
         }
-        
+
         parsedResponse.rawResponse = rawResponse;
 
       } catch (parseError) {

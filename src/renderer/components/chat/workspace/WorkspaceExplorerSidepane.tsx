@@ -7,19 +7,11 @@ import {
   updateChatWorkspace,
   updateChatKnowledgeBase,
 } from '../../../lib/chat/workspaceOps';
+import { extractMonthFromChatSessionIdValue } from '../../../../shared/utils/idFormats';
 import { useCurrentChatSessionId, useCurrentChatId } from '../../../lib/chat/agentChatSessionCacheManager';
 import FileExplorerSection from './FileExplorerSection';
-
-interface WorkspaceExplorerSidepaneProps {
-  isVisible: boolean;
-  onClose: () => void;
-  onMenuToggle?: (buttonElement: HTMLElement, menuActions: WorkspaceMenuActions) => void;
-  menuState?: {
-    isOpen: boolean;
-    position: { top: number; left: number } | null;
-  };
-  onFileTreeNodeMenuToggle?: (event: React.MouseEvent, node: any, workspacePath: string) => void;
-}
+import { WorkspaceMenuAtom } from '@renderer/components/menu/WorkspaceMenuDropdown';
+import { WorkspaceExplorerAtom } from '../chat-side.atom';
 
 export interface WorkspaceMenuActions {
   onOpenInExplorer: () => void;
@@ -30,19 +22,19 @@ export interface WorkspaceMenuActions {
   canAddFiles: boolean;
   canAddFolder: boolean;
   canPasteToWorkspace: boolean;
+  workspacePath: string;
 }
 
-const WorkspaceExplorerSidepane: React.FC<WorkspaceExplorerSidepaneProps> = ({
-  isVisible,
-  onClose,
-  onMenuToggle,
-  menuState,
-  onFileTreeNodeMenuToggle
-}) => {
+const WorkspaceExplorerSidepane: React.FC = () => {
+  const [
+    { visible: isVisible, reveal: revealRequest },
+    { cancelReveal: onRevealHandled },
+  ] = WorkspaceExplorerAtom.use();
+  const { toggle: onMenuToggle } = WorkspaceMenuAtom.useChange();
   const { data } = useProfileData();
-  // 🔧 Fix: use reactive hook instead of synchronous read
-  // Previously used require() + getCurrentChatId() for direct read, which was not reactive
-  // This caused the sidebar not to re-render after startNewChatFor completes, showing "Not initialized" for knowledgeBase
+  // 🔧 Fix: use reactive hook instead of synchronous reads
+  // Previously used require() + getCurrentChatId() directly, which is not reactive
+  // After startNewChatFor completes, the sidebar would not re-render, causing knowledgeBase to show "Not initialized"
   const currentChatId = useCurrentChatId();
   const { user } = useAuthContext();
   const userAlias = user?.login;
@@ -50,34 +42,34 @@ const WorkspaceExplorerSidepane: React.FC<WorkspaceExplorerSidepaneProps> = ({
   // Get current Agent's Workspace and KnowledgeBase from ProfileData
   const { currentWorkspace, currentKnowledgeBase } = useMemo(() => {
     if (!data?.chats || !currentChatId) {
-      return { currentWorkspace: '', currentKnowledgeBase: '' };
+      return {
+        currentWorkspace: '',
+        currentKnowledgeBase: '',
+      };
     }
     const currentChat = data.chats.find(chat => chat.chat_id === currentChatId);
     return {
       currentWorkspace: currentChat?.agent?.workspace || '',
-      currentKnowledgeBase: currentChat?.agent?.knowledgeBase || '',
+      currentKnowledgeBase: currentChat?.agent?.knowledge?.knowledgeBase || currentChat?.agent?.knowledgeBase || '',
     };
   }, [data.chats, data.lastUpdated, currentChatId]);
 
   // Get current ChatSessionId (reactive)
   const currentChatSessionId = useCurrentChatSessionId();
 
-  // Calculate current chat session file directory path: workspace/YYYYMM/chatSessionId
+  // Compute current chat session file directory path: workspace/YYYYMM/chatSessionId
   const chatSessionFilePath = useMemo(() => {
     if (!currentWorkspace || !currentChatSessionId) return '';
 
-    // Extract YYYYMM from chatSessionId (format: chatSession_YYYYMMDDHHmmss)
-    const match = currentChatSessionId.match(/^chatSession_(\d{4})(\d{2})/);
-    if (!match) return '';
-
-    const yyyymm = `${match[1]}${match[2]}`;
-    // 🔥 Fix: use separator consistent with workspace path (\\ on Windows)
+    const yyyymm = extractMonthFromChatSessionIdValue(currentChatSessionId);
+    if (!yyyymm) return '';
+    // 🔥 Fix: use the same path separator as the workspace path (on Windows: \\)
     // Detect the separator used in the workspace path
     const sep = currentWorkspace.includes('\\') ? '\\' : '/';
     return `${currentWorkspace}${sep}${yyyymm}${sep}${currentChatSessionId}`;
   }, [currentWorkspace, currentChatSessionId]);
 
-  // Default paths - obtained via IPC
+  // Default paths - fetched via IPC
   const [defaultWorkspacePath, setDefaultWorkspacePath] = React.useState<string>('');
   const [defaultKnowledgeBasePath, setDefaultKnowledgeBasePath] = React.useState<string>('');
 
@@ -129,9 +121,10 @@ const WorkspaceExplorerSidepane: React.FC<WorkspaceExplorerSidepaneProps> = ({
         currentPath={currentKnowledgeBase}
         defaultPath={defaultKnowledgeBasePath}
         currentChatId={currentChatId}
+        revealRequest={revealRequest}
+        onRevealHandled={onRevealHandled}
         onUpdatePath={handleUpdateKnowledgeBasePath}
         onMenuToggle={onMenuToggle}
-        onFileTreeNodeMenuToggle={onFileTreeNodeMenuToggle}
       />
 
       {/* Chat Session File Section */}
@@ -143,10 +136,12 @@ const WorkspaceExplorerSidepane: React.FC<WorkspaceExplorerSidepaneProps> = ({
         currentPath={chatSessionFilePath}
         defaultPath={chatSessionFilePath}
         currentChatId={currentChatId}
+        revealRequest={revealRequest}
+        onRevealHandled={onRevealHandled}
         onUpdatePath={handleUpdateWorkspacePath}
         onMenuToggle={onMenuToggle}
-        onFileTreeNodeMenuToggle={onFileTreeNodeMenuToggle}
       />
+
     </div>
   );
 };

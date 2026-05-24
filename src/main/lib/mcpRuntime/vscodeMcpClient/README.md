@@ -5,12 +5,12 @@ This module provides an MCP client compatible with the VSCode MCP implementation
 ## Core Features
 
 ### 1. Standard Compatibility
-- Based on VSCode's MCP implementation pattern
+- Based on VSCode's MCP implementation patterns
 - Follows the MCP protocol specification (2024-11-05)
 - Supports all standard transport layer types
 
 ### 2. Transport Layer Support
-- **Stdio Transport**: Child process communication with graceful shutdown support
+- **Stdio Transport**: Sub-process communication with graceful shutdown support
 - **HTTP Transport**: RESTful HTTP communication
 - **SSE Transport**: Server-Sent Events real-time communication
 - **StreamableHTTP**: Automatic HTTP/SSE fallback mechanism
@@ -78,7 +78,7 @@ const resources = client.getResources();
 await client.disconnect();
 ```
 
-### StreamableHTTP (Auto Fallback)
+### StreamableHTTP (Automatic Fallback)
 
 ```typescript
 const client = new VscodeMcpClient({
@@ -89,23 +89,23 @@ const client = new VscodeMcpClient({
 });
 ```
 
-## Key Differences from Original Implementation
+## Key Differences from the Original Implementation
 
 ### 1. Process Management
-- **VSCode Approach**: State machine-driven graceful shutdown process
-- **Original Implementation**: Simple kill mechanism
+- **VSCode approach**: Graceful shutdown flow driven by a state machine
+- **Original approach**: Simple kill mechanism
 
 ### 2. Message Handling
-- **VSCode Approach**: Streamlined message validation and processing
-- **Original Implementation**: Complex validation and statistics tracking
+- **VSCode approach**: Streamlined message validation and processing
+- **Original approach**: Complex validation and statistics tracking
 
 ### 3. Error Handling
-- **VSCode Approach**: State-based error management
-- **Original Implementation**: Event-based error propagation
+- **VSCode approach**: State-based error management
+- **Original approach**: Event-based error propagation
 
 ### 4. Transport Layer Design
-- **VSCode Approach**: Factory pattern with automatic type detection
-- **Original Implementation**: Manual transport layer instantiation
+- **VSCode approach**: Factory pattern with automatic type detection
+- **Original approach**: Manual transport layer instantiation
 
 ## Configuration Options
 
@@ -114,14 +114,14 @@ const client = new VscodeMcpClient({
 interface VscodeMcpServerConfig {
   name: string;                          // Server name
   type?: 'stdio' | 'http' | 'sse' | 'streamablehttp';
-  timeout?: number;                      // Timeout (default: 30000ms)
+  timeout?: number;                      // Timeout in ms (default: 30000ms)
 }
 ```
 
 ### Stdio-Specific Configuration
 ```typescript
 {
-  command: string;                       // Execution command
+  command: string;                       // Command to execute
   args?: string[];                       // Command arguments
   cwd?: string;                         // Working directory
   env?: Record<string, string | null>;   // Environment variables
@@ -148,21 +148,21 @@ The client extends EventEmitter and supports the following events:
 
 ```typescript
 client.on('stateChange', (state: ConnectionState) => {
-  // Handle state changes
+  // Handle state change
 });
 
 client.on('log', (level: string, message: string) => {
-  // Handle logs
+  // Handle log
 });
 
 client.on('notification', (notification: any) => {
-  // Handle server notifications
+  // Handle server notification
 });
 ```
 
-## Testing
+## Tests
 
-Test files have been migrated to a dedicated test directory, see the `tests/` folder.
+Test files have been moved to a dedicated test directory. See the `tests/` folder.
 
 ## Dependencies
 
@@ -173,7 +173,7 @@ Test files have been migrated to a dedicated test directory, see the `tests/` fo
 ## Security
 
 ### Windows CVE-2024-27980 Fix
-The Stdio transport layer includes a fix for the Windows child process argument injection vulnerability:
+The Stdio transport layer includes a fix for the Windows sub-process argument injection vulnerability:
 
 ```typescript
 // Safe argument formatting
@@ -181,19 +181,19 @@ const safeArgs = formatWindowsArgs(args);
 ```
 
 ### Environment Variable Handling
-Supports secure environment variable configuration, including null value clearing:
+Supports safe environment variable configuration, including null-value clearing:
 
 ```typescript
 env: {
   'SAFE_VAR': 'value',
-  'REMOVE_VAR': null  // Clear variable
+  'REMOVE_VAR': null  // Clear the variable
 }
 ```
 
-## Performance Characteristics
+## Performance Features
 
 - Connection pool reuse (HTTP transport)
-- Automatic reconnection mechanism (configurable)
+- Automatic reconnection (configurable)
 - Message queue management
 - Memory leak protection
 
@@ -201,18 +201,18 @@ env: {
 
 ### Common Issues
 
-1. **Stdio Process Failed to Start**
+1. **Stdio process fails to start**
    - Check command path and permissions
-   - Verify argument format
-   - Confirm uvx availability
+   - Verify argument formatting
+   - Confirm `uvx` availability
 
-2. **HTTP Connection Failed**
+2. **HTTP connection failure**
    - Check URL reachability
    - Verify authentication headers
    - Confirm firewall settings
 
-3. **Message Timeout**
-   - Adjust timeout configuration
+3. **Message timeout**
+   - Adjust the `timeout` configuration
    - Check network latency
    - Verify server response
 
@@ -226,3 +226,4 @@ client.on('log', (level, message) => {
     console.log('TRACE:', message);
   }
 });
+```

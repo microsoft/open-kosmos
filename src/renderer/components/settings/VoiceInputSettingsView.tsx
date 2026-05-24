@@ -6,6 +6,8 @@ import VoiceInputSettingsHeaderView from './VoiceInputSettingsHeaderView'
 import VoiceInputSettingsContentView from './VoiceInputSettingsContentView'
 import { useFeatureFlag } from '../../lib/featureFlags'
 import '../../styles/VoiceInputSettingsView.css'
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[VoiceInputSettingsView]');
 
 // Type definitions
 export type WhisperModelSize = 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
@@ -44,8 +46,8 @@ export interface DownloadProgress {
 const WHISPER_ADDON_MODULE_KEY = 'whisper-addon'
 
 const VoiceInputSettingsView: React.FC = () => {
-  // Voice Input controlled by feature flag
-  const featureFlagEnabled = useFeatureFlag('kosmosFeatureVoiceInput')
+  // Voice Input feature controlled by feature flag
+  const featureFlagEnabled = useFeatureFlag('openkosmosFeatureVoiceInput')
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -187,7 +189,7 @@ const VoiceInputSettingsView: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error('[VoiceInputSettings] Failed to load app config:', err)
+      logger.error('[VoiceInputSettings] Failed to load app config:', err)
     }
   }
 
@@ -199,7 +201,7 @@ const VoiceInputSettingsView: React.FC = () => {
         setModelStatuses(response.data as WhisperModelStatus[])
       }
     } catch (err) {
-      console.error('Failed to load model status:', err)
+      logger.error('Failed to load model status:', err)
     } finally {
       setLoading(false)
     }
@@ -212,7 +214,7 @@ const VoiceInputSettingsView: React.FC = () => {
         setModelInfos(response.data as WhisperModelInfo[])
       }
     } catch (err) {
-      console.error('Failed to load model info:', err)
+      logger.error('Failed to load model info:', err)
     }
   }
 
@@ -362,7 +364,7 @@ const VoiceInputSettingsView: React.FC = () => {
         setVoiceInputEnabled(false)
       }
     } catch (err) {
-      console.error('Failed to delete addon:', err)
+      logger.error('Failed to delete addon:', err)
     }
   }, [])
 
@@ -374,7 +376,7 @@ const VoiceInputSettingsView: React.FC = () => {
         window.electronAPI.whisper?.cancelDownload('base'),
       ])
     } catch (err) {
-      console.error('Failed to cancel enabling:', err)
+      logger.error('Failed to cancel enabling:', err)
     }
   }, [])
 
@@ -412,7 +414,7 @@ const VoiceInputSettingsView: React.FC = () => {
     try {
       await window.electronAPI.whisper?.cancelDownload(size)
     } catch (err) {
-      console.error('Failed to cancel download:', err)
+      logger.error('Failed to cancel download:', err)
     }
   }, [])
 

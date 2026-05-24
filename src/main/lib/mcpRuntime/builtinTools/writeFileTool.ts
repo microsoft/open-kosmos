@@ -1,11 +1,11 @@
 /**
  * WriteFileTool built-in tool
- * Unified file writing tool that consolidates all functionality from the original create_file and append_to_file
- * 
+ * Unified file write tool that integrates all functionality from the original create_file and append_to_file
+ *
  * Core features:
  * 1. Multiple write modes (overwrite, append, prepend, insert)
  * 2. JSON validation (for .json files)
- * 3. Large file chunked write tracking (session tracking)
+ * 3. Large file chunk write tracking (session tracking)
  * 4. Newline control (append mode)
  * 5. Content validation and backup recovery
  * 6. Base64 encoding support
@@ -16,68 +16,18 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 import { getUnifiedLogger, UnifiedLogger } from '../../unifiedLogger';
+import { WriteMode, WriteFileToolArgs, WriteFileToolResult } from '@shared/types/toolCallArgs';
 
-export type WriteMode = 'overwrite' | 'append' | 'prepend' | 'insert';
-
-export interface WriteFileToolArgs {
-  // Required parameters
-  filePath: string;           // Full path to the file
-  content: string;            // Content to write
-
-  // Mode control
-  mode?: WriteMode;           // Write mode, default 'overwrite'
-
-  // General options
-  description?: string;       // Operation description for UI display
-  encoding?: BufferEncoding;  // File encoding, default 'utf-8'
-  createIfNotExists?: boolean; // Whether to create the file if it does not exist, default true
-  createDirectories?: boolean; // Whether to automatically create parent directories, default true
-  isBase64?: boolean;         // Whether content is Base64 encoded
-  backupBeforeWrite?: boolean; // Whether to back up the original file before writing
-  
-  // JSON validation (from create_file)
-  validateJson?: boolean;     // Validate format for .json files
-  
-  // Insert mode options
-  insertPosition?: number;    // Insertion position in insert mode (character index)
-  insertLine?: number;        // Insertion line number in insert mode (1-based)
-  
-  // Append mode options (from append_to_file)
-  addNewlineBefore?: boolean; // Append mode: add newline before content
-  addNewlineAfter?: boolean;  // Append mode: add newline after content (default true)
-  sectionId?: string;         // Chunk identifier for debugging and tracking
-  isLastChunk?: boolean;      // Whether this is the last chunk
-}
-
-export interface WriteFileToolResult {
-  success: boolean;
-  filePath: string;           // Path of the written file
-  bytesWritten: number;       // Number of bytes written
-  totalSize: number;          // Total file size after writing
-  mode: WriteMode;            // Write mode used
-  backupPath?: string;        // Backup file path (if any)
-  
-  // JSON validation result
-  jsonValid?: boolean;        // JSON validation result
-  
-  // Chunk tracking (append mode)
-  chunkNumber?: number;       // Current chunk number
-  sectionId?: string;         // Chunk identifier
-  isComplete?: boolean;       // Whether all chunks are complete
-  
-  error?: string;             // Error message
-}
-
-// Maximum content size per write: 10MB
+// Single-call content size limit: 10MB
 const MAX_CONTENT_SIZE = 10 * 1024 * 1024;
 
-// Maximum file size limit: 100MB (increased to support large file chunked writing)
+// Maximum file size limit: 100MB (increased to support large file chunk writes)
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-// Session tracker: records write count for each file (for large file chunking in append mode)
+// Session tracker: records the number of writes per file (used for large file chunking in append mode)
 const writeSessionTracker = new Map<string, { chunkCount: number; lastWriteTime: number }>();
 
-// Session timeout: reset count after 5 minutes of no writes
+// Session timeout: reset count if no writes for 5 minutes
 const SESSION_TIMEOUT = 5 * 60 * 1000;
 
 export class WriteFileTool {
@@ -86,11 +36,11 @@ export class WriteFileTool {
   /**
    * Execute file write
    */
-  static async execute(args: WriteFileToolArgs): Promise<WriteFileToolResult> {
+  static async execute(args: WriteFileToolArgs, options?: { signal?: AbortSignal }): Promise<WriteFileToolResult> {
     const startTime = Date.now();
     const executionId = `write_file_${startTime}`;
     const mode = args.mode || 'overwrite';
-    
+
     this.logger.info(
       `WriteFileTool execution started`,
       'WriteFileTool',
@@ -98,7 +48,7 @@ export class WriteFileTool {
     );
 
     try {
-      // 1. Argument validation
+      // 1. Parameter validation
       const validation = this.validateArgs(args);
       if (!validation.isValid) {
         this.logger.error(
@@ -118,7 +68,7 @@ export class WriteFileTool {
 
       // 2. Normalize parameters
       const normalizedPath = path.normalize(args.filePath);
-      const encoding = args.encoding || 'utf-8';
+      const encoding = (args.encoding || 'utf-8') as BufferEncoding;
       const createIfNotExists = args.createIfNotExists !== false;
       const createDirectories = args.createDirectories !== false;
 
@@ -139,7 +89,7 @@ export class WriteFileTool {
         }
       }
 
-      // 4. JSON validation (if needed)
+      // 4. JSON validation (if required)
       let jsonValid: boolean | undefined;
       if (args.validateJson && normalizedPath.toLowerCase().endsWith('.json')) {
         try {
@@ -170,10 +120,10 @@ export class WriteFileTool {
         }
       }
 
-      // 5. Update session tracking (for chunked writing in append mode)
+      // 5. Update session tracking (for chunked writes in append mode)
       const sessionKey = normalizedPath.toLowerCase();
       let session = writeSessionTracker.get(sessionKey);
-      
+
       if (mode === 'append') {
         if (!session || (Date.now() - session.lastWriteTime > SESSION_TIMEOUT)) {
           session = { chunkCount: 0, lastWriteTime: Date.now() };
@@ -183,7 +133,7 @@ export class WriteFileTool {
         writeSessionTracker.set(sessionKey, session);
       }
 
-      // 6. Check if file exists
+      // 6. Check whether file exists
       let fileExists = false;
       let originalContent = '';
       let currentSize = 0;
@@ -228,12 +178,12 @@ export class WriteFileTool {
       // 10. Calculate final content
       let finalContent: string;
       let contentToWrite = content;
-      
+
       // Newline control for append mode
       if (mode === 'append') {
         const addNewlineBefore = args.addNewlineBefore === true;
-        const addNewlineAfter = args.addNewlineAfter !== false; // Default true
-        
+        const addNewlineAfter = args.addNewlineAfter !== false; // default true
+
         if (addNewlineBefore && fileExists && originalContent.length > 0) {
           contentToWrite = '\n' + contentToWrite;
         }
@@ -241,20 +191,20 @@ export class WriteFileTool {
           contentToWrite = contentToWrite + '\n';
         }
       }
-      
+
       switch (mode) {
         case 'overwrite':
           finalContent = contentToWrite;
           break;
-        
+
         case 'append':
           finalContent = originalContent + contentToWrite;
           break;
-        
+
         case 'prepend':
           finalContent = contentToWrite + originalContent;
           break;
-        
+
         case 'insert':
           if (args.insertLine !== undefined) {
             // Insert by line
@@ -267,11 +217,11 @@ export class WriteFileTool {
             const pos = Math.max(0, Math.min(args.insertPosition, originalContent.length));
             finalContent = originalContent.slice(0, pos) + contentToWrite + originalContent.slice(pos);
           } else {
-            // Default to append
+            // Default: append
             finalContent = originalContent + contentToWrite;
           }
           break;
-        
+
         default:
           finalContent = contentToWrite;
       }
@@ -291,10 +241,10 @@ export class WriteFileTool {
         };
       }
 
-      // 12. Write to file
+      // 12. Write file
       await fs.writeFile(normalizedPath, finalContent, { encoding });
 
-      // 13. If this is the last chunk, clean up session
+      // 13. If this is the last chunk, clean up the session
       if (mode === 'append' && args.isLastChunk && session) {
         writeSessionTracker.delete(sessionKey);
         this.logger.info(
@@ -323,15 +273,15 @@ export class WriteFileTool {
       this.logger.info(
         `WriteFileTool execution completed successfully`,
         'WriteFileTool',
-        { 
-          executionId, 
-          filePath: normalizedPath, 
+        {
+          executionId,
+          filePath: normalizedPath,
           bytesWritten,
           totalSize: stats.size,
           mode,
           chunkNumber: session?.chunkCount,
           sectionId: args.sectionId,
-          durationMs: Date.now() - startTime 
+          durationMs: Date.now() - startTime
         }
       );
 
@@ -372,7 +322,7 @@ export class WriteFileTool {
   }
 
   /**
-   * Validate arguments
+   * Parameter validation
    */
   private static validateArgs(args: WriteFileToolArgs): { isValid: boolean; error?: string } {
     // Check required parameters
@@ -389,32 +339,32 @@ export class WriteFileTool {
     }
 
     // Check content size
-    const contentSize = Buffer.byteLength(args.content, args.encoding || 'utf-8');
+    const contentSize = Buffer.byteLength(args.content, (args.encoding || 'utf-8') as BufferEncoding);
     if (contentSize > MAX_CONTENT_SIZE) {
-      return { 
-        isValid: false, 
-        error: `Content size (${contentSize} bytes) exceeds maximum allowed (${MAX_CONTENT_SIZE} bytes). Consider splitting into smaller chunks using append mode.` 
+      return {
+        isValid: false,
+        error: `Content size (${contentSize} bytes) exceeds maximum allowed (${MAX_CONTENT_SIZE} bytes). Consider splitting into smaller chunks using append mode.`
       };
     }
 
     // Check write mode
     const validModes: WriteMode[] = ['overwrite', 'append', 'prepend', 'insert'];
     if (args.mode && !validModes.includes(args.mode)) {
-      return { 
-        isValid: false, 
-        error: `Invalid mode: ${args.mode}. Valid modes: ${validModes.join(', ')}` 
+      return {
+        isValid: false,
+        error: `Invalid mode: ${args.mode}. Valid modes: ${validModes.join(', ')}`
       };
     }
 
-    // In insert mode, insertPosition and insertLine cannot be specified at the same time
+    // In insert mode, insertPosition and insertLine cannot both be specified
     if (args.mode === 'insert' && args.insertPosition !== undefined && args.insertLine !== undefined) {
-      return { 
-        isValid: false, 
-        error: 'Cannot specify both insertPosition and insertLine for insert mode' 
+      return {
+        isValid: false,
+        error: 'Cannot specify both insertPosition and insertLine for insert mode'
       };
     }
 
-    // Check if path contains dangerous patterns
+    // Check whether the path contains dangerous patterns
     const dangerousPatterns = [
       /\.\.\//,           // Directory traversal
       /^\/etc\//i,        // Linux system directories

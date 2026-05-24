@@ -1,7 +1,7 @@
 /**
- * Configuration Adapter - VSCode MCP Client
- * Configuration compatibility integration based on existing Kosmos configuration components
- * Provides configuration detection, parsing, validation, and migration functionality
+ * Configuration adapter - VSCode MCP Client
+ * Configuration compatibility integration based on existing OpenKosmos configuration components
+ * Provides configuration detection, parsing, validation, and migration
  */
 
 import { EventEmitter } from 'events';
@@ -49,9 +49,9 @@ import {
 } from './types';
 
 /**
- * VSCode MCP Client Configuration Adapter
- * 
- * Provides seamless integration with existing Kosmos configuration components:
+ * VSCode MCP Client configuration adapter
+ *
+ * Provides seamless integration with existing OpenKosmos configuration components:
  * - Automatic configuration detection and discovery
  * - Multi-format configuration parsing
  * - Configuration validation and compatibility checking
@@ -65,7 +65,7 @@ export class ConfigAdapter extends EventEmitter {
 
   constructor(options: ConfigAdapterOptions = {}) {
     super();
-    
+
     this.options = {
       autoDetection: true,
       strictValidation: false,
@@ -104,10 +104,10 @@ export class ConfigAdapter extends EventEmitter {
 
     try {
       const result = await detectVSCodeConfigs();
-      
+
       this.detectionState.detectedConfigs = result.configFiles;
       this.detectionState.isDetecting = false;
-      
+
       this.emit('detection-completed', result);
       return result;
     } catch (error) {
@@ -130,7 +130,7 @@ export class ConfigAdapter extends EventEmitter {
   }
 
   /**
-   * Get the first valid configuration file path
+   * Get the path of the first valid configuration file
    */
   public async getFirstValidConfigPath(): Promise<string | null> {
     try {
@@ -144,7 +144,7 @@ export class ConfigAdapter extends EventEmitter {
    * Parse configuration content
    */
   public parseConfig(
-    content: string, 
+    content: string,
     format?: 'settings.json' | 'mcp.json' | 'auto',
     currentTransport?: TransportType
   ): McpConfigParseResult {
@@ -166,7 +166,7 @@ export class ConfigAdapter extends EventEmitter {
         result = parseMcpConfig(content, currentTransport);
       }
 
-      // Cache successfully parsed results
+      // Cache successfully parsed result
       if (result.success && result.data) {
         this.configCache.set(cacheKey, {
           config: result.data,
@@ -178,7 +178,7 @@ export class ConfigAdapter extends EventEmitter {
     } catch (error) {
       return {
         success: false,
-        error: `Configuration parsing failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Configuration parse failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
@@ -188,10 +188,10 @@ export class ConfigAdapter extends EventEmitter {
    */
   public validateConfig(config: McpServerConfig): ConfigValidationReport {
     try {
-      // Convert to Kosmos format
-      const kosmosConfig = this.convertToKosmosFormat(config);
-      const report = validateMcpServerConfig(kosmosConfig);
-      
+      // Convert to OpenKosmos format
+      const openkosmosConfig = this.convertToOpenKosmosFormat(config);
+      const report = validateMcpServerConfig(openkosmosConfig);
+
       this.emit('config-validated', report);
       return report;
     } catch (error) {
@@ -203,19 +203,19 @@ export class ConfigAdapter extends EventEmitter {
         info: [],
         score: 0
       };
-      
+
       this.emit('config-validated', errorReport);
       return errorReport;
     }
   }
 
   /**
-   * Batch validate configurations
+   * Validate configurations in batch
    */
   public validateBatchConfigs(configs: McpServerConfig[]) {
     try {
-      const kosmosConfigs = configs.map(config => this.convertToKosmosFormat(config));
-      return validateBatchImport(kosmosConfigs);
+      const openkosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
+      return validateBatchImport(openkosmosConfigs);
     } catch (error) {
       return {
         isValid: false,
@@ -231,7 +231,7 @@ export class ConfigAdapter extends EventEmitter {
    */
   public async migrateConfigs(
     sourceConfigs: McpServerConfig[],
-    targetFormat: 'vscode-settings' | 'vscode-mcp' | 'kosmos'
+    targetFormat: 'vscode-settings' | 'vscode-mcp' | 'openkosmos'
   ): Promise<ConfigMigrationResult> {
     const migratedConfigs: McpServerConfig[] = [];
     const errors: string[] = [];
@@ -243,7 +243,7 @@ export class ConfigAdapter extends EventEmitter {
         try {
           // Validate source configuration
           const validation = this.validateConfig(config);
-          
+
           if (!validation.isValid && this.options.strictValidation) {
             errors.push(`Skipping invalid configuration "${config.name}": ${validation.errors.join(', ')}`);
             skippedConfigs++;
@@ -256,7 +256,7 @@ export class ConfigAdapter extends EventEmitter {
           // Convert configuration
           const migratedConfig = await this.convertConfigFormat(config, targetFormat);
           migratedConfigs.push(migratedConfig);
-          
+
         } catch (error) {
           errors.push(`Configuration "${config.name}" migration failed: ${error instanceof Error ? error.message : String(error)}`);
           skippedConfigs++;
@@ -275,7 +275,7 @@ export class ConfigAdapter extends EventEmitter {
 
       this.emit('config-migrated', result);
       return result;
-      
+
     } catch (error) {
       const result: ConfigMigrationResult = {
         success: false,
@@ -300,15 +300,15 @@ export class ConfigAdapter extends EventEmitter {
     format: 'settings.json' | 'mcp.json'
   ): string {
     try {
-      const kosmosConfigs = configs.map(config => this.convertToKosmosFormat(config));
-      
+      const openkosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
+
       if (format === 'settings.json') {
-        return formatToVSCodeSettings(kosmosConfigs);
+        return formatToVSCodeSettings(openkosmosConfigs);
       } else {
-        return formatToVSCodeMcpJson(kosmosConfigs);
+        return formatToVSCodeMcpJson(openkosmosConfigs);
       }
     } catch (error) {
-      throw new Error(`Failed to export VSCode format: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to export to VSCode format: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -338,8 +338,8 @@ export class ConfigAdapter extends EventEmitter {
    */
   public updateOptions(newOptions: Partial<ConfigAdapterOptions>): void {
     this.options = { ...this.options, ...newOptions };
-    
-    // If platform support has changed, update detection state
+
+    // If supported platforms change, update detection state
     if (newOptions.supportedPlatforms) {
       this.detectionState.supportedFormats = this.getSupportedFormats(this.detectionState.platformInfo.platform);
     }
@@ -354,7 +354,7 @@ export class ConfigAdapter extends EventEmitter {
   }
 
   /**
-   * Get supported formats for the platform
+   * Get formats supported by the platform
    */
   private getSupportedFormats(platform: string): string[] {
     switch (platform) {
@@ -370,9 +370,9 @@ export class ConfigAdapter extends EventEmitter {
   }
 
   /**
-   * Convert to Kosmos format
+   * Convert to OpenKosmos format
    */
-  private convertToKosmosFormat(config: McpServerConfig): any {
+  private convertToOpenKosmosFormat(config: McpServerConfig): any {
     return {
       name: config.name,
       transport: config.transport as any,
@@ -391,7 +391,7 @@ export class ConfigAdapter extends EventEmitter {
     targetFormat: string
   ): Promise<McpServerConfig> {
     // Specific format conversion logic can be implemented here
-    // Currently returns the original config (since our config format is already generic)
+    // Currently returns the original configuration (since our format is already generic)
     return { ...config };
   }
 }

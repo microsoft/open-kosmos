@@ -8,6 +8,8 @@ export type { AppConfig, RuntimeEnvironment, RuntimeMode } from './types/app';
 export { DEFAULT_APP_CONFIG, DEFAULT_RUNTIME_ENVIRONMENT, isAppConfig } from './types/app';
 export type { ChatSessionFile, ChatSessionFileResult } from './chatSessionFileOps';
 export { ChatSessionFileOps } from './chatSessionFileOps';
+export { importChatSessionFromFile } from './agentAssetsImporter';
+export type { ImportResult as ChatSessionImportResult } from './agentAssetsImporter';
 
 // 🔥 New architecture: ChatSession independent directory structure manager
 export { chatSessionManager, ChatSessionManager } from './chatSessionManager';
@@ -27,15 +29,15 @@ export {
   isValidChatSessionId
 } from './pathUtils';
 
-// 🔥 KOSMOS placeholder variable management
+// 🔥 OpenKosmos placeholder variable management
 export {
-  KosmosPlaceholder,
-  KOSMOS_PLACEHOLDER_REGEX,
-  containsKosmosPlaceholder,
-  extractKosmosPlaceholders,
-  KosmosPlaceholderManager,
-  kosmosPlaceholderManager
-} from './kosmosPlaceholders';
+  OpenKosmosPlaceholder,
+  OPENKOSMOS_PLACEHOLDER_REGEX,
+  containsOpenKosmosPlaceholder,
+  extractOpenKosmosPlaceholders,
+  OpenKosmosPlaceholderManager,
+  openkosmosPlaceholderManager
+} from './openkosmosPlaceholders';
 
 // 🔥 USER_INPUT placeholder variable parsing
 export {
@@ -47,7 +49,7 @@ export type {
   ParseUserInputResult
 } from './userInputPlaceholderParser';
 
-// Explicitly export types to avoid TypeScript isolated modules error
+// Explicitly export types to avoid TypeScript isolated modules errors
 export type {
   McpServerConfig,
   GhcUser,

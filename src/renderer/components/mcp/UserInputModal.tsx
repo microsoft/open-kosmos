@@ -1,19 +1,21 @@
 /**
  * UserInputModal Component
- * Modal for collecting user input configuration items
- * 
+ * A Modal for collecting user-configurable input fields.
+ *
  * Uses the unified UserInputField type (from backend UserInputPlaceholderParser)
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, Folder, Mail } from 'lucide-react';
-import { 
+import { X, Folder, FileText } from 'lucide-react';
+import {
   UserInputField,
-  validateUserInputValue, 
-  convertUserInputValue 
+  validateUserInputValue,
+  convertUserInputValue
 } from '../../lib/utilities/processUserInputPlaceholder';
 import '../../styles/Modal.css';
 import './UserInputModal.css';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[UserInputModal]');
 
 interface UserInputModalProps {
   isOpen: boolean;
@@ -51,12 +53,11 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
   useEffect(() => {
     if (isOpen && fields.length > 0) {
       const initialData: FormData = {};
-      
+
       fields.forEach(field => {
-        // Use backend-provided default values (EMAIL type already generated in backend)
         initialData[field.key] = field.defaultValue || '';
       });
-      
+
       setFormData(initialData);
       setErrors({});
     }
@@ -81,7 +82,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
   const handleFolderSelect = useCallback(async (key: string) => {
     try {
       if (!window.electronAPI.workspace) {
-        console.error('Workspace API not available');
+        logger.error('Workspace API not available');
         return;
       }
 
@@ -103,17 +104,45 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
         }
       }
     } catch (error) {
-      console.error('Failed to select folder:', error);
+      logger.error('Failed to select folder:', error);
+    }
+  }, [errors]);
+
+  const handleFileSelect = useCallback(async (key: string) => {
+    try {
+      if (!window.electronAPI.fs) {
+        logger.error('FS API not available');
+        return;
+      }
+
+      const result = await window.electronAPI.fs.selectFile();
+
+      if (result.success && result.filePath) {
+        setFormData(prev => ({
+          ...prev,
+          [key]: result.filePath!
+        }));
+
+        if (errors[key]) {
+          setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[key];
+            return newErrors;
+          });
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to select file:', error);
     }
   }, [errors]);
 
   const validateForm = useCallback((): boolean => {
     const newErrors: FormErrors = {};
-    
+
     fields.forEach(field => {
       const value = formData[field.key] || '';
       const validation = validateUserInputValue(value, field);
-      
+
       if (!validation.isValid && validation.error) {
         newErrors[field.key] = validation.error;
       }
@@ -131,9 +160,9 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Convert user input values to correct types
+      // Convert user input values to the correct types
       const userInputs: Record<string, any> = {};
-      
+
       fields.forEach(field => {
         const value = formData[field.key] || '';
         if (value) {
@@ -143,8 +172,8 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
 
       onSubmit(userInputs);
     } catch (error) {
-      console.error('Failed to process user inputs:', error);
-      // Can show error toast here
+      logger.error('Failed to process user inputs:', error);
+      // An error message can be shown here
     } finally {
       setIsSubmitting(false);
     }
@@ -157,9 +186,9 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
   const renderInputField = useCallback((field: UserInputField) => {
     const value = formData[field.key] || '';
     const error = errors[field.key];
-    
-    switch (field.subtype) {
-      case 'FOLDER':
+
+    switch (field.control) {
+      case 'folder':
         return (
           <div key={field.key} className="user-input-field">
             <label className="user-input-label">
@@ -188,28 +217,35 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </div>
         );
 
-      case 'EMAIL':
+      case 'file':
         return (
           <div key={field.key} className="user-input-field">
             <label className="user-input-label">
               {field.label}
               {field.isRequired && <span className="required-asterisk">*</span>}
             </label>
-            <div className="email-input-wrapper">
-              <Mail size={16} className="email-icon" />
+            <div className="folder-input-wrapper">
               <input
-                type="email"
                 value={value}
                 onChange={(e) => handleInputChange(field.key, e.target.value)}
-                className={`user-input-control email-input ${error ? 'error' : ''}`}
-                placeholder="user@microsoft.com"
+                className={`user-input-control folder-input ${error ? 'error' : ''}`}
+                placeholder="Select a file..."
+                readOnly
               />
+              <button
+                type="button"
+                onClick={() => handleFileSelect(field.key)}
+                className="folder-select-btn"
+                title="Select file"
+              >
+                <FileText size={16} />
+              </button>
             </div>
             {error && <div className="input-error">{error}</div>}
           </div>
         );
 
-      case 'NORMAL':
+      case 'text':
       default:
         let inputType = 'text';
         let placeholder = '';
@@ -264,7 +300,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </div>
         );
     }
-  }, [formData, errors, handleInputChange, handleFolderSelect]);
+  }, [formData, errors, handleFileSelect, handleInputChange, handleFolderSelect]);
 
   if (!isOpen) {
     return null;
@@ -273,7 +309,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-container user-input-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Modal Header - using unified modal-header structure */}
+        {/* Modal Header - uses unified modal-header structure */}
         <div className="modal-header">
           <h2 className="modal-title">Configure {serverName}</h2>
           <button
@@ -286,7 +322,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body - using unified modal-body structure */}
+        {/* Modal Body - uses unified modal-body structure */}
         <div className="modal-body">
           <p className="modal-description">
             This MCP server requires some configuration. Please fill in the required information below.
@@ -306,7 +342,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer - using unified modal-footer structure */}
+        {/* Modal Footer - uses unified modal-footer structure */}
         <div className="modal-footer">
           <button
             className="btn-secondary"

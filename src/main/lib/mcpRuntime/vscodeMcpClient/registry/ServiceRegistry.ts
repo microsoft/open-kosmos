@@ -123,11 +123,11 @@ export class ServiceRegistry extends EventEmitter {
   constructor(config: Partial<ServiceRegistryConfig> = {}) {
     super();
     this.config = { ...DEFAULT_REGISTRY_CONFIG, ...config };
-    
+
     if (this.config.enableDiscovery) {
       this.startDiscovery();
     }
-    
+
     this.startHealthChecks();
   }
 
@@ -473,7 +473,7 @@ export class ServiceRegistry extends EventEmitter {
 
   private runHealthChecks(): void {
     const now = Date.now();
-    
+
     for (const [serviceId, service] of Array.from(this.services.entries())) {
       // Simple health check based on last seen time
       const timeSinceLastSeen = now - service.metadata.lastSeen;

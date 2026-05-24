@@ -1,14 +1,14 @@
 /**
- * File attachment processor - strictly follows VSCode approach
- * Handles file validation, preprocessing and text file truncation control
+ * File attachment processor — strictly follows the VSCode design
+ * Responsible for file validation, preprocessing, and text file truncation control
  */
 
-import { ChatReferenceFileData, FileReference, SUPPORTED_TEXT_TYPES, FILE_ATTACHMENT_LIMITS, SUPPORTED_IMAGE_TYPES } from '../../types/chatTypes';
+import { ChatReferenceFileData, FileReference, SUPPORTED_TEXT_TYPES, FILE_ATTACHMENT_LIMITS, SUPPORTED_IMAGE_TYPES } from '@shared/types/chatTypes';
 
 export class FileAttachmentProcessor {
-  
+
   /**
-   * Validate if a file can be used as an attachment
+   * Validate whether a file can be used as an attachment
    */
   static validateFileForAttachment(file: File): {
     valid: boolean;
@@ -19,47 +19,47 @@ export class FileAttachmentProcessor {
     if (file.size > FILE_ATTACHMENT_LIMITS.MAX_FILE_SIZE_BYTES) {
       return {
         valid: false,
-        reason: `File too large, maximum supported size is ${FILE_ATTACHMENT_LIMITS.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
+        reason: `File too large; maximum supported size is ${FILE_ATTACHMENT_LIMITS.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
         isText: false
       };
     }
-    
+
     // Check file type
     const isImage = SUPPORTED_IMAGE_TYPES.includes(file.type as any);
-    const isText = SUPPORTED_TEXT_TYPES.includes(file.type as any) || 
+    const isText = SUPPORTED_TEXT_TYPES.includes(file.type as any) ||
                    this.isTextFileByExtension(file.name);
-    
+
     if (!isImage && !isText) {
       return {
         valid: false,
-        reason: 'Unsupported file format. Please select an image or text file',
+        reason: 'Unsupported file format; please select an image or text file',
         isText: false
       };
     }
-    
+
     return { valid: true, isText };
   }
-  
+
   /**
-   * Determine if a file is a text file based on its extension
+   * Determine whether a file is a text file based on its extension
    */
   static isTextFileByExtension(fileName: string): boolean {
     const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
     return FILE_ATTACHMENT_LIMITS.SUPPORTED_TEXT_EXTENSIONS.includes(extension as any);
   }
-  
+
   /**
-   * 🔥 Refactored: Create file metadata following document design (no full content storage)
-   * Smart metadata replacement strategy: only store metadata, content replacement done on-demand in AgentChat
+   * 🔥 Refactored: Create file metadata per the document design (without storing full content)
+   * Smart metadata replacement strategy: store only metadata; content replacement is done on demand in AgentChat
    */
   static async processTextFile(file: File, filePath?: string): Promise<ChatReferenceFileData> {
     const text = await file.text();
     const lines = text.split('\n');
-    
-    // 🔥 Core fix: Following document design, only create metadata without storing full content
+
+    // 🔥 Core fix: Per the document design, create only metadata without storing full content
     const actualFilePath = filePath || file.name;
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
-    
+
     const fileReference: FileReference = {
       filePath: actualFilePath,
       fileName: file.name,
@@ -70,35 +70,35 @@ export class FileAttachmentProcessor {
       lastModified: file.lastModified,
       isTextFile: true
     };
-    
-    // 🔥 Key: Following document design, do not store text content here
-    // Content will be dynamically loaded when needed via smart metadata replacement strategy
+
+    // 🔥 Key: Per the document design, do not store text content here
+    // Content is loaded dynamically via the smart metadata replacement strategy when needed
     return {
       mimeType: file.type || 'text/plain',
-      data: async () => new TextEncoder().encode(''), // Metadata mode: no actual content stored
+      data: async () => new TextEncoder().encode(''), // Metadata mode: do not store actual content
       reference: actualFilePath,
       size: file.size, // Use original file size
       isText: true,
       fileName: file.name,
-      // text: undefined, // 🔥 Key fix: Do not store text content, following document design
-      fileReference: fileReference // Core: only store metadata
+      // text: undefined, // 🔥 Key fix: do not store text content; follows the document design
+      fileReference: fileReference // Core: store only metadata
     };
   }
 
   /**
-   * 🔄 Added: Create file attachment from full file path obtained via file selector
-   * Supports full file path and metadata in Electron environment
+   * 🔄 New: Create file attachment from a full file path obtained via the file picker
+   * Supports full file paths and metadata in Electron environment
    */
   static async processFileFromPath(filePath: string): Promise<ChatReferenceFileData> {
-    // Check if in Electron environment
+    // Check whether we're in an Electron environment
     if (typeof window !== 'undefined' && (window as any).electronAPI?.fs) {
       try {
-        // Use Electron API to get full file metadata
+        // Use the Electron API to obtain complete file metadata
         const result = await (window as any).electronAPI.fs.getFileMetadata(filePath);
-        
+
         if (result.success && result.metadata) {
           const metadata = result.metadata;
-          
+
           const fileReference: FileReference = {
             filePath: metadata.fullPath,
             fileName: metadata.fileName,
@@ -109,7 +109,7 @@ export class FileAttachmentProcessor {
             lastModified: metadata.lastModified,
             isTextFile: metadata.isTextFile
           };
-          
+
           return {
             mimeType: metadata.mimeType,
             data: async () => new TextEncoder().encode(''), // Metadata mode
@@ -127,29 +127,29 @@ export class FileAttachmentProcessor {
         return this.createFileReference(filePath, filePath.split('/').pop() || 'unknown', 0);
       }
     } else {
-      // Browser environment fallback processing
+      // Browser environment fallback
       return this.createFileReference(filePath, filePath.split('/').pop() || 'unknown', 0);
     }
   }
-  
+
   /**
-   * 🔄 Added: Full content processing for backward compatibility (only used when needed)
-   * This method is only used in special cases; normally metadata mode should be used
+   * 🔄 New: Full content processing for backwards compatibility (use only when necessary)
+   * This method is used only in special cases; prefer the metadata mode in normal usage
    */
   static async processTextFileWithContent(file: File, filePath?: string): Promise<ChatReferenceFileData> {
     const text = await file.text();
     const lines = text.split('\n');
-    
+
     // Apply VSCode truncation rules
     let processedText = text;
     let truncated = false;
-    
+
     if (lines.length > FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES) {
       processedText = lines.slice(0, FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES).join('\n');
-      processedText += `\n\n[File content truncated, showing first ${FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES} lines of ${lines.length} total]`;
+      processedText += `\n\n[File content truncated; showing first ${FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES} lines of ${lines.length} total]`;
       truncated = true;
     }
-    
+
     const estimatedTokens = this.estimateTokenCount(processedText);
     if (estimatedTokens > FILE_ATTACHMENT_LIMITS.MAX_TOKEN_BUDGET) {
       const maxChars = FILE_ATTACHMENT_LIMITS.MAX_TOKEN_BUDGET * 4;
@@ -159,7 +159,7 @@ export class FileAttachmentProcessor {
         truncated = true;
       }
     }
-    
+
     const actualFilePath = filePath || file.name;
     const fileReference: FileReference = {
       filePath: actualFilePath,
@@ -169,7 +169,7 @@ export class FileAttachmentProcessor {
       lastModified: file.lastModified,
       isTextFile: true
     };
-    
+
     return {
       mimeType: file.type || 'text/plain',
       data: async () => new TextEncoder().encode(processedText),
@@ -181,9 +181,9 @@ export class FileAttachmentProcessor {
       fileReference: fileReference
     };
   }
-  
+
   /**
-   * Create file reference (for smart metadata replacement strategy)
+   * Create a file reference (for the smart metadata replacement strategy)
    */
   static createFileReference(
     filePath: string,
@@ -197,7 +197,7 @@ export class FileAttachmentProcessor {
   ): ChatReferenceFileData {
     const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
     const detectedMimeType = mimeType || this.getMimeTypeFromExtension(fileExtension);
-    
+
     const fileReference: FileReference = {
       filePath,
       fileName,
@@ -209,20 +209,20 @@ export class FileAttachmentProcessor {
       lastModified: lastModified || Date.now(),
       isTextFile: this.isTextFileByExtension(fileName)
     };
-    
+
     return {
       mimeType: detectedMimeType,
-      data: async () => new TextEncoder().encode(''), // No actual content stored in metadata mode
+      data: async () => new TextEncoder().encode(''), // Do not store actual content in metadata mode
       reference: filePath,
       size: fileSize,
       isText: fileReference.isTextFile,
       fileName: fileName,
-      fileReference: fileReference // Core: only store metadata
+      fileReference: fileReference // Core: store only metadata
     };
   }
 
   /**
-   * 🔄 Added: Get MIME type based on file extension
+   * 🔄 New: Get MIME type from file extension
    */
   private static getMimeTypeFromExtension(extension: string): string {
     const mimeTypeMap: { [key: string]: string } = {
@@ -254,13 +254,13 @@ export class FileAttachmentProcessor {
       'bat': 'text/x-batch',
       'sql': 'text/x-sql'
     };
-    
+
     return mimeTypeMap[extension.toLowerCase()] || 'text/plain';
   }
-  
+
   /**
    * Estimate token count for text
-   * Uses the same estimation formula as VSCode: length * 3 / 4
+   * Uses the same formula as VSCode: length * 3 / 4
    */
   private static estimateTokenCount(text: string): number {
     return Math.ceil(text.length * 3 / 4);
@@ -268,20 +268,20 @@ export class FileAttachmentProcessor {
 }
 
 /**
- * File security validator - prevents path traversal attacks and dangerous file access
+ * File security validator — prevents path traversal attacks and dangerous file access
  */
 export class FileSecurityValidator {
   static validatePath(filePath: string, allowAbsolutePaths: boolean = false): { isValid: boolean; error?: string } {
-    // 1. Check for path traversal attack
+    // 1. Check for path traversal attacks
     if (this.isPathTraversalAttack(filePath)) {
       return { isValid: false, error: 'potential directory traversal attack' };
     }
-    
-    // 2. Check absolute paths (with exception for file attachment feature)
+
+    // 2. Check for absolute paths (with exception for file attachment feature)
     if (!allowAbsolutePaths && this.isAbsolutePath(filePath)) {
       return { isValid: false, error: 'absolute paths not allowed' };
     }
-    
+
     // 3. Check for dangerous path patterns
     const dangerousPatterns = [
       /etc\/passwd/i,
@@ -289,61 +289,61 @@ export class FileSecurityValidator {
       /\.ssh\/id_rsa/i,
       /\.aws\/credentials/i
     ];
-    
+
     const isDangerous = dangerousPatterns.some(pattern => pattern.test(filePath));
     if (isDangerous) {
       return { isValid: false, error: 'access to sensitive system files denied' };
     }
-    
+
     return { isValid: true };
   }
-  
+
   static isPathTraversalAttack(path: string): boolean {
     const patterns = [
       '../',     // Unix-style upward traversal
       '..\\',    // Windows-style upward traversal
       '/etc/',   // Direct access to system directory
-      '~/',      // User directory
+      '~/',      // User home directory
       '$HOME',   // Environment variable
-      '%USERPROFILE%' // Windows user directory variable
+      '%USERPROFILE%' // Windows user profile variable
     ];
-    
+
     // Check for relative path traversal attack patterns
     for (const pattern of patterns) {
       if (path.includes(pattern)) {
         return true;
       }
     }
-    
-    // Special check: Windows absolute paths should not contain relative path components
+
+    // Special check: Windows absolute paths must not contain relative path components
     if (/^[A-Za-z]:[\\\/]/.test(path)) {
-      // Check for relative path traversal in Windows absolute paths
+      // Check for relative path traversal within Windows absolute paths
       const normalizedPath = path.replace(/\\/g, '/');
       if (normalizedPath.includes('/../') || normalizedPath.includes('/./')) {
         return true;
       }
     }
-    
+
     return false;
   }
-  
+
   static isAbsolutePath(path: string): boolean {
     // Unix absolute path: starts with /
     if (path.startsWith('/')) {
       return true;
     }
-    
+
     // Windows absolute path: C:\ or \\server\share
     if (/^[A-Za-z]:[\\\/]/.test(path) || path.startsWith('\\\\')) {
       return true;
     }
-    
+
     return false;
   }
 }
 
 /**
- * File reader - supports pagination and token control
+ * File reader — supports pagination and token control
  */
 export class FileReader {
   static async readFileWithPagination(args: {
@@ -359,8 +359,8 @@ export class FileReader {
     size: number;
     truncated: boolean;
   }> {
-    // This should call Electron's file system API
-    // Currently returns mock data, actual implementation requires IPC call to main process
+    // Should call the Electron filesystem API here
+    // Returns placeholder for now; actual implementation requires IPC call to main process
     throw new Error('FileReader.readFileWithPagination needs implementation with Electron IPC');
   }
 }

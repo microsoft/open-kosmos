@@ -1,16 +1,18 @@
 /**
- * AppDataManager (Frontend)
+ * AppDataManager (frontend)
  *
  * Responsibilities:
- * 1. Cache a copy of AppConfig from the main process AppCacheManager in frontend memory.
- * 2. Listen to `app:configUpdated` IPC events to stay in sync with the main process in real-time.
- * 3. Provide subscribe / unsubscribe mechanism for React components to subscribe to change notifications.
- * 4. Provide convenient invoke methods to call main process app config operations.
+ * 1. Cache a copy of the AppConfig from the main process AppCacheManager in frontend memory.
+ * 2. Listen for the `app:configUpdated` IPC event to stay in sync with the main process in real time.
+ * 3. Provide subscribe/unsubscribe mechanism for React components to receive change notifications.
+ * 4. Provide convenience invoke methods for main process app config operations.
  *
- * Note: AppDataManager is for frontend use only and does not directly operate on the file system.
+ * Note: AppDataManager is for frontend use only; it does not directly access the filesystem.
  */
 
 import type { AppConfig, RuntimeEnvironment } from './types';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[AppDataManager]');
 
 export type AppDataListener = (config: AppConfig) => void;
 
@@ -21,13 +23,13 @@ export class AppDataManager {
   private listeners: AppDataListener[] = [];
   private initialized = false;
 
-  // Debounced notification
+  // Debounced notifications
   private notifyTimer: NodeJS.Timeout | null = null;
 
   private constructor() {
-    // Register IPC listeners immediately in constructor to ensure no messages are missed
+    // Register IPC listeners in the constructor immediately to avoid missing any messages
     this.setupIpcListeners();
-    // Fallback: If backend push hasn't arrived before timeout (abnormal case), proactively fetch once
+    // Fallback: if no backend push arrives before the timeout (abnormal case), do a single manual pull
     this.startFallbackTimer();
   }
 
@@ -38,19 +40,19 @@ export class AppDataManager {
     return AppDataManager.instance;
   }
 
-  // ── Fallback fetch ─────────────────────────────────────────────────────────────────
+  // ── Fallback fetch ────────────────────────────────────────────────────────────
 
   /**
-   * Fallback timer: If the backend hasn't pushed the initial config within FALLBACK_TIMEOUT_MS (abnormal case),
-   * proactively fetch once to ensure data is eventually available.
-   * Normal flow: Backend pushes immediately during setMainWindow, frontend receives directly, this fallback won't trigger.
+   * Fallback timer: if the backend has not pushed the initial config within FALLBACK_TIMEOUT_MS
+   * (abnormal case), do a manual pull to ensure data is eventually available.
+   * Normal flow: backend pushes immediately when setMainWindow is called; frontend receives it directly and this fallback is never triggered.
    */
   private static readonly FALLBACK_TIMEOUT_MS = 3000;
 
   private startFallbackTimer(): void {
     setTimeout(() => {
       if (!this.initialized) {
-        console.warn('[AppDataManager] Backend push not received before timeout, executing fallback fetch...');
+        logger.warn('[AppDataManager] No backend push received before timeout; performing fallback fetch...');
         this.fallbackFetch();
       }
     }, AppDataManager.FALLBACK_TIMEOUT_MS);
@@ -67,15 +69,15 @@ export class AppDataManager {
         }
       }
     } catch (error) {
-      console.error('[AppDataManager] Fallback fetch failed', error);
+      logger.error('[AppDataManager] Fallback fetch failed', error);
     }
   }
 
-  // ── IPC Listeners ─────────────────────────────────────────────────────────────────
+  // ── IPC Listeners ────────────────────────────────────────────────────────
 
   private setupIpcListeners(): void {
     if (typeof window === 'undefined' || !window.electronAPI?.appConfig) {
-      // Skip in test or SSR environments
+      // Skip in test environments or SSR
       return;
     }
 
@@ -92,7 +94,7 @@ export class AppDataManager {
     this.scheduleNotify();
   }
 
-  // ── Subscription Mechanism ─────────────────────────────────────────────────────────────────
+  // ── Subscription ─────────────────────────────────────────────────────────
 
   /**
    * Subscribe to AppConfig changes. Returns an unsubscribe function.
@@ -105,7 +107,7 @@ export class AppDataManager {
     };
   }
 
-  // ── Notification ─────────────────────────────────────────────────────────────────────
+  // ── Notifications ─────────────────────────────────────────────────────────
 
   private scheduleNotify(): void {
     if (this.notifyTimer) clearTimeout(this.notifyTimer);
@@ -129,15 +131,15 @@ export class AppDataManager {
       try {
         listener(snapshot);
       } catch (e) {
-        console.error('[AppDataManager] listener error', e);
+        logger.error('[AppDataManager] listener error', e);
       }
     });
   }
 
-  // ── Read ─────────────────────────────────────────────────────────────────────
+  // ── Read ─────────────────────────────────────────────────────────────────
 
   /**
-   * Get the currently cached AppConfig (read-only copy).
+   * Get the current cached AppConfig (read-only copy).
    */
   getConfig(): AppConfig {
     return { ...this.cache };
@@ -153,16 +155,16 @@ export class AppDataManager {
   }
 
   /**
-   * Whether initialization is complete (has received data from main process).
+   * Whether initialization has completed (main process data received at least once).
    */
   isReady(): boolean {
     return this.initialized;
   }
 
-  // ── Write (delegated to main process) ────────────────────────────────────────────────────────
+  // ── Write (delegated to main process) ────────────────────────────────────
 
   /**
-   * Update AppConfig (partial fields), delegating persistence to the main process via IPC.
+   * Update AppConfig (partial fields) — delegates persistence to the main process via IPC.
    */
   async updateConfig(updates: Partial<AppConfig>): Promise<{ success: boolean; error?: string }> {
     try {

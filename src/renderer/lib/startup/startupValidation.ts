@@ -10,6 +10,7 @@ import {
   StartupAction,
   ValidationOptions
 } from '../../types/startupValidationTypes';
+import { AuthManagerProxy } from "../auth/authManagerProxy";
 
 /**
  * Stage 1: Validate session in localStorage
@@ -17,9 +18,9 @@ import {
  */
 export async function validateLocalStorageSession(): Promise<Stage1ValidationResult> {
   const startTime = Date.now();
-  
+
   try {
-    
+
     // Initialize result object
     const result: Stage1ValidationResult = {
       status: ValidationStatus.FAILED,
@@ -28,16 +29,16 @@ export async function validateLocalStorageSession(): Promise<Stage1ValidationRes
       hasLocalStorageSession: false,
       sessionValid: false
     };
-    
+
     // Check ghcSession in localStorage
     const ghcSessionData = localStorage.getItem('ghcSession');
     if (!ghcSessionData) {
       result.duration = Date.now() - startTime;
       return result;
     }
-    
+
     result.hasLocalStorageSession = true;
-    
+
     // Parse session data
     let sessionData;
     try {
@@ -47,26 +48,26 @@ export async function validateLocalStorageSession(): Promise<Stage1ValidationRes
       result.duration = Date.now() - startTime;
       return result;
     }
-    
+
     // Basic validation: check required fields
     if (!sessionData.user || !sessionData.refreshToken || !sessionData.expiresAt) {
       result.error = 'Incomplete session data';
       result.duration = Date.now() - startTime;
       return result;
     }
-    
+
     result.sessionData = sessionData;
-    
+
     // Check if token is expired
     const now = Date.now();
     const expiresAt = sessionData.expiresAt;
-    
+
     if (expiresAt <= now) {
-      
+
       // Token expired, verify refresh token
       const refreshResult = await validateRefreshToken(sessionData.refreshToken);
       result.refreshTokenValid = refreshResult;
-      
+
       if (refreshResult) {
         result.status = ValidationStatus.SUCCESS;
         result.sessionValid = true;
@@ -78,14 +79,14 @@ export async function validateLocalStorageSession(): Promise<Stage1ValidationRes
       result.sessionValid = true;
       result.refreshTokenValid = true;
     }
-    
+
     result.duration = Date.now() - startTime;
-    
+
     return result;
-    
+
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     return {
       status: ValidationStatus.ERROR,
       stage: ValidationStage.STAGE_1,
@@ -100,13 +101,13 @@ export async function validateLocalStorageSession(): Promise<Stage1ValidationRes
 
 /**
  * Stage 2: AuthManager initialization and profile validation
- * Skip localStorage check; directly execute AuthManager initialization, scan and validate profiles
+ * No longer checks localStorage; directly performs AuthManager initialization, scans and validates profiles
  */
 export async function validateLocalProfiles(stage1Result?: Stage1ValidationResult): Promise<Stage2ValidationResult> {
   const startTime = Date.now();
-  
+
   try {
-    
+
     // Initialize result object
     const result: Stage2ValidationResult = {
       status: ValidationStatus.FAILED,
@@ -120,15 +121,14 @@ export async function validateLocalProfiles(stage1Result?: Stage1ValidationResul
       authManagerProfiles: [],
       skippedDueToValidSession: false
     };
-    
-    
+
+
     try {
       // Step 1: Initialize AuthManager and fetch data from SigninOps
-      const { AuthManagerProxy } = await import('../auth/authManagerProxy');
       const authManager = new AuthManagerProxy();
-      
+
       const localAuths = await authManager.getLocalActiveAuths();
-      
+
       // Build a compatible initialization result format
       const initResult = {
         initializedAuths: localAuths.map(a => a.ghcAuth?.user?.login || 'unknown'),
@@ -137,59 +137,61 @@ export async function validateLocalProfiles(stage1Result?: Stage1ValidationResul
         failedAuths: [] as string[],
         totalDuration: 0
       };
-      
+
       result.authManagerInitialized = true;
-      
-      
+
+
       // Step 2: Convert AuthManager results to StartupValidation format
-      
+
       // 🔥 Use AuthData directly without any mapping or reconstruction
       const validAuthProfiles = localAuths.map(authData => ({
-        authData: authData,  // Directly save the complete AuthData
+        authData: authData,  // Save the full AuthData directly
         alias: authData.ghcAuth.alias,
         isValid: true,
         type: 'valid' as const
       }));
-      
+
       const recoverableAuthProfiles: any[] = [];
-      
-      // Set results - directly use profiles containing AuthData
+
+      // Set results — use profiles that contain AuthData directly
       result.validUsers = validAuthProfiles;
       result.expiredUsers = recoverableAuthProfiles;
       result.totalProfiles = validAuthProfiles.length + recoverableAuthProfiles.length;
       result.authManagerProfiles = validAuthProfiles;
-      
+
       // Record failed auths as invalidUsers
       for (const failedAuthId of initResult.failedAuths) {
+        /* c8 ignore next -- failedAuths is always [] in the current implementation */
         result.invalidUsers.push({
           alias: failedAuthId,
           reason: 'AuthManager initialization failed'
         });
       }
-      
-      
+
+
     } catch (authManagerError) {
       result.error = authManagerError instanceof Error ? authManagerError.message : 'AuthManager initialization failed';
       result.status = ValidationStatus.ERROR;
       result.duration = Date.now() - startTime;
       return result;
     }
-    
-    // Determine if Stage 2 is successful
+
+    // Determine Stage 2 success
     if (result.totalProfiles > 0) {
       result.status = ValidationStatus.SUCCESS;
     } else {
       result.status = ValidationStatus.SUCCESS; // No profiles is also a success state
     }
-    
+
     result.duration = Date.now() - startTime;
-    
-    
+
+
     return result;
-    
+
+  /* c8 ignore start -- outer catch is defensive dead code; inner catch always returns first */
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     return {
       status: ValidationStatus.ERROR,
       stage: ValidationStage.STAGE_2,
@@ -205,6 +207,7 @@ export async function validateLocalProfiles(stage1Result?: Stage1ValidationResul
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
+  /* c8 ignore end */
 }
 
 
@@ -214,26 +217,25 @@ export async function validateLocalProfiles(stage1Result?: Stage1ValidationResul
  */
 export async function validateRefreshToken(refreshToken: string): Promise<boolean> {
   try {
-    
+
     // Import AuthManager and attempt to refresh token
-    const { AuthManagerProxy } = await import('../auth/authManagerProxy');
     const authManager = new AuthManagerProxy();
-    
+
     // Get current auth
     const currentAuth = await authManager.getCurrentAuthAsync();
     if (!currentAuth) {
       return false;
     }
-    
+
     // Attempt to refresh copilot token
     const refreshResult = await authManager.refreshCopilotToken();
-    
+
     if (refreshResult.success) {
       return true;
     } else {
       return false;
     }
-    
+
   } catch (error) {
     return false;
   }
@@ -245,9 +247,9 @@ export async function validateRefreshToken(refreshToken: string): Promise<boolea
  */
 export async function performTwoStageValidation(options: ValidationOptions = {}): Promise<StartupValidationResult> {
   const startTime = Date.now();
-  
+
   try {
-    
+
     // Stage 1: Skip localStorage check - create a mock successful stage1 result
     const stage1Result: Stage1ValidationResult = {
       status: ValidationStatus.SUCCESS,
@@ -257,8 +259,8 @@ export async function performTwoStageValidation(options: ValidationOptions = {})
       hasLocalStorageSession: false,
       sessionValid: false // Always false since we're not checking localStorage
     };
-    
-    
+
+
     // Stage 2: Always execute AuthManager initialization (unless explicitly skipped)
     let stage2Result: Stage2ValidationResult;
     if (options.skipStage2) {
@@ -279,12 +281,12 @@ export async function performTwoStageValidation(options: ValidationOptions = {})
       // Always proceed with AuthManager initialization since we don't check localStorage
       stage2Result = await validateLocalProfiles(stage1Result);
     }
-    
+
     // Analyze results and recommend actions
     const recommendedAction = determineStartupAction(stage1Result, stage2Result);
-    
+
     const totalDuration = Date.now() - startTime;
-    
+
     const finalResult: StartupValidationResult = {
       stage1: stage1Result,
       stage2: stage2Result,
@@ -292,12 +294,13 @@ export async function performTwoStageValidation(options: ValidationOptions = {})
       totalDuration,
       completedAt: Date.now()
     };
-    
-    
+
+
     return finalResult;
-    
+
+  /* c8 ignore start -- outer catch is defensive dead code; inner logic always returns or throws before reaching here */
   } catch (error) {
-    
+
     // Return error result
     const totalDuration = Date.now() - startTime;
     return {
@@ -327,31 +330,32 @@ export async function performTwoStageValidation(options: ValidationOptions = {})
       completedAt: Date.now()
     };
   }
+  /* c8 ignore end */
 }
 
 /**
  * Determine recommended startup action based on validation results (no localStorage dependency)
  */
 function determineStartupAction(stage1: Stage1ValidationResult, stage2: Stage2ValidationResult): StartupAction {
-  
-  // Detailed debug log
-  
+
+  // Detailed debug logging
+
   // If any stage has errors, show error page
   if (stage1.status === ValidationStatus.ERROR || stage2.status === ValidationStatus.ERROR) {
     return StartupAction.SHOW_ERROR;
   }
-  
-  // Only use AuthManager results
+
+  // Use AuthManager results only
   if (stage2.authManagerInitialized && stage2.authManagerProfiles && stage2.authManagerProfiles.length > 0) {
-    // 🔥 New business logic: auto-login if there is only one valid user
+    // 🔥 New business logic: if there is only one valid user, auto-login
     if (stage2.validUsers.length === 1 && stage2.expiredUsers.length === 0) {
       return StartupAction.AUTO_LOGIN_SINGLE_USER;
     }
-    
-    // Multiple users or expired users, require user selection
+
+    // Multiple users or users with expired tokens; user selection required
     return StartupAction.SHOW_USER_SELECTION;
   }
-  
-  // No profiles, show new user signup
+
+  // No profiles; show new user signup
   return StartupAction.SHOW_NEW_USER_SIGNUP;
 }

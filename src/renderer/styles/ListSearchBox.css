@@ -1,0 +1,60 @@
+.list-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  margin-bottom: 12px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.list-search-box:focus-within {
+  border-color: rgba(0, 0, 0, 0.3);
+  background: #fff;
+}
+
+.list-search-icon {
+  color: rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+}
+
+.list-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary, #272320);
+  line-height: 1.4;
+}
+
+.list-search-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.list-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.list-search-clear:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* High contrast mode */
+@media (forced-colors: active) {
+  .list-search-box {
+    border-color: ButtonText;
+  }
+}

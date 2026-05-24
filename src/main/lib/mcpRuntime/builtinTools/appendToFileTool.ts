@@ -1,19 +1,19 @@
 /**
  * AppendToFileTool built-in tool
- * Append tool designed specifically for chunked writing of large files
- * 
+ * An append tool designed specifically for chunked writing of large files
+ *
  * Core features:
- * 1. Optimized for large file chunked writing scenarios
+ * 1. Specifically optimized for large-file chunked write scenarios
  * 2. Supports session tracking to monitor multiple writes to the same file
- * 3. Automatically handles newlines and delimiters
+ * 3. Automatically handles newlines and separators
  * 4. Provides write progress feedback
  * 5. Lightweight API to reduce token consumption
- * 
+ *
  * Use cases:
- * - Generating large HTML/Markdown files in sections
- * - Writing long code files in chunks
- * - Appending to logs
- * - Generating reports in sections
+ * - Section-by-section generation of large HTML/Markdown files
+ * - Chunked writing of long code files
+ * - Log appending
+ * - Section-by-section report generation
  */
 
 import * as fs from 'fs/promises';
@@ -23,39 +23,39 @@ import { getUnifiedLogger, UnifiedLogger } from '../../unifiedLogger';
 
 export interface AppendToFileToolArgs {
   // Required parameters
-  filePath: string;           // Full path of the file
+  filePath: string;           // Full path to the file
   content: string;            // Content to append
-  
+
   // Optional parameters
   encoding?: BufferEncoding;  // File encoding, default 'utf-8'
   createIfNotExists?: boolean; // Whether to create file if it does not exist, default true
-  addNewlineBefore?: boolean; // Add a newline before content, default false
-  addNewlineAfter?: boolean;  // Add a newline after content, default true
+  addNewlineBefore?: boolean; // Add newline before content, default false
+  addNewlineAfter?: boolean;  // Add newline after content, default true
   sectionId?: string;         // Optional section identifier for tracking and debugging
-  isLastChunk?: boolean;      // Whether this is the last chunk, for completion notification
+  isLastChunk?: boolean;      // Whether this is the last chunk, used for completion notification
 }
 
 export interface AppendToFileToolResult {
   success: boolean;
-  filePath: string;           // Path of the written file
-  bytesAppended: number;      // Bytes appended in this operation
+  filePath: string;           // Path to the written file
+  bytesAppended: number;      // Bytes appended in this call
   totalFileSize: number;      // Total file size after appending
   chunkNumber: number;        // Current chunk number (based on session tracking)
   sectionId?: string;         // Section identifier
-  isComplete?: boolean;       // Whether complete (when isLastChunk=true)
+  isComplete?: boolean;       // Whether completed (when isLastChunk=true)
   error?: string;             // Error message
 }
 
-// Content size limit: 5MB (single append, more lenient than create_file but still protected)
+// Content size limit: 5MB (per append call, more relaxed than create_file but still protected)
 const MAX_APPEND_SIZE = 5 * 1024 * 1024;
 
 // File size limit: 100MB (total size after appending)
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024;
 
-// Session tracker: records write count per file
+// Session tracker: records the number of writes per file
 const writeSessionTracker = new Map<string, { chunkCount: number; lastWriteTime: number }>();
 
-// Session timeout: reset count after 5 minutes of no writes
+// Session timeout: reset count if no writes for 5 minutes
 const SESSION_TIMEOUT = 5 * 60 * 1000;
 
 export class AppendToFileTool {
@@ -67,7 +67,7 @@ export class AppendToFileTool {
   static async execute(args: AppendToFileToolArgs): Promise<AppendToFileToolResult> {
     const startTime = Date.now();
     const executionId = `append_file_${startTime}`;
-    
+
     this.logger.info(
       `AppendToFileTool execution started`,
       'AppendToFileTool',
@@ -75,7 +75,7 @@ export class AppendToFileTool {
     );
 
     try {
-      // 1. Argument validation
+      // 1. Parameter validation
       const validation = this.validateArgs(args);
       if (!validation.isValid) {
         this.logger.error(
@@ -104,17 +104,17 @@ export class AppendToFileTool {
       // 3. Update session tracking
       const sessionKey = normalizedPath.toLowerCase();
       let session = writeSessionTracker.get(sessionKey);
-      
+
       if (!session || (Date.now() - session.lastWriteTime > SESSION_TIMEOUT)) {
         // New session or timeout reset
         session = { chunkCount: 0, lastWriteTime: Date.now() };
       }
-      
+
       session.chunkCount++;
       session.lastWriteTime = Date.now();
       writeSessionTracker.set(sessionKey, session);
 
-      // 4. Check if file exists
+      // 4. Check whether file exists
       let fileExists = false;
       let currentSize = 0;
       try {
@@ -144,7 +144,7 @@ export class AppendToFileTool {
         await fs.mkdir(dirPath, { recursive: true });
       }
 
-      // 7. Build content to append
+      // 7. Build the content to append
       let contentToAppend = args.content;
       if (addNewlineBefore && fileExists) {
         contentToAppend = '\n' + contentToAppend;
@@ -156,7 +156,7 @@ export class AppendToFileTool {
       // 8. Check file size after appending
       const appendSize = Buffer.byteLength(contentToAppend, encoding);
       const newTotalSize = currentSize + appendSize;
-      
+
       if (newTotalSize > MAX_TOTAL_SIZE) {
         return {
           success: false,
@@ -169,14 +169,14 @@ export class AppendToFileTool {
         };
       }
 
-      // 9. Execute append
+      // 9. Perform append
       await fs.appendFile(normalizedPath, contentToAppend, { encoding });
 
       // 10. Verify write
       const finalStats = await fs.stat(normalizedPath);
       const actualTotalSize = finalStats.size;
 
-      // 11. If this is the last chunk, clean up session
+      // 11. If this is the last chunk, clean up the session
       if (args.isLastChunk) {
         writeSessionTracker.delete(sessionKey);
         this.logger.info(
@@ -190,9 +190,9 @@ export class AppendToFileTool {
       this.logger.info(
         `AppendToFileTool execution completed`,
         'AppendToFileTool',
-        { 
-          executionId, 
-          filePath: normalizedPath, 
+        {
+          executionId,
+          filePath: normalizedPath,
           bytesAppended: appendSize,
           totalSize: actualTotalSize,
           chunkNumber: session.chunkCount,
@@ -218,7 +218,7 @@ export class AppendToFileTool {
         'AppendToFileTool',
         { executionId, error: errorMessage }
       );
-      
+
       return {
         success: false,
         filePath: args.filePath,
@@ -232,7 +232,7 @@ export class AppendToFileTool {
   }
 
   /**
-   * Argument validation
+   * Parameter validation
    */
   private static validateArgs(args: AppendToFileToolArgs): { isValid: boolean; error?: string } {
     // Check required parameters
@@ -247,13 +247,13 @@ export class AppendToFileTool {
     // Check content size
     const contentSize = Buffer.byteLength(args.content, args.encoding || 'utf-8');
     if (contentSize > MAX_APPEND_SIZE) {
-      return { 
-        isValid: false, 
-        error: `Content size (${contentSize} bytes) exceeds maximum allowed for single append (${MAX_APPEND_SIZE} bytes). Consider splitting into smaller chunks.` 
+      return {
+        isValid: false,
+        error: `Content size (${contentSize} bytes) exceeds maximum allowed for single append (${MAX_APPEND_SIZE} bytes). Consider splitting into smaller chunks.`
       };
     }
 
-    // Check if path contains dangerous patterns
+    // Check whether the path contains dangerous patterns
     const dangerousPatterns = [
       /\.\.\//,           // Directory traversal
       /^\/etc\//i,        // Linux system directories
@@ -274,7 +274,7 @@ export class AppendToFileTool {
   }
 
   /**
-   * Get write session info (for debugging)
+   * Get write session information (for debugging)
    */
   static getSessionInfo(filePath: string): { chunkCount: number; lastWriteTime: number } | null {
     const sessionKey = path.normalize(filePath).toLowerCase();

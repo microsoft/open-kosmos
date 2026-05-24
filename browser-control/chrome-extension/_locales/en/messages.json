@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Kosmos Chrome MCP",
+    "description": "Extension name"
+  },
+  "extensionDescription": {
+    "message": "MCP extension that enables Kosmos to operate within the Chrome browser.",
+    "description": "Extension description"
+  }
+}

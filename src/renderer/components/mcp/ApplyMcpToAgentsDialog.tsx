@@ -1,7 +1,7 @@
 /**
  * ApplyMcpToAgentsDialog Component
  *
- * A unified dialog shown after MCP server(s) are added (from device, VS Code import, or library).
+ * A unified dialog shown after MCP server(s) are added (from device or VS Code import).
  * Displays all local agents and lets the user choose which agents to apply the MCP server(s) to.
  * Agents already using all of the MCP servers are pre-checked and disabled.
  *
@@ -25,6 +25,8 @@ import {
 import { useProfileData } from '../userData/userDataProvider'
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
+import { BRAND_NAME } from '../../../shared/constants/branding'
+import { isBuiltinAgent } from '../../../main/lib/userDataADO/types/profile'
 
 interface ApplyMcpToAgentsDialogProps {
   open: boolean
@@ -93,11 +95,16 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
     return serverToolsMap.get(entry.name) || new Set()
   }, [serverToolsMap])
 
-  // Extract agents from chats
+  // Extract agents from chats, excluding built-in agents
   const agentItems: AgentItem[] = useMemo(() => {
     const items: AgentItem[] = []
+    const shouldInclude = (agent: { name: string; source?: string }) => {
+      if (isBuiltinAgent(agent.name, BRAND_NAME) && agent.name === 'Kobi') return false
+      return true
+    }
     for (const chat of chats) {
       if (chat.chat_type === 'single_agent' && chat.agent) {
+        if (shouldInclude(chat.agent)) {
           const existingNames = new Set((chat.agent.mcp_servers || []).map(s => s.name))
           const allApplied = mcpServerNames.every(name => existingNames.has(name))
           items.push({
@@ -107,8 +114,10 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
             avatar: chat.agent.avatar,
             alreadyApplied: allApplied,
           })
+        }
       } else if (chat.chat_type === 'multi_agent' && chat.agents) {
         for (const agent of chat.agents) {
+          if (shouldInclude(agent)) {
             const existingNames = new Set((agent.mcp_servers || []).map(s => s.name))
             const allApplied = mcpServerNames.every(name => existingNames.has(name))
             items.push({
@@ -118,6 +127,7 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
               avatar: agent.avatar,
               alreadyApplied: allApplied,
             })
+          }
         }
       }
     }
@@ -155,6 +165,28 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
       return next
     })
   }, [])
+
+  // Select All / Deselect All toggle
+  const selectableAgents = useMemo(() => agentItems.filter(item => !item.alreadyApplied), [agentItems])
+  const isAllSelected = selectableAgents.length > 0 && selectableAgents.every(item => selectedAgents.has(item.chatId))
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedAgents(prev => {
+      const next = new Set(prev)
+      if (isAllSelected) {
+        // Deselect all non-already-applied agents
+        for (const item of selectableAgents) {
+          next.delete(item.chatId)
+        }
+      } else {
+        // Select all non-already-applied agents
+        for (const item of selectableAgents) {
+          next.add(item.chatId)
+        }
+      }
+      return next
+    })
+  }, [isAllSelected, selectableAgents])
 
   const handleApply = useCallback(async () => {
     const toApply = agentItems.filter(
@@ -343,11 +375,11 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
                 <div className="space-y-1">
                   {report.conflicts.map((conflict, idx) => (
                     <div key={idx} className="flex items-center gap-2 text-xs text-gray-600">
-                      <span className="text-amber-500 flex-shrink-0">excluded</span>
+                      <span className="text-amber-500 shrink-0">excluded</span>
                       <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">
                         {conflict.toolName}
                       </code>
-                      <span className="text-gray-400 flex-shrink-0">
+                      <span className="text-gray-400 shrink-0">
                         (exists in {conflict.existingServer})
                       </span>
                     </div>
@@ -373,7 +405,7 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
   // Normal agent selection view
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[420px] max-w-[420px]">
+      <DialogContent className="w-[480px] max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Apply to Agents</DialogTitle>
           <DialogDescription>
@@ -381,7 +413,25 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-3 max-h-[320px] overflow-y-auto">
+        {selectableAgents.length > 0 && (
+          <div className="mt-3">
+            <div
+              className="flex items-center gap-3 px-3 py-1 rounded-md cursor-pointer select-none hover:bg-gray-100"
+              onClick={handleSelectAll}
+            >
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                readOnly
+                tabIndex={-1}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+              />
+              <span className="text-sm text-gray-700">{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="py-3 min-h-[244px] max-h-[552px] overflow-y-auto">
           {agentItems.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-4">
               No agents found.

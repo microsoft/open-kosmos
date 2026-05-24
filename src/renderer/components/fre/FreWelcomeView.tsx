@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BRAND_CONFIG, APP_NAME } from '@shared/constants/branding';
 import { profileDataManager } from '@renderer/lib/userData';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[FreWelcomeView]');
 
 // Windows title bar height constant (must match WindowsTitleBar.css)
 const WINDOWS_TITLE_BAR_HEIGHT = 40;
@@ -76,7 +78,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
       if (alias) {
         return alias;
       }
-      
+
       // Fallback to profile.alias
       const profile = profileDataManager.getProfile();
       if (profile && (profile as any).alias) {
@@ -90,16 +92,10 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
 
   const userDisplayName = getUserDisplayName();
 
-  // Fetch promoted agents on mount
+  // No promoted agents to fetch (FRE welcome view is skipped; FreOverlay starts at 'setup')
   useEffect(() => {
-    fetchPromotedAgents();
-  }, []);
-
-  const fetchPromotedAgents = async () => {
-    console.log('[FreWelcomeView] Agent library not available (CDN removed), no promoted agents');
     setIsLoading(false);
-    setPromotedAgents([]);
-  };
+  }, []);
 
   // Render agent card
   const renderAgentCard = (agent: FrePromotedAgent, index: number) => {
@@ -129,8 +125,8 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
           cursor: 'pointer',
           transition: 'all 0.2s ease',
           transform: isHovered ? 'translateY(-4px)' : 'none',
-          boxShadow: isHovered 
-            ? '0 8px 24px rgba(0, 0, 0, 0.12)' 
+          boxShadow: isHovered
+            ? '0 8px 24px rgba(0, 0, 0, 0.12)'
             : '0 2px 8px rgba(0, 0, 0, 0.04)',
         }}
       >
@@ -319,7 +315,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
                 margin: 0,
               }}
             >
-              Hi {userDisplayName}, welcome to OpenKosmos!
+              Hi {userDisplayName}, welcome to OpenKosmos AI Studio!
             </h1>
 
             {/* Subtitle */}

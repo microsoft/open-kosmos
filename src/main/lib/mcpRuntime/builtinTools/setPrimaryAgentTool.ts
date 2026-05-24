@@ -1,9 +1,9 @@
 /**
  * Set Primary Agent Tool
- * Set the primary agent
- * 
- * Sets the primaryAgent property via ProfileCacheManager
- * primaryAgent is displayed first in the AgentChatList and is the agent used when the app starts
+ * Sets the primary agent
+ *
+ * Sets the primaryAgent property via ProfileCacheManager.
+ * The primaryAgent is displayed first in the AgentChatList and is the agent used after app startup.
  */
 
 import { BuiltinToolDefinition } from './types';
@@ -31,6 +31,7 @@ interface SetPrimaryAgentResult {
 
 /**
  * Set Primary Agent Tool Implementation
+ * @deprecated Use manage_agents instead.
  */
 export class SetPrimaryAgentTool {
   /**
@@ -39,7 +40,7 @@ export class SetPrimaryAgentTool {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'set_primary_agent',
-      description: 'Set the primary agent for the user. The primary agent will be displayed first in the agent list and will be the default agent when the app starts. Use get_all_agents first to get the list of available agent names.',
+      description: 'Set the primary agent for the user. The primary agent will be displayed first in the agent list and will be the default agent when the app starts. Use list_agents first to get the list of available agent names.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -55,7 +56,7 @@ export class SetPrimaryAgentTool {
 
   /**
    * Execute the tool
-   * 
+   *
    * @param args Tool arguments containing agent_name
    * @returns Execution result with new primary agent status
    */
@@ -94,7 +95,7 @@ export class SetPrimaryAgentTool {
 
       // Get the user's profile
       const profile = profileCacheManager.getCachedProfile(currentUserAlias);
-      
+
       if (!profile) {
         return {
           success: false,
@@ -109,7 +110,7 @@ export class SetPrimaryAgentTool {
         ? profile.primaryAgent
         : 'Kobi';
 
-      // If already the primary agent, return success directly
+      // If already the primary agent, return success immediately
       if (previousPrimaryAgent === agentName) {
         return {
           success: true,
@@ -119,9 +120,9 @@ export class SetPrimaryAgentTool {
         };
       }
 
-      // Call ProfileCacheManager to update primaryAgent
+      // Invoke ProfileCacheManager to update primaryAgent
       const updateSuccess = await profileCacheManager.updatePrimaryAgent(
-        currentUserAlias, 
+        currentUserAlias,
         agentName
       );
 

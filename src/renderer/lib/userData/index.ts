@@ -1,6 +1,6 @@
 /**
  * Profile Operations Module
- * 
+ *
  * This module provides a unified interface for profile data management
  * that is consistent with the backend ProfileCacheManager.
  */
@@ -8,7 +8,7 @@
 // Export the main ProfileDataManager class and singleton
 export { ProfileDataManager, profileDataManager } from './profileDataManager'
 
-// 🆕 AppDataManager — Frontend app.json cache management (for frontend use only)
+// 🆕 AppDataManager — frontend app.json cache manager (renderer process only)
 export { AppDataManager, appDataManager } from './appDataManager'
 export type { AppDataListener } from './appDataManager'
 export { useVoiceInputEnabled } from './useVoiceInputEnabled'
@@ -22,7 +22,7 @@ export type {
   GhcTokens,
   ModelConfig,
   McpServerConfig,
-  
+
   // Frontend-specific types
   MCPServerStatus,
   MCPTool,
@@ -31,6 +31,5 @@ export type {
   ProfileCacheData,
   ProfileDataListener,
   MCPStats,
-  ProfileSyncResponse,
   GhcModel
 } from './types'

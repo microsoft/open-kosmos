@@ -423,7 +423,7 @@
     <div class="container">
         <header>
             <h1>🚀 Kosmos Project Layered Architecture Diagram</h1>
-            <p class="subtitle">AI Assistant Desktop Application Built with Electron + React + TypeScript</p>
+            <p class="subtitle">AI Assistant Desktop App based on Electron + React + TypeScript</p>
             <p class="meta">Version 1.0 | Updated: 2026-01-26</p>
         </header>
 
@@ -436,7 +436,7 @@
                     <div class="layer-path">src/renderer/components/</div>
                 </div>
                 <div class="modules">
-                    <div class="module tooltip" data-tooltip="Login and authentication interface">
+                    <div class="module tooltip" data-tooltip="Login and authentication UI">
                         <div class="module-icon">🔐</div>
                         <div class="module-name">auth/</div>
                         <div class="module-desc">Auth UI</div>
@@ -446,7 +446,7 @@
                         <div class="module-name">chat/</div>
                         <div class="module-desc">Chat UI</div>
                     </div>
-                    <div class="module tooltip" data-tooltip="MCP server management interface">
+                    <div class="module tooltip" data-tooltip="MCP server management UI">
                         <div class="module-icon">🔌</div>
                         <div class="module-name">mcp/</div>
                         <div class="module-desc">MCP UI</div>
@@ -456,20 +456,20 @@
                         <div class="module-name">memory/</div>
                         <div class="module-desc">Memory UI</div>
                     </div>
-                    <div class="module tooltip" data-tooltip="Skills management interface">
+                    <div class="module tooltip" data-tooltip="Skills management UI">
                         <div class="module-icon">⚡</div>
                         <div class="module-name">skills/</div>
                         <div class="module-desc">Skills UI</div>
                     </div>
-                    <div class="module tooltip" data-tooltip="Application settings interface">
+                    <div class="module tooltip" data-tooltip="Application settings UI">
                         <div class="module-icon">⚙️</div>
                         <div class="module-name">settings/</div>
                         <div class="module-desc">Settings UI</div>
                     </div>
-                    <div class="module tooltip" data-tooltip="Atomic-level UI components">
+                    <div class="module tooltip" data-tooltip="Atomic UI components">
                         <div class="module-icon">🧩</div>
                         <div class="module-name">ui/</div>
-                        <div class="module-desc">Common Components</div>
+                        <div class="module-desc">Shared Components</div>
                     </div>
                     <div class="module tooltip" data-tooltip="Page-level components">
                         <div class="module-icon">📄</div>
@@ -563,7 +563,7 @@
                     <div class="layer-title">Main Process Core Layer (Main Process Core)</div>
                     <div class="layer-path">src/main/lib/</div>
                 </div>
-                
+
                 <div class="sub-layers">
                     <div class="sub-layer">
                         <div class="sub-layer-title">Manager Layer (Managers)</div>
@@ -586,11 +586,11 @@
                             <div class="module">
                                 <div class="module-icon">💾</div>
                                 <div class="module-name">ProfileCacheManager</div>
-                                <div class="module-desc">Profile Cache Management</div>
+                                <div class="module-desc">Config Cache Management</div>
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="sub-layer">
                         <div class="sub-layer-title">Business Logic Layer (Business Logic)</div>
                         <div class="modules">
@@ -612,7 +612,7 @@
                             <div class="module">
                                 <div class="module-icon">📁</div>
                                 <div class="module-name">WorkspaceService</div>
-                                <div class="module-desc">File Index & Search</div>
+                                <div class="module-desc">File Index Search</div>
                             </div>
                         </div>
                     </div>
@@ -654,7 +654,7 @@
                     <div class="module">
                         <div class="module-icon">⚙️</div>
                         <div class="module-name">ghcModels</div>
-                        <div class="module-desc">Model Configuration</div>
+                        <div class="module-desc">Model Config Definitions</div>
                     </div>
                 </div>
             </div>
@@ -670,10 +670,10 @@
                     <div class="layer-title">MCP Runtime Layer (MCP Runtime)</div>
                     <div class="layer-path">src/main/lib/mcpRuntime/</div>
                 </div>
-                
+
                 <div class="sub-layers">
                     <div class="sub-layer">
-                        <div class="sub-layer-title">MCP Client</div>
+                        <div class="sub-layer-title">MCP Clients</div>
                         <div class="modules">
                             <div class="module">
                                 <div class="module-icon">🔗</div>
@@ -687,9 +687,9 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="sub-layer">
-                        <div class="sub-layer-title">Built-in Toolset (builtinTools/)</div>
+                        <div class="sub-layer-title">Built-in Tool Set (builtinTools/)</div>
                         <div class="tools-grid">
                             <div class="tool-item">readFileTool</div>
                             <div class="tool-item">writeFileTool</div>
@@ -719,7 +719,7 @@
                     <div class="layer-title">Infrastructure Layer (Infrastructure)</div>
                     <div class="layer-path">src/main/lib/</div>
                 </div>
-                
+
                 <div class="sub-layers">
                     <div class="sub-layer">
                         <div class="sub-layer-title">Data Persistence (userDataADO/)</div>
@@ -741,7 +741,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="sub-layer">
                         <div class="sub-layer-title">Memory System (mem0/)</div>
                         <div class="modules">
@@ -762,19 +762,19 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="sub-layer">
                         <div class="sub-layer-title">Utilities / Security Layer</div>
                         <div class="modules">
                             <div class="module">
                                 <div class="module-icon">📝</div>
                                 <div class="module-name">unifiedLogger</div>
-                                <div class="module-desc">Unified Logger</div>
+                                <div class="module-desc">Unified Logging</div>
                             </div>
                             <div class="module">
                                 <div class="module-icon">📊</div>
                                 <div class="module-name">analytics</div>
-                                <div class="module-desc">Analytics</div>
+                                <div class="module-desc">Analytics & Telemetry</div>
                             </div>
                             <div class="module">
                                 <div class="module-icon">🛡️</div>
@@ -798,9 +798,9 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="sub-layer">
-                        <div class="sub-layer-title">Low-level Storage</div>
+                        <div class="sub-layer-title">Storage Layer</div>
                         <div class="modules">
                             <div class="module">
                                 <div class="module-icon">🗄️</div>
@@ -830,7 +830,7 @@
                 <div class="flow-row">
                     <div class="flow-box">
                         <div class="flow-box-title">👤 User Interaction</div>
-                        <div class="flow-box-desc">Clicks, Input, Actions</div>
+                        <div class="flow-box-desc">Clicks, input, actions</div>
                     </div>
                 </div>
                 <div class="flow-arrow">⬇️</div>
@@ -843,7 +843,7 @@
                 <div class="flow-arrow">⬇️</div>
                 <div class="flow-row">
                     <div class="flow-box">
-                        <div class="flow-box-title">📊 State Provider</div>
+                        <div class="flow-box-title">📊 State Providers</div>
                         <div class="flow-box-desc">AuthProvider / ProfileProvider</div>
                     </div>
                 </div>

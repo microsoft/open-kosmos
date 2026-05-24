@@ -17,7 +17,7 @@ export class LocalPythonMirror {
     this.resourcesPath = app.isPackaged
       ? path.join(process.resourcesPath, 'python')
       : path.join(process.cwd(), 'resources', 'python');
-      
+
     logger.debug(`[LocalPythonMirror] Initialized with resources path: ${this.resourcesPath}`, 'RuntimeManager');
   }
 
@@ -45,7 +45,7 @@ export class LocalPythonMirror {
         logger.info(`[LocalPythonMirror] Started on port ${this.port}`, 'RuntimeManager');
         resolve(this.getBaseUrl());
       });
-      
+
       this.server.on('error', (err) => {
         logger.error(`[LocalPythonMirror] Server error`, 'RuntimeManager', { error: err });
         // If we haven't resolved yet (startup error), we should probably reject
@@ -92,10 +92,10 @@ export class LocalPythonMirror {
         // uv uses {MIRROR}/{TAG}/{FILENAME}
         const tag = urlParts[urlParts.length - 2];
         const filename = urlParts[urlParts.length - 1];
-        
+
         // Check local file
         const localFilePath = path.join(this.resourcesPath, tag, filename);
-        
+
         if (fs.existsSync(localFilePath)) {
             logger.info(`[LocalPythonMirror] Serving local file: ${filename}`, 'RuntimeManager');
             try {

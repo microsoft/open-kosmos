@@ -3,41 +3,32 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../ui/ToastProvider';
 import RuntimeSettingsHeaderView from './RuntimeSettingsHeaderView';
-import RuntimeSettingsContentView from './RuntimeSettingsContentView';
+import RuntimeSettingsContentView, { RuntimeStatus, GitVersion, PythonVersion } from './RuntimeSettingsContentView';
 import { DEFAULT_PYTHON_VERSION } from '../../lib/runtime/runtimeVersions';
 import { appDataManager } from '../../lib/userData/appDataManager';
+import { useFeatureFlag } from '../../lib/featureFlags';
 import type { RuntimeEnvironment } from '../../lib/userData/types';
 import '../../styles/RuntimeSettings.css';
-
-interface RuntimeStatus {
-  bun: boolean;
-  uv: boolean;
-  bunPath: string;
-  uvPath: string;
-}
-
-interface PythonVersion {
-  version: string;
-  semver?: string;
-  path: string | null;
-  status: 'installed' | 'available';
-}
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[RuntimeSettingsView]');
 
 const RuntimeSettingsView: React.FC = () => {
   const [runtimeEnv, setRuntimeEnv] = useState<RuntimeEnvironment | null>(null);
-  // Independent install version draft state to prevent AppDataManager push from interrupting user's editing
+  // Independent install version draft state to avoid AppDataManager push interrupting user input fields
   const [installVersions, setInstallVersions] = useState({ bun: '', uv: '' });
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
+  const [gitVersion, setGitVersion] = useState<GitVersion | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pythonVersions, setPythonVersions] = useState<PythonVersion[]>([]);
   const [newPythonVersion, setNewPythonVersion] = useState<string>(DEFAULT_PYTHON_VERSION);
   const [isPythonLoading, setIsPythonLoading] = useState(false);
   const { showSuccess, showError } = useToast();
+  const isGitEnabled = useFeatureFlag('openkosmosUseGit');
 
-  // Subscribe to AppDataManager for real-time runtimeEnvironment changes
+  // Subscribe to AppDataManager, receive runtimeEnvironment changes in real time
   useEffect(() => {
-    // Read current cache directly (appDataManager is initialized by backend push, no manual fetch needed)
+    // Read current cache directly (appDataManager initialized by backend push, no manual pull needed)
     const rt = appDataManager.getRuntimeEnvironment();
     if (rt) {
       setRuntimeEnv(rt);
@@ -48,7 +39,7 @@ const RuntimeSettingsView: React.FC = () => {
       const rt = cfg.runtimeEnvironment;
       if (rt) {
         setRuntimeEnv(rt);
-        // Sync version numbers (server pushes new version after installation completes)
+        // Sync version number (server pushes new version after installation completes)
         setInstallVersions({ bun: rt.bunVersion, uv: rt.uvVersion });
       }
     });
@@ -61,7 +52,7 @@ const RuntimeSettingsView: React.FC = () => {
       const versions = await window.electronAPI.runtime.listPythonVersions();
       setPythonVersions(versions);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, []);
 
@@ -70,13 +61,20 @@ const RuntimeSettingsView: React.FC = () => {
     try {
       const sts = await window.electronAPI.runtime.checkStatus();
       setStatus(sts);
+
+      // Only check Git status if feature is enabled
+      if (isGitEnabled) {
+        const gitSts = await window.electronAPI.runtime.checkGitVersion();
+        setGitVersion(gitSts);
+      }
+
       if (sts.uv) {
         loadPythonVersions();
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
-  }, [loadPythonVersions]);
+  }, [loadPythonVersions, isGitEnabled]);
 
   useEffect(() => {
     loadData();
@@ -97,7 +95,7 @@ const RuntimeSettingsView: React.FC = () => {
   const handleModeChange = useCallback(async (mode: 'system' | 'internal') => {
     try {
       await window.electronAPI.runtime.setMode(mode);
-      // AppCacheManager pushes updates → AppDataManager → setRuntimeEnv auto-refreshes
+      // AppCacheManager will push update → AppDataManager → setRuntimeEnv auto-refresh
       showSuccess(`Switched to ${mode} mode`);
     } catch (e) {
       showError('Failed to switch mode');
@@ -154,7 +152,7 @@ const RuntimeSettingsView: React.FC = () => {
   const handlePinPythonVersion = useCallback(async (version: string) => {
     try {
       await window.electronAPI.runtime.setPinnedPythonVersion(version);
-      // AppCacheManager pushes updates → AppDataManager → setRuntimeEnv auto-refreshes
+      // AppCacheManager will push update → AppDataManager → setRuntimeEnv auto-refresh
       showSuccess(`Pinned Python ${version}`);
     } catch {
       showError('Failed to pin version');
@@ -173,7 +171,7 @@ const RuntimeSettingsView: React.FC = () => {
     }
   }, [showSuccess, showError]);
 
-  // Merge AppDataManager's runtimeEnv with installVersions draft into view config
+  // Merge AppDataManager runtimeEnv with installVersions draft for the view config
   const configForView = runtimeEnv
     ? { ...runtimeEnv, bunVersion: installVersions.bun, uvVersion: installVersions.uv }
     : null;
@@ -200,9 +198,11 @@ const RuntimeSettingsView: React.FC = () => {
       <RuntimeSettingsContentView
         config={configForView}
         status={status}
+        gitVersion={gitVersion}
         pythonVersions={pythonVersions}
         isLoading={isLoading}
         isPythonLoading={isPythonLoading}
+        showGitVersion={isGitEnabled}
         newPythonVersion={newPythonVersion}
         onModeChange={handleModeChange}
         onInstall={handleInstall}
@@ -212,6 +212,7 @@ const RuntimeSettingsView: React.FC = () => {
         onUninstallPython={handleUninstallPython}
         onPinPythonVersion={handlePinPythonVersion}
         onCleanUvCache={handleCleanUvCache}
+        onRefresh={loadData}
       />
     </div>
   );

@@ -11,7 +11,7 @@ interface SkillsContentViewProps {
   skills: SkillConfig[]
   selectedSkill: SkillConfig | null
   isLoading: boolean
-  onSelectSkill: (skill: SkillConfig) => void
+  onSelectSkill: (skill: SkillConfig | null) => void
   onSkillMenuToggle?: (skillName: string, buttonElement: HTMLElement) => void
 }
 
@@ -23,23 +23,33 @@ const SkillsContentView: React.FC<SkillsContentViewProps> = ({
   onSkillMenuToggle
 }) => {
   // Trigger add Skill event
-  const handleAddFromDevice = () => {
-    window.dispatchEvent(new CustomEvent('skills:addFromDevice'))
+  const handleAddFromDeviceArtifact = () => {
+    window.dispatchEvent(new CustomEvent('skills:addFromDeviceArtifact'))
   }
 
-  // When there are no Skills and not loading, show empty state page
+  const handleAddFromDeviceFolder = () => {
+    window.dispatchEvent(new CustomEvent('skills:addFromDeviceFolder'))
+  }
+
+  // Show empty state when there are no Skills and not loading
   if (!isLoading && skills.length === 0) {
     return (
       <div className="skills-content-view">
         <div className="skills-empty-state">
           <div className="skills-empty-content">
-            <p className="skills-empty-text">No Skills available, please add a skill (.zip)</p>
+            <p className="skills-empty-text">No Skills available, please add a skill from a .zip/.skill file or a folder.</p>
             <div className="skills-empty-actions">
               <button
                 className="skills-empty-btn skills-empty-btn-primary"
-                onClick={handleAddFromDevice}
+                onClick={handleAddFromDeviceArtifact}
               >
-                Add from Device
+                Add from Device (.zip/.skill)
+              </button>
+              <button
+                className="skills-empty-btn skills-empty-btn-secondary"
+                onClick={handleAddFromDeviceFolder}
+              >
+                Add from Device (folder)
               </button>
             </div>
           </div>
@@ -50,7 +60,7 @@ const SkillsContentView: React.FC<SkillsContentViewProps> = ({
 
   return (
     <div className="skills-content-view">
-      {/* Left side: Skill list */}
+      {/* Left: Skill list */}
       <div className="skill-list-panel">
         <SkillListPanel
           skills={skills}
@@ -61,7 +71,7 @@ const SkillsContentView: React.FC<SkillsContentViewProps> = ({
         />
       </div>
 
-      {/* Right side: Skill file explorer/viewer */}
+      {/* Right: Skill file explorer/viewer */}
       <div className="skill-view-panel">
         <SkillViewPanel
           skill={selectedSkill}

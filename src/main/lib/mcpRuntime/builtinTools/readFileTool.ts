@@ -1,8 +1,8 @@
 /**
  * ReadFileTool built-in tool - V2 optimized version
- * Uses streaming read + triple safety limits to prevent memory overflow
- * 
- * Core improvements:
+ * Uses streaming reads + triple safety limits to avoid memory overflow
+ *
+ * Key improvements:
  * 1. Uses createReadStream + readline instead of fs.readFile
  * 2. Triple hard limits: MAX_BYTES + MAX_LINES + MAX_LINE_LENGTH
  * 3. Two-phase model: Probe → Targeted Scan
@@ -11,34 +11,36 @@
 
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
+import * as nodePath from 'path';
 import * as readline from 'readline';
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 
 // Re-export types for backward compatibility
+export type { BuiltinToolDefinition, ToolExecutionResult } from './types';
 
 // ============ Safety limit constants ============
 const READ_FILE_LIMITS = {
-  MAX_BYTES_PER_CALL: 128 * 1024,    // 128KB - Maximum bytes per read call
-  MAX_LINES_PER_CALL: 500,            // Maximum lines returned per call
-  MAX_LINE_LENGTH: 8 * 1024,          // 8KB - Maximum single line length
-  PROBE_SIZE: 8 * 1024,               // 8KB - Probe phase read size
-  HIGH_WATER_MARK: 64 * 1024,         // 64KB - Stream buffer
+  MAX_BYTES_PER_CALL: 128 * 1024,    // 128KB - maximum bytes per call
+  MAX_LINES_PER_CALL: 500,            // maximum lines returned per call
+  MAX_LINE_LENGTH: 8 * 1024,          // 8KB - maximum length per line
+  PROBE_SIZE: 8 * 1024,               // 8KB - bytes read in the probe phase
+  HIGH_WATER_MARK: 64 * 1024,         // 64KB - stream buffer
 } as const;
 
 // ============ Type definitions ============
-export type TruncationReason = 
-  | 'max_lines' 
-  | 'max_bytes' 
-  | 'max_line_length' 
+export type TruncationReason =
+  | 'max_lines'
+  | 'max_bytes'
+  | 'max_line_length'
   | 'file_end'
   | 'none';
 
-export type FileTypeHint = 
-  | 'text' 
-  | 'html' 
-  | 'json' 
-  | 'minified' 
-  | 'binary' 
+export type FileTypeHint =
+  | 'text'
+  | 'html'
+  | 'json'
+  | 'minified'
+  | 'binary'
   | 'unknown';
 
 export interface ReadFileToolArgs {
@@ -54,8 +56,8 @@ export interface ReadFileToolResult {
   fileName: string;
   startLine: number;
   endLine: number;
-  totalLines?: number;            // best-effort, may not be precise
-  totalLinesEstimated?: boolean;  // Whether it is an estimated value
+  totalLines?: number;            // best-effort, may not be exact
+  totalLinesEstimated?: boolean;  // whether this is an estimated value
   size: number;
   truncated: boolean;
   truncationReason?: TruncationReason;
@@ -65,23 +67,23 @@ export interface ReadFileToolResult {
 }
 
 export class ReadFileTool {
-  
+
   /**
    * Execute the file read tool
-   * Static method, supports direct invocation by LLM
+   * Static method, supports direct LLM invocation
    */
-  static async execute(args: ReadFileToolArgs): Promise<ReadFileToolResult> {
-    
+  static async execute(args: ReadFileToolArgs, options?: { signal?: AbortSignal }): Promise<ReadFileToolResult> {
+
     // 1. Resolve file path (supports multiple formats)
     const actualPath = this.resolveFilePath(args);
-    
-    // 2. Argument validation
+
+    // 2. Parameter validation
     const validation = this.validateArgs({ ...args, path: actualPath });
     if (!validation.isValid) {
       throw new Error(`Invalid arguments: ${validation.error}`);
     }
 
-    // 3. File reading and processing (V2 optimized version)
+    // 3. File read and processing (V2 optimized version)
     try {
       const result = await this.readFileWithStreamPagination({ ...args, path: actualPath });
       return result;
@@ -95,16 +97,16 @@ export class ReadFileTool {
    */
   private static resolveFilePath(args: ReadFileToolArgs): string {
     const path = args.filePath;
-    
+
     if (!path) {
       throw new Error('No file path provided. filePath is required');
     }
-    
+
     return path;
   }
 
   /**
-   * Get tool definition (V2 optimized - Agent-friendly description)
+   * Get tool definition (V2 optimized version - agent-friendly description)
    */
   static getDefinition(): BuiltinToolDefinition {
     return {
@@ -189,10 +191,10 @@ IMPORTANT CONSTRAINTS:
     return { isValid: true };
   }
 
-  // ============ Phase 1: Probe (lightweight detection) ============
-  
+  // ============ Phase 1: Probe (lightweight probing) ============
+
   /**
-   * Probe file type and characteristics, reads only the first 8KB
+   * Probe file type and characteristics; reads only the first 8KB
    */
   private static async probeFile(path: string): Promise<{
     fileSize: number;
@@ -201,17 +203,17 @@ IMPORTANT CONSTRAINTS:
   }> {
     const stat = await fsPromises.stat(path);
     const fileSize = stat.size;
-    
+
     // Read the first PROBE_SIZE bytes for probing
     const probeBuffer = Buffer.alloc(READ_FILE_LIMITS.PROBE_SIZE);
     const fd = await fsPromises.open(path, 'r');
     try {
       const { bytesRead } = await fd.read(probeBuffer, 0, READ_FILE_LIMITS.PROBE_SIZE, 0);
       const probeContent = probeBuffer.subarray(0, bytesRead).toString('utf8');
-      
+
       const fileTypeHint = this.detectFileType(probeContent);
       const isMinified = this.detectMinified(probeContent);
-      
+
       return { fileSize, fileTypeHint, isMinified };
     } finally {
       await fd.close();
@@ -224,13 +226,13 @@ IMPORTANT CONSTRAINTS:
   private static detectFileType(content: string): FileTypeHint {
     // Binary detection: contains null characters
     if (content.includes('\0')) return 'binary';
-    
+
     // HTML detection
     if (/<(!DOCTYPE|html|head|body|div|span)/i.test(content)) return 'html';
-    
+
     // JSON detection
     if (/^\s*[\[{]/.test(content)) return 'json';
-    
+
     return 'text';
   }
 
@@ -240,29 +242,29 @@ IMPORTANT CONSTRAINTS:
   private static detectMinified(content: string): boolean {
     const lines = content.split('\n');
     const avgLineLength = content.length / Math.max(lines.length, 1);
-    
-    // Average line length > 500 or very few newlines → likely minified
+
+    // Average line length > 500 or very few newlines → possibly minified
     return avgLineLength > 500 || (content.length > 1000 && lines.length < 5);
   }
 
-  // ============ Phase 2: Targeted Scan (controlled scanning) ============
+  // ============ Phase 2: Targeted Scan (controlled scan) ============
 
   /**
-   * V2 optimized: streaming read + triple safety limits
-   * Never reads the entire file into memory
+   * V2 optimized version: streaming reads + triple safety limits
+   * Never loads the entire file into memory
    */
   private static async readFileWithStreamPagination(
     args: ReadFileToolArgs & { path: string }
   ): Promise<ReadFileToolResult> {
     const { path, startLine = 1 } = args;
-    
-    // Phase 1: Probe - lightweight detection
+
+    // Phase 1: Probe - lightweight probing
     const { fileSize, fileTypeHint, isMinified } = await this.probeFile(path);
-    
+
     // Extract file name from path
-    const fileName = path.split('/').pop() || path.split('\\').pop() || path;
-    
-    // Reject binary files directly
+    const fileName = nodePath.basename(path);
+
+    // Reject binary files immediately
     if (fileTypeHint === 'binary') {
       return {
         content: '[Binary file detected - use appropriate tool for binary files]',
@@ -277,65 +279,65 @@ IMPORTANT CONSTRAINTS:
         size: 0,
       };
     }
-    
+
     // Phase 2: Stream read - using readline module
     const stream = fs.createReadStream(path, {
       encoding: 'utf8',
       highWaterMark: READ_FILE_LIMITS.HIGH_WATER_MARK,
     });
-    
+
     const rl = readline.createInterface({
       input: stream,
       crlfDelay: Infinity,
     });
-    
+
     const resultLines: string[] = [];
     let currentLine = 0;
     let totalBytes = 0;
     let truncated = false;
     let truncationReason: TruncationReason = 'none';
     let hasLongLines = false;
-    
-    // Calculate effective maximum line count
-    const requestedLines = args.lineCount || 
+
+    // Calculate the effective maximum number of lines
+    const requestedLines = args.lineCount ||
       (args.endLine ? args.endLine - startLine + 1 : READ_FILE_LIMITS.MAX_LINES_PER_CALL);
     const effectiveMaxLines = Math.min(requestedLines, READ_FILE_LIMITS.MAX_LINES_PER_CALL);
-    
+
     try {
       for await (const line of rl) {
         currentLine++;
-        
+
         // Skip lines before startLine
         if (currentLine < startLine) continue;
-        
+
         // Check endLine limit
         if (args.endLine && currentLine > args.endLine) {
           truncationReason = 'file_end';
           break;
         }
-        
+
         // Check line count limit
         if (resultLines.length >= effectiveMaxLines) {
           truncated = true;
           truncationReason = 'max_lines';
           break;
         }
-        
-        // Handle overly long lines - truncate and mark
+
+        // Handle excessively long lines - truncate and mark
         let processedLine = line;
         if (line.length > READ_FILE_LIMITS.MAX_LINE_LENGTH) {
           hasLongLines = true;
           processedLine = line.slice(0, READ_FILE_LIMITS.MAX_LINE_LENGTH) +
             `\n[... ${line.length - READ_FILE_LIMITS.MAX_LINE_LENGTH} chars truncated ...]`;
         }
-        
+
         // Check byte limit
         if (totalBytes + processedLine.length > READ_FILE_LIMITS.MAX_BYTES_PER_CALL) {
           truncated = true;
           truncationReason = 'max_bytes';
           break;
         }
-        
+
         totalBytes += processedLine.length + 1; // +1 for newline
         resultLines.push(processedLine);
       }
@@ -343,27 +345,27 @@ IMPORTANT CONSTRAINTS:
       rl.close();
       stream.destroy();
     }
-    
-    // If not truncated due to limits, check if end of file was reached
+
+    // If not truncated by a limit, check whether we reached the end of the file
     if (!truncated && truncationReason === 'none') {
       truncationReason = 'file_end';
     }
-    
-    // Adjust fileTypeHint - overly long lines are also marked as minified
-    const finalFileTypeHint: FileTypeHint = 
-      isMinified ? 'minified' : 
-      hasLongLines ? 'minified' : 
+
+    // Adjust fileTypeHint - lines that are too long are also marked as minified
+    const finalFileTypeHint: FileTypeHint =
+      isMinified ? 'minified' :
+      hasLongLines ? 'minified' :
       fileTypeHint;
-    
+
     const resultContent = resultLines.join('\n');
     const actualEndLine = startLine + resultLines.length - 1;
-    
+
     return {
       content: resultContent,
       fileName,
       startLine,
       endLine: Math.max(actualEndLine, startLine),
-      // totalLines only provides exact value when fully read
+      // totalLines is only precise when the entire file is read
       totalLines: !truncated && startLine === 1 ? currentLine : undefined,
       totalLinesEstimated: truncated || startLine > 1,
       size: resultContent.length,

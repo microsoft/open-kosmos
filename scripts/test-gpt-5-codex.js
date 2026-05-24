@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * GitHub Copilot GPT-5-Codex Model Call Test Script
+ * GitHub Copilot GPT-5-Codex model call test script
  * Test model ID: gpt-5-codex
  */
 
@@ -15,9 +15,9 @@ try {
     TOKENS = getTokens();
     validateTokens(TOKENS);
 } catch (error) {
-    console.error('❌ Failed to load authentication info:', error.message);
-    console.error('\n💡 Please ensure tokens are configured using one of the following methods:');
-    console.error('1. Log in with the Kosmos app (recommended)');
+    console.error('❌ Unable to load authentication info:', error.message);
+    console.error('\n💡 Please configure tokens using one of the following methods:');
+    console.error('1. Login with the OpenKosmos app (recommended)');
     console.error('2. Set environment variables:');
     console.error('   export GITHUB_COPILOT_REFRESH_TOKEN="your_refresh_token"');
     console.error('   export GITHUB_COPILOT_ACCESS_TOKEN="your_access_token"');
@@ -30,7 +30,7 @@ const MODEL_NAME = 'GPT-5-Codex (Preview)';
 
 // CAPI endpoint configuration
 const CAPI_BASE_URL = 'api.githubcopilot.com';
-const RESPONSES_ENDPOINT = '/responses';  // ✅ GPT-5-Codex uses the /responses endpoint
+const RESPONSES_ENDPOINT = '/responses';  // ✅ GPT-5-Codex uses /responses endpoint
 
 /**
  * Generate request ID
@@ -47,7 +47,7 @@ function sendChatRequest(messages, options = {}) {
         const requestId = generateRequestId();
         const sessionId = 'test-session-' + Date.now();
         const machineId = 'test-machine-' + Date.now();
-        
+
         // ✅ /responses endpoint uses a different request format: input string instead of messages array
         const lastUserMessage = messages.filter(m => m.role === 'user').pop();
         if (!lastUserMessage) {
@@ -57,10 +57,10 @@ function sendChatRequest(messages, options = {}) {
         
         const requestBody = {
             model: MODEL_ID,
-            input: lastUserMessage.content,  // ✅ Use the input field
+            input: lastUserMessage.content,  // ✅ use input field
             max_tokens: options.max_tokens || 4096,
             stream: options.stream || false
-            // ❌ /responses endpoint does not support the temperature parameter
+            // ❌ /responses endpoint does not support temperature parameter
         };
         
         const postData = JSON.stringify(requestBody);
@@ -68,7 +68,7 @@ function sendChatRequest(messages, options = {}) {
         const requestOptions = {
             hostname: CAPI_BASE_URL,
             port: 443,
-            path: RESPONSES_ENDPOINT,  // ✅ Use the correct endpoint
+            path: RESPONSES_ENDPOINT,  // ✅ use correct endpoint
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${TOKENS.access}`,
@@ -107,7 +107,7 @@ function sendChatRequest(messages, options = {}) {
                         reject(new Error(`JSON parse error: ${parseError.message}`));
                     }
                 } else {
-                    reject(new Error(`Request failed: HTTP ${res.statusCode}\nResponse content: ${data}`));
+                    reject(new Error(`Request failed: HTTP ${res.statusCode}\nResponse body: ${data}`));
                 }
             });
         });
@@ -131,12 +131,12 @@ async function testGPT5Codex() {
     console.log(`🆔 Model ID: ${MODEL_ID}`);
     console.log('='.repeat(60));
     console.log();
-    
+
     try {
         // Print token info
         printTokenInfo(TOKENS);
 
-        // Test message - code-related tasks are more suitable for the Codex model
+        // Test messages — code-related tasks are better suited for Codex models
         const messages = [
             {
                 role: "user",
@@ -167,7 +167,7 @@ async function testGPT5Codex() {
             console.log(assistantMessage.content);
             console.log('─'.repeat(60));
             console.log();
-            
+
             if (response.data.usage) {
                 console.log('📊 Token usage statistics:');
                 console.log(`   ├─ Input tokens: ${response.data.usage.prompt_tokens}`);
@@ -177,7 +177,7 @@ async function testGPT5Codex() {
         }
 
         console.log();
-        console.log('🎉 Test complete! Model call is working normally');
+        console.log('🎉 Test complete! Model call working normally');
         return response;
 
     } catch (error) {
@@ -185,15 +185,15 @@ async function testGPT5Codex() {
         if (error.stack) {
             console.error('🐛 Error stack:', error.stack);
         }
-        
+
         console.log();
         console.log('🔍 Troubleshooting suggestions:');
         console.log('1. Check network connection');
-        console.log('2. Verify GitHub Copilot subscription is valid');
-        console.log('3. Confirm the access token is correct and not expired');
+        console.log('2. Verify GitHub Copilot subscription is active');
+        console.log('3. Confirm access token is correct and not expired');
         console.log('4. Check if you have permission to access this model (requires Pro/Enterprise subscription)');
-        console.log('5. This model is in preview and may have access restrictions');
-        
+        console.log('5. This model is a preview version and may have access restrictions');
+
         throw error;
     }
 }

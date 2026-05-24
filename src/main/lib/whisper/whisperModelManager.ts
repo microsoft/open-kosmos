@@ -15,6 +15,8 @@ import {
   WhisperModelInfo,
   WHISPER_MODELS,
 } from '../userDataADO/types/profile';
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
 
 export interface WhisperModelStatus {
   size: WhisperModelSize;
@@ -56,7 +58,7 @@ class WhisperModelManager {
   private ensureModelsDir(): void {
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
-      console.log('[WhisperModelManager] Created models directory:', this.modelsDir);
+      logger.debug(`[WhisperModelManager] Created models directory: ${this.modelsDir}`);
     }
   }
 
@@ -94,7 +96,7 @@ class WhisperModelManager {
         const stats = fs.statSync(modelPath);
         status.actualSize = stats.size;
       } catch (err) {
-        console.error('[WhisperModelManager] Error getting file stats:', err);
+        logger.error(`[WhisperModelManager] Error getting file stats: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
 
@@ -128,11 +130,11 @@ class WhisperModelManager {
 
     // Check if already downloaded
     if (this.isModelDownloaded(size)) {
-      console.log(`[WhisperModelManager] Model ${size} is already downloaded`);
+      logger.debug(`[WhisperModelManager] Model ${size} is already downloaded`);
       return;
     }
 
-    console.log(`[WhisperModelManager] Starting download of ${size} model from ${modelInfo.downloadUrl}`);
+    logger.debug(`[WhisperModelManager] Starting download of ${size} model from ${modelInfo.downloadUrl}`);
 
     const abortController = new AbortController();
     this.activeDownloads.set(size, abortController);
@@ -160,7 +162,7 @@ class WhisperModelManager {
 
       // Rename temp file to final path
       fs.renameSync(tempPath, modelPath);
-      console.log(`[WhisperModelManager] Model ${size} downloaded successfully to ${modelPath}`);
+      logger.debug(`[WhisperModelManager] Model ${size} downloaded successfully to ${modelPath}`);
 
       // Notify completion
       if (window && !window.isDestroyed()) {
@@ -173,12 +175,12 @@ class WhisperModelManager {
       }
 
       if ((err as Error).name === 'AbortError') {
-        console.log(`[WhisperModelManager] Download of ${size} model was cancelled`);
+        logger.debug(`[WhisperModelManager] Download of ${size} model was cancelled`);
         if (window && !window.isDestroyed()) {
           window.webContents.send('whisper:downloadCancelled', { model: size });
         }
       } else {
-        console.error(`[WhisperModelManager] Error downloading ${size} model:`, err);
+        logger.error(`[WhisperModelManager] Error downloading ${size} model: ${err instanceof Error ? err.message : String(err)}`)
         if (window && !window.isDestroyed()) {
           window.webContents.send('whisper:downloadError', {
             model: size,
@@ -211,16 +213,16 @@ class WhisperModelManager {
     const modelPath = this.getModelPath(size);
 
     if (!fs.existsSync(modelPath)) {
-      console.log(`[WhisperModelManager] Model ${size} does not exist`);
+      logger.debug(`[WhisperModelManager] Model ${size} does not exist`);
       return false;
     }
 
     try {
       fs.unlinkSync(modelPath);
-      console.log(`[WhisperModelManager] Deleted model ${size} from ${modelPath}`);
+      logger.debug(`[WhisperModelManager] Deleted model ${size} from ${modelPath}`);
       return true;
     } catch (err) {
-      console.error(`[WhisperModelManager] Error deleting model ${size}:`, err);
+      logger.error(`[WhisperModelManager] Error deleting model ${size}: ${err instanceof Error ? err.message : String(err)}`)
       throw err;
     }
   }
@@ -257,7 +259,7 @@ class WhisperModelManager {
         if (response.statusCode === 301 || response.statusCode === 302) {
           const redirectUrl = response.headers.location;
           if (redirectUrl) {
-            console.log(`[WhisperModelManager] Following redirect to ${redirectUrl}`);
+            logger.debug(`[WhisperModelManager] Following redirect to ${redirectUrl}`);
             this.downloadFile(redirectUrl, destPath, onProgress, signal)
               .then(resolve)
               .catch(reject);

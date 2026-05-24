@@ -1,7 +1,7 @@
 /**
  * MCP Module Exports
- * 
- * Exports MCP client cache manager and related types
+ *
+ * Exports the MCP client cache manager and related types
  */
 
 export {

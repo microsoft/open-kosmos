@@ -1,6 +1,6 @@
 # userDataADO — Data Persistence Layer
 
-This module handles all persistent data for Kosmos:
+This module handles all persistent data for OpenKosmos:
 
 | File | Scope | Manager (Main) | Manager (Renderer) |
 |------|-------|----------------|--------------------|
@@ -192,7 +192,7 @@ AppCacheManager                       AppDataManager
                                         └─ getRuntimeEnvironment()  // convenience
 ```
 
-- **Main → Renderer push**: `AppCacheManager.updateConfig()` triggers a 150 ms debounced `app:configUpdated` IPC event.  
+- **Main → Renderer push**: `AppCacheManager.updateConfig()` triggers a 150 ms debounced `app:configUpdated` IPC event.
 - **Renderer → Main call**: `AppDataManager.updateConfig()` invokes `app:updateAppConfig` IPC handler.
 
 #### IPC channels (defined in `preload.ts`)
@@ -318,7 +318,6 @@ This file is the **single source of truth** for the complete `profile.json` data
       "url": "",
       "in_use": true,
       "version": "1.0.0",
-      "remoteVersion": "",
       "source": "ON-DEVICE"
     }
   ],
@@ -341,7 +340,7 @@ This file is the **single source of truth** for the complete `profile.json` data
 
 **File:** `src/main/lib/userDataADO/types/profile.ts`
 
-Follow the existing pattern used by `ScreenshotSettings`, etc.:
+Follow the existing pattern used by `ToolBarSettings`, `ScreenshotSettings`, etc.:
 
 ```typescript
 // 1. Define the interface for the new config section
@@ -420,7 +419,7 @@ private async ensureV2ProfileIntegrity(alias: string, profile: ProfileV2): Promi
 }
 ```
 
-**MCP example:** The `mcp_servers` array migration that backfills `version`, `source`, and `remoteVersion` sub-fields (added in newer versions) lives in this method.
+**MCP example:** The `mcp_servers` array migration that backfills `version` and `source` sub-fields (added in newer versions) lives in this method.
 
 **Important rules from the method's own header:**
 - Always deep-copy the input: `JSON.parse(JSON.stringify(profile))` — never mutate the `profile` argument.
@@ -543,7 +542,7 @@ For features with non-trivial business logic (like MCP), create a dedicated mana
 ```
 
 **Rules:**
-- The feature manager holds **no local copy** of persisted config data.  
+- The feature manager holds **no local copy** of persisted config data.
   All reads go to `profileCacheManager.getXxx(alias)` (in-memory, O(1)).
 - All writes go through the appropriate `profileCacheManager.updateXxx()` method, which handles sanitize + persist + frontend notification in one call.
 - The feature manager **never writes directly** to any file.
@@ -589,17 +588,17 @@ When adding a new profile-level config field:
 
 # ProfileOps - Profile Directory Scanner
 
-ProfileOps is a module for scanning and managing user profile directories in the Kosmos application. It provides a complete API for scanning, checking, and monitoring user profiles in the `appPath/profiles` directory.
+ProfileOps is a module for scanning and managing user profile directories in the OpenKosmos application. It provides a complete API to scan, inspect, and monitor user profiles under the `appPath/profiles` directory.
 
 ## Features
 
 - 🔍 **Scan Profile Directories**: Scan all user profile directories and return detailed information
-- ✅ **Validate Profiles**: Check whether profile directories contain valid `profile.json` files
-- 📊 **Statistics**: Provides total profile count, valid count, and invalid count statistics
-- 🏷️ **Get Alias List**: Quickly retrieve all or only valid profile aliases
-- 📁 **Directory Check**: Check if a specific profile directory exists
-- 📋 **Detailed Information**: Get detailed directory information for a specific profile
-- 🔄 **Real-time Monitoring**: Supports monitoring profile directory changes
+- ✅ **Validate Profiles**: Check whether a profile directory contains a valid `profile.json` file
+- 📊 **Statistics**: Provides counts of total, valid, and invalid profiles
+- 🏷️ **Get Alias Lists**: Quickly retrieve all or only valid profile aliases
+- 📁 **Directory Check**: Check whether a specific profile directory exists
+- 📋 **Detailed Info**: Get detailed directory information for a specific profile
+- 🔄 **Live Monitoring**: Supports monitoring profile directory changes
 
 ## Core Types
 
@@ -608,13 +607,13 @@ ProfileOps is a module for scanning and managing user profile directories in the
 interface ProfileDirectoryInfo {
   /** Profile alias/name */
   alias: string;
-  /** Full path of the profile directory */
+  /** Full path to the profile directory */
   path: string;
-  /** Whether it contains a profile.json file */
+  /** Whether the directory contains a profile.json file */
   hasProfileJson: boolean;
   /** Directory creation time */
   createdAt: Date;
-  /** Directory last modified time */
+  /** Directory last-modified time */
   modifiedAt: Date;
 }
 ```
@@ -626,7 +625,7 @@ interface ProfileScanResult {
   profiles: ProfileDirectoryInfo[];
   /** Total profile count */
   totalCount: number;
-  /** Valid profile count (containing profile.json) */
+  /** Valid profile count (contains profile.json) */
   validProfiles: number;
   /** Invalid profile count (missing profile.json) */
   invalidProfiles: number;
@@ -642,7 +641,7 @@ interface ProfileScanResult {
 ```typescript
 import { profileScanner } from './src/main/lib/profileOps';
 
-// Get complete scan result
+// Get the full scan result
 const scanResult = await profileScanner.scanProfileDirectories();
 
 console.log(`Found ${scanResult.totalCount} profiles`);
@@ -655,7 +654,7 @@ scanResult.profiles.forEach(profile => {
 });
 ```
 
-### 2. Get Profile Alias List
+### 2. Get Profile Alias Lists
 
 ```typescript
 // Get all profile aliases
@@ -672,10 +671,10 @@ console.log('Valid profiles:', validAliases);
 ```typescript
 const alias = 'user123';
 
-// Check if profile directory exists
+// Check whether the profile directory exists
 const exists = await profileScanner.profileDirectoryExists(alias);
 if (exists) {
-  // Get detailed information
+  // Get detailed info
   const profileInfo = await profileScanner.getProfileDirectoryInfo(alias);
   if (profileInfo) {
     console.log(`Profile: ${profileInfo.alias}`);
@@ -695,15 +694,15 @@ let lastScanResult = null;
 
 const checkForChanges = async () => {
   const currentScanResult = await profileScanner.scanProfileDirectories();
-  
+
   if (lastScanResult) {
     const countChanged = currentScanResult.totalCount !== lastScanResult.totalCount;
     if (countChanged) {
-      console.log('Profile changes detected!');
+      console.log('Profile change detected!');
       console.log(`Total: ${lastScanResult.totalCount} → ${currentScanResult.totalCount}`);
     }
   }
-  
+
   lastScanResult = currentScanResult;
 };
 
@@ -711,7 +710,7 @@ const checkForChanges = async () => {
 setInterval(checkForChanges, 10000);
 ```
 
-## Directory Structure
+## File Structure
 
 ```
 src/main/lib/profileOps/
@@ -724,19 +723,19 @@ src/main/lib/profileOps/
 └── README.md                   # This document
 ```
 
-## Testing
+## Tests
 
-### Running Unit Tests
+### Run Unit Tests
 
 ```bash
-# Use Jest to run tests
+# Run tests with Jest
 npm test src/main/lib/profileOps/profileScanner.test.ts
 
 # Run simplified standalone tests
 npx ts-node src/main/lib/profileOps/test-runner.ts
 ```
 
-### Running Usage Examples
+### Run Usage Examples
 
 ```bash
 # Run all usage examples
@@ -753,19 +752,19 @@ ProfileScanner scans the following directory structure:
 {appPath}/profiles/
 ├── user1/
 │   ├── profile.json     # Valid profile
-│   └── ...other files
+│   └── ... other files
 ├── user2/               # Invalid profile (missing profile.json)
-│   └── ...other files
+│   └── ... other files
 └── user3/
     ├── profile.json     # Valid profile
-    └── ...other files
+    └── ... other files
 ```
 
 ### Error Handling
 
-- If the profiles directory does not exist, returns an empty result instead of an error
+- If the profiles directory does not exist, an empty result is returned rather than an error
 - Errors in individual profile directories do not affect the overall scan
-- All errors are recorded in the logs
+- All errors are recorded in the log
 
 ### Performance Considerations
 
@@ -773,7 +772,7 @@ ProfileScanner scans the following directory structure:
 - Supports concurrent processing of multiple profile directories
 - Results are sorted by creation time (newest first)
 
-## Integration with Existing System
+## Integration with the Existing System
 
 The ProfileOps module is designed to work alongside the existing [`ProfileManager`](../profileManager.ts) system:
 
@@ -783,11 +782,11 @@ The ProfileOps module is designed to work alongside the existing [`ProfileManage
 
 ## Logging
 
-ProfileScanner uses the project's unified logging system to record operational information:
+ProfileScanner uses the project's unified logging system to record operation information:
 
 - Scan start and completion
 - Number of profiles discovered
-- Error and warning messages
+- Errors and warnings
 - Debug information
 
 ## Example Output
@@ -821,7 +820,7 @@ ProfileScanner uses the project's unified logging system to record operational i
     Modified: 12/6/2023
 ```
 
-## Contribution Guide
+## Contributing
 
 1. All new features should include corresponding tests
 2. Follow existing code style and naming conventions

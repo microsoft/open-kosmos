@@ -9,7 +9,7 @@
         style-src 'self' 'unsafe-inline';
         img-src 'self' data: https: blob:;
         font-src 'self' data:;
-        connect-src 'self' https:;
+        connect-src 'self' https:<%= connectSrcExtra %>;
     ">
     <title>
         <%= htmlWebpackPlugin.options.title %>
@@ -45,5 +45,6 @@
 </head>
 <body>
     <div id="root"></div>
+    <%- entryScript %>
 </body>
 </html>

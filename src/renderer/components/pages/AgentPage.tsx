@@ -1,122 +1,119 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useAuthContext } from '../auth/AuthProvider';
 import AppLayout from '../layout/AppLayout';
-import { Message, Config as ChatConfig, MessageHelper } from '../../types/chatTypes';
-import { agentChatIpc } from '../../lib/chat/agentChatIpc';
-import { useAgentConfig } from '../userData/userDataProvider';
-import { useToast } from '../ui/ToastProvider';
 import { profileDataManager } from '../../lib/userData';
-import { FreOverlay } from '../fre';
+import { FreOverlay, InstallUpdateOnStartupView } from '../fre';
 // Read data from AgentChatSessionCacheManager
 import {
-  useMessages,
-  useChatStatus,
+  useMessagesWithStream,
+  CurrentSessionStatus,
   useCurrentChatSessionId,
-  useStreamingMessageId,
-  agentChatSessionCacheManager
+  useCurrentChatId,
 } from '../../lib/chat/agentChatSessionCacheManager';
+import { getPmAgentSayHiMessageConfig } from '../../lib/chat/pmAgentSayHi';
+import { startNewChatFor } from '../../lib/chat/startNewChatFor';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[AgentPage]');
+
+/**
+ * Module-level in-memory state: whether to show InstallUpdateOnStartupView
+ * Defaults to true; set to false after FRE ends or the first InstallUpdateOnStartupView ends
+ * Module-level variables persist within the Electron window lifecycle and are not reset across component mount/unmount
+ */
+let needsShowInstallUpdateOnStartupView = true;
+let hasAutoSelectedPrimaryAgentOnStartup = false;
+
+const DevMonitor = memo(() => {
+  const { messages, streamingMessageId } = useMessagesWithStream();
+  const { chatStatus, chatSessionId } = CurrentSessionStatus.use();
+
+    // Development debug
+  useEffect(() => {
+    logger.debug('[AgentPage] 📊 Cache Manager Data:', {
+      messagesCount: messages.length,
+      chatSessionId,
+      chatStatus,
+      streamingMessageId,
+      streamingMessageIdType: typeof streamingMessageId,
+      isStreaming:
+        streamingMessageId !== null && streamingMessageId !== undefined,
+      lastMessageId:
+        messages.length > 0
+          ? messages[messages.length - 1].id
+          : 'none',
+    });
+  }, [
+    messages.length,
+    chatSessionId,
+    chatStatus,
+    streamingMessageId,
+  ]);
+
+  return null;
+});
 
 export const AgentPage: React.FC = () => {
-  const { authData, signOut } = useAuthContext();
-  const { showToast } = useToast();
+  const { authData } = useAuthContext();
+  const navigate = useNavigate();
 
-  // 🔥 Refactor: Read flat message array directly from Cache Manager
-  const messages = useMessages();
-  const chatStatus = useChatStatus();
-  const cacheCurrentChatSessionId = useCurrentChatSessionId();
-  const streamingMessageId = useStreamingMessageId() || undefined;
+  // Refactor: read flat message array directly from Cache Manager
+  const currentChatSessionId = useCurrentChatSessionId();
+  const currentChatId = useCurrentChatId();
 
-  // 🔥 New: Use local state to track streaming messages for immediate updates
-  const [streamingMessage, setStreamingMessage] = useState<Message | null>(
-    null,
-  );
-
-  // 🔥 FRE (First Run Experience) state
+  // FRE (First Run Experience) state
   const [showFreOverlay, setShowFreOverlay] = useState<boolean>(false);
 
-  // Get current chatId and chatSessionId from agentChatSessionCacheManager
-  const [currentChatId, setCurrentChatId] = React.useState<string | null>(
-    agentChatSessionCacheManager.getCurrentChatId(),
-  );
-  const [currentChatSessionId, setCurrentChatSessionId] = React.useState<
-    string | null
-  >(agentChatSessionCacheManager.getCurrentChatSessionId());
+  // Startup Update state
+  const [showStartupUpdate, setShowStartupUpdate] = useState<boolean>(false);
+  const [isWindows, setIsWindows] = useState(false);
 
-  // Subscribe to currentChatSessionId changes
-  React.useEffect(() => {
-    const unsubscribe =
-      agentChatSessionCacheManager.subscribeToCurrentChatSessionId(() => {
-        const newChatId = agentChatSessionCacheManager.getCurrentChatId();
-        const newChatSessionId =
-          agentChatSessionCacheManager.getCurrentChatSessionId();
-        setCurrentChatId(newChatId);
-        setCurrentChatSessionId(newChatSessionId);
-      });
-    return unsubscribe;
+
+  // Detect platform
+  useEffect(() => {
+    const checkPlatform = async () => {
+      if (window.electronAPI && window.electronAPI.platform === 'win32') {
+        setIsWindows(true);
+      } else {
+        try {
+          const info = await window.electronAPI.getPlatformInfo();
+          if (info.platform === 'win32') {
+            setIsWindows(true);
+          }
+        } catch (e) {
+          // Ignore - assume not Windows
+        }
+      }
+    };
+    checkPlatform();
   }, []);
 
-  // 🔥 Register direct callback for immediate streaming rendering
+  // FRE detection: check on page load whether FRE Overlay needs to be shown
+  // If FREDone=true, show Startup Update check (first time only)
+  // FRE and InstallUpdateOnStartupView are mutually exclusive paths:
+  //   - FRE path: FreSettingUpView (first install, includes built-in assets installation)
+  //   - NON-FRE path: InstallUpdateOnStartupView (subsequent launches, check for updates)
   useEffect(() => {
-    if (!cacheCurrentChatSessionId) {
-      return;
-    }
+    // Record initial FRE state: if FRE is needed initially, skip InstallUpdateOnStartupView after FRE completes
+    const initialNeedsFre = profileDataManager.needsFRE();
 
-    console.log(
-      '[AgentPage] 🔥 Registering direct callback for:',
-      cacheCurrentChatSessionId,
-    );
-
-    const unregister =
-      agentChatSessionCacheManager.registerDirectMessageUpdateCallback(
-        cacheCurrentChatSessionId,
-        (message: Message, chatSessionId: string) => {
-          // 🔥 Direct callback: execute immediately in the same call stack
-          const contentLength =
-            message.content[0]?.type === 'text'
-              ? message.content[0].text.length
-              : 0;
-          console.log('[AgentPage] 🔥 Direct callback triggered:', {
-            messageId: message.id,
-            chatSessionId,
-            contentLength,
-          });
-
-          // Use normal React scheduling for updates to avoid Maximum update depth exceeded from flushSync
-          setStreamingMessage({ ...message });
-        },
-      );
-
-    return () => {
-      console.log(
-        '[AgentPage] 🔥 Unregistering direct callback for:',
-        cacheCurrentChatSessionId,
-      );
-      unregister();
-      setStreamingMessage(null);
-    };
-  }, [cacheCurrentChatSessionId]);
-
-  const { agent: currentAgent } = useAgentConfig();
-  const currentChat = currentChatId
-    ? profileDataManager.getCurrentChat()
-    : null;
-
-  // 🔥 Track whether primary agent has been auto-selected to prevent duplicate calls
-  const primaryAgentSelectedRef = React.useRef(false);
-
-  // 🔥 FRE detection: check if FRE Overlay needs to be shown on page load
-  useEffect(() => {
-    const checkFreStatus = async () => {
+    const checkFreStatus = () => {
       const needsFre = profileDataManager.needsFRE();
-      console.log('[AgentPage] 🎯 FRE check:', { needsFre });
+      logger.debug('[AgentPage] 🎯 FRE check:', { needsFre, initialNeedsFre });
       setShowFreOverlay(needsFre);
-      
-      // When FRE is done, auto-select primary agent
-      if (!needsFre) {
-        if (!primaryAgentSelectedRef.current) {
-          primaryAgentSelectedRef.current = true;
-          await selectPrimaryAgentOnStartup();
+
+      // When FREDone=true: check if Startup Update should be shown (only when needsShowInstallUpdateOnStartupView=true)
+      // Key: if transitioning to !needsFre after FRE flow (initialNeedsFre=true),
+      // skip InstallUpdateOnStartupView because FRE already installed built-in assets
+      if (!needsFre && needsShowInstallUpdateOnStartupView) {
+        if (initialNeedsFre) {
+          // FRE just completed → skip InstallUpdateOnStartupView
+          logger.debug('[AgentPage] 🎯 FRE just completed, skipping InstallUpdateOnStartupView');
+          needsShowInstallUpdateOnStartupView = false;
+        } else {
+          // Non-FRE path → show Startup Update view
+          setShowStartupUpdate(true);
         }
       }
     };
@@ -124,7 +121,7 @@ export const AgentPage: React.FC = () => {
     // Initial check
     checkFreStatus();
 
-    // Subscribe to profile data changes to re-check after data updates
+    // Subscribe to profile data changes to re-check after updates
     const unsubscribe = profileDataManager.subscribe(() => {
       checkFreStatus();
     });
@@ -134,433 +131,197 @@ export const AgentPage: React.FC = () => {
     };
   }, []);
 
-  // 🔥 When FREDone=true: auto-select primary agent and call startNewChatFor
+  // When FREDone=true: auto-select primary agent and call startNewChatFor
   const selectPrimaryAgentOnStartup = useCallback(async () => {
-    console.log('[AgentPage] 🚀 Selecting primary agent on startup (FREDone=true)...');
-    
+    logger.debug('[AgentPage] 🚀 Selecting primary agent on startup (FREDone=true)...');
+
     try {
       const profile = profileDataManager.getProfile();
       if (!profile) {
-        console.warn('[AgentPage] No profile found, skipping primary agent selection');
+        logger.warn('[AgentPage] No profile found, skipping primary agent selection');
         return;
       }
-      
-      const primaryAgentName = (profile as any).primaryAgent || 'Kobi';
-      const chats = (profile as any).chats || [];
-      console.log('[AgentPage] Primary agent name:', primaryAgentName, 'Chats count:', chats.length);
-      
+
+      const primaryAgentName = profile.primaryAgent || 'Kobi';
+      const chats = profileDataManager.getChatConfigs();
+      logger.debug('[AgentPage] Primary agent name:', primaryAgentName, 'Chats count:', chats.length);
+
       if (chats.length === 0) {
-        console.warn('[AgentPage] No chats found in profile');
+        logger.warn('[AgentPage] No chats found in profile');
         return;
       }
-      
-      // Find the chatId for the primary agent from profile.chats
-      const primaryChat = chats.find((chat: any) => chat.agent?.name === primaryAgentName);
-      
+
+      // Find the chatId corresponding to the primary agent in chats
+      const primaryChat = chats.find((chat) => chat.agent?.name === primaryAgentName);
+
       let targetChatId: string | undefined;
-      
+
       if (primaryChat?.chat_id) {
         targetChatId = primaryChat.chat_id;
-        console.log('[AgentPage] Found primary agent chatId:', targetChatId);
+        logger.debug('[AgentPage] Found primary agent chatId:', targetChatId);
       } else {
         // If primary agent not found, use the first chat
         const firstChat = chats[0];
         if (firstChat?.chat_id) {
           targetChatId = firstChat.chat_id;
-          console.log('[AgentPage] Primary agent not found, falling back to first chat:', targetChatId);
+          logger.debug('[AgentPage] Primary agent not found, falling back to first chat:', targetChatId);
         }
       }
-      
+
       if (!targetChatId) {
-        console.warn('[AgentPage] No valid chatId found for primary agent selection');
+        logger.warn('[AgentPage] No valid chatId found for primary agent selection');
         return;
       }
-      
+
       // Call startNewChatFor to start a new chat session
-      if (window.electronAPI?.agentChat?.startNewChatFor) {
-        const result = await window.electronAPI.agentChat.startNewChatFor(targetChatId);
-        if (result.success && result.chatSessionId) {
-          console.log('[AgentPage] ✅ Primary agent selected successfully:', {
-            chatId: targetChatId,
-            chatSessionId: result.chatSessionId
-          });
-        } else {
-          console.warn('[AgentPage] Failed to start new chat for primary agent:', result.error);
-        }
+      const result = await startNewChatFor(
+        targetChatId,
+        getPmAgentSayHiMessageConfig(targetChatId),
+      );
+      if (result.success && result.chatSessionId) {
+        logger.debug('[AgentPage] ✅ Primary agent selected successfully:', {
+          chatId: targetChatId,
+          chatSessionId: result.chatSessionId
+        });
+        // Navigate directly to the chat session without relying on the IPC event subscription chain
+        navigate(`/agent/chat/${targetChatId}/${result.chatSessionId}`, { replace: true });
       } else {
-        console.warn('[AgentPage] startNewChatFor API not available');
+        logger.warn('[AgentPage] Failed to start new chat for primary agent:', result.error);
       }
     } catch (error) {
-      console.error('[AgentPage] Error selecting primary agent on startup:', error);
+      logger.error('[AgentPage] Error selecting primary agent on startup:', error);
     }
-  }, []);
+  }, [navigate]);
 
-  // 🔥 FRE: Handle skip click event
+  // Startup Update complete callback
+  const handleStartupUpdateComplete = useCallback(async () => {
+    logger.debug('[AgentPage] 🎯 Startup update complete, selecting primary agent...');
+    needsShowInstallUpdateOnStartupView = false;
+    setShowStartupUpdate(false);
+
+    if (!hasAutoSelectedPrimaryAgentOnStartup) {
+      hasAutoSelectedPrimaryAgentOnStartup = true;
+      await selectPrimaryAgentOnStartup();
+    }
+  }, [selectPrimaryAgentOnStartup]);
+
+  const handleStartupUpdateSkip = useCallback(async () => {
+    logger.debug('[AgentPage] 🎯 Startup update skipped, selecting primary agent...');
+    needsShowInstallUpdateOnStartupView = false;
+    setShowStartupUpdate(false);
+
+    if (!hasAutoSelectedPrimaryAgentOnStartup) {
+      hasAutoSelectedPrimaryAgentOnStartup = true;
+      await selectPrimaryAgentOnStartup();
+    }
+  }, [selectPrimaryAgentOnStartup]);
+
+  // Normal startup path: when FREDone=true and no StartupUpdate, auto-navigate to primary agent
+  // Independent effect runs only on mount to avoid re-triggering on every profile update
+  // needsShowInstallUpdateOnStartupView=false means StartupUpdate has been handled (or skipped),
+  // meaning handleStartupUpdateComplete/Skip has already called selectPrimaryAgentOnStartup.
+  // Only needs to be called again if AgentPage remounts and module-level startup selection hasn't run yet.
+  useEffect(() => {
+    if (!needsShowInstallUpdateOnStartupView && !profileDataManager.needsFRE()) {
+      if (!hasAutoSelectedPrimaryAgentOnStartup) {
+        hasAutoSelectedPrimaryAgentOnStartup = true;
+        logger.debug('[AgentPage] 🚀 Remount startup path, selecting primary agent...');
+        void selectPrimaryAgentOnStartup();
+      }
+    }
+  }, [selectPrimaryAgentOnStartup]);
+
+  // FRE: handle skip click event
   // Flow: update freDone → ProfileDataManager receives update → FRE view auto-closes
   const handleFreSkip = useCallback(async () => {
     try {
-      console.log('[AgentPage] 🎯 FRE: Skip clicked');
+      logger.debug('[AgentPage] 🎯 FRE: Skip clicked');
 
-      // Update freDone status - ProfileCacheManager will send update notification
-      // ProfileDataManager receives notification and triggers subscribe callback
-      // FRE detection effect monitors needsFRE() changes and auto-dismisses overlay
+      // Update freDone state - ProfileCacheManager will send update notification
+      // ProfileDataManager triggers subscribe callback upon receiving notification
+      // FRE detection effect monitors needsFRE() changes and auto-dismisses the overlay
       const userAlias = profileDataManager.getCurrentUserAlias();
       if (userAlias && window.electronAPI?.profile?.updateFreDone) {
         await window.electronAPI.profile.updateFreDone(userAlias, true);
-        console.log(
+        logger.debug(
           '[AgentPage] ✅ FRE: freDone updated to true (skipped), waiting for ProfileDataManager notification...',
         );
       }
     } catch (error) {
-      console.error('[AgentPage] ❌ FRE: Error updating freDone:', error);
+      logger.error('[AgentPage] ❌ FRE: Error updating freDone:', error);
     }
   }, []);
 
-  // Approval request state
-  const [pendingApprovalRequest, setPendingApprovalRequest] = React.useState<{
-    requestId: string;
-    toolName: string;
-    path: string;
-  } | null>(null);
-
-  // Switch ChatSession
+  // Initialize an empty session when a chat is selected without a session.
+  // Important: AgentPage must NOT switch an existing session here.
+  // ChatView already owns route -> backend session switching.
+  // If both AgentPage and ChatView call switchToChatSession() for the same route change,
+  // the renderer can receive two cache-refresh snapshots for the same session.
+  // During active streaming, that duplicate refresh may replay an older backend snapshot and
+  // temporarily overwrite newer frontend cache content, which is exactly what caused streamed
+  // text to appear "lost" after switching away and back.
+  // Therefore the contract is:
+  // - ChatView owns switching an existing session selected by route.
+  // - AgentPage only bootstraps a brand-new empty session when no sessionId exists yet.
   const syncWithAgentChatManager = useCallback(async () => {
     if (!currentChatId) return;
 
-    console.log('[AgentPage] 📊 Sync check:', {
+    logger.debug('[AgentPage] 📊 Sync check:', {
       currentChatId,
       currentChatSessionId,
-      cacheCurrentChatSessionId,
     });
 
-    // If no chatSessionId, need to initialize
-    if (!currentChatSessionId) {
-      console.log(
-        '[AgentPage] 🚀 No chatSessionId, calling startNewChatFor to initialize',
-      );
-
-      if (window.electronAPI?.agentChat?.startNewChatFor) {
-        const result = await window.electronAPI.agentChat.startNewChatFor(
-          currentChatId,
-        );
-
-        if (result.success && result.chatSessionId) {
-          console.log(
-            '[AgentPage] 📝 Auto-initialized chatSessionId:',
-            result.chatSessionId,
-          );
-          // ✅ Backend auto-syncs via IPC events, Cache Manager updates automatically
-        } else {
-          console.error(
-            '[AgentPage] ❌ Failed to auto-initialize chatSessionId',
-          );
-          return;
-        }
-      } else {
-        console.warn('[AgentPage] ⚠️ startNewChatFor not available');
-        return;
-      }
-    } else {
-      // Switch to specified ChatSession
-      console.log(
-        '[AgentPage] 🔄 Switching to ChatSession:',
-        currentChatSessionId,
-      );
-      await agentChatIpc.switchToChatSession(
-        currentChatId,
-        currentChatSessionId,
-      );
-      // ✅ Cache Manager auto-updates via IPC events
+    if (currentChatSessionId) {
+      return;
     }
-  }, [currentChatId, currentChatSessionId, cacheCurrentChatSessionId]);
+
+    logger.debug(
+      '[AgentPage] 🚀 No chatSessionId, calling startNewChatFor to initialize',
+    );
+
+    const result = await startNewChatFor(
+      currentChatId,
+      getPmAgentSayHiMessageConfig(currentChatId),
+    );
+
+    if (result.success && result.chatSessionId) {
+      logger.debug(
+        '[AgentPage] 📝 Auto-initialized chatSessionId:',
+        result.chatSessionId,
+      );
+    } else {
+      logger.error(
+        '[AgentPage] ❌ Failed to auto-initialize chatSessionId',
+      );
+    }
+    return;
+  }, [currentChatId, currentChatSessionId]);
 
   // Listen for chat and session changes
   useEffect(() => {
     syncWithAgentChatManager();
   }, [currentChatId, currentChatSessionId, syncWithAgentChatManager]);
 
-  // Listen for approval requests
-  useEffect(() => {
-    const handleApprovalRequest = (request: {
-      requestId: string;
-      toolName: string;
-      path: string;
-    }) => {
-      setPendingApprovalRequest(request);
-    };
-
-    agentChatIpc.addApprovalRequestListener(handleApprovalRequest);
-
-    return () => {
-      agentChatIpc.removeApprovalRequestListener(handleApprovalRequest);
-    };
-  }, []);
-
-  // Handle user approval decision
-  const handleApprovalResponse = useCallback(
-    async (approved: boolean) => {
-      if (!pendingApprovalRequest) return;
-
-      try {
-        await agentChatIpc.sendApprovalResponse(
-          pendingApprovalRequest.requestId,
-          approved ? 'approved' : 'rejected',
-        );
-
-        setPendingApprovalRequest(null);
-
-        showToast(
-          approved
-            ? `Access to ${pendingApprovalRequest.path} approved`
-            : `Access to ${pendingApprovalRequest.path} rejected`,
-          approved ? 'success' : 'info',
-        );
-      } catch (error) {
-        showToast('Failed to send approval response', 'error');
-      }
-    },
-    [pendingApprovalRequest, showToast],
-  );
-
-  // New Chat handler
-  const handleNewChat = useCallback(async () => {
-    if (!currentChatId) {
-      console.error('[AgentPage] No currentChatId available for new chat');
-      return;
-    }
-
-    console.log('[AgentPage] 🚀 Starting new chat for chatId:', currentChatId);
-
-    try {
-      if (window.electronAPI?.agentChat?.startNewChatFor) {
-        const result = await window.electronAPI.agentChat.startNewChatFor(
-          currentChatId,
-        );
-
-        if (result.success && result.chatSessionId) {
-          console.log(
-            '[AgentPage] 📝 New chat session created:',
-            result.chatSessionId,
-          );
-          // ✅ Cache Manager auto-updates via IPC events
-        } else {
-          console.error('[AgentPage] ❌ Failed to create new chat session');
-        }
-      }
-
-      console.log('[AgentPage] ✅ New chat started');
-    } catch (error) {
-      console.error('[AgentPage] Error starting new chat:', error);
-    }
-  }, [currentChatId]);
-
-  // Listen for agent:startNewChat event
-  useEffect(() => {
-    const handleStartNewChat = async (event: CustomEvent) => {
-      const { chatId } = event.detail;
-
-      console.log(
-        '[AgentPage] 🚀 Received startNewChat event for chatId:',
-        chatId,
-      );
-
-      if (chatId !== currentChatId) {
-        console.error(
-          '[AgentPage] ❌ ChatId mismatch - use NavigationSection to switch agents',
-        );
-        return;
-      }
-
-      await handleNewChat();
-    };
-
-    window.addEventListener(
-      'agent:startNewChat',
-      handleStartNewChat as unknown as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener(
-        'agent:startNewChat',
-        handleStartNewChat as unknown as EventListener,
-      );
-    };
-  }, [currentChatId, handleNewChat]);
-
   if (!authData) {
     return null;
   }
 
-  // 🔥 Refactor: Directly use flat message array returned by useMessages
-  const displayMessages = React.useMemo(() => {
-    // If there's a streaming message, merge it into the list
-    if (streamingMessage && streamingMessageId) {
-      const existingIndex = messages.findIndex(
-        (msg) => msg.id === streamingMessage.id,
-      );
-
-      if (existingIndex !== -1) {
-        // Update existing message
-        return [
-          ...messages.slice(0, existingIndex),
-          streamingMessage,
-          ...messages.slice(existingIndex + 1),
-        ];
-      } else {
-        // Add new message
-        return [...messages, streamingMessage];
-      }
-    }
-
-    return messages;
-  }, [messages, streamingMessage, streamingMessageId]);
-
-  // Development debugging
-  useEffect(() => {
-    console.log('[AgentPage] 📊 Cache Manager Data:', {
-      messagesCount: displayMessages.length,
-      currentChatSessionId: cacheCurrentChatSessionId,
-      chatStatus,
-      streamingMessageId,
-      streamingMessageIdType: typeof streamingMessageId,
-      isStreaming:
-        streamingMessageId !== null && streamingMessageId !== undefined,
-      lastMessageId:
-        displayMessages.length > 0
-          ? displayMessages[displayMessages.length - 1].id
-          : 'none',
-    });
-  }, [
-    displayMessages.length,
-    cacheCurrentChatSessionId,
-    chatStatus,
-    streamingMessageId,
-  ]);
-
-  const sendMessage = async (message: Message) => {
-    try {
-      console.log('[AgentPage] 📤 Sending message...');
-
-      const userMsg: Message = {
-        ...message,
-        id: message.id || Date.now().toString(),
-        streamingComplete: true,
-      };
-
-      // 🔥 Refactor: Use new addUserMessage method (replaces addUserMessageAndCreateTurn)
-      if (cacheCurrentChatSessionId) {
-        agentChatSessionCacheManager.addUserMessage(
-          cacheCurrentChatSessionId,
-          userMsg,
-        );
-        console.log('[AgentPage] ✅ User message added to cache');
-      }
-
-      // Send to backend, Cache Manager will automatically handle subsequent assistant messages
-      await agentChatIpc.streamMessage(userMsg, {
-        onAssistantMessage: (msg: any) => {
-          console.log('[AgentPage] 📨 Assistant message:', msg.id);
-        },
-        onToolUse: (toolName: string) => {
-          console.log('[AgentPage] 🔧 Tool used:', toolName);
-        },
-        onToolResult: (toolMessage: any) => {
-          console.log('[AgentPage] 📦 Tool result received:', toolMessage.id);
-        },
-      });
-
-      console.log('[AgentPage] ✅ Message sent successfully');
-    } catch (error) {
-      console.error('[AgentPage] ❌ Error sending message:', error);
-      
-      // Extract error message for display
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // 🔥 Capture current chatSessionId for setting error message and retry
-      const failedChatSessionId = cacheCurrentChatSessionId;
-      
-      // 🔥 Set error message to ChatSessionCache, rendered by ErrorBar
-      if (failedChatSessionId) {
-        agentChatSessionCacheManager.setErrorMessage(failedChatSessionId, errorMessage);
-      } else {
-        console.error('[AgentPage] ❌ No chat session ID to set error message');
-      }
-    }
-  };
-
-  // Cancel chat
-  const handleCancelChat = useCallback(async () => {
-    try {
-      console.log('[AgentPage] 🛑 Cancelling chat...');
-
-      if (!currentChatId) {
-        console.warn('[AgentPage] No current chat ID to cancel');
-        showToast('No active chat to cancel', 'warning');
-        return;
-      }
-
-      await agentChatIpc.cancelChat(currentChatId);
-
-      console.log('[AgentPage] ✅ Chat cancelled successfully');
-    } catch (error) {
-      console.error('[AgentPage] ❌ Error cancelling chat:', error);
-    }
-  }, [showToast, currentChatId]);
-
-  const saveConfig = async (newConfig: ChatConfig) => {
-    // Deprecated
-  };
-
   return (
     <>
       {/* FRE Overlay */}
-      {showFreOverlay && (
-        <FreOverlay
-          onSkip={handleFreSkip}
+      {showFreOverlay && <FreOverlay onSkip={handleFreSkip} />}
+
+      {/* Startup Update Overlay - shown after FRE is done */}
+      {!showFreOverlay && showStartupUpdate && (
+        <InstallUpdateOnStartupView
+          onComplete={handleStartupUpdateComplete}
+          onSkip={handleStartupUpdateSkip}
+          isWindows={isWindows}
         />
       )}
 
-      <AppLayout
-        authData={authData}
-        onLogout={async () => {
-          try {
-            await signOut();
-          } catch (error) {
-            console.error('[AgentPage] Error signing out:', error);
-          }
-        }}
-        messages={displayMessages}
-        allMessages={displayMessages}
-        streamingMessageId={streamingMessageId}
-        onSendMessage={sendMessage}
-        onCancelChat={handleCancelChat}
-        onApprovalResponse={handleApprovalResponse}
-        pendingApprovalRequest={pendingApprovalRequest}
-        config={{
-          apiKey: '',
-          endpoint: '',
-          deploymentName: '',
-          apiVersion: '2023-05-15',
-        }}
-        onSaveConfig={saveConfig}
-        onNewAgent={() => {
-          window.dispatchEvent(new CustomEvent('agent:newAgent'));
-        }}
-        onEditAgent={(chatId: string) => {
-          window.dispatchEvent(
-            new CustomEvent('agent:editAgent', {
-              detail: { chatId },
-            }),
-          );
-        }}
-        onDeleteAgent={(chatId: string) => {
-          window.dispatchEvent(
-            new CustomEvent('agent:deleteAgent', {
-              detail: { chatId },
-            }),
-          );
-        }}
-      />
+      <AppLayout />
+      {process.env.NODE_ENV === 'development' && <DevMonitor />}
     </>
   );
 };

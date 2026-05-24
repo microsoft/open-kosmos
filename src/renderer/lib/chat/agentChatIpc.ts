@@ -1,67 +1,55 @@
 // src/renderer/lib/chat/agentChatIpc.ts
-// AgentChat IPC Wrapper - Calls main process AgentChatManager via IPC
+// AgentChat IPC wrapper - calls AgentChatManager in the main process via IPC
 
-import { Message } from '../../types/chatTypes';
-import { StreamingChunk } from '../../types/streamingTypes';
-
-/**
- * Approval request interface
- */
-export interface ApprovalRequest {
-  type: 'tool_approval_request';
-  requestId: string;
-  toolName: string;
-  path: string;
-  ask_for_approval: string;
-  user_response_candidates: string[];
-}
+import { Message, UserMessage } from '@shared/types/chatTypes';
+import { StreamingChunk } from '@shared/types/streamingTypes';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[AgentChatIpc]');
 
 /**
- * AgentChatIpc - IPC wrapper for main process AgentChatManager
- * Provides the same interface as the renderer process agentChatManager, but actually calls the main process via IPC
+ * AgentChatIpc - IPC wrapper for the main process AgentChatManager
+ * Provides the same interface as the renderer-side agentChatManager but calls the main process via IPC
  */
 class AgentChatIpc {
   private streamingMessageListeners: ((message: any) => void)[] = [];
   private toolUseListeners: ((toolName: string) => void)[] = [];
   private toolResultListeners: ((result: any) => void)[] = [];
   private contextChangeListeners: ((stats: any) => void)[] = [];
-  private approvalRequestListeners: ((request: ApprovalRequest) => void)[] = [];
-  
+
   private streamingCleanup: (() => void) | null = null;
   private toolUseCleanup: (() => void) | null = null;
   private toolResultCleanup: (() => void) | null = null;
   private toolMessageAddedCleanup: (() => void) | null = null;
   private contextChangeCleanup: (() => void) | null = null;
-  private approvalRequestCleanup: (() => void) | null = null;
   private streamingChunkCleanup: (() => void) | null = null;
-  
-  // 🔥 Cache the last received context stats, for listeners registered later
+
+  // 🔥 Cache the last received context stats for late-registered listeners
   private lastContextStats: any | null = null;
-  
+
   constructor() {
     this.setupEventListeners();
   }
-  
+
   private setupEventListeners(): void {
     // 🔥 Set up unified streaming chunk listener
     // All streaming chunks are automatically forwarded to AgentChatSessionCacheManager (via IPC listener)
-    // Only cleanup logic is kept here, actual processing is in AgentChatSessionCacheManager
+    // Only cleanup logic is kept here; actual processing happens in AgentChatSessionCacheManager
     this.streamingChunkCleanup = window.electronAPI.agentChat.onStreamingChunk((chunk: StreamingChunk) => {
-      // chunk is automatically processed by AgentChatSessionCacheManager's IPC listener
-      // Nothing needs to be done here, just keep the connection alive
+      // chunk is automatically handled by AgentChatSessionCacheManager's IPC listener
+      // No action needed here; just keep the connection alive
     });
-    
-    // 🔥 Keep old streamingMessage listener for backward compatibility (if backend still sends them)
+
+    // 🔥 Retain old streamingMessage listener for backward compatibility (in case backend still sends it)
     this.streamingCleanup = window.electronAPI.agentChat.onStreamingMessage((message: any) => {
       this.streamingMessageListeners.forEach(listener => {
         try {
           listener(message);
         } catch (error) {
-          console.error('[AgentChatIpc] Error in streaming message listener:', error);
+          logger.error('[AgentChatIpc] Error in streaming message listener:', error);
         }
       });
     });
-    
+
     // Set up tool use listener
     this.toolUseCleanup = window.electronAPI.agentChat.onToolUse((toolName: string) => {
       this.toolUseListeners.forEach(listener => {
@@ -71,7 +59,7 @@ class AgentChatIpc {
         }
       });
     });
-    
+
     // Set up tool result listener
     this.toolResultCleanup = window.electronAPI.agentChat.onToolResult((result: any) => {
       this.toolResultListeners.forEach(listener => {
@@ -81,84 +69,44 @@ class AgentChatIpc {
         }
       });
     });
-    
-    // 🔥 New: Listen for toolMessageAdded event from main process and forward as window custom event
+
+    // 🔥 Added: listen for toolMessageAdded events from the main process and forward as window custom events
     this.toolMessageAddedCleanup = window.electronAPI.agentChat.onToolMessageAdded((data: any) => {
-      
-      // Forward as window custom event for AgentPage.tsx to listen to
+
+      // Forward as a window custom event for AgentPage.tsx to listen on
       const event = new CustomEvent('agentChat:toolMessageAdded', {
         detail: data
       });
       window.dispatchEvent(event);
-      
+
     });
-    
-    // 🔄 Listen for contextChange event from main process and forward
+
+    // 🔄 Listen for contextChange events from the main process and forward them
     this.contextChangeCleanup = window.electronAPI.agentChat.onContextChange((data: any) => {
-      // 🔥 Remove filter: all context change events will be forwarded to Cache Manager
-      console.log('[AgentChatIpc] 📊 Context change event received', {
+      // 🔥 Remove filter: all context change events are forwarded to Cache Manager
+      logger.debug('[AgentChatIpc] 📊 Context change event received', {
         chatSessionId: data.chatSessionId,
         tokenCount: data.stats?.tokenCount
       });
-      
-      // 🔥 Cache the latest stats for listeners registered later
+
+      // 🔥 Cache the latest stats for subsequent listeners
       this.lastContextStats = data.stats;
-      
-      // Notify all local listeners (passing stats object)
+
+      // Notify all local listeners (passing the stats object)
       if (this.contextChangeListeners.length > 0) {
         this.contextChangeListeners.forEach(listener => {
           try {
             listener(data.stats);
           } catch (error) {
-            console.error('[AgentChatIpc] Error in context change listener:', error);
+            logger.error('[AgentChatIpc] Error in context change listener:', error);
           }
         });
       } else {
-        console.log('[AgentChatIpc] No context change listeners registered');
+        logger.debug('[AgentChatIpc] No context change listeners registered');
       }
     });
-    
-    // 🔥 New: Listen for approval request events
-    this.approvalRequestCleanup = window.electronAPI.agentChat.onApprovalRequest((request: ApprovalRequest) => {
-      
-      // Notify all listeners
-      this.approvalRequestListeners.forEach(listener => {
-        try {
-          listener(request);
-        } catch (error) {
-        }
-      });
-    });
   }
-  
-  /**
-   * 🔥 New: Add approval request listener
-   */
-  addApprovalRequestListener(listener: (request: ApprovalRequest) => void): void {
-    this.approvalRequestListeners.push(listener);
-  }
-  
-  /**
-   * 🔥 New: Remove approval request listener
-   */
-  removeApprovalRequestListener(listener: (request: ApprovalRequest) => void): void {
-    const index = this.approvalRequestListeners.indexOf(listener);
-    if (index > -1) {
-      this.approvalRequestListeners.splice(index, 1);
-    }
-  }
-  
-  /**
-   * 🔥 New: Send approval response to main process
-   */
-  async sendApprovalResponse(requestId: string, userResponse: 'approved' | 'rejected'): Promise<void> {
-    const approved = userResponse === 'approved';
-    const result = await window.electronAPI.agentChat.sendApprovalResponse({ requestId, approved });
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to send approval response');
-    }
-  }
-  
+
   /**
    * Initialize AgentChatManager
    */
@@ -168,7 +116,7 @@ class AgentChatIpc {
       throw new Error(result.error || 'Failed to initialize AgentChatManager');
     }
   }
-  
+
   /**
    * 🔥 Switch to the specified ChatSession
    */
@@ -176,28 +124,28 @@ class AgentChatIpc {
     if (!chatId || !chatSessionId) {
       return null;
     }
-    
-    console.log('[AgentChatIpc] 🔄 Switching to chatSession:', {
+
+    logger.debug('[AgentChatIpc] 🔄 Switching to chatSession:', {
       chatId,
       chatSessionId
     });
-    
+
     const result = await window.electronAPI.agentChat.switchToChatSession(chatId, chatSessionId);
     if (!result.success) {
       throw new Error(result.error || 'Failed to switch to chat session');
     }
     return result.data;
   }
-  
+
   /**
    * Get current AgentChat instance info
    */
   getCurrentInstance(): any | null {
-    // Note: This is a synchronous method, but IPC calls are asynchronous
-    // We need to use the async version in components
+    // Note: this is a synchronous method, but IPC calls are asynchronous
+    // Use the async version in components
     throw new Error('Use getCurrentInstanceAsync() instead');
   }
-  
+
   /**
    * Get current AgentChat instance info (async version)
    */
@@ -208,15 +156,15 @@ class AgentChatIpc {
     }
     return result.data;
   }
-  
+
   /**
    * Get current Chat ID
    */
   getCurrentChatId(): string | null {
-    // Synchronous method, need to use async version
+    // Synchronous method; use the async version
     throw new Error('Use getCurrentChatIdAsync() instead');
   }
-  
+
   /**
    * Get current Chat ID (async version)
    */
@@ -227,15 +175,15 @@ class AgentChatIpc {
     }
     return result.data ?? null;
   }
-  
+
   /**
    * Get chat history
    */
   getChatHistory(): Message[] {
-    // Synchronous method, need to use async version
+    // Synchronous method; use the async version
     throw new Error('Use getChatHistoryAsync() instead');
   }
-  
+
   /**
    * Get chat history (async version)
    */
@@ -246,10 +194,10 @@ class AgentChatIpc {
     }
     return result.data || [];
   }
-  
+
   /**
-   * 🔥 New: Get messages for display (Custom System Prompt + chat history)
-   * This is the recommended method, explicitly indicating it returns messages for UI display
+   * 🔥 Added: get messages for display (Custom System Prompt + chat history)
+   * This is the recommended method; it explicitly returns messages intended for UI display
    */
   async getDisplayMessagesAsync(): Promise<Message[]> {
     const result = await window.electronAPI.agentChat.getDisplayMessages();
@@ -258,17 +206,18 @@ class AgentChatIpc {
     }
     return result.data || [];
   }
-  
+
   /**
    * Process conversation
    */
   async streamMessage(
-    message: Message,
+    message: UserMessage,
     callbacks?: {
       onAssistantMessage?: (message: Message) => void;
       onToolUse?: (toolName: string) => void;
       onToolResult?: (result: Message) => void;
-    }
+    },
+    targetChatSessionId?: string,
   ): Promise<Message[]> {
     // Set up callback listeners
     if (callbacks?.onAssistantMessage) {
@@ -280,9 +229,9 @@ class AgentChatIpc {
     if (callbacks?.onToolResult) {
       this.toolResultListeners.push(callbacks.onToolResult);
     }
-    
+
     try {
-      const result = await window.electronAPI.agentChat.streamMessage(message);
+      const result = await window.electronAPI.agentChat.streamMessage(message, targetChatSessionId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to process conversation');
       }
@@ -309,84 +258,123 @@ class AgentChatIpc {
       }
     }
   }
-  
+
   /**
    * 🔥 Retry the last failed conversation
-   * Does not add new messages, uses existing context history to re-call LLM API
-   * @param chatSessionId The chat session ID to retry
+   * Does not add a new message; re-calls the LLM API using the existing context history
+   * @param chatSessionId the chat session ID to retry
    */
   async retryChat(chatSessionId: string): Promise<Message[]> {
-    console.log('[AgentChatIpc] 🔄 Retrying chat...', { chatSessionId });
-    
+    logger.debug('[AgentChatIpc] 🔄 Retrying chat...', { chatSessionId });
+
     try {
       const result = await window.electronAPI.agentChat.retryChat(chatSessionId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to retry chat');
       }
-      console.log('[AgentChatIpc] ✅ Retry chat completed');
+      logger.debug('[AgentChatIpc] ✅ Retry chat completed');
       return result.data || [];
     } catch (error) {
-      console.error('[AgentChatIpc] ❌ Retry chat failed:', error);
+      logger.error('[AgentChatIpc] ❌ Retry chat failed:', error);
       throw error;
     }
   }
-  
+
+  async editUserMessage(
+    chatSessionId: string,
+    messageId: string,
+    updatedMessage: Message,
+  ): Promise<Message[]> {
+    logger.debug('[AgentChatIpc] ✏️ Editing user message...', {
+      chatSessionId,
+      messageId,
+    });
+
+    const result = await window.electronAPI.agentChat.editUserMessage(
+      chatSessionId,
+      messageId,
+      updatedMessage,
+    );
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to edit user message');
+    }
+
+    return result.data || [];
+  }
+
+  async canEditUserMessage(
+    chatSessionId: string,
+    messageId: string,
+  ): Promise<{ canEdit: boolean; error?: string }> {
+    const result = await window.electronAPI.agentChat.canEditUserMessage(
+      chatSessionId,
+      messageId,
+    );
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to validate user message editability');
+    }
+
+    return result.data || { canEdit: false, error: 'Failed to validate user message editability' };
+  }
+
   /**
-   * 🔥 New: Cancel the current ongoing ChatSession conversation
-   * @param chatSessionId The chatSession ID to cancel, if not provided cancels the current chatSession
+   * 🔥 Added: cancel the currently active ChatSession conversation
+   * @param chatSessionId the chatSession ID to cancel; cancels the current session if not provided
    */
   async cancelChatSession(chatSessionId?: string): Promise<void> {
     try {
       if (!chatSessionId) {
-        console.warn('[AgentChatIpc] No chat session ID to cancel');
+        logger.warn('[AgentChatIpc] No chat session ID to cancel');
         return;
       }
-      
-      console.log('[AgentChatIpc] 🛑 Cancelling chat session:', chatSessionId);
-      
-      // Call backend IPC cancel method
+
+      logger.debug('[AgentChatIpc] 🛑 Cancelling chat session:', chatSessionId);
+
+      // Call the backend IPC cancel method
       const result = await window.electronAPI.agentChat.cancelChatSession(chatSessionId);
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to cancel chat session');
       }
-      
-      console.log('[AgentChatIpc] ✅ Chat session cancelled successfully');
+
+      logger.debug('[AgentChatIpc] ✅ Chat session cancelled successfully');
     } catch (error) {
-      console.error('[AgentChatIpc] ❌ Error cancelling chat session:', error);
+      logger.error('[AgentChatIpc] ❌ Error cancelling chat session:', error);
       throw error;
     }
   }
-  
+
   /**
-   * 🔥 Backward compatible: Cancel the current ongoing conversation
-   * @param chatId The chat ID to cancel, if not provided cancels the current chat
+   * 🔥 Backward compatible: cancel the currently active conversation
+   * @param chatId the chat ID to cancel; cancels the current chat if not provided
    */
   async cancelChat(chatId?: string): Promise<void> {
     try {
       const targetChatId = chatId || await this.getCurrentChatIdAsync();
-      
+
       if (!targetChatId) {
-        console.warn('[AgentChatIpc] No chat ID to cancel');
+        logger.warn('[AgentChatIpc] No chat ID to cancel');
         return;
       }
-      
-      console.log('[AgentChatIpc] 🛑 Cancelling chat:', targetChatId);
-      
-      // Call backend IPC cancel method
+
+      logger.debug('[AgentChatIpc] 🛑 Cancelling chat:', targetChatId);
+
+      // Call the backend IPC cancel method
       const result = await window.electronAPI.agentChat.cancelChat(targetChatId);
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to cancel chat');
       }
-      
-      console.log('[AgentChatIpc] ✅ Chat cancelled successfully');
+
+      logger.debug('[AgentChatIpc] ✅ Chat cancelled successfully');
     } catch (error) {
-      console.error('[AgentChatIpc] ❌ Error cancelling chat:', error);
+      logger.error('[AgentChatIpc] ❌ Error cancelling chat:', error);
       throw error;
     }
   }
-  
+
   /**
    * Sync chat history
    */
@@ -395,7 +383,7 @@ class AgentChatIpc {
     if (!result.success) {
     }
   }
-  
+
   /**
    * Refresh current instance
    */
@@ -406,14 +394,14 @@ class AgentChatIpc {
     }
     return result.data;
   }
-  
+
   /**
-   * 🔄 New: Add context change listener
+   * 🔄 Added: add a context change listener
    */
   addContextChangeListener(listener: (stats: any) => void): void {
     this.contextChangeListeners.push(listener);
-    
-    // 🔥 If there are cached stats, immediately notify new listener
+
+    // 🔥 If there are cached stats, notify the new listener immediately
     if (this.lastContextStats) {
       try {
         listener(this.lastContextStats);
@@ -422,9 +410,9 @@ class AgentChatIpc {
     } else {
     }
   }
-  
+
   /**
-   * 🔄 New: Remove context change listener
+   * 🔄 Added: remove a context change listener
    */
   removeContextChangeListener(listener: (stats: any) => void): void {
     const index = this.contextChangeListeners.indexOf(listener);
@@ -432,24 +420,24 @@ class AgentChatIpc {
       this.contextChangeListeners.splice(index, 1);
     }
   }
-  
+
   /**
-   * 🔥 New: Get current Context Token usage (frontend actively pulls)
+   * 🔥 Added: get current Context Token usage (renderer-initiated pull)
    */
   async getCurrentContextTokenUsage(): Promise<{tokenCount: number; totalMessages: number; contextMessages: number; compressionRatio: number} | null> {
     try {
       const result = await window.electronAPI.agentChat.getCurrentContextTokenUsage();
       if (!result.success || !result.data) {
-        console.warn('[AgentChatIpc] Failed to get context token usage:', result.error);
+        logger.warn('[AgentChatIpc] Failed to get context token usage:', result.error);
         return null;
       }
       return result.data;
     } catch (error) {
-      console.error('[AgentChatIpc] Error getting context token usage:', error);
+      logger.error('[AgentChatIpc] Error getting context token usage:', error);
       return null;
     }
   }
-  
+
   /**
    * Destroy AgentChatIpc
    */
@@ -479,17 +467,11 @@ class AgentChatIpc {
       this.contextChangeCleanup();
       this.contextChangeCleanup = null;
     }
-    if (this.approvalRequestCleanup) {
-      this.approvalRequestCleanup();
-      this.approvalRequestCleanup = null;
-    }
-    
     // Clean up listener arrays
     this.streamingMessageListeners = [];
     this.toolUseListeners = [];
     this.toolResultListeners = [];
     this.contextChangeListeners = [];
-    this.approvalRequestListeners = [];
   }
 }
 

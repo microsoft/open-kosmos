@@ -2,40 +2,45 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useChats } from '../../userData/userDataProvider'
 import { useToast } from '../../ui/ToastProvider'
-import { getDefaultModel, getAllKosmosUsedModels } from '../../../lib/models/ghcModels'
+import { getDefaultModel, getAllOpenKosmosUsedModels } from '../../../lib/models/ghcModels'
 import { profileDataManager } from '../../../lib/userData/profileDataManager'
 import EmojiPicker from '../agent-editor/EmojiPicker'
+import { BUILTIN_SKILL_NAMES } from '../../../../shared/constants/builtinSkills'
 import '../../../styles/AgentChatCreation.css'
+import { createLogger } from '../../../lib/utilities/logger';
+import { useFeatureFlag } from '../../../lib/featureFlags';
+import { useScrollSelectedIntoView } from '../../../lib/hooks/useScrollSelectedIntoView'
+const logger = createLogger('[CreateCustomAgentViewContent]');
 
 interface CreateCustomAgentViewContentProps {
   // Add needed props here
 }
+
+type AgentSource = 'ON-DEVICE' | 'EXTERNAL';
 
 // Simplified Agent data type
 interface AgentFormData {
   name: string
   emoji: string
   model: string
+  source: AgentSource
 }
 
-/**
- * CreateCustomAgentViewContent - Content area of Create Custom Agent page
- *
- * References AddNewMcpServerViewContent layout structure
- */
 const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> = () => {
   const navigate = useNavigate()
   const { addChat, chats } = useChats()
   const { showToast } = useToast()
-  
+  const externalAgentEnabled = useFeatureFlag('openkosmosFeatureExternalAgent');
+
   // Form data
   const [formData, setFormData] = useState<AgentFormData>({
     name: '',
     emoji: '🤖',
-    model: getDefaultModel()
+    model: getDefaultModel(),
+    source: 'ON-DEVICE'
   })
   const [isCreating, setIsCreating] = useState(false)
-  
+
   // UI state
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [availableModels, setAvailableModels] = useState<any[]>([])
@@ -44,11 +49,22 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const modelDropdownRef = React.useRef<HTMLDivElement>(null)
-  
-  // Load available models
+  const selectedModelOptionRef = useScrollSelectedIntoView<HTMLButtonElement>(
+    showModelDropdown,
+    formData.model,
+    availableModels.length,
+  )
+
+  // Load available models (passive sync mode: initial load + listen for backend push updates)
   React.useEffect(() => {
-    const models = getAllKosmosUsedModels()
-    setAvailableModels(models)
+    const loadModels = () => {
+      const models = getAllOpenKosmosUsedModels()
+      setAvailableModels(models)
+    }
+    loadModels()
+    const handleModelCacheUpdated = () => { loadModels() }
+    window.addEventListener('modelCacheUpdated', handleModelCacheUpdated)
+    return () => { window.removeEventListener('modelCacheUpdated', handleModelCacheUpdated) }
   }, [])
 
   // Handle clicking outside to close model dropdown
@@ -72,30 +88,30 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
     if (!name || !name.trim()) {
       return false
     }
-    
-    // Check if name duplicates an existing Agent
+
+    // Check if the name duplicates an existing Agent
     return !chats.some(chat => chat.agent?.name === name.trim())
   }, [chats])
 
   // Validate form data
   React.useEffect(() => {
-    const isValid = formData.name.trim() && validateAgentName(formData.name) && formData.model
+    const isValid = formData.name.trim() && validateAgentName(formData.name) && (formData.source === 'EXTERNAL' || formData.model)
     setIsFormValid(Boolean(isValid))
   }, [formData, validateAgentName])
 
   // Handle input changes
   const handleInputChange = useCallback((field: keyof AgentFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    
-    // If name field, check for duplicates and validity in real time
+
+    // For the name field, check for duplicates and validity in real time
     if (field === 'name') {
       if (value.trim() && !validateAgentName(value)) {
         setNameWarning('⚠️ This agent name already exists')
       } else {
         setNameWarning('')
       }
-      
-      // Clear validation errors for this field
+
+      // Clear the validation error for this field
       if (validationErrors.name) {
         setValidationErrors(prev => {
           const newErrors = { ...prev }
@@ -118,10 +134,10 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
     setShowEmojiPicker(false)
   }, [handleInputChange])
 
-  // Helper function to wait for ProfileDataManager cache update
+  // Helper function to wait for ProfileDataManager cache to update
   const waitForChatInCache = useCallback((chatId: string, timeout = 5000): Promise<boolean> => {
     return new Promise((resolve) => {
-      // First check if already exists in cache
+      // Check first whether the chat already exists in the cache
       const chats = profileDataManager.getChatConfigs()
       if (chats.some(c => c.chat_id === chatId)) {
         resolve(true)
@@ -129,7 +145,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
       }
 
       let timeoutId: NodeJS.Timeout
-      
+
       // Subscribe to data changes
       const unsubscribe = profileDataManager.subscribe((data) => {
         if (data.chats.some(c => c.chat_id === chatId)) {
@@ -147,23 +163,25 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
     })
   }, [])
 
-  // Create and continue configuration
+  // Create and continue to configure
   const handleCreateAndContinue = useCallback(async () => {
     if (!isFormValid || !formData.name.trim()) {
       showToast('Please enter a valid agent name', 'error')
       return
     }
-    
-    // Validate name duplication again (prevent concurrent creation)
+
+    // Re-validate the name for duplicates (guard against concurrent creation)
     if (!validateAgentName(formData.name)) {
       showToast('Agent name already exists. Please choose a different name.', 'error')
       return
     }
 
     setIsCreating(true)
-    
+
     try {
-      // Create new Chat configuration
+      const isExternal = formData.source === 'EXTERNAL';
+
+      // Create the new Chat configuration
       const result = await addChat({
         chat_type: 'single_agent',
         agent: {
@@ -171,27 +189,28 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
           emoji: formData.emoji,
           role: '',
           model: formData.model,
-          // 🆕 Added from Custom Agent: use 1.0.0
           version: '1.0.0',
-          mcp_servers: [],
+          source: formData.source,
           system_prompt: '',
-          skills: []
+          mcp_servers: isExternal ? [] : [{ name: 'builtin-tools', tools: [] }],
+          skills: isExternal ? [] : [...BUILTIN_SKILL_NAMES],
+          ...(isExternal && { authToken: crypto.randomUUID() }),
         }
       })
 
       if (result.success && result.data) {
         const chatId = result.data.chat_id
-        
+
         // Wait for ProfileDataManager to receive the new Chat configuration
-        console.log('[CreateCustomAgentViewContent] Waiting for chat to appear in cache:', chatId)
+        logger.debug('[CreateCustomAgentViewContent] Waiting for chat to appear in cache:', chatId)
         const chatAvailable = await waitForChatInCache(chatId)
-        
+
         if (chatAvailable) {
           showToast(`Agent "${formData.name}" created successfully!`, 'success')
-          // Navigate to agent/chat/{chat_id}/settings/workspace page
+          // Navigate to the agent/chat/{chat_id}/settings/workspace page
           navigate(`/agent/chat/${chatId}/settings/workspace`)
         } else {
-          console.warn('[CreateCustomAgentViewContent] Chat not found in cache after timeout, navigating anyway')
+          logger.warn('[CreateCustomAgentViewContent] Chat not found in cache after timeout, navigating anyway')
           showToast(`Agent "${formData.name}" created successfully!`, 'success')
           navigate(`/agent/chat/${chatId}/settings/workspace`)
         }
@@ -199,7 +218,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
         showToast(result.error || 'Failed to create agent', 'error')
       }
     } catch (error) {
-      console.error('[CreateCustomAgentViewContent] Failed to create agent:', error)
+      logger.error('[CreateCustomAgentViewContent] Failed to create agent:', error)
       showToast('Failed to create agent', 'error')
     } finally {
       setIsCreating(false)
@@ -245,7 +264,55 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
         )}
       </div>
 
-      {/* Agent Model section */}
+      {/* Agent Source section — only show when External Agent feature is enabled */}
+      {externalAgentEnabled && (
+      <div className="agent-model-section">
+        <label className="form-label">Agent Source</label>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            className={`model-option ${formData.source === 'ON-DEVICE' ? 'selected' : ''}`}
+            onClick={() => {
+              setFormData(prev => ({ ...prev, source: 'ON-DEVICE' }))
+            }}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: `1px solid ${formData.source === 'ON-DEVICE' ? 'var(--accent-color, #0078d4)' : 'var(--border-color, #ddd)'}`,
+              backgroundColor: formData.source === 'ON-DEVICE' ? 'var(--accent-bg, rgba(0,120,212,0.1))' : 'transparent',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ fontWeight: 500 }}>🤖 Normal Agent</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>AI agent powered by your configured model</div>
+          </button>
+          <button
+            type="button"
+            className={`model-option ${formData.source === 'EXTERNAL' ? 'selected' : ''}`}
+            onClick={() => {
+              setFormData(prev => ({ ...prev, source: 'EXTERNAL' }))
+            }}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: `1px solid ${formData.source === 'EXTERNAL' ? 'var(--accent-color, #0078d4)' : 'var(--border-color, #ddd)'}`,
+              backgroundColor: formData.source === 'EXTERNAL' ? 'var(--accent-bg, rgba(0,120,212,0.1))' : 'transparent',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ fontWeight: 500 }}>🐾 External Agent</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Connect to an external AI service</div>
+          </button>
+        </div>
+      </div>
+      )}
+
+      {/* Agent Model section (hidden for External Agent — external LLM) */}
+      {formData.source !== 'EXTERNAL' && (
       <div className="agent-model-section">
         <label className="form-label">Agent Model</label>
         <div className="model-selector" ref={modelDropdownRef}>
@@ -284,7 +351,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
               />
             </svg>
           </button>
-          
+
           {/* Model dropdown */}
           {showModelDropdown && (
             <div className="model-dropdown">
@@ -292,6 +359,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
                 {availableModels.map((model) => (
                   <button
                     key={model.id}
+                    ref={formData.model === model.id ? selectedModelOptionRef : undefined}
                     type="button"
                     className={`model-option ${formData.model === model.id ? 'selected' : ''}`}
                     onClick={() => handleModelSelect(model.id)}
@@ -316,6 +384,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
           )}
         </div>
       </div>
+      )}
 
       {/* Action buttons */}
       <div className="agent-actions">
@@ -325,7 +394,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
         >
           Cancel
         </button>
-        
+
         <button
           className="btn-primary"
           onClick={handleCreateAndContinue}

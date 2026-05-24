@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Maximize2 } from 'lucide-react';
+import MermaidFullscreenView from './MermaidFullscreenView';
 
 let mermaidIdCounter = 0;
 let mermaidInitialized = false;
-// Lazily loaded mermaid module cache
+// Lazy-loaded mermaid module cache
 let mermaidCache: typeof import('mermaid').default | null = null;
 
 const getMermaid = async (): Promise<typeof import('mermaid').default> => {
@@ -33,7 +35,9 @@ interface MermaidDiagramProps {
 const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const idRef = useRef<string>(`mermaid-${++mermaidIdCounter}`);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!definition.trim()) return;
@@ -69,6 +73,17 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
     };
   }, [definition]);
 
+  const openFullscreen = useCallback(() => {
+    // Move the SVG DOM node into the fullscreen overlay to avoid duplicating it
+    // (duplicate SVG IDs cause rendering artifacts). We hide the inline wrapper
+    // while fullscreen is open and restore it on close.
+    setIsFullscreen(true);
+  }, []);
+
+  const closeFullscreen = useCallback(() => {
+    setIsFullscreen(false);
+  }, []);
+
   if (error) {
     return (
       <div className="mermaid-diagram-wrapper mermaid-diagram-error">
@@ -87,10 +102,26 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
   }
 
   return (
-    <div
-      className="mermaid-diagram-wrapper"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <>
+      <div
+        ref={wrapperRef}
+        className="mermaid-diagram-wrapper mermaid-diagram-wrapper-interactive"
+        style={isFullscreen ? { visibility: 'hidden' } : undefined}
+      >
+        <button
+          className="mermaid-fullscreen-btn"
+          onClick={openFullscreen}
+          title="Fullscreen"
+        >
+          <Maximize2 size={8} />
+        </button>
+        <div dangerouslySetInnerHTML={{ __html: svg }} />
+      </div>
+
+      {isFullscreen && (
+        <MermaidFullscreenView svgHtml={svg} onClose={closeFullscreen} />
+      )}
+    </>
   );
 };
 

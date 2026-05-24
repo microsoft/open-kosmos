@@ -1,4 +1,4 @@
-// src/main/lib/auth/ghcAuth.ts - Main process GitHub Copilot auth manager V2.0
+// src/main/lib/auth/ghcAuth.ts - Main process GitHub Copilot authentication manager V2.0
 import { AuthData } from './types/authTypes';
 import { RefreshTokenAnalyzer } from './refreshTokenAnalyzer';
 import { RefreshTokenErrorType, HttpErrorInfo } from './types/refreshTokenTypes';
@@ -47,13 +47,13 @@ export interface DeviceFlowAuthResult {
 
 
 /**
- * Main process GitHub Copilot auth manager V2.0
+ * Main process GitHub Copilot authentication manager V2.0
  *
- * Focused on:
+ * Responsible for:
  * - Copilot Token refresh (using GitHub Token)
- * - GitHub API interaction
- * - Auth state management
- * - Device Code Flow authentication process
+ * - GitHub API interactions
+ * - Authentication state management
+ * - Device Code Flow authentication
  */
 export class GhcAuthManager {
   private static instance: GhcAuthManager;
@@ -62,32 +62,32 @@ export class GhcAuthManager {
   }
 
   /**
-   * Refresh Copilot token using GitHub token - V3.0 (directly returns raw API data)
+   * Refresh Copilot token using a GitHub token - V3.0 (returns raw API data directly)
    */
   async refreshCopilotToken(gitHubToken: string, retryCount = 0): Promise<AuthData['ghcAuth']['copilotTokens']> {
     const maxRetries = 3;
-    
+
     try {
       // Build request headers using GitHub token
       const headers = this.getCopilotTokenHeaders(gitHubToken);
-      
+
       // Send API request
       const response = await fetch(GHC_CONFIG.COPILOT_TOKEN_URL, {
         method: 'GET',
         headers
       });
-      
+
       if (!response.ok) {
-        // Use intelligent error analyzer to analyze HTTP errors
+        // Use smart error analyzer to analyze HTTP errors
         const httpError: HttpErrorInfo = {
           status: response.status,
           message: response.statusText,
           code: null
         };
-        
+
         const analysis = RefreshTokenAnalyzer.analyzeHttpError(httpError);
         const userMessage = RefreshTokenAnalyzer.getUserFriendlyMessage(analysis);
-        
+
         logger.error(`[GhcAuthManager] ❌ Copilot Token refresh HTTP error (possibly expired GitHub token)`, 'GhcAuthManager', {
           status: response.status,
           statusText: response.statusText,
@@ -96,97 +96,97 @@ export class GhcAuthManager {
           shouldClearSession: analysis.shouldClearSession,
           userMessage
         });
-        
-        // Check if we should retry
+
+        // Check whether retry should be attempted
         if (analysis.isRecoverable && !RefreshTokenAnalyzer.shouldStopRetrying(analysis, retryCount)) {
           const delay = RefreshTokenAnalyzer.calculateBackoffDelay(analysis, retryCount);
-          
-          
+
+
           // Wait then retry
           await new Promise(resolve => setTimeout(resolve, delay));
           return this.refreshCopilotToken(gitHubToken, retryCount + 1);
         }
-        
+
         // Build detailed error message
         const errorMessage = `Copilot Token refresh failed: ${response.status} ${response.statusText} (${analysis.errorType})`;
         const error = new Error(errorMessage) as any;
         error.analysis = analysis;
         error.httpStatus = response.status;
         error.shouldClearSession = analysis.shouldClearSession;
-        
+
         throw error;
       }
-      
+
       const data = await response.json();
-      
+
       if (!data.token || !data.expires_at) {
         throw new Error('Missing required fields in token refresh response');
       }
-      
-      
-      // Directly return raw API data, timestamp records API response received time
+
+
+      // Return raw API data directly; timestamp records when the API response was received
       return {
-        timestamp: data.timestamp || new Date().toISOString(), // API-returned or record the reception time
+        timestamp: data.timestamp || new Date().toISOString(), // API-returned or reception time
         api_url: data.api_url || GHC_CONFIG.COPILOT_TOKEN_URL,
         expires_at: data.expires_at,
         token: data.token
       };
-      
+
     } catch (error: any) {
-      // Handle non-HTTP errors such as network errors
+      // Handle network errors and other non-HTTP errors
       if (!error.analysis) {
         const httpError: HttpErrorInfo = {
           status: 0,
           message: error.message,
           code: error.code || null
         };
-        
+
         const analysis = RefreshTokenAnalyzer.analyzeHttpError(httpError);
         const userMessage = RefreshTokenAnalyzer.getUserFriendlyMessage(analysis);
-        
+
         logger.error(`[GhcAuthManager] ❌ Token refresh network error`, 'GhcAuthManager', {
           error: error.message,
           errorType: analysis.errorType,
           isRecoverable: analysis.isRecoverable,
           userMessage
         });
-        
-        // Check if network error should be retried
+
+        // Check whether network errors should trigger a retry
         if (analysis.isRecoverable && !RefreshTokenAnalyzer.shouldStopRetrying(analysis, retryCount)) {
           const delay = RefreshTokenAnalyzer.calculateBackoffDelay(analysis, retryCount);
-          
-          
+
+
           await new Promise(resolve => setTimeout(resolve, delay));
           return this.refreshCopilotToken(gitHubToken, retryCount + 1);
         }
-        
+
         error.analysis = analysis;
         error.shouldClearSession = analysis.shouldClearSession;
       }
-      
+
       logger.error(`[GhcAuthManager] ❌ Token refresh failed`, 'GhcAuthManager', {
         error: error.message,
         errorType: error.analysis?.errorType || 'UNKNOWN_ERROR',
         shouldClearSession: error.shouldClearSession || false
       });
-      
+
       throw error;
     }
   }
 
   /**
-   * Validate GitHub token and get Copilot token (V2.0)
-   * Validates GitHub token by attempting to get a Copilot token
+   * Validate a GitHub token and obtain a Copilot token (V2.0)
+   * Validates the GitHub token's validity by attempting to obtain a Copilot token
    */
   async validateGitHubToken(gitHubToken: string): Promise<{valid: boolean, expired: boolean, error?: string}> {
     try {
       const headers = this.getCopilotTokenHeaders(gitHubToken);
-      
+
       const response = await fetch(GHC_CONFIG.COPILOT_TOKEN_URL, {
         method: 'GET',
         headers
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         return { valid: !!data.token, expired: false };
@@ -197,9 +197,9 @@ export class GhcAuthManager {
       } else {
         return { valid: false, expired: false, error: `HTTP ${response.status}: ${response.statusText}` };
       }
-      
+
     } catch (error: any) {
-      logger.error('[GhcAuthManager] GitHub Token validation failed:', error.message);
+      logger.error(`[GhcAuthManager] GitHub Token validation failed: ${error.message}`);
       return {
         valid: false,
         expired: false,
@@ -229,23 +229,23 @@ export class GhcAuthManager {
    */
   async clearSession(userAlias: string): Promise<{success: boolean, error?: string}> {
     try {
-      
+
       // Additional cleanup logic can be added here
-      // For example: clearing cache, notifying other components, etc.
-      
+      // e.g., clearing cache, notifying other components, etc.
+
       return { success: true };
-      
+
     } catch (error: any) {
-      logger.error('[GhcAuthManager] ❌ Failed to clean up session data:', error.message);
-      return { 
-        success: false, 
-        error: error.message || 'Unknown error during session cleanup' 
+      logger.error(`[GhcAuthManager] ❌ Failed to clear session data: ${error.message}`);
+      return {
+        success: false,
+        error: error.message || 'Unknown error during session cleanup'
       };
     }
   }
 
   /**
-   * Get user info
+   * Get user information
    */
   async getUserInfo(accessToken: string): Promise<AuthData['ghcAuth']['user'] | null> {
     try {
@@ -256,33 +256,33 @@ export class GhcAuthManager {
           'User-Agent': LOCAL_CONFIG.USER_AGENT
         }
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Failed to get user info: ${response.status}`);
+        throw new Error(`Failed to get user information: ${response.status}`);
       }
-      
+
       const userData = await response.json();
-      
+
       return {
         id: userData.id?.toString() || '',
         login: userData.login || '',
         name: userData.name || userData.login || '',
         email: userData.email || '',
         avatarUrl: userData.avatar_url || '',
-        copilotPlan: 'individual' // Default to individual plan; needs additional API call for accurate info
+        copilotPlan: 'individual' // Default to individual plan; additional API call needed for accurate information
       };
-      
+
     } catch (error) {
-      logger.error('[GhcAuthManager] Failed to get user info', 'GhcAuthManager', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('[GhcAuthManager] Failed to get user information', 'GhcAuthManager', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
 
   /**
-   * Start OAuth Device Flow
+   * Start the OAuth Device Flow
    */
   async startDeviceFlow(): Promise<DeviceCodeResponse> {
-    
+
     try {
       const response = await fetch(GHC_CONFIG.DEVICE_CODE_URL, {
         method: 'POST',
@@ -302,7 +302,7 @@ export class GhcAuthManager {
       }
 
       const data = await response.json();
-      
+
       if (!data.device_code || !data.user_code || !data.verification_uri) {
         throw new Error('Invalid device code response: missing required fields');
       }
@@ -323,10 +323,10 @@ export class GhcAuthManager {
   }
 
   /**
-   * Poll for access token
+   * Poll for an access token
    */
   async pollForAccessToken(deviceCode: string, interval: number = 5): Promise<DeviceFlowAuthResult> {
-    
+
     try {
       const response = await fetch(GHC_CONFIG.ACCESS_TOKEN_URL, {
         method: 'POST',
@@ -343,24 +343,24 @@ export class GhcAuthManager {
       });
 
       const data = await response.json();
-      
-      // Build complete GitHub Token data (add timestamp and api_url when receiving API response)
+
+      // Build complete GitHub Token data (timestamp and api_url are appended immediately upon receiving the API response)
       const githubTokenData = {
         timestamp: new Date().toISOString(), // Record reception time
-        api_url: GHC_CONFIG.ACCESS_TOKEN_URL, // Record API address
+        api_url: GHC_CONFIG.ACCESS_TOKEN_URL, // Record API URL
         access_token: data.access_token,
         token_type: data.token_type || 'bearer',
         scope: data.scope || ''
       };
-      
-      // Detailed log recording of poll response
+
+      // Log detailed polling response
 
       if (data.error) {
         if (data.error === 'authorization_pending') {
-          // User has not yet authorized, continue waiting
+          // User has not yet authorized; continue waiting
           return { success: false, error: 'authorization_pending' };
         } else if (data.error === 'slow_down') {
-          // Need to extend polling interval, return server-suggested new interval
+          // Polling interval must be extended; return the server-suggested new interval
           return {
             success: false,
             error: 'slow_down',
@@ -381,9 +381,9 @@ export class GhcAuthManager {
         throw new Error('No access token in response');
       }
 
-      // V3.0: Get user info and Copilot access token, pass complete GitHub Token data
+      // V3.0: Get user info and Copilot access token, passing complete GitHub Token data
       const authData = await this.getCompleteAuthData(githubTokenData);
-      
+
       if (!authData) {
         throw new Error('Failed to get complete auth information');
       }
@@ -404,12 +404,12 @@ export class GhcAuthManager {
   }
 
   /**
-   * Get complete auth data (V3.0 - fully uses raw API data)
-   * @param githubTokenData - Complete GitHub Token data (including timestamp and api_url)
+   * Get complete authentication data (V3.0 - uses raw API data throughout)
+   * @param githubTokenData - Complete GitHub Token data (includes timestamp and api_url)
    */
   private async getCompleteAuthData(githubTokenData: AuthData['ghcAuth']['gitHubTokens']): Promise<AuthData | null> {
     try {
-      // 1. Get user info
+      // 1. Get user information
       const userInfo = await this.getUserInfo(githubTokenData.access_token);
       if (!userInfo) {
         throw new Error('Failed to get user information');
@@ -426,20 +426,20 @@ export class GhcAuthManager {
       }
 
       const copilotData = await copilotTokenResponse.json();
-      
+
       if (!copilotData.token || !copilotData.expires_at) {
         throw new Error('No Copilot token or expires_at in response');
       }
 
-      // Build complete Copilot Token data (add timestamp and api_url when receiving API response)
+      // Build complete Copilot Token data (timestamp and api_url appended immediately upon receiving API response)
       const copilotTokenData: AuthData['ghcAuth']['copilotTokens'] = {
         timestamp: new Date().toISOString(), // Record reception time
-        api_url: GHC_CONFIG.COPILOT_TOKEN_URL, // Record API address
+        api_url: GHC_CONFIG.COPILOT_TOKEN_URL, // Record API URL
         expires_at: copilotData.expires_at,
         token: copilotData.token
       };
 
-      // 3. Build AuthData (fully uses API data, no conversions)
+      // 3. Build AuthData (uses API data directly without any transformation)
       const now = new Date().toISOString();
 
       const authData: AuthData = {
@@ -459,7 +459,7 @@ export class GhcAuthManager {
       return authData;
 
     } catch (error: any) {
-      logger.error('[GhcAuthManager] ❌ Failed to get complete auth info (V3.0)', 'GhcAuthManager', { error: error.message });
+      logger.error('[GhcAuthManager] ❌ Failed to get complete authentication information (V3.0)', 'GhcAuthManager', { error: error.message });
       return null;
     }
   }
@@ -473,60 +473,60 @@ export class GhcAuthManager {
     onSuccess: (authData: AuthData) => void
   ): Promise<void> {
     try {
-      // 1. Get device code
+      // 1. Obtain device code
       const deviceCodeResponse = await this.startDeviceFlow();
-      
+
       // 2. Notify renderer process to display device code
       onDeviceCode(deviceCodeResponse);
-      
+
       // 3. Start polling
       let interval = deviceCodeResponse.interval;
       const maxAttempts = Math.floor(deviceCodeResponse.expires_in / interval);
       let attempts = 0;
-      
+
       let pollTimer: NodeJS.Timeout;
-      
+
       const schedulePoll = () => {
         pollTimer = setTimeout(async () => {
           if (attempts >= maxAttempts) {
             onError('Device code expired');
             return;
           }
-          
+
           attempts++;
-          
+
           try {
             const result = await this.pollForAccessToken(deviceCodeResponse.device_code, interval);
-            
+
             if (result.success && result.authData) {
               onSuccess(result.authData);
             } else if (result.error === 'slow_down') {
-              // Use server-suggested new polling interval
+              // Use the server-suggested new polling interval
               if (result.newInterval) {
                 interval = result.newInterval;
               } else {
-                interval += 5; // Fallback strategy: add 5 seconds
+                interval += 5; // Fallback: add 5 seconds
               }
-              // Reschedule next poll with new interval
+              // Reschedule the next poll with the new interval
               schedulePoll();
             } else if (result.error && result.error !== 'authorization_pending') {
               onError(result.error);
             } else {
-              // authorization_pending case: continue polling
+              // Continue polling for authorization_pending
               schedulePoll();
             }
-            
+
           } catch (error: any) {
             onError(error.message || 'Polling failed');
           }
         }, interval * 1000);
       };
-      
-      // Start first poll
+
+      // Start the first poll
       schedulePoll();
-      
+
     } catch (error: any) {
-      logger.error('[GhcAuthManager] ❌ Device flow authentication failed', 'GhcAuthManager', { error: error.message });
+      logger.error('[GhcAuthManager] ❌ Device flow authentication process failed', 'GhcAuthManager', { error: error.message });
       onError(error.message || 'Device flow failed');
     }
   }

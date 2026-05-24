@@ -1,15 +1,15 @@
 /**
- * Configuration Module Entry
+ * Configuration module entry point
  * VSCode MCP Client configuration compatibility integration
  */
 
-// ==================== Main Exports ====================
+// ==================== Main exports ====================
 
 // Configuration adapter
 export { ConfigAdapter, createConfigAdapter, defaultConfigAdapter } from './ConfigAdapter';
 
 // Configuration detector
-export { 
+export {
   detectVSCodeConfigs,
   detectVscodeConfigFile,
   detectSingleConfigFile,
@@ -21,7 +21,7 @@ export {
 } from './detector';
 
 // Configuration parser
-export { 
+export {
   parseMcpConfig,
   parseVSCodeConfigToInternal,
   formatToStandardJson,
@@ -32,20 +32,22 @@ export {
 } from './parser';
 
 // Configuration validator
-export { 
+export {
   validateMcpServerConfig,
   validateBatchImport,
   validateVSCodeConfigBeforeImport,
   validateVSCodeConfig,
   getValidationSummary,
   suggestConfigFixes,
-  convertToKosmosFormat,
+  convertToOpenKosmosFormat,
   isValidTransportType,
   isValidServerConfig
 } from './validator';
+import { isValidServerConfig } from './validator';
+import { createConfigAdapter } from './ConfigAdapter';
 
 // Utility functions
-export { 
+export {
   checkFileExists,
   checkFileReadable,
   readFileContent,
@@ -63,51 +65,51 @@ export {
   isCacheExpired
 } from './utils';
 
-// ==================== Type Exports ====================
+// ==================== Type exports ====================
 
 export type {
   // Core configuration types
   McpServerConfig,
   TransportType,
-  
+
   // Configuration file types
   VscodeConfigFile,
   VscodeConfigDetectionResult,
   ParsedMcpConfig,
   McpConfigParseResult,
-  
-  // Validation related types
+
+  // Validation-related types
   ConfigValidationReport,
   ValidationRuleResult,
   ImportValidationResult,
-  
-  // Platform related types
+
+  // Platform-related types
   PlatformInfo,
   SupportedPlatform,
-  
-  // Configuration adapter types
+
+  // Config adapter types
   ConfigAdapterOptions,
   ConfigMigrationResult,
   ConfigDetectionState,
   ConfigAdapterEvents,
-  
+
   // Compatibility types
-  KosmosAppMCPServerConfig,
+  OpenKosmosAppMCPServerConfig,
   VSCodeMCPServerConfig,
-  
-  // File system types
+
+  // Filesystem types
   FileExistsResult,
   FileReadableResult,
   FileStatsResult,
   FileContentResult,
   FileSystemResult,
-  
+
   // Format types
   SupportedConfigFormat,
   SupportedTransportType
 } from './types';
 
-// ==================== Constant Exports ====================
+// ==================== Constant exports ====================
 
 export {
   DEFAULT_CONFIG_ADAPTER_OPTIONS,
@@ -115,8 +117,11 @@ export {
   SUPPORTED_TRANSPORT_TYPES,
   PLATFORM_NAMES
 } from './types';
+import { detectVSCodeConfigs } from "./detector";
+import { parseMcpConfig } from "./parser";
+import { readFileContent } from "./utils";
 
-// ==================== Convenience Functions ====================
+// ==================== Convenience functions ====================
 
 /**
  * Quick configuration detection and parsing
@@ -127,33 +132,30 @@ export async function quickConfigDetection(): Promise<{
   parsedConfig?: any;
   errors: string[];
 }> {
-  const { detectVSCodeConfigs } = await import('./detector');
-  const { parseMcpConfig } = await import('./parser');
-  const { readFileContent } = await import('./utils');
-  
+
   try {
     const detection = await detectVSCodeConfigs();
-    
+
     if (!detection.success || detection.configFiles.length === 0) {
       return {
         success: false,
-        errors: [detection.error || 'No configuration files found']
+        errors: [detection.error || 'No configuration file found']
       };
     }
-    
+
     // Find the best configuration file
-    const bestConfig = detection.configFiles.find(f => 
+    const bestConfig = detection.configFiles.find(f =>
       f.exists && f.isValid && f.serverCount > 0
     );
-    
+
     if (!bestConfig) {
       return {
         success: false,
-        errors: ['No valid configuration files found']
+        errors: ['No valid configuration file found']
       };
     }
-    
-    // Read and parse configuration
+
+    // Read and parse the configuration
     const content = await readFileContent(bestConfig.expandedPath);
     if (!content.success) {
       return {
@@ -161,7 +163,7 @@ export async function quickConfigDetection(): Promise<{
         errors: [content.error || 'Failed to read configuration file']
       };
     }
-    
+
     const parseResult = parseMcpConfig(content.content!);
     if (!parseResult.success) {
       return {
@@ -169,14 +171,14 @@ export async function quickConfigDetection(): Promise<{
         errors: [parseResult.error || 'Failed to parse configuration']
       };
     }
-    
+
     return {
       success: true,
       bestConfigPath: bestConfig.expandedPath,
       parsedConfig: parseResult.data,
       errors: []
     };
-    
+
   } catch (error) {
     return {
       success: false,
@@ -193,26 +195,24 @@ export function checkConfigCompatibility(config: any): {
   issues: string[];
   suggestions: string[];
 } {
-  const { isValidServerConfig } = require('./validator');
-  
   const issues: string[] = [];
   const suggestions: string[] = [];
-  
+
   if (!isValidServerConfig(config)) {
     issues.push('Configuration format is incompatible');
-    suggestions.push('Check if configuration contains required fields (name, transport)');
+    suggestions.push('Check that the configuration contains the required fields (name, transport)');
   }
-  
+
   if (config.transport === 'stdio' && !config.command) {
-    issues.push('stdio transport is missing command');
-    suggestions.push('Add command field for stdio transport');
+    issues.push('stdio transport is missing the command field');
+    suggestions.push('Add a command field for stdio transport');
   }
-  
+
   if (config.transport !== 'stdio' && !config.url) {
-    issues.push('HTTP/SSE transport is missing URL');
-    suggestions.push('Add url field for HTTP/SSE transport');
+    issues.push('HTTP/SSE transport is missing the URL');
+    suggestions.push('Add a url field for HTTP/SSE transport');
   }
-  
+
   return {
     isCompatible: issues.length === 0,
     issues,
@@ -221,10 +221,9 @@ export function checkConfigCompatibility(config: any): {
 }
 
 /**
- * Create a default configuration adapter instance
+ * Create a default config adapter instance
  */
 export function createDefaultConfigAdapter() {
-  const { createConfigAdapter } = require('./ConfigAdapter');
   return createConfigAdapter({
     autoDetection: true,
     strictValidation: false,
@@ -232,12 +231,12 @@ export function createDefaultConfigAdapter() {
   });
 }
 
-// ==================== Module Information ====================
+// ==================== Module information ====================
 
 export const CONFIG_MODULE_INFO = {
   name: 'VSCode MCP Client Configuration Module',
   version: '1.0.0',
-  description: 'Configuration compatibility integration module based on existing Kosmos configuration components',
+  description: 'Configuration compatibility integration module based on existing OpenKosmos configuration components',
   features: [
     'Automatic configuration detection',
     'Multi-format configuration parsing',
@@ -247,5 +246,5 @@ export const CONFIG_MODULE_INFO = {
     'Intelligent cache management'
   ],
   supportedPlatforms: ['macOS', 'Windows', 'Linux'],
-  supportedFormats: ['settings.json', 'mcp.json', 'kosmos.json']
+  supportedFormats: ['settings.json', 'mcp.json', 'openkosmos.json']
 } as const;

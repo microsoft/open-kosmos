@@ -6,7 +6,7 @@ import '../../styles/AddNewMcpServerView.css';
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
 import { McpOps } from '../../lib/mcp/mcpOps'
-import { KosmosAppMCPServerConfig } from '../../types/mcpTypes'
+import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
 import ApplyMcpToAgentsDialog from './ApplyMcpToAgentsDialog'
 
 // McpConfigFormatterResponse type definition
@@ -57,11 +57,11 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   const navigate = useNavigate()
   const { servers, addServer, refreshRuntimeInfo, getServerByName, updateServer } = useMCPServers()
   const { showError, showSuccess, showWarning } = useToast()
-  
+
   // Determine if we're in edit mode
   const isEditMode = !!editServerName
   const editingServer = isEditMode ? getServerByName(editServerName!) : null
-  
+
   // Local state management
   const [newServerName, setNewServerName] = useState('')
   const [newServerType, setNewServerType] = useState<'stdio' | 'sse' | 'StreamableHttp'>('stdio')
@@ -94,10 +94,10 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
     if (isEditMode && editingServer) {
       setNewServerName(editingServer.name)
       setNewServerType(editingServer.transport)
-      
+
       // Convert server config to JSON format for editor
       const configObj: any = {}
-      
+
       if (editingServer.transport === 'stdio') {
         // For stdio, include command and args (required fields)
         configObj.command = editingServer.command || ''
@@ -114,7 +114,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
           configObj.env = editingServer.env
         }
       }
-      
+
       const configJson = JSON.stringify(configObj, null, 2)
       setNewServerConfig(configJson)
     } else if (isEditMode && !editingServer) {
@@ -129,7 +129,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       setNewServerConfig('')
     }
     setValidationErrors({})
-    
+
     // Reset verify state
     setIsVerified(false)
     setIsVerifying(false)
@@ -162,37 +162,37 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         }
       }
     }, 100)
-    
+
     return () => clearTimeout(timeoutId)
   }, [isEditMode, isVerified])
 
   // Validate server name
   const validateServerName = useCallback((name: string) => {
     const errors: string[] = []
-    
+
     // 1. Server name cannot be empty
     if (!name.trim()) {
       errors.push('Server name cannot be empty')
     }
-    
+
     // 2. Server name cannot duplicate existing servers
     if (name.trim() && serverNames.includes(name.trim())) {
       errors.push('Server name already exists, please use a different name')
     }
-    
+
     return errors.length > 0 ? errors.join('; ') : null
   }, [serverNames])
 
   // Validate MCP configuration
   const validateServerConfig = useCallback((config: string, serverType: 'stdio' | 'sse' | 'StreamableHttp') => {
     const errors: string[] = []
-    
+
     // 3. MCP command cannot be empty
     if (!config.trim()) {
       errors.push('MCP configuration cannot be empty')
       return errors.join('; ')
     }
-    
+
     // 4. MCP command cannot be sample
     const stdioExample = `{
   "command": "python",
@@ -209,19 +209,19 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
     "API_KEY": "value"
   }
 }`
-    
+
     const normalizedConfig = config.replace(/\s+/g, ' ').trim()
     const normalizedStdioExample = stdioExample.replace(/\s+/g, ' ').trim()
     const normalizedSseExample = sseExample.replace(/\s+/g, ' ').trim()
-    
+
     if (normalizedConfig === normalizedStdioExample || normalizedConfig === normalizedSseExample) {
       errors.push('Please modify the example configuration, cannot use default examples')
       return errors.join('; ')
     }
-    
+
     // Clean up invisible characters before parsing JSON
     const cleanedConfig = cleanInvisibleCharacters(config)
-    
+
     // Try to parse JSON
     let parsedConfig: any
     try {
@@ -230,31 +230,31 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       errors.push(`Configuration must be valid JSON format. Error: ${e instanceof Error ? e.message : 'Unknown error'}`)
       return errors.join('; ')
     }
-    
+
     if (serverType === 'stdio') {
       // 5. stdio command validation
       const configKeys = Object.keys(parsedConfig)
       const requiredKeys = ['command', 'args']
       const optionalKeys = ['env']
       const allowedKeys = [...requiredKeys, ...optionalKeys]
-      
+
       // Check for required keys
       const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
       if (missingKeys.length > 0) {
         errors.push(`Stdio configuration must contain required fields: ${missingKeys.join(', ')}`)
       }
-      
+
       // Check for invalid keys
       const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
       if (invalidKeys.length > 0) {
         errors.push(`Stdio configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
       }
-      
+
       // command must be string and not empty
       if (typeof parsedConfig.command !== 'string' || !parsedConfig.command.trim()) {
         errors.push('command field must be a non-empty string')
       }
-      
+
       // args must be string array and not empty
       if (!Array.isArray(parsedConfig.args)) {
         errors.push('args field must be an array')
@@ -263,7 +263,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       } else if (!parsedConfig.args.every((arg: any) => typeof arg === 'string')) {
         errors.push('All elements in args array must be strings')
       }
-      
+
       // env validation (optional)
       if (parsedConfig.env !== undefined) {
         if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
@@ -284,24 +284,24 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       const requiredKeys = ['url']
       const optionalKeys = ['env']
       const allowedKeys = [...requiredKeys, ...optionalKeys]
-      
+
       // Check for required keys
       const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
       if (missingKeys.length > 0) {
         errors.push(`SSE configuration must contain required fields: ${missingKeys.join(', ')}`)
       }
-      
+
       // Check for invalid keys
       const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
       if (invalidKeys.length > 0) {
         errors.push(`SSE configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
       }
-      
+
       // url cannot be empty
       if (typeof parsedConfig.url !== 'string' || !parsedConfig.url.trim()) {
         errors.push('url field must be a non-empty string')
       }
-      
+
       // env validation (optional)
       if (parsedConfig.env !== undefined) {
         if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
@@ -322,24 +322,24 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       const requiredKeys = ['url']
       const optionalKeys = ['env']
       const allowedKeys = [...requiredKeys, ...optionalKeys]
-      
+
       // Check for required keys
       const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
       if (missingKeys.length > 0) {
         errors.push(`StreamableHttp configuration must contain required fields: ${missingKeys.join(', ')}`)
       }
-      
+
       // Check for invalid keys
       const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
       if (invalidKeys.length > 0) {
         errors.push(`StreamableHttp configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
       }
-      
+
       // url cannot be empty
       if (typeof parsedConfig.url !== 'string' || !parsedConfig.url.trim()) {
         errors.push('url field must be a non-empty string')
       }
-      
+
       // env validation (optional)
       if (parsedConfig.env !== undefined) {
         if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
@@ -355,7 +355,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         }
       }
     }
-    
+
     return errors.length > 0 ? errors.join('; ') : null
   }, [])
 
@@ -373,16 +373,16 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       setIsVerifying(true)
       setVerifyError(null)
       setVerifyResult(null)
-      
-      // Call main process McpConfigLlmFormatter.formatMcpConfig via IPC
+
+      // Call the main process McpConfigLlmFormatter.formatMcpConfig via IPC
       const ipcResult = await window.electronAPI?.llm?.formatMcpConfig(newServerConfig)
-      
+
       if (!ipcResult) {
         throw new Error('LLM API not available')
       }
 
       let llmResponse: McpConfigFormatterResponse
-      
+
       if (ipcResult.success && ipcResult.data) {
         llmResponse = ipcResult.data
       } else {
@@ -403,7 +403,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
           }
         }
       }
-      
+
       if (!llmResponse.success) {
         // Format failed
         const errorMessage = llmResponse.errors?.join(', ') || llmResponse.warnings?.join(', ') || 'Formatting failed'
@@ -414,27 +414,27 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       }
 
       // Format successful - update UI
-      
+
       // Extract formatted config from LLM response (both Add and Update modes)
       if (llmResponse.config) {
         // LLM should return config directly as an object (not nested under server name)
         let configToUse = llmResponse.config
-        
+
         // Handle case where config might be nested under server name (fallback)
         if (llmResponse.serverName && llmResponse.config[llmResponse.serverName]) {
           configToUse = llmResponse.config[llmResponse.serverName]
         }
-        
+
         // Update server config with formatted version
         const formattedConfig = JSON.stringify(configToUse, null, 2)
         setNewServerConfig(formattedConfig)
       }
-      
+
       // Update server type from LLM response (both Add and Update modes)
       if (llmResponse.transportType) {
         setNewServerType(llmResponse.transportType as 'stdio' | 'sse' | 'StreamableHttp')
       }
-      
+
       // Update server name from LLM response (only for Add mode)
       // In Update mode, server name should never be changed by LLM
       if (!isEditMode) {
@@ -445,13 +445,13 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         }
         setNewServerName(serverName)
       }
-      
+
       setVerifyResult('Configuration validation successful')
       setIsVerified(true)
-      
+
       // Clear validation errors
       setValidationErrors({})
-      
+
     } catch (error) {
       setVerifyError(`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       setVerifyResult(null)
@@ -506,24 +506,24 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   const handleAddServer = useCallback(async () => {
     try {
       setIsLoading(true)
-      
+
       // Both Add and Update modes require verification first
       if (!isVerified) {
         showWarning('Please verify the configuration first')
         return
       }
-      
+
       // Perform all validations first
-      
+
       // For Add mode: validate both server name and config
       // For Update mode: only validate config (server name doesn't change)
       let nameError: string | null = null
       if (!isEditMode) {
         nameError = validateServerName(newServerName)
       }
-      
+
       const configError = validateServerConfig(newServerConfig, newServerType)
-      
+
       if (nameError || configError) {
         setValidationErrors({
           serverName: nameError || undefined,
@@ -541,24 +541,34 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       // Clean up invisible characters before parsing
       const cleanedConfig = cleanInvisibleCharacters(newServerConfig)
       const parsedConfig = JSON.parse(cleanedConfig)
-      
-      // Determine version for the server config
+
+      // Determine version and source for the server config
       let version: string
-      
-      // 🔒 Re-fetch the latest server config to ensure consistency
+      let source: 'ON-DEVICE' | 'PLUGIN'
+
+      // Re-fetch the latest server config to ensure source is never accidentally changed
       const currentEditingServer = isEditMode ? getServerByName(editServerName!) : null
-      
+
       if (isEditMode && currentEditingServer) {
-        // Edit mode: auto-increment patch version
-        const currentVersion = currentEditingServer.version || '1.0.0'
-        version = incrementPatchVersion(currentVersion)
+        // Edit mode: preserve original source, handle version based on source type
+        source = (currentEditingServer.source || 'ON-DEVICE') as 'ON-DEVICE' | 'PLUGIN'
+
+        if (source === 'ON-DEVICE') {
+          // ON-DEVICE: auto-increment patch version
+          const currentVersion = currentEditingServer.version || '1.0.0'
+          version = incrementPatchVersion(currentVersion)
+        } else {
+          // PLUGIN: keep version unchanged
+          version = currentEditingServer.version || '1.0.0'
+        }
       } else {
         // Add mode: use default values
         version = '1.0.0'
+        source = 'ON-DEVICE'
       }
-      
+
       // Format config for McpOps API
-      const mcpServerConfig: KosmosAppMCPServerConfig = {
+      const mcpServerConfig: OpenKosmosAppMCPServerConfig = {
         name: newServerName,
         transport: newServerType === 'StreamableHttp' ? 'StreamableHttp' as const : newServerType as 'stdio' | 'sse',
         in_use: true, // Set in_use=true so it will connect after adding/updating
@@ -567,10 +577,11 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         args: parsedConfig.args || [],
         env: parsedConfig.env || {},
         version,
+        source,
       }
-      
+
       let result: { success: boolean; error?: string }
-      
+
       if (isEditMode) {
         // Update existing server using McpOps API
         result = await McpOps.update(editServerName!, mcpServerConfig)
@@ -578,7 +589,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         // Add new server using McpOps API
         result = await McpOps.add(mcpServerConfig)
       }
-      
+
       if (result.success) {
         // For updates, we need to force refresh the ProfileDataManager cache
         // to ensure the UI gets the updated configuration
@@ -623,7 +634,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   const handleServerTypeChange = useCallback((serverType: 'stdio' | 'sse' | 'StreamableHttp') => {
     setNewServerType(serverType)
     setShowServerTypeDropdown(false)
-    
+
     // Reset verify state when server type changes after verification
     // But do NOT reset isVerified to false, instead just clear verify messages
     // This prevents the server type and server name fields from disappearing
@@ -632,13 +643,13 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       setVerifyError(null)
       // Keep isVerified as true to maintain field visibility
     }
-    
+
     // Clear validation errors when changing type
     setValidationErrors(prev => ({
       ...prev,
       serverConfig: undefined
     }))
-    
+
     // Re-validate existing config with new server type if config exists
     if (newServerConfig.trim()) {
       setTimeout(() => {
@@ -676,7 +687,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
             {isVerifying ? 'Verifying with AI...' : 'Verify to Continue'}
           </button>
         </div>
-        
+
         <textarea
           value={newServerConfig}
           onChange={(e) => handleConfigChange(e.target.value)}
@@ -719,7 +730,7 @@ Example 2 (Streamable HTTP):
           autoFocus={isEditMode || !isVerified}
           tabIndex={0}
         />
-        
+
         {validationErrors.serverConfig && (
           <div className="validation-error">
             {validationErrors.serverConfig}
@@ -732,7 +743,7 @@ Example 2 (Streamable HTTP):
             {verifyError}
           </div>
         )}
-        
+
         {verifyResult && (
           <div className="verify-success">
             {verifyResult}
@@ -782,7 +793,7 @@ Example 2 (Streamable HTTP):
                   />
                 </svg>
               </button>
-              
+
               {/* Server Type dropdown */}
               {showServerTypeDropdown && (
                 <div className="model-dropdown">
@@ -838,7 +849,7 @@ Example 2 (Streamable HTTP):
               )}
             </div>
           </div>
-          
+
           <div className="server-name-section">
             <label className="form-label">Server Name:</label>
             <input
@@ -857,7 +868,7 @@ Example 2 (Streamable HTTP):
               {validationErrors.serverName}
             </div>
           )}
-          
+
           {/* Action buttons */}
           <div className="server-actions">
             <button
@@ -866,7 +877,7 @@ Example 2 (Streamable HTTP):
             >
               Cancel
             </button>
-            
+
             <button
               className="btn-primary"
               onClick={handleAddServer}

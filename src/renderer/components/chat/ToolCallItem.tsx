@@ -1,31 +1,30 @@
 // src/renderer/components/chat/ToolCallItem.tsx
-// Standalone Tool Call rendering component, supports expand/collapse and custom views
+// Standalone Tool Call rendering component with expand/collapse support and custom views
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Loader2, ChevronRight } from 'lucide-react';
-import { ToolCall, Message as MessageType } from '../../types/chatTypes';
+import { Loader2, ChevronRight, AlertCircle } from 'lucide-react';
+import { ToolCall, Message as MessageType } from '@shared/types/chatTypes';
 import { getToolCallDisplayText, getToolCallIcon } from './toolCallDisplayConfig';
 import { getToolCallView, hasCustomView } from './toolCallViews';
-
-/**
- * Tool Call execution status
- */
-export type ToolCallExecutionStatus = 'executing' | 'completed';
+import { ToolCallExecutionStatus } from './toolCallViews/types';
+import { adjustScrollForExpandedContent } from './toolCallExpansionScroll';
 
 export interface ToolCallItemProps {
   /** Tool Call data */
   toolCall: ToolCall;
   /** Tool Result message (if completed) */
   toolResult: MessageType | null;
-  /** Unique identifier, used for key */
+  /** Execution status, computed by the parent based on chat session status */
+  executionStatus: ToolCallExecutionStatus;
+  /** Unique identifier, used as key */
   itemKey: string;
   /** Whether this is the last item */
   isLast?: boolean;
 }
 
 /**
- * Render tool icon
- * Shows loading spinner while executing, shows tool-type specific icon when completed
+ * Render the tool icon.
+ * Shows a loading spinner while executing; shows the tool-type icon when done.
  */
 const ToolIcon: React.FC<{ toolName: string; status: ToolCallExecutionStatus }> = ({ toolName, status }) => {
   if (status === 'executing') {
@@ -36,7 +35,15 @@ const ToolIcon: React.FC<{ toolName: string; status: ToolCallExecutionStatus }> 
     );
   }
 
-  // Completed state: show tool-type specific icon
+  if (status === 'interrupted') {
+    return (
+      <span className="tool-item-status-icon interrupted">
+        <AlertCircle size={16} style={{ display: 'block' }} />
+      </span>
+    );
+  }
+
+  // Completed state: show the icon corresponding to the tool type
   const IconComponent = getToolCallIcon(toolName);
   return (
     <span className="tool-item-status-icon completed">
@@ -46,74 +53,67 @@ const ToolIcon: React.FC<{ toolName: string; status: ToolCallExecutionStatus }> 
 };
 
 /**
- * ToolCallItem component
- * Renders a single Tool Call, supports expand/collapse to show custom views
+ * ToolCallItem component.
+ * Renders a single Tool Call with expand/collapse support for the custom view.
  */
 export const ToolCallItem: React.FC<ToolCallItemProps> = ({
   toolCall,
   toolResult,
+  executionStatus,
   isLast = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
 
-  // Compute execution status: completed if toolResult exists, otherwise executing
-  const executionStatus: ToolCallExecutionStatus = toolResult ? 'completed' : 'executing';
-
   // Get display text
-  const displayText = getToolCallDisplayText(toolCall.function.name, toolCall.function.arguments);
+  const resultText = (toolResult?.content?.find((c) => c.type === 'text') as any)?.text as string | undefined;
+  const displayText = getToolCallDisplayText(toolCall.function.name, toolCall.function.arguments, resultText);
 
-  // Check if a custom view exists
+  // Check whether there is a custom view
   const toolName = toolCall.function.name;
   const hasCustom = hasCustomView(toolName);
   const CustomView = hasCustom ? getToolCallView(toolName) : null;
 
-  // Whether expandable: only tools with custom views can be expanded
+  // Expandable only for tools that have a custom view
   const isExpandable = hasCustom;
 
   /**
-   * Handle expand/collapse click
-   * Maintains click position: expands downward, collapses upward
+   * Handle expand/collapse click.
+   * Keep the click position stable: expand downward, collapse upward.
    */
   const handleToggle = useCallback(() => {
     if (!isExpandable) return;
 
-    if (!rowRef.current) {
+    if (!rowRef.current || !containerRef.current) {
       setIsExpanded(!isExpanded);
       return;
     }
 
-    // Record row position relative to viewport before click
+    // Record the row's position relative to the viewport before the click
     const rowRect = rowRef.current.getBoundingClientRect();
     const rowTopBeforeToggle = rowRect.top;
 
-    // Toggle expanded state
+    // Toggle expand state
     setIsExpanded(prev => !prev);
 
-    // Use requestAnimationFrame to ensure DOM updates before adjusting scroll
+    // Use requestAnimationFrame to adjust scroll after the DOM has updated
     requestAnimationFrame(() => {
-      if (!rowRef.current) return;
+      if (!rowRef.current || !containerRef.current) return;
 
-      // Get row position after update
-      const newRowRect = rowRef.current.getBoundingClientRect();
-      const rowTopAfterToggle = newRowRect.top;
-
-      // Calculate position difference
-      const diff = rowTopAfterToggle - rowTopBeforeToggle;
-
-      // If there's a difference, adjust scroll position to keep row at its original viewport position
-      if (Math.abs(diff) > 1) {
-        // Find the nearest scrollable container (chat-container-reverse)
-        const scrollContainer = rowRef.current.closest('.chat-container-reverse');
-        if (scrollContainer) {
-          scrollContainer.scrollTop += diff;
-        }
-      }
+      adjustScrollForExpandedContent({
+        anchorElement: rowRef.current,
+        targetElement: containerRef.current,
+        anchorTopBeforeToggle: rowTopBeforeToggle,
+      });
     });
   }, [isExpanded, isExpandable]);
 
   return (
-    <div className={`tool-call-item-container ${isExpanded ? 'expanded' : ''} ${!isLast ? 'has-next' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`tool-call-item-container ${isExpanded ? 'expanded' : ''} ${!isLast ? 'has-next' : ''}`}
+    >
       {/* Main row: icon + text + arrow */}
       <div
         ref={rowRef}
@@ -134,11 +134,11 @@ export const ToolCallItem: React.FC<ToolCallItemProps> = ({
         </div>
       </div>
 
-      {/* Expanded content: custom view */}
+      {/* Expanded content: custom view. Placed below the main row; when expanded, scroll compensation via reverse list pushes the main row upward. */}
       {isExpanded && CustomView && (
         <div className="tool-call-expanded-content">
           <div className="tool-call-custom-view">
-            <CustomView toolCall={toolCall} toolResult={toolResult} />
+            <CustomView toolCall={toolCall} toolResult={toolResult} executionStatus={executionStatus} />
           </div>
         </div>
       )}

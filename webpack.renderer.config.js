@@ -5,8 +5,7 @@ const webpack = require('webpack');
 const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
 
-const brandConfig = require('./scripts/brand-config');
-const { config: appConfig } = brandConfig;
+const appConfig = require('./brands/openkosmos/config.json');
 
 // Load environment variables from .env.local (or DOTENV_CONFIG_PATH for E2E test builds)
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' });
@@ -14,11 +13,13 @@ require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' 
 module.exports = (env, argv) => {
   const isDevelopment = argv.mode === 'development';
   const isProduction = argv.mode === 'production';
+  const devServerPort = Number(process.env.DEV_SERVER_PORT || 39017);
 
   return {
     target: 'web', // Explicitly set to web target, not electron-renderer
     entry: {
       main: './src/renderer/index.tsx',
+      toolbar: './src/renderer/toolbar.tsx',
       screenshot: './src/renderer/screenshot.tsx',
     },
     output: {
@@ -72,6 +73,8 @@ module.exports = (env, argv) => {
             {
               loader: 'babel-loader',
               options: {
+                configFile: false, // Don't read babel.config.js
+                babelrc: false,    // Don't read .babelrc.js
                 presets: ['@babel/preset-react', '@babel/preset-typescript'],
                 plugins: [
                   isDevelopment && require.resolve('react-refresh/babel'),
@@ -82,7 +85,8 @@ module.exports = (env, argv) => {
             {
               loader: 'ts-loader',
               options: {
-                configFile: 'tsconfig.renderer.build.json',
+                configFile: 'tsconfig.renderer.json',
+                compilerOptions: { noEmit: false, sourceMap: true },
               },
             },
           ],
@@ -93,14 +97,7 @@ module.exports = (env, argv) => {
           use: [
             'style-loader',
             'css-loader',
-            {
-              loader: 'postcss-loader',
-              options: {
-                postcssOptions: {
-                  plugins: [require('tailwindcss'), require('autoprefixer')],
-                },
-              },
-            },
+            'postcss-loader',
           ],
         },
         {
@@ -130,7 +127,7 @@ module.exports = (env, argv) => {
           process.env.PRODUCTION_BASE_CDN_URL,
         ),
         'process.env.APP_NAME': JSON.stringify(appConfig.productName),
-        'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
+        'process.env.BRAND_NAME': JSON.stringify('openkosmos'),
         // Expose preset model environment variables
         'process.env.PRESET_MODEL_GPT4O_NAME': JSON.stringify(
           process.env.PRESET_MODEL_GPT4O_NAME,
@@ -166,11 +163,13 @@ module.exports = (env, argv) => {
         'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(
           process.env.HISTORY_PROMPT_QUEUE_SIZE,
         ),
-        'process.argv': '[]', // Provide empty process.argv array
+        // Auto Update Configuration
+        'process.env.RELEASE_CDN_URL': JSON.stringify(
+          process.env.RELEASE_CDN_URL,
+        ),
+        'process.argv': '[]', // Provide an empty process.argv array
         'process.browser': 'true', // Mark as browser environment
         'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
-        'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
-        'process.env.APP_NAME': JSON.stringify(appConfig.productName),
       }),
       new webpack.ProvidePlugin({
         Buffer: ['buffer', 'Buffer'],
@@ -183,6 +182,36 @@ module.exports = (env, argv) => {
         title: appConfig.windowTitle,
         productName: appConfig.productName,
         chunks: ['main'], // Only include JS files from the main entry
+        templateParameters: (compilation, assets, assetTags, options) => ({
+          htmlWebpackPlugin: { tags: assetTags, files: assets, options },
+          connectSrcExtra: '',
+          entryScript: '',
+        }),
+        minify: !isDevelopment
+          ? {
+              removeComments: true,
+              collapseWhitespace: true,
+              removeRedundantAttributes: true,
+              useShortDoctype: true,
+              removeEmptyAttributes: true,
+              removeStyleLinkTypeAttributes: true,
+              keepClosingSlash: true,
+              minifyJS: true,
+              minifyCSS: true,
+              minifyURLs: true,
+            }
+          : false,
+      }),
+      new HtmlWebpackPlugin({
+        template: './src/renderer/toolbar.html',
+        filename: 'toolbar.html',
+        title: `${appConfig.productName} - ToolBar`,
+        chunks: ['toolbar'], // Only include JS files from the toolbar entry
+        templateParameters: (compilation, assets, assetTags, options) => ({
+          htmlWebpackPlugin: { tags: assetTags, files: assets, options },
+          connectSrcExtra: '',
+          entryScript: '',
+        }),
         minify: !isDevelopment
           ? {
               removeComments: true,
@@ -203,6 +232,11 @@ module.exports = (env, argv) => {
         filename: 'screenshot.html',
         title: `${appConfig.productName} - Screenshot`,
         chunks: ['screenshot'], // Only include JS files from the screenshot entry
+        templateParameters: (compilation, assets, assetTags, options) => ({
+          htmlWebpackPlugin: { tags: assetTags, files: assets, options },
+          connectSrcExtra: '',
+          entryScript: '',
+        }),
         minify: !isDevelopment
           ? {
               removeComments: true,
@@ -225,7 +259,7 @@ module.exports = (env, argv) => {
         }),
       // Monaco Editor web workers support
       new MonacoWebpackPlugin({
-      // Only keep languages actually used in the app, remove unused languages to reduce bundle
+        // Only keep languages actually used in the app; remove rarely used ones to reduce bundle size
         languages: [
           'javascript', 'typescript', 'json', 'html', 'css',
           'markdown', 'python', 'yaml', 'xml', 'sql', 'shell',
@@ -242,7 +276,7 @@ module.exports = (env, argv) => {
       static: {
         directory: path.join(__dirname, 'dist/renderer'),
       },
-      port: 3000,
+      port: devServerPort,
       hot: true, // Enable HMR (require problem fixed by removing polyfill from index.html)
       liveReload: true, // Enable live reload
       headers: {
@@ -252,6 +286,10 @@ module.exports = (env, argv) => {
         overlay: {
           errors: true,
           warnings: false,
+          runtimeErrors: (error) => {
+            if (error?.message?.includes('ResizeObserver')) return false;
+            return true;
+          },
         },
         webSocketTransport: 'sockjs', // Use sockjs transport
       },
@@ -264,17 +302,17 @@ module.exports = (env, argv) => {
             new TerserPlugin({
               terserOptions: {
                 compress: {
-                  drop_console: false, // Explicitly keep all console
+                  drop_console: false, // Explicitly keep all console statements
                   drop_debugger: true,
                   pure_funcs: [], // Do not remove any functions
                 },
                 mangle: {
-                  // Keep important function names
+                  // Preserve important function names
                   keep_fnames: true,
                   reserved: ['console'], // Preserve console-related names
                 },
               },
-              extractComments: false, // Do not extract comments to a separate file
+              extractComments: false, // Do not extract comments to separate files
             }),
           ]
         : [],
@@ -285,7 +323,7 @@ module.exports = (env, argv) => {
             maxAsyncRequests: 30,
             maxInitialRequests: 10,
             cacheGroups: {
-              // mermaid: lazy-loaded dedicated chunk, not merged into vendors, loaded only when needed
+              // mermaid: dedicated lazy-load chunk, not merged into vendors, only loaded when needed
               mermaid: {
                 test: /[\\/]node_modules[\\/]mermaid[\\/]/,
                 name: 'async-mermaid',
@@ -294,7 +332,7 @@ module.exports = (env, argv) => {
                 priority: 30,
                 reuseExistingChunk: true,
               },
-              // monaco-editor: lazy-loaded dedicated chunk, not merged into vendors
+              // monaco-editor: dedicated lazy-load chunk, not merged into vendors
               monaco: {
                 test: /[\\/]node_modules[\\/]monaco-editor[\\/]/,
                 name: 'async-monaco',
@@ -314,7 +352,7 @@ module.exports = (env, argv) => {
                   return true;
                 },
                 name: 'main-vendors',
-                chunks: 'initial', // Only bundle synchronous initial chunks, async chunks handled by groups above
+                chunks: 'initial', // Only bundle synchronous initial chunks; async chunks are handled by the groups above
                 filename: 'js/[name].[contenthash:8].js',
                 priority: 20,
               },

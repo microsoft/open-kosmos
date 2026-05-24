@@ -1,4 +1,4 @@
-// src/renderer/lib/auth/authDataAdapter.ts - AuthData Utility Functions (V3.0)
+// src/renderer/lib/auth/authDataAdapter.ts - AuthData utility functions (V3.0)
 // Provides common operations and validation functions for AuthData
 
 import { AuthData } from '../../types/authTypes';
@@ -25,7 +25,7 @@ export function extractUser(authData: AuthData | null): AuthData['ghcAuth']['use
 }
 
 /**
- * Check if Copilot Token is expired (V3 - expires_at is a Unix timestamp in seconds)
+ * Check if Copilot Token is expired (V3 - expires_at is a seconds-based timestamp)
  */
 export function isCopilotTokenExpired(authData: AuthData | null): boolean {
   if (!authData) return true;
@@ -34,17 +34,17 @@ export function isCopilotTokenExpired(authData: AuthData | null): boolean {
 }
 
 /**
- * Check if GitHub Token is expired (V3 - GitHub token has no expires field, long-lived)
+ * Check if GitHub Token is expired (V3 - GitHub tokens have no expires field; they are long-lived)
  */
 export function isGitHubTokenExpired(authData: AuthData | null): boolean {
   if (!authData) return true;
-  // GitHub token has no expires field, we assume it is valid
-  // Actual verification requires an API call
+  // GitHub tokens have no expires field; we assume they are valid
+  // Actual validation requires an API call
   return !authData.ghcAuth.gitHubTokens.access_token;
 }
 
 /**
- * Get remaining valid time for Copilot Token (milliseconds) (V3 - expires_at is a Unix timestamp in seconds)
+ * Get Copilot Token remaining validity time in milliseconds (V3 - expires_at is a seconds-based timestamp)
  */
 export function getCopilotTokenRemainingTime(authData: AuthData | null): number {
   if (!authData) return 0;
@@ -54,12 +54,12 @@ export function getCopilotTokenRemainingTime(authData: AuthData | null): number 
 }
 
 /**
- * Get remaining valid time for GitHub Token (milliseconds) (V3 - no expires field)
- * Returns a large value indicating long-lived validity
+ * Get GitHub Token remaining validity time in milliseconds (V3 - no expires field)
+ * Returns a large value to indicate long-term validity
  */
 export function getGitHubTokenRemainingTime(authData: AuthData | null): number {
   if (!authData || !authData.ghcAuth.gitHubTokens.access_token) return 0;
-  // GitHub token is long-lived, return 30 days
+  // GitHub tokens are long-lived; return 30 days
   return 30 * 24 * 60 * 60 * 1000;
 }
 
@@ -68,7 +68,7 @@ export function getGitHubTokenRemainingTime(authData: AuthData | null): number {
  */
 export function isAuthDataValid(authData: AuthData | null): boolean {
   if (!authData) return false;
-  
+
   // Check required fields
   if (!authData.ghcAuth ||
       !authData.ghcAuth.user ||
@@ -76,18 +76,18 @@ export function isAuthDataValid(authData: AuthData | null): boolean {
       !authData.ghcAuth.copilotTokens) {
     return false;
   }
-  
-  // Check if tokens exist
+
+  // Check that tokens exist
   if (!authData.ghcAuth.gitHubTokens.access_token ||
       !authData.ghcAuth.copilotTokens.token) {
     return false;
   }
-  
+
   return true;
 }
 
 /**
- * Create empty AuthData (for initialization) (V3 format)
+ * Create an empty AuthData (for initialization) (V3 format)
  */
 export function createEmptyAuthData(): AuthData {
   const now = new Date().toISOString();

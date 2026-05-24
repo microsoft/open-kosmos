@@ -1,0 +1,23 @@
+# CODEOWNERS file
+# This file defines who must review PRs for specific files/directories
+# Syntax: path @username
+# IMPORTANT: The maintainers below must be code owners
+# so that any of them can approve PRs
+
+# Default owners for everything in the repo
+* @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+
+# Main branch requires review from code owners
+/main/ @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+
+# Source code requires review
+/src/ @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+
+# Configuration files require review
+*.yml @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+*.json @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+*.config.js @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+
+# Documentation
+/docs/ @yanhu @yanhu_microsoft @jshang @jshang_microsoft
+*.md @yanhu @yanhu_microsoft @jshang @jshang_microsoft

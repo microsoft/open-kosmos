@@ -34,9 +34,9 @@ interface AgentChatCreationHeaderViewProps {
 }
 
 /**
- * AgentChatCreationHeaderView - Header component for Agent creation page
+ * AgentChatCreationHeaderView - Header component for the Agent creation page
  *
- * Uses unified Header style (unified-header)
+ * Uses the unified header style (unified-header)
  */
 const AgentChatCreationHeaderView: React.FC<AgentChatCreationHeaderViewProps> = ({ onBack }) => {
   return (

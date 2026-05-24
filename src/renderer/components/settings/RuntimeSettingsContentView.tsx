@@ -1,19 +1,28 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import '../../styles/ContentView.css';
-import '../../styles/ToolbarSettingsView.css';
+import '../../styles/SettingsComponents.css';
+import '../../styles/ToolbarSettings.css';
 import '../../styles/RuntimeSettings.css';
 import { BUN_VERSIONS, UV_VERSIONS, PYTHON_VERSIONS } from '../../lib/runtime/runtimeVersions';
 import type { RuntimeEnvironment } from '../../lib/userData/types';
+import { useToast } from '../ui/ToastProvider';
+import RuntimeSystemDependenciesCard from './RuntimeSystemDependenciesCard';
 
-interface RuntimeStatus {
+export interface RuntimeStatus {
   bun: boolean;
   uv: boolean;
   bunPath: string;
   uvPath: string;
 }
 
-interface PythonVersion {
+export interface GitVersion {
+  installed: boolean;
+  version: string | null;
+  path: string | null;
+}
+
+export interface PythonVersion {
   version: string;
   semver?: string;
   path: string | null;
@@ -23,9 +32,11 @@ interface PythonVersion {
 interface RuntimeSettingsContentViewProps {
   config: RuntimeEnvironment;
   status: RuntimeStatus;
+  gitVersion: GitVersion | null;
   pythonVersions: PythonVersion[];
   isLoading: boolean;
   isPythonLoading: boolean;
+  showGitVersion: boolean;
   newPythonVersion: string;
   onModeChange: (mode: 'system' | 'internal') => Promise<void>;
   onInstall: (tool: 'bun' | 'uv') => Promise<void>;
@@ -35,6 +46,7 @@ interface RuntimeSettingsContentViewProps {
   onUninstallPython: (version: string) => Promise<void>;
   onPinPythonVersion: (version: string) => Promise<void>;
   onCleanUvCache: () => Promise<void>;
+  onRefresh: () => Promise<void>;
 }
 
 /** Truncate a long path, keeping the last N segments visible */
@@ -55,9 +67,11 @@ function truncatePath(path: string | null, maxLen = 48): string {
 const RuntimeSettingsContentView: React.FC<RuntimeSettingsContentViewProps> = ({
   config,
   status,
+  gitVersion,
   pythonVersions,
   isLoading,
   isPythonLoading,
+  showGitVersion,
   newPythonVersion,
   onModeChange,
   onInstall,
@@ -67,7 +81,9 @@ const RuntimeSettingsContentView: React.FC<RuntimeSettingsContentViewProps> = ({
   onUninstallPython,
   onPinPythonVersion,
   onCleanUvCache,
+  onRefresh,
 }) => {
+  const { showSuccess, showError } = useToast();
   return (
     <div className="content-view-container">
       <div className="toolbar-settings-content">
@@ -300,6 +316,12 @@ const RuntimeSettingsContentView: React.FC<RuntimeSettingsContentViewProps> = ({
               </div>
             )}
             </>)}
+
+            <RuntimeSystemDependenciesCard
+              status={status}
+              gitVersion={gitVersion}
+              showGitVersion={showGitVersion}
+            />
 
           </div>
         </div>

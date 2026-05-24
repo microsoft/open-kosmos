@@ -1,29 +1,73 @@
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useRef, createElement } from 'react';
 import { Copy, Download } from 'lucide-react';
+import { clampMenuToViewport, CONTEXT_MENU_SIZE_PRESETS, ContextMenuPosition, getContextMenuPosition } from '../../lib/utilities/dropdownPosition';
+import { atom } from '@/atom';
+import { useClickOut } from '../ui/use-click-out';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[ImageGalleryContextMenu]');
 
-interface ImageGalleryContextMenuProps {
-  imageGalleryMenuRef: React.RefObject<HTMLDivElement>;
+const zeroState: {
+  isOpen: boolean;
+  position: ContextMenuPosition | null;
+  imageData: { url: string; alt?: string; index: number } | null;
+  galleryImages: Array<{ id: string; url: string; alt?: string }> | null;
+  initialIndex: number;
+} = { isOpen: false, position: null, imageData: null, galleryImages: null, initialIndex: 0 };
+
+export const ImageGalleryMenuAtom = atom(zeroState, (get, set) => {
+  function close() {
+    set(zeroState);
+  }
+
+  function open(
+    event: React.MouseEvent,
+    imageData: { url: string; alt?: string; index: number },
+    galleryImages?: Array<{ id: string; url: string; alt?: string }>,
+    initialIndex?: number,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    const position = getContextMenuPosition(
+      event.clientX,
+      event.clientY,
+      CONTEXT_MENU_SIZE_PRESETS.imageGalleryMenu,
+    );
+    set({
+      isOpen: true,
+      position,
+      imageData,
+      galleryImages: galleryImages || null,
+      initialIndex: initialIndex ?? 0,
+    });
+  }
+
+  return { open, close };
+});
+
+interface InnerProps {
+  position: ContextMenuPosition;
   imageData: { url: string; alt?: string; index: number };
   galleryImages: Array<{ id: string; url: string; alt?: string }> | null;
   initialIndex: number;
-  position: { top: number; left: number };
-  onClose: () => void;
 }
 
-const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
-  imageGalleryMenuRef,
+const ImageGalleryContextMenu: React.FC<InnerProps> = ({
+  position,
   imageData,
   galleryImages,
   initialIndex,
-  position,
-  onClose
 }) => {
+  const { close: onClose } = ImageGalleryMenuAtom.useChange();
+  const imageGalleryMenuRef = useRef<HTMLDivElement>(null);
+
+  useClickOut(imageGalleryMenuRef, onClose);
+
   // View image - open fullscreen viewer
   const handleViewImage = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
-    // If galleryImages exist, open full gallery; otherwise open single image
+
+    // If galleryImages exists, open full gallery; otherwise open single image
     const imagesToOpen = galleryImages && galleryImages.length > 0
       ? galleryImages
       : [{
@@ -31,62 +75,42 @@ const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
           url: imageData.url,
           alt: imageData.alt
         }];
-    
+
     const indexToUse = galleryImages && galleryImages.length > 0
       ? initialIndex
       : 0;
-    
-    // Trigger opening fullscreen viewer event
+
+    // Trigger open fullscreen viewer event
     window.dispatchEvent(new CustomEvent('imageViewer:open', {
       detail: {
         images: imagesToOpen,
         initialIndex: indexToUse
       }
     }));
-    
+
     onClose();
   }, [imageData, galleryImages, initialIndex, onClose]);
 
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
     if (imageGalleryMenuRef.current) {
-      const rect = imageGalleryMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      if (rect.bottom > windowHeight - padding) {
-        const newTop = windowHeight - rect.height - padding;
-        imageGalleryMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-      }
+      clampMenuToViewport(imageGalleryMenuRef.current);
     }
   }, [position]);
 
-  // Convert base64 data URL to Blob
-  const dataURLToBlob = React.useCallback((dataURL: string): Blob => {
-    const arr = dataURL.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-  }, []);
 
-  // Convert image to PNG format (improve clipboard compatibility)
+  // Convert image to PNG format (for better clipboard compatibility)
   const convertToPNG = React.useCallback(async (imageUrl: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      
+
       img.onload = () => {
         canvas.width = img.width;
         canvas.height = img.height;
         ctx?.drawImage(img, 0, 0);
-        
+
         canvas.toBlob(
           (blob) => {
             if (blob) {
@@ -99,11 +123,11 @@ const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
           1.0
         );
       };
-      
+
       img.onerror = () => {
         reject(new Error('Failed to load image for conversion'));
       };
-      
+
       img.src = imageUrl;
     });
   }, []);
@@ -112,45 +136,45 @@ const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
   const handleCopyImage = React.useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
+
     try {
       // Check Clipboard API support
       if (!navigator.clipboard || !navigator.clipboard.write) {
         throw new Error('Clipboard API not supported');
       }
-      
+
       // Check ClipboardItem support
       if (typeof ClipboardItem === 'undefined') {
         throw new Error('ClipboardItem not supported');
       }
-      
-      console.log('🔄 Processing image for clipboard...');
-      
+
+      logger.debug('🔄 Processing image for clipboard...');
+
       let finalBlob: Blob;
-      
-      // Whether data URL or regular URL, convert to PNG via canvas
-      // This avoids CSP issues and clipboard format compatibility issues
+
+      // Convert to PNG via canvas regardless of whether it's a data URL or regular URL
+      // This avoids CSP issues and clipboard format compatibility problems
       finalBlob = await convertToPNG(imageData.url);
-      
+
       // Validate blob
       if (finalBlob.size === 0) {
         throw new Error('Image data is empty');
       }
-      
+
       // Create ClipboardItem and write to clipboard (use PNG format for better compatibility)
       const clipboardItem = new ClipboardItem({
         'image/png': finalBlob
       });
-      
+
       await navigator.clipboard.write([clipboardItem]);
-      
-      console.log(`✅ Image copied to clipboard successfully: image/png, size: ${finalBlob.size} bytes`);
-      
+
+      logger.debug(`✅ Image copied to clipboard successfully: image/png, size: ${finalBlob.size} bytes`);
+
     } catch (error) {
-      console.error('❌ Failed to copy image:', error);
-      console.log('ℹ️  Image copy failed. This may be due to browser security restrictions or unsupported format.');
+      logger.error('❌ Failed to copy image:', error);
+      logger.debug('ℹ️  Image copy failed. This may be due to browser security restrictions or unsupported format.');
     }
-    
+
     onClose();
   }, [imageData, convertToPNG, onClose]);
 
@@ -158,24 +182,24 @@ const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
   const handleSaveAs = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
+
     try {
       // Create a temporary <a> tag to trigger download
       const link = document.createElement('a');
       link.href = imageData.url;
-      
+
       // Set download filename
       const fileName = imageData.alt || `image-${imageData.index + 1}`;
       link.download = fileName;
-      
+
       // Trigger download
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      console.error('Failed to save image:', error);
+      logger.error('Failed to save image:', error);
     }
-    
+
     onClose();
   }, [imageData, onClose]);
 
@@ -227,4 +251,8 @@ const ImageGalleryContextMenu: React.FC<ImageGalleryContextMenuProps> = ({
   );
 };
 
-export default ImageGalleryContextMenu;
+export default () => {
+  const [{ isOpen, position, imageData, galleryImages, initialIndex }] = ImageGalleryMenuAtom.use();
+  if (!isOpen || !position || !imageData) return null;
+  return createElement(ImageGalleryContextMenu, { position, imageData, galleryImages, initialIndex });
+};

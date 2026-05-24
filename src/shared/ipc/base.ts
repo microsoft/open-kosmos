@@ -1,12 +1,12 @@
 import { type IpcMain, type IpcRenderer, type WebContents, type IpcMainInvokeEvent, type IpcRendererEvent } from 'electron';
 
-/** Generic invoke signature, can come from ipcRenderer.invoke or preload-exposed bridge functions */
+/** Generic invoke signature, can come from ipcRenderer.invoke or a preload-exposed bridge function */
 export type InvokeFn = (channel: string, ...args: any[]) => Promise<any>;
 export type OnOff = (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => void;
 
 /**
  * ----------------------------------------------------------------------------------------------------
- * Type utilities: Define call interface from renderer process to main process
+ * Type utility: define the call interface from renderer process to main process
  * ----------------------------------------------------------------------------------------------------
  */
 interface Invoke<In extends any[], Out = void> {
@@ -35,7 +35,7 @@ export function connectRenderToMain<RM extends RenderToMain>(prefix?: string) {
           const key = prefix ? `${prefix}:${String(ch)}` : String(ch);
           const val = target[ch];
           return val || (target[ch] = (fn: MainListener<any[], any>) => {
-            ipc.removeHandler(key); // Remove existing handler to prevent duplicate registration
+            ipc.removeHandler(key); // Remove existing listener to prevent duplicate registration
             ipc.handle(key, fn)
           });
         },
@@ -91,7 +91,7 @@ export function connectRenderToMain<RM extends RenderToMain>(prefix?: string) {
 
 /**
  * ----------------------------------------------------------------------------------------------------
- * Type utilities: Define call interface from main process to renderer process
+ * Type utility: define the call interface from main process to renderer process
  * ----------------------------------------------------------------------------------------------------
  */
 type MainToRender = Record<string, any>;
@@ -100,7 +100,7 @@ export type MapMainInvoke<T> = {
   [K in keyof T]: (payload: T[K]) => void;
 };
 export type MapRenderHandle<T extends MainToRender> = {
-  [K in keyof T]: (fn: RenderListener<T[K]>) => Function;
+  [K in keyof T]: (fn: RenderListener<T[K]>) => VoidFunction;
 };
 
 export function connectMainToRender<MR extends MainToRender = MainToRender>(prefix?: string) {

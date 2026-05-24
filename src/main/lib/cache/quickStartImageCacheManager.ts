@@ -1,11 +1,11 @@
 /**
  * QuickStartImageCacheManager
  * Manages local caching of Quick Start card images
- * 
+ *
  * Features:
- * - Cache remote images locally
- * - Clean up old cache when Agent updates
- * - Provide cache path queries
+ * - Cache remote images to local storage
+ * - Clear stale cache when an agent is updated
+ * - Provide cached path lookups
  */
 
 import * as fs from 'fs';
@@ -33,24 +33,24 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Ensure cache directory exists
+   * Ensure the cache directory exists
    */
   private ensureCacheDir(): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.info('[QuickStartImageCache] Created cache directory:', this.cacheDir);
+      logger.info(`[QuickStartImageCache] Created cache directory: ${this.cacheDir}`);
     }
   }
 
   /**
-   * Get MD5 hash of URL
+   * Get the MD5 hash of a URL
    */
   private getUrlHash(url: string): string {
     return crypto.createHash('md5').update(url).digest('hex');
   }
 
   /**
-   * Get file extension from URL
+   * Get the file extension from a URL
    */
   private getExtFromUrl(url: string): string {
     try {
@@ -63,14 +63,14 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Sanitize invalid filename characters from agent name
+   * Sanitize the agent name by replacing illegal filename characters
    */
   private sanitizeAgentName(agentName: string): string {
     return agentName.replace(/[<>:"/\\|?*]/g, '_');
   }
 
   /**
-   * Get cache file path
+   * Get the cache file path
    */
   private getCacheFilePath(agentName: string, imageUrl: string): string {
     const hash = this.getUrlHash(imageUrl);
@@ -80,7 +80,7 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Check if image is already cached
+   * Check whether an image is already cached
    */
   isCached(agentName: string, imageUrl: string): boolean {
     const cachePath = this.getCacheFilePath(agentName, imageUrl);
@@ -88,7 +88,7 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Get cached image path (if exists)
+   * Get the cached image path (if it exists)
    */
   getCachedPath(agentName: string, imageUrl: string): string | null {
     const cachePath = this.getCacheFilePath(agentName, imageUrl);
@@ -96,7 +96,7 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Add timestamp parameter to URL to bypass CDN cache and ensure latest image
+   * Add a timestamp query parameter to a URL to bypass CDN cache and ensure the latest image is fetched
    */
   private addTimestampToUrl(url: string): string {
     try {
@@ -104,33 +104,33 @@ class QuickStartImageCacheManager {
       urlObj.searchParams.set('timestamp', Date.now().toString());
       return urlObj.toString();
     } catch {
-      // If URL parsing fails, use simple string concatenation
+      // If URL parsing fails, fall back to simple string concatenation
       const separator = url.includes('?') ? '&' : '?';
       return `${url}${separator}timestamp=${Date.now()}`;
     }
   }
 
   /**
-   * Cache remote image
-   * @returns Local file path of cached image, or null on failure
+   * Cache a remote image
+   * @returns The local file path after caching, or null on failure
    */
   async cacheImage(agentName: string, imageUrl: string): Promise<string | null> {
     try {
-      // Use original URL for cache path (without timestamp) to ensure cache hits
+      // Use the original URL (without timestamp) to generate the cache path, ensuring cache hits
       const cachePath = this.getCacheFilePath(agentName, imageUrl);
-      
-      // Already cached, return directly
+
+      // Already cached — return immediately
       if (fs.existsSync(cachePath)) {
         return cachePath;
       }
 
-      // Ensure agent directory exists
+      // Ensure the agent cache directory exists
       const agentCacheDir = path.dirname(cachePath);
       if (!fs.existsSync(agentCacheDir)) {
         fs.mkdirSync(agentCacheDir, { recursive: true });
       }
 
-      // Add timestamp parameter when downloading to bypass CDN cache for latest image
+      // Add a timestamp parameter when downloading to bypass CDN cache and fetch the latest image
       const fetchUrl = this.addTimestampToUrl(imageUrl);
       const response = await fetch(fetchUrl);
       if (!response.ok) {
@@ -150,7 +150,7 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Get MIME type for an image
+   * Get the MIME type for a file extension
    */
   private getMimeType(ext: string): string {
     const mimeTypes: Record<string, string> = {
@@ -167,21 +167,21 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Get or cache image
-   * Returns base64 data URL if cached, otherwise downloads and caches then returns
-   * @returns Image in base64 data URL format, or null on failure
+   * Get or cache an image.
+   * Returns the image as a base64 data URL if cached; otherwise downloads, caches, and returns it.
+   * @returns Image as a base64 data URL, or null on failure
    */
   async getOrCacheImage(agentName: string, imageUrl: string): Promise<string | null> {
     try {
       // Check cache first
       let cachedPath = this.getCachedPath(agentName, imageUrl);
-      
-      // If not cached, try downloading and caching
+
+      // If not cached, attempt to download and cache
       if (!cachedPath) {
         cachedPath = await this.cacheImage(agentName, imageUrl);
       }
-      
-      // If cached successfully, read file and convert to base64 data URL
+
+      // If caching succeeded, read the file and convert to a base64 data URL
       if (cachedPath && fs.existsSync(cachedPath)) {
         const fileBuffer = fs.readFileSync(cachedPath);
         const base64 = fileBuffer.toString('base64');
@@ -189,7 +189,7 @@ class QuickStartImageCacheManager {
         const mimeType = this.getMimeType(ext);
         return `data:${mimeType};base64,${base64}`;
       }
-      
+
       return null;
     } catch (error) {
       logger.error(`[QuickStartImageCache] Error getting/caching image: ${imageUrl}`, error instanceof Error ? error.message : String(error));
@@ -198,13 +198,13 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Clear all image cache for a specific Agent
-   * Called when Agent updates (version or zero_states change)
+   * Clear all cached images for a specific agent.
+   * Called when an agent is updated (version or zero_states changed).
    */
   clearAgentCache(agentName: string): void {
     const safeAgentName = this.sanitizeAgentName(agentName);
     const agentCacheDir = path.join(this.cacheDir, safeAgentName);
-    
+
     if (fs.existsSync(agentCacheDir)) {
       try {
         fs.rmSync(agentCacheDir, { recursive: true, force: true });
@@ -216,7 +216,7 @@ class QuickStartImageCacheManager {
   }
 
   /**
-   * Clear all image cache
+   * Clear all cached images
    */
   clearAllCache(): void {
     if (fs.existsSync(this.cacheDir)) {
@@ -225,13 +225,13 @@ class QuickStartImageCacheManager {
         this.ensureCacheDir();
         logger.info('[QuickStartImageCache] Cleared all cache');
       } catch (error) {
-        logger.error('[QuickStartImageCache] Failed to clear all cache', error instanceof Error ? error.message : String(error));
+        logger.error(`[QuickStartImageCache] Failed to clear all cache: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
 
   /**
-   * Get cache directory path
+   * Get the cache directory path
    */
   getCacheDirectory(): string {
     return this.cacheDir;

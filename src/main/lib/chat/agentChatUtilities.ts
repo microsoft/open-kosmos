@@ -1,16 +1,65 @@
 // src/main/lib/chat/agentChatUtilities.ts
-// AgentChat utility methods collection - helper methods extracted from agentChat.ts
+// AgentChat utility methods — helper methods extracted from agentChat.ts
 
-import { Message, MessageHelper } from '../types/chatTypes';
-import { ResponseInputItem } from '../types/ghcChatTypes';
+import { Message, ToolCall, MessageHelper, UserMessage, SystemMessage, AssistantMessage } from '@shared/types/chatTypes';
+import {
+  ResponseInputImageContent,
+  ResponseInputItem,
+  ResponseInputTextContent,
+} from '@shared/types/ghcChatTypes';
 import { createLogger } from '../unifiedLogger';
 import { formatFileSize } from '../utilities/contentUtils';
+import { GhcApiError } from '../utilities/errors';
 import { FullModeCompressor } from '../compression/fullModeCompressor';
 import { TokenCounter } from '../token';
+import {
+  sanitizeFormattedToolReplayMessages,
+  sanitizeIncompleteToolCallMessages,
+} from './agentChatToolReplaySanitizer';
+import { compressMessageImagesForStorage } from "../utilities/imageStorageCompression";
 
 const logger = createLogger();
 
-// ====== Tool parameter processing methods ======
+// ===== API Message intermediate format types =====
+
+interface ApiTextContent {
+  type: 'text';
+  text: string;
+}
+
+interface ApiImageContent {
+  type: 'image_url';
+  image_url: { url: string; detail?: 'low' | 'high' };
+}
+
+type ApiMultipartContent = Array<ApiTextContent | ApiImageContent>;
+
+interface ApiUserMessage {
+  role: 'user';
+  content: string | ApiMultipartContent;
+}
+
+interface ApiAssistantMessage {
+  role: 'assistant';
+  content: string;
+  tool_calls?: ToolCall[];
+}
+
+interface ApiSystemMessage {
+  role: 'system';
+  content: string;
+}
+
+interface ApiToolMessage {
+  role: 'tool';
+  content: string;
+  tool_call_id: string;
+  name?: string;
+}
+
+export type ApiMessage = ApiUserMessage | ApiAssistantMessage | ApiSystemMessage | ApiToolMessage;
+
+// ====== Tool argument processing methods ======
 
 /**
  * Normalize tool calls
@@ -107,6 +156,10 @@ export function normalizeToolArguments(
   let cleaned = rawArgs.trim();
   let didChange = cleaned !== rawArgs;
 
+  if (!cleaned) {
+    return { argumentsList: ['{}'], didChange: true };
+  }
+
   const withoutFence = stripJsonCodeFence(cleaned);
   if (withoutFence !== cleaned) {
     cleaned = withoutFence;
@@ -157,8 +210,88 @@ export function normalizeToolArguments(
   return { argumentsList: [rawArgs], didChange };
 }
 
+export function detectTruncatedToolCalls(toolCalls: any[]): any[] {
+  const truncated: any[] = [];
+
+  for (const toolCall of toolCalls || []) {
+    const toolName = toolCall?.function?.name || '';
+    const rawArgs = toolCall?.function?.arguments;
+    const requiredFields = getCriticalToolCallFields(toolName);
+
+    if (typeof rawArgs !== 'string') {
+      if (requiredFields.length > 0) {
+        truncated.push(toolCall);
+      }
+      continue;
+    }
+
+    const args = rawArgs.trim();
+    if (!args) {
+      if (requiredFields.length > 0) {
+        truncated.push(toolCall);
+      }
+      continue;
+    }
+
+    let openBraces = 0;
+    let closeBraces = 0;
+    let openBrackets = 0;
+    let closeBrackets = 0;
+    let inString = false;
+    let escaped = false;
+    let unbalancedQuotes = 0;
+
+    for (let i = 0; i < args.length; i++) {
+      const ch = args[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+          unbalancedQuotes--;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        unbalancedQuotes++;
+        continue;
+      }
+
+      if (ch === '{') openBraces++;
+      else if (ch === '}') closeBraces++;
+      else if (ch === '[') openBrackets++;
+      else if (ch === ']') closeBrackets++;
+    }
+
+    if (openBraces !== closeBraces || openBrackets !== closeBrackets || unbalancedQuotes !== 0) {
+      truncated.push(toolCall);
+      continue;
+    }
+
+    const parsed = tryParseJson(args);
+    if (!parsed.ok) {
+      truncated.push(toolCall);
+      continue;
+    }
+
+    if (isMissingCriticalToolCallFields(toolName, parsed.value)) {
+      truncated.push(toolCall);
+    }
+  }
+
+  return truncated;
+}
+
 /**
- * Remove JSON code fences
+ * Strip JSON code fences
  */
 export function stripJsonCodeFence(content: string): string {
   const codeFenceMatch = content.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
@@ -216,7 +349,7 @@ export function splitConcatenatedJsonObjects(content: string): string[] {
 }
 
 /**
- * Generate synthetic tool call ID
+ * Generate a synthetic tool call ID
  */
 export function generateSyntheticToolCallId(
   originalCall: any,
@@ -230,7 +363,7 @@ export function generateSyntheticToolCallId(
 }
 
 /**
- * Extract first JSON structure
+ * Extract the first JSON structure from a string
  */
 export function extractFirstJsonStructure(content: string): string | null {
   const trimmed = content.trim();
@@ -275,7 +408,7 @@ export function extractFirstJsonStructure(content: string): string | null {
 }
 
 /**
- * Try to parse JSON
+ * Attempt to parse JSON
  */
 export function tryParseJson(value: string): { ok: boolean; value?: any } {
   try {
@@ -285,17 +418,36 @@ export function tryParseJson(value: string): { ok: boolean; value?: any } {
   }
 }
 
-// ====== Compression related methods ======
+// ====== Compression-related methods ======
 
 /**
- * Check if compression is needed
- * Smart compression decision based on actual token usage rate (>= 0.85 * model context window)
+ * Returns the compression threshold appropriate for this model's context window size.
+ *
+ * Tiers (applied to raw contextWindowSize, not effectiveContextWindow):
+ *   ≥ 500K  →  0.40  (1M models: compress early, cycles repeat cheaply after shrink)
+ *   ≥ 200K  →  0.50  (mid-range: balanced trade-off)
+ *   <  200K  →  0.70  (small models: preserve history, avoid premature compression)
+ *
+ * After first compression, context shrinks to [summary + 5 recent msgs] (~5–15K tokens),
+ * so the threshold will not re-fire until substantial new history accumulates — the
+ * aggressive lower tiers do not cause runaway compression cycles.
+ */
+export function getCompressionThreshold(contextWindowSize: number): number {
+  if (contextWindowSize >= 500_000) return 0.40;
+  if (contextWindowSize >= 200_000) return 0.50;
+  return 0.70;
+}
+
+/**
+ * Check whether compression is needed.
+ * Uses adaptive thresholds based on the model's context window size.
  */
 export async function checkCompressionNeeds(
   contextHistory: Message[],
   contextWindowSize: number,
   agentName: string,
-  calculateTokensFn: () => Promise<{ totalTokens: number }>
+  calculateTokensFn: () => Promise<{ totalTokens: number }>,
+  outputTokenReserve: number = 0
 ): Promise<boolean> {
   try {
     if (contextWindowSize <= 0) {
@@ -303,18 +455,31 @@ export async function checkCompressionNeeds(
         contextWindowSize,
         agentName
       });
-      
+
       return contextHistory.length > 15;
     }
-    
-    // Calculate current total token usage
+
+    // Calculate the current total token usage
     const tokens = await calculateTokensFn();
-    
-    // Smart compression decision: trigger compression when current token usage rate >= 85%
-    const tokenUsageRatio = tokens.totalTokens / contextWindowSize;
-    const compressionThreshold = 0.85;
+
+    // Reserve space for output tokens
+    const effectiveContextWindow = contextWindowSize - outputTokenReserve;
+
+    // Adaptive compression check: threshold is tiered by model context window size
+    const tokenUsageRatio = tokens.totalTokens / effectiveContextWindow;
+    const compressionThreshold = getCompressionThreshold(contextWindowSize);
     const needsCompression = tokenUsageRatio >= compressionThreshold;
-    
+
+    logger.debug('[AgentChatUtilities] Compression threshold check', 'checkCompressionNeeds', {
+      agentName,
+      contextWindowSize,
+      effectiveContextWindow,
+      totalTokens: tokens.totalTokens,
+      tokenUsageRatio: Number(tokenUsageRatio.toFixed(4)),
+      compressionThreshold,
+      needsCompression,
+    });
+
     return needsCompression;
   } catch (error) {
     logger.error('[AgentChatUtilities] Error in checkCompressionNeeds', 'checkCompressionNeeds', {
@@ -326,7 +491,7 @@ export async function checkCompressionNeeds(
 }
 
 /**
- * Compress Context History using FullModeCompressor
+ * Compress context history using FullModeCompressor
  */
 export async function compressContextHistoryWithFullMode(
   contextHistory: Message[],
@@ -335,19 +500,41 @@ export async function compressContextHistoryWithFullMode(
 ): Promise<{ success: boolean; compressedMessages: Message[] }> {
   try {
     const compressionResult = await fullModeCompressor.compressMessages(contextHistory);
-    
-    if (compressionResult.success && compressionResult.compressedMessages.length < contextHistory.length) {
+    const compressedMessages = compressionResult.compressedMessages;
+    const compressionMethod = compressionResult.metadata.compressionMethod;
+    const hasUsableSummary = compressionMethod !== 'summary' || Boolean(compressionResult.summary?.trim());
+    const canInstallResult = compressionResult.success || compressionMethod === 'fallback';
+
+    if (compressedMessages.length < contextHistory.length && canInstallResult && hasUsableSummary) {
       logger.info('[AgentChatUtilities] Context history compressed successfully', 'compressContextHistoryWithFullMode', {
         agentName,
         originalCount: contextHistory.length,
-        compressedCount: compressionResult.compressedMessages.length
+        compressedCount: compressedMessages.length,
+        compressionStrategy: compressionResult.strategy,
+        compressionMethod: compressionResult.metadata.compressionMethod,
+        compressionSuccess: compressionResult.success,
+        processingTimeMs: compressionResult.processingTime,
+        chunkSummaryCallCount: compressionResult.metadata.chunkSummaryCallCount,
+        totalLlmCallCount: compressionResult.metadata.totalLlmCallCount,
       });
       return {
         success: true,
-        compressedMessages: compressionResult.compressedMessages
+        compressedMessages
       };
     }
-    
+
+    if (compressedMessages.length < contextHistory.length) {
+      logger.warn('[AgentChatUtilities] Rejected compressed result due to failed summary validation or unsupported failure mode', 'compressContextHistoryWithFullMode', {
+        agentName,
+        originalCount: contextHistory.length,
+        compressedCount: compressedMessages.length,
+        compressionStrategy: compressionResult.strategy,
+        compressionMethod,
+        compressionSuccess: compressionResult.success,
+        hasUsableSummary,
+      });
+    }
+
     return { success: false, compressedMessages: contextHistory };
   } catch (error) {
     logger.error('[AgentChatUtilities] Full Mode compression failed', 'compressContextHistoryWithFullMode', {
@@ -366,45 +553,44 @@ export async function applyStorageCompressionToRecentMessages(
   agentName: string
 ): Promise<{ success: boolean; compressedMessage?: Message }> {
   const startTime = Date.now();
-  
+
   try {
     // Get the last user message
     const userMessages = chatHistory.filter((msg: Message) => msg.role === 'user');
-    
+
     if (userMessages.length === 0) {
       return { success: false };
     }
-    
+
     const lastUserMessage = userMessages[userMessages.length - 1];
-    
-    // Check if images are present
+
+    // Check whether it contains images
     if (!MessageHelper.hasImages(lastUserMessage)) {
       return { success: false };
     }
-    
+
     const images = MessageHelper.getImages(lastUserMessage);
-    
-    // Check if already compressed
+
+    // Check whether compression has already been applied
     const needsCompression = images.some(img => !img.metadata.storageCompressed);
     if (!needsCompression) {
       return { success: false };
     }
-    
-    // Use main process compression tool to compress directly
-    const { compressMessageImagesForStorage } = await import('../utilities/imageStorageCompression');
+
+    // Compress directly using the main-process compression utility
     const compressedMessage = await compressMessageImagesForStorage(lastUserMessage);
-    
-    // Calculate compression results
+
+    // Calculate compression effectiveness
     const oldImages = MessageHelper.getImages(lastUserMessage);
     const newImages = MessageHelper.getImages(compressedMessage);
     const compressedImagesCount = newImages.filter(img => img.metadata.storageCompressed).length;
-    
+
     const oldTotalSize = oldImages.reduce((sum, img) => sum + img.metadata.fileSize, 0);
     const newTotalSize = newImages.reduce((sum, img) => sum + img.metadata.fileSize, 0);
     const savedBytes = oldTotalSize - newTotalSize;
-    
+
     const duration = Date.now() - startTime;
-    
+
     logger.info('[AgentChatUtilities] Storage compression completed', 'applyStorageCompressionToRecentMessages', {
       agentName,
       messageId: lastUserMessage.id,
@@ -413,9 +599,9 @@ export async function applyStorageCompressionToRecentMessages(
       savedBytes,
       durationMs: duration
     });
-    
+
     return { success: true, compressedMessage };
-    
+
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.error('[AgentChatUtilities] Storage compression failed', 'applyStorageCompressionToRecentMessages', {
@@ -438,15 +624,12 @@ export async function formatMessagesForApi(
   contextHistory: Message[],
   supportsTools: boolean,
   endpoint: string = '/chat/completions'
-): Promise<any[]> {
-  // If /responses endpoint, use specific conversion logic
-  if (endpoint === '/responses') {
-    return convertMessagesToResponseInput([...systemMessages, ...contextHistory]);
-  }
+): Promise<ApiMessage[] | ResponseInputItem[]> {
+  const sanitizedContextHistory = sanitizeIncompleteToolCallMessages(contextHistory, sanitizeToolCallsForApi);
 
   const validToolCallIds = new Set<string>();
-  const formattedMessages = [];
-  
+  const formattedMessages: ApiMessage[] = [];
+
   // Collect all valid tool call IDs
   for (const msg of systemMessages) {
     if (msg.role === 'assistant' && msg.tool_calls) {
@@ -457,8 +640,8 @@ export async function formatMessagesForApi(
       }
     }
   }
-  
-  for (const msg of contextHistory) {
+
+  for (const msg of sanitizedContextHistory) {
     if (msg.role === 'assistant' && msg.tool_calls) {
       for (const toolCall of msg.tool_calls) {
         if (toolCall.id) {
@@ -467,72 +650,76 @@ export async function formatMessagesForApi(
       }
     }
   }
-  
+
+  function handleRestMsg(msg: UserMessage | SystemMessage | AssistantMessage) {
+    const content = MessageHelper.getText(msg);
+    if (msg.role === 'assistant') {
+      const tool_calls = supportsTools ? msg.tool_calls : undefined;
+      if (content || tool_calls?.length) {
+        formattedMessages.push({ role: 'assistant', content, tool_calls });
+      }
+      return;
+    }
+    if (!content) return;
+    formattedMessages.push({ role: msg.role, content });
+  }
+
   // Format system messages
   for (const msg of systemMessages) {
-    if (!msg.content && msg.role !== 'tool' && msg.role !== 'system') {
-      continue;
-    }
-    
-    const messageContent = MessageHelper.getText(msg);
-    const apiMessage: any = {
-      role: msg.role,
-      content: messageContent
-    };
-
-    if (supportsTools && msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      apiMessage.tool_calls = msg.tool_calls;
-    }
-
-    formattedMessages.push(apiMessage);
-  }
-  
-  // Format context history
-  for (const msg of contextHistory) {
-    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      const assistantContent = MessageHelper.getText(msg);
-      const apiMessage: any = {
-        role: msg.role,
-        content: assistantContent,
-        tool_calls: msg.tool_calls
-      };
-      formattedMessages.push(apiMessage);
-      continue;
-    }
-    
-    if (!msg.content && msg.role !== 'tool' && msg.role !== 'system') {
-      continue;
-    }
-    
     if (msg.role === 'tool') {
       if (!msg.tool_call_id || !validToolCallIds.has(msg.tool_call_id)) {
         continue;
       }
-      
+
       const toolContent = MessageHelper.getText(msg);
-      const apiMessage: any = {
+      const apiMessage: ApiToolMessage = {
+        role: msg.role,
+        content: toolContent,
+        tool_call_id: msg.tool_call_id,
+      };
+
+      if (msg.name) {
+        apiMessage.name = msg.name;
+      }
+
+      formattedMessages.push(apiMessage);
+      continue;
+    }
+    handleRestMsg(msg);
+  }
+
+  // Format context history
+  for (const msg of sanitizedContextHistory) {
+    if (msg.role === 'tool') {
+      if (!msg.tool_call_id || !validToolCallIds.has(msg.tool_call_id)) {
+        continue;
+      }
+
+      const toolContent = MessageHelper.getText(msg);
+      const apiMessage: ApiToolMessage = {
         role: msg.role,
         content: toolContent,
         tool_call_id: msg.tool_call_id
       };
-      
+
       if (msg.name) {
         apiMessage.name = msg.name;
       }
-      
+
       formattedMessages.push(apiMessage);
       continue;
     }
-    
-    // Process unified format messages, including file references, Office documents, images, and other file types
-    if (Array.isArray(msg.content)) {
+
+    // Handle unified-format messages including file references, Office documents, images, and other file types.
+    // Only user message content can contain images/files/Office/other attachments.
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
       const hasImages = MessageHelper.hasImages(msg);
       const hasFiles = MessageHelper.hasFiles(msg);
       const hasOffice = MessageHelper.hasOffice(msg);
       const hasOthers = MessageHelper.hasOthers(msg);
 
       if (hasImages || hasFiles || hasOffice || hasOthers) {
-        // Handle cases with images, files, Office documents, and other file types simultaneously
+        // Handle the case where images coexist with files, Office documents, or other file types
         if (hasImages && (hasFiles || hasOffice || hasOthers)) {
           const textContent = MessageHelper.getText(msg);
           const fileParts = MessageHelper.getFiles(msg);
@@ -542,7 +729,7 @@ export async function formatMessagesForApi(
 
           let enhancedContent = textContent;
 
-          // Process text file references
+          // Handle text file references
           if (fileParts.length > 0) {
             enhancedContent += '\n\n📁 **Text Files List:**\n';
             fileParts.forEach((filePart, index) => {
@@ -554,8 +741,8 @@ export async function formatMessagesForApi(
               }
             });
           }
-          
-          // Process Office document references
+
+          // Handle Office document references
           if (officeParts.length > 0) {
             enhancedContent += '\n\n📄 **Office Files List:**\n';
             officeParts.forEach((officePart, index) => {
@@ -574,7 +761,7 @@ export async function formatMessagesForApi(
             });
           }
 
-          // Process other file type references
+          // Handle other file type references
           if (othersParts.length > 0) {
             enhancedContent += '\n\n📎 **Other Files List:**\n';
             othersParts.forEach((othersPart, index) => {
@@ -596,28 +783,21 @@ export async function formatMessagesForApi(
             enhancedContent += '\n📎 *Note: Other file types only provide metadata information and cannot be read directly*';
           }
 
-          // Create API format content array containing text and images
-          const content: Array<{
-            type: 'text' | 'image_url';
-            text?: string;
-            image_url?: {
-              url: string;
-              detail?: 'low' | 'high';
-            };
-          }> = [{ type: 'text', text: enhancedContent }];
+          // Build an API-format content array containing text and images
+          const content: ApiMultipartContent = [{ type: 'text', text: enhancedContent }];
 
           // Add image content
           for (const imagePart of imageParts) {
             const imageUrl = imagePart.image_url.url;
             const originalDetail = imagePart.image_url.detail;
             let imageDetail: 'low' | 'high' | undefined;
-            
+
             if (originalDetail === 'low' || originalDetail === 'high') {
               imageDetail = originalDetail;
             } else {
               imageDetail = undefined;
             }
-            
+
             content.push({
               type: 'image_url',
               image_url: {
@@ -626,24 +806,24 @@ export async function formatMessagesForApi(
               }
             });
           }
-          
+
           formattedMessages.push({
-            role: msg.role,
+            role: 'user',
             content: content
           });
           continue;
         }
-        
-        // For cases with only file/Office/other file type references
+
+        // Handle the case where only files/Office documents/other file types are present (no images)
         if ((hasFiles || hasOffice || hasOthers) && !hasImages) {
           const textContent = MessageHelper.getText(msg);
           const fileParts = MessageHelper.getFiles(msg);
           const officeParts = MessageHelper.getOffice(msg);
           const othersParts = MessageHelper.getOthers(msg);
-          
+
           let enhancedContent = textContent;
 
-          // Process text file references
+          // Handle text file references
           if (fileParts.length > 0) {
             enhancedContent += '\n\n📁 **Text Files List:**\n';
             fileParts.forEach((filePart, index) => {
@@ -657,7 +837,7 @@ export async function formatMessagesForApi(
             enhancedContent += '\n💡 *Tip: You can use the `read_file` tool to read the contents of these text files*';
           }
 
-          // Process Office document references
+          // Handle Office document references
           if (officeParts.length > 0) {
             enhancedContent += '\n\n📄 **Office Documents List:**\n';
             officeParts.forEach((officePart, index) => {
@@ -676,8 +856,8 @@ export async function formatMessagesForApi(
             });
             enhancedContent += '\n📄 *Tip: You can call the `read_office_file` tool to extract structured information from these Office documents*';
           }
-          
-          // Process other file type references
+
+          // Handle other file type references
           if (othersParts.length > 0) {
             enhancedContent += '\n\n📎 **Other Files List:**\n';
             othersParts.forEach((othersPart, index) => {
@@ -688,39 +868,32 @@ export async function formatMessagesForApi(
             });
             enhancedContent += '\n📎 *Note: Other file types only provide metadata information and cannot be read directly*';
           }
-          
+
           formattedMessages.push({
             role: msg.role,
             content: enhancedContent
           });
           continue;
         }
-        
-        // For cases with only images
+
+        // Handle the case where only images are present (no files, Office, or other types)
         if (hasImages && !hasFiles && !hasOffice && !hasOthers) {
           const textContent = MessageHelper.getText(msg);
-          
-          const content: Array<{
-            type: 'text' | 'image_url';
-            text?: string;
-            image_url?: {
-              url: string;
-              detail?: 'low' | 'high';
-            };
-          }> = [{ type: 'text', text: textContent }];
-          
+
+          const content: ApiMultipartContent = [{ type: 'text', text: textContent }];
+
           const imageParts = MessageHelper.getImages(msg);
           for (const imagePart of imageParts) {
             const imageUrl = imagePart.image_url.url;
             const originalDetail = imagePart.image_url.detail;
             let imageDetail: 'low' | 'high' | undefined;
-            
+
             if (originalDetail === 'low' || originalDetail === 'high') {
               imageDetail = originalDetail;
             } else {
               imageDetail = undefined;
             }
-            
+
             content.push({
               type: 'image_url',
               image_url: {
@@ -729,95 +902,191 @@ export async function formatMessagesForApi(
               }
             });
           }
-          
+
           formattedMessages.push({
-            role: msg.role,
+            role: 'user',
             content: content
           });
           continue;
         }
       }
     }
-    
-    const messageContent = MessageHelper.getText(msg);
-    const apiMessage: any = {
-      role: msg.role,
-      content: messageContent
-    };
 
-    if (supportsTools && msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      apiMessage.tool_calls = msg.tool_calls;
-    }
-
-    formattedMessages.push(apiMessage);
+    handleRestMsg(msg);
   }
 
-  return formattedMessages;
+  const sanitizedFormattedMessages = sanitizeFormattedToolReplayMessages(formattedMessages) as ApiMessage[];
+
+  // Merge consecutive user messages — some providers reject adjacent user messages.
+  const mergedMessages = mergeConsecutiveUserMessages(sanitizedFormattedMessages);
+
+  // Warn if the last message is assistant (prefill) — causes 400 on some models.
+  if (mergedMessages.length > 0 && mergedMessages[mergedMessages.length - 1].role === 'assistant') {
+    logger.warn('[AgentChatUtilities] Final formatted messages end with assistant role — may cause prefill error', 'formatMessagesForApi', {
+      totalMessages: mergedMessages.length, endpoint,
+    });
+  }
+
+  if (endpoint === '/responses') {
+    return convertMessagesToResponseInput(mergedMessages);
+  }
+
+  return mergedMessages;
 }
 
 /**
- * Convert standard Message array to ResponseInputItem array required by /responses endpoint
+ * Merge consecutive user messages into one (some providers reject adjacent user messages).
  */
-function convertMessagesToResponseInput(messages: Message[]): ResponseInputItem[] {
+function toMultipartContent(content: string | ApiMultipartContent): ApiMultipartContent {
+  return typeof content === 'string' ? [{ type: 'text' as const, text: content }] : content;
+}
+
+/** @internal — exported for testing */
+export function mergeConsecutiveUserMessages(messages: ApiMessage[]): ApiMessage[] {
+  if (messages.length <= 1) return messages;
+  const result: ApiMessage[] = [];
+  for (const msg of messages) {
+    const last = result[result.length - 1];
+    if (msg.role === 'user' && last?.role === 'user') {
+      const merged = [...toMultipartContent(last.content), ...toMultipartContent((msg as ApiUserMessage).content)];
+      const allText = merged.every(p => p.type === 'text');
+      result[result.length - 1] = {
+        ...last,
+        content: allText ? merged.map(p => (p as ApiTextContent).text).join('\n\n') : merged,
+      } as ApiUserMessage;
+    } else {
+      result.push(msg);
+    }
+  }
+  if (result.length < messages.length) {
+    logger.info('[AgentChatUtilities] Merged consecutive user messages', 'mergeConsecutiveUserMessages', {
+      originalCount: messages.length, mergedCount: messages.length - result.length,
+    });
+  }
+  return result;
+}
+
+export function sanitizeToolCallsForApi(toolCalls: ToolCall[]): { toolCalls: ToolCall[]; sanitizedCount: number } {
+  let sanitizedCount = 0;
+
+  const sanitizedToolCalls = toolCalls.map((toolCall) => {
+    if (!toolCall || typeof toolCall !== 'object' || !toolCall.function || typeof toolCall.function !== 'object') {
+      return toolCall;
+    }
+
+    const { value: sanitizedArguments, didSanitize } = sanitizeToolCallArgumentsForApi(
+      toolCall.function.arguments
+    );
+
+    if (!didSanitize) {
+      return toolCall;
+    }
+
+    sanitizedCount += 1;
+    return {
+      ...toolCall,
+      function: {
+        ...toolCall.function,
+        arguments: sanitizedArguments,
+      },
+    };
+  });
+
+  return { toolCalls: sanitizedToolCalls, sanitizedCount };
+}
+
+function sanitizeToolCallArgumentsForApi(rawArgs: unknown): { value: string; didSanitize: boolean } {
+  if (typeof rawArgs !== 'string') {
+    return {
+      value: JSON.stringify(rawArgs ?? {}),
+      didSanitize: true,
+    };
+  }
+
+  const trimmed = rawArgs.trim();
+  if (!trimmed) {
+    return { value: '{}', didSanitize: true };
+  }
+
+  const withoutFence = stripJsonCodeFence(trimmed);
+  const directParse = tryParseJson(withoutFence);
+  if (directParse.ok) {
+    const normalized = JSON.stringify(directParse.value);
+    return {
+      value: normalized,
+      didSanitize: normalized !== rawArgs,
+    };
+  }
+
+  const firstJsonStructure = extractFirstJsonStructure(withoutFence);
+  if (firstJsonStructure) {
+    const extractedParse = tryParseJson(firstJsonStructure);
+    if (extractedParse.ok) {
+      return {
+        value: JSON.stringify(extractedParse.value),
+        didSanitize: true,
+      };
+    }
+  }
+
+  return { value: '{}', didSanitize: true };
+}
+
+function getCriticalToolCallFields(toolName: string): string[] {
+  const criticalFieldsMap: Record<string, string[]> = {
+    write_file: ['filePath', 'content'],
+    create_file: ['filePath', 'content'],
+    append_file: ['filePath', 'content'],
+    execute_command: ['command'],
+    web_fetch: ['url'],
+    bing_web_search: ['query'],
+  };
+
+  return criticalFieldsMap[toolName] || [];
+}
+
+export function isMissingCriticalToolCallFields(toolName: string, parsed: any): boolean {
+  if (!parsed || typeof parsed !== 'object') return false;
+
+  const requiredFields = getCriticalToolCallFields(toolName);
+  if (requiredFields.length === 0) return false;
+
+  return requiredFields.some((field) => !(field in parsed));
+}
+
+/**
+ * Convert a standard Message array to the ResponseInputItem array required by the /responses endpoint
+ */
+function convertMessagesToResponseInput(messages: ApiMessage[]): ResponseInputItem[] {
   const inputItems: ResponseInputItem[] = [];
-  
+
   for (const msg of messages) {
     if (msg.role === 'system') {
-      // Convert System prompt to message type
       inputItems.push({
         type: 'message',
         role: 'system',
-        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        content: convertResponseMessageContent(msg.content)
       });
     } else if (msg.role === 'user') {
-      // Convert User message to message type
-      let content = '';
-      if (Array.isArray(msg.content)) {
-        // Extract text parts
-        content = msg.content
-          .filter((p: any) => p.type === 'text')
-          .map((p: any) => p.text)
-          .join('');
-          
-        // Process image parts - as separate input_image items
-        for (const part of msg.content) {
-          // Use type assertion to handle potentially different image format definitions
-          const p = part as any;
-          if (p.type === 'image_url' || p.type === 'image') {
-            const url = p.image_url?.url || p.url;
-            if (url) {
-              inputItems.push({
-                type: 'input_image',
-                content: url,
-                content_type: 'image/jpeg' // Simplified handling
-              });
-            }
-          }
-        }
-      } else {
-        content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-      }
-      
       inputItems.push({
         type: 'message',
         role: 'user',
-        content: content
+        content: convertResponseMessageContent(msg.content)
       });
     } else if (msg.role === 'assistant') {
-      // Convert Assistant message to message type
-      const item: any = {
+      const item: ResponseInputItem = {
         type: 'message',
         role: 'assistant',
-        content: typeof msg.content === 'string' ? msg.content : ''
+        content: convertResponseMessageContent(msg.content)
       };
-      
+
       if (msg.tool_calls && msg.tool_calls.length > 0) {
-        // First add assistant message (if it has content)
+        // Add the assistant message first (if it has content)
         if (item.content) {
           inputItems.push(item);
         }
-        
-        // Then add function calls
+
+        // Then add the function calls
         for (const toolCall of msg.tool_calls) {
           inputItems.push({
             type: 'function_call',
@@ -830,38 +1099,72 @@ function convertMessagesToResponseInput(messages: Message[]): ResponseInputItem[
         inputItems.push(item);
       }
     } else if (msg.role === 'tool') {
-      // Convert Tool output to function_call_output
+      // Convert tool output to function_call_output
       inputItems.push({
         type: 'function_call_output',
         call_id: msg.tool_call_id || '', // Note: /responses API uses call_id instead of id
-        output: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        output: msg.content,
       });
     }
   }
-  
+
   return inputItems;
+}
+
+function convertResponseMessageContent(
+  content: string | ApiMultipartContent
+): string | Array<ResponseInputTextContent | ResponseInputImageContent> {
+  if (!Array.isArray(content)) {
+    return content;
+  }
+
+  const convertedContent: Array<ResponseInputTextContent | ResponseInputImageContent> = [];
+
+  for (const part of content) {
+    if (part.type === 'text') {
+      convertedContent.push({
+        type: 'input_text',
+        text: part.text,
+      });
+    } else if (part.type === 'image_url') {
+      const detail = part.image_url.detail;
+      convertedContent.push({
+        type: 'input_image',
+        image_url: part.image_url.url,
+        detail: detail === 'low' || detail === 'high' ? detail : undefined,
+      });
+    }
+  }
+
+  if (convertedContent.length > 0) {
+    return convertedContent;
+  }
+
+  return JSON.stringify(content);
 }
 
 // ====== Image detection methods ======
 
 /**
- * Detect if messages contain image content
+ * Detect whether the messages contain any image content
  */
-export function hasImageContentInMessages(messages: any[]): boolean {
+export function hasImageContentInMessages(messages: Array<ApiMessage | ResponseInputItem>): boolean {
   if (!messages || !Array.isArray(messages)) {
     return false;
   }
-  
+
   for (const message of messages) {
-    if (message.content && Array.isArray(message.content)) {
+    if ('content' in message && Array.isArray(message.content)) {
       for (const contentPart of message.content) {
-        if (contentPart.type === 'image_url') {
-          return true;
+        if (typeof contentPart === 'object' && contentPart !== null && 'type' in contentPart) {
+          if (contentPart.type === 'image_url' || contentPart.type === 'input_image') {
+            return true;
+          }
         }
       }
     }
   }
-  
+
   return false;
 }
 
@@ -871,13 +1174,11 @@ export function hasImageContentInMessages(messages: any[]): boolean {
  * Convert MCP tools to OpenAI function tool format
  */
 export function convertMcpToolsToOpenAiFormat(mcpTools: any[]): any[] {
-  const { GhcApiError } = require('../utilities/errors');
-  
   return mcpTools.map((tool): any => {
     const toolName = tool.name;
     const toolDescription = tool.description;
     const toolInputSchema = tool.inputSchema;
-    
+
     if (!toolName || !toolName.match(/^[\w-]+$/)) {
       throw new GhcApiError(`Invalid tool name "${toolName}"`, 400);
     }
@@ -896,11 +1197,9 @@ export function convertMcpToolsToOpenAiFormat(mcpTools: any[]): any[] {
 }
 
 /**
- * Validate tool request
+ * Validate a tools request
  */
 export function validateToolsRequest(tools: any[]): void {
-  const { GhcApiError } = require('../utilities/errors');
-  
   if (tools.length > 128) {
     throw new GhcApiError(`Cannot have more than 128 tools. Current: ${tools.length}`, 400);
   }
@@ -923,11 +1222,9 @@ export function validateToolsRequest(tools: any[]): void {
 }
 
 /**
- * Determine tool selection mode
+ * Determine the tool choice mode
  */
 export function determineToolChoice(tools: any[], toolMode: string = 'auto'): string | { type: 'function'; function: { name: string } } | undefined {
-  const { GhcApiError } = require('../utilities/errors');
-  
   if (!tools || tools.length === 0) {
     return undefined;
   }

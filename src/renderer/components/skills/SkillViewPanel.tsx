@@ -4,6 +4,8 @@ import React, { useState, useCallback } from 'react'
 import { SkillConfig } from '../../lib/userData/types'
 import SkillFolderExplorer from './SkillFolderExplorer'
 import SkillFileViewer from './SkillFileViewer'
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[SkillViewPanel]');
 
 interface SkillViewPanelProps {
   skill: SkillConfig | null
@@ -36,36 +38,36 @@ const SkillViewPanel: React.FC<SkillViewPanelProps> = ({
     setViewMode('file')
   }, [])
 
-  // Handle returning to directory browsing
+  // Handle back to folder browsing
   const handleBackToFolder = useCallback(() => {
     setViewMode('folder')
     setSelectedFile(null)
   }, [])
 
-  // When skill changes, reset to directory browsing mode
+  // When skill changes, reset to folder browsing mode
   React.useEffect(() => {
     setViewMode('folder')
     setSelectedFile(null)
   }, [skill?.name])
 
-  // Listen for skill refresh events, handle file viewing mode refresh
+  // Listen for skill refresh events to handle file viewing mode refresh
   React.useEffect(() => {
     const handleRefreshFolderExplorer = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const { skillName } = customEvent.detail;
-      
+
       // Only process when the refreshed skill is the currently displayed skill
       if (skill && skillName === skill.name) {
         if (viewMode === 'file' && selectedFile) {
-          // If currently viewing a file, reload file content
+          // If currently viewing a file, reload the file content
           try {
             const result = await window.electronAPI?.skills?.getSkillFileContent?.(skill.name, selectedFile.path);
-            
+
             if (result?.success && result.data) {
               setSelectedFile(result.data);
             }
           } catch (error) {
-            console.error('Error refreshing file content:', error);
+            logger.error('Error refreshing file content:', error);
           }
         }
         // Folder mode refresh is handled by SkillFolderExplorer itself

@@ -1,28 +1,28 @@
 /**
  * Feature Flag React Hook
- * 
- * Provides a convenient hook for checking Feature Flags in React components (read-only)
+ *
+ * Provides convenient hooks for checking feature flags in React components (read-only)
  */
 
 import { useState, useEffect } from 'react';
 import { featureFlagCacheManager } from './featureFlagCacheManager';
 
 /**
- * Check if a single feature flag is enabled
- * 
+ * Check whether a single feature flag is enabled
+ *
  * @example
  * ```tsx
  * function MyComponent() {
  *   const isDevToolsEnabled = useFeatureFlag('devTools');
- *   
+ *
  *   if (!isDevToolsEnabled) return null;
- *   
+ *
  *   return <DevToolsPanel />;
  * }
  * ```
  */
 export function useFeatureFlag(flagName: string): boolean {
-  const [enabled, setEnabled] = useState(() => 
+  const [enabled, setEnabled] = useState(() =>
     featureFlagCacheManager.isEnabled(flagName)
   );
 
@@ -38,12 +38,12 @@ export function useFeatureFlag(flagName: string): boolean {
 
 /**
  * Get all feature flags (read-only)
- * 
+ *
  * @example
  * ```tsx
  * function DebugPanel() {
  *   const flags = useFeatureFlags();
- *   
+ *
  *   return (
  *     <div>
  *       {Object.entries(flags).map(([name, enabled]) => (
@@ -55,7 +55,7 @@ export function useFeatureFlag(flagName: string): boolean {
  * ```
  */
 export function useFeatureFlags(): Record<string, boolean> {
-  const [flags, setFlags] = useState<Record<string, boolean>>(() => 
+  const [flags, setFlags] = useState<Record<string, boolean>>(() =>
     featureFlagCacheManager.getAllFlags()
   );
 

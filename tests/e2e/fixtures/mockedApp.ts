@@ -11,10 +11,10 @@ import {
   type MockAuthData,
 } from './authHelper';
 
-// ==================== Utility Functions ====================
+// ==================== Utility functions ====================
 
 function createTestUserDataDir(): string {
-  const dirName = `openkosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `kosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
@@ -91,9 +91,9 @@ function getElectronEntryPath(): string {
 }
 
 /**
- * Wait for app initialization to complete ("Initializing Core Services" disappears)
+ * Wait for app initialization to complete ("Initializing Core Services" disappears).
  *
- * Returns the main window Page
+ * Returns the main window Page.
  */
 async function waitForAppReady(window: Page, label: string): Promise<void> {
   try {
@@ -117,15 +117,15 @@ async function waitForAppReady(window: Page, label: string): Promise<void> {
   }
 }
 
-// ==================== Fixture Type Definitions ====================
+// ==================== Fixture type definitions ====================
 
 /**
- * Empty User Environment Mock Fixture (Group A: Device Flow Tests)
+ * Empty user environment Mock Fixture (Group A: device flow tests)
  *
  * Provides:
  * - testUserDataDir: isolated empty userData directory
  * - mockedApp: ElectronApplication with IPC mocks injected
- * - mockedWindow: main window Page (app ready state)
+ * - mockedWindow: main window Page (waits for app ready)
  */
 type MockedEmptyFixtures = {
   testUserDataDir: string;
@@ -134,13 +134,13 @@ type MockedEmptyFixtures = {
 };
 
 /**
- * Pre-seeded Auth Environment Mock Fixture (Group B/C: Pre-seeded Auth + Post-Auth Navigation Tests)
+ * Pre-seeded authentication environment Mock Fixture (Group B/C: pre-seeded auth + post-auth navigation tests)
  *
  * Provides:
- * - testUserDataDir: userData directory with pre-seeded auth.json
- * - preseededAuthData: pre-seeded AuthData list
+ * - testUserDataDir: userData directory with auth.json pre-seeded
+ * - preseededAuthData: list of pre-seeded AuthData objects
  * - authenticatedApp: ElectronApplication with IPC mocks injected
- * - authenticatedWindow: main window Page (app ready state)
+ * - authenticatedWindow: main window Page (waits for app ready)
  */
 type MockedAuthenticatedFixtures = {
   testUserDataDir: string;
@@ -150,7 +150,7 @@ type MockedAuthenticatedFixtures = {
 };
 
 /**
- * Multi-User Pre-seeded Auth Environment Mock Fixture
+ * Multi-user pre-seeded authentication environment Mock Fixture
  */
 type MockedMultiUserFixtures = {
   testUserDataDir: string;
@@ -159,22 +159,22 @@ type MockedMultiUserFixtures = {
   multiUserWindow: Page;
 };
 
-// ==================== mockedEmptyApp — Empty User Environment ====================
+// ==================== mockedEmptyApp — empty user environment ====================
 
 /**
  * Empty user environment + IPC mock fixture
  *
- * For Group A (device flow tests):
- * - No pre-seeded profiles
- * - Mock auth:getLocalActiveSessions returns empty array
+ * Used for Group A (device flow tests):
+ * - No profiles pre-seeded
+ * - Mock auth:getLocalActiveSessions returns an empty array
  * - Mock auth:startGhcDeviceFlow does not make real calls
  * - App navigates to /login (SHOW_NEW_USER_SIGNUP)
  *
  * Key timing:
  * 1. electron.launch() — main process starts, renderer begins loading
- * 2. firstWindow() — wait for BrowserWindow to open, renderer shows "Initializing Core Services..."
- *    (App.tsx's isAppReady gate prevents StartupPage from rendering)
- * 3. evaluate() — inject IPC mocks in main process (safe: StartupPage hasn't called any IPC yet)
+ * 2. firstWindow() — wait for BrowserWindow to open; renderer shows "Initializing Core Services..."
+ *    (App.tsx's isAppReady gate blocks StartupPage from rendering at this point)
+ * 3. evaluate() — inject IPC mock into the main process (safe: StartupPage has not called any IPC yet)
  * 4. isAppReady becomes true → StartupPage renders → calls our mocked IPC handlers
  */
 export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
@@ -202,9 +202,9 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
       timeout: 30_000,
     });
 
-    // Key fix: wait for firstWindow() first to stabilize CDP context,
-    // then inject IPC mocks. At this point renderer shows "Initializing Core Services...",
-    // StartupPage hasn't rendered yet, won't call auth:getLocalActiveSessions.
+    // Critical fix: wait for firstWindow() first to stabilize the CDP context,
+    // then inject IPC mocks. At this point the renderer shows "Initializing Core Services..."
+    // and StartupPage has not yet rendered, so auth:getLocalActiveSessions has not been called.
     const window = await app.firstWindow();
     console.log(
       '[E2E Mock Empty] firstWindow obtained, injecting IPC mocks...',
@@ -224,49 +224,51 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
       };
 
       // ---- Core mocks: prevent real API calls ----
-      // All return values must use { success: true, data: ... } envelope format
-      // (consistent with real handler return format in src/main/main.ts)
+      // All return values must use the { success: true, data: ... } envelope format
+      // (consistent with the return format of real handlers in src/main/main.ts)
 
-      // 🚀 app:isReady → return true immediately (skip backend initialization wait)
-      // Real handler requires isAnalyticsReady && isAgentChatReady, mock returns true directly
+      // 🚀 app:isReady → immediately return true (skip backend initialization wait)
+      // Real handler requires isAnalyticsReady && isAgentChatReady; mock returns true directly.
       safeHandle('app:isReady', () => ({
         success: true,
         data: true,
       }));
 
       // Also push app:ready event (ensure App.tsx's onAppReady listener also receives it)
-      setTimeout(() => {
+      // Retry sending app:ready until renderer consumes it (idempotent)
+      const readyInterval = setInterval(() => {
         const wins = BrowserWindow.getAllWindows();
         if (wins.length > 0) {
           wins[0].webContents.send('app:ready', true);
         }
-      }, 100);
+      }, 200);
+      setTimeout(() => clearInterval(readyInterval), 30_000);
 
-      // Dynamic state: setCurrentSession stores authData, getCurrentSession returns it
-      // Use global instead of closure variables to allow tests to pre-set session data via app.evaluate
-      // (resolves race condition between AuthProvider.initializeAuth() and auth:authChanged)
+      // Dynamic state: setCurrentSession stores authData, getCurrentSession returns it.
+      // Uses global instead of closure variables so tests can pre-set session data via app.evaluate().
+      // (Resolves race condition between AuthProvider.initializeAuth() and auth:authChanged)
       (global as any).__e2eMockCurrentSessionData = null;
 
-      // auth:getLocalActiveSessions → empty array (no existing users, route to /login)
+      // auth:getLocalActiveSessions → empty array (no existing users, routes to /login)
       safeHandle('auth:getLocalActiveSessions', () => ({
         success: true,
         data: [],
       }));
 
-      // auth:startGhcDeviceFlow → only return success, don't start real OAuth flow
-      // Device code/success/failure events are manually pushed by tests via app.evaluate + webContents.send
+      // auth:startGhcDeviceFlow → return success only, do not start real OAuth flow.
+      // Device code / success / failure events are pushed manually by the test via app.evaluate + webContents.send.
       safeHandle('auth:startGhcDeviceFlow', () => ({
         success: true,
         message: 'Mock: waiting for test to push events',
       }));
 
-      // auth:setCurrentSession → store authData + send auth:authChanged push
-      // Key: real handler calls notifyRendererAuthChanged('auth_set', authData)
-      // Mock must replicate this side effect, otherwise AuthProvider won't update isAuthenticated
+      // auth:setCurrentSession → store authData + send auth:authChanged push notification.
+      // Critical: real handler calls notifyRendererAuthChanged('auth_set', authData).
+      // Mock must replicate this side effect; otherwise AuthProvider won't update isAuthenticated.
       safeHandle('auth:setCurrentSession', (_event: any, authData: any) => {
         (global as any).__e2eMockCurrentSessionData = authData;
-        // Replicate real handler's notifyRendererAuthChanged side effect
-        setTimeout(() => {
+        // Replicate the notifyRendererAuthChanged side effect of the real handler
+        setImmediate(() => {
           const wins = BrowserWindow.getAllWindows();
           if (wins.length > 0) {
             wins[0].webContents.send('auth:authChanged', {
@@ -274,7 +276,7 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
               authData: authData,
             });
           }
-        }, 50);
+        });
         return { success: true };
       });
 
@@ -317,13 +319,13 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
         data: [],
       }));
 
-      // mcp:getServerStatus → empty array (prevent mcpClientCacheManager from calling un-mocked handlers)
+      // mcp:getServerStatus → empty array (prevents mcpClientCacheManager from calling unmocked handlers)
       safeHandle('mcp:getServerStatus', () => ({
         success: true,
         data: [],
       }));
 
-      // profile:getProfile → return empty (no profile in empty user environment)
+      // profile:getProfile → return null (no profile in empty user environment)
       safeHandle('profile:getProfile', () => ({
         success: true,
         data: null,
@@ -337,8 +339,8 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
   },
 
   mockedWindow: async ({ mockedApp }, use) => {
-    // firstWindow() was already called in mockedApp fixture,
-    // calling again returns the same already-open window
+    // firstWindow() was already called in the mockedApp fixture;
+    // calling it again returns the same already-opened window.
     const window = await mockedApp.firstWindow();
 
     // Wait for app initialization to complete ("Initializing Core Services" disappears)
@@ -348,13 +350,13 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
   },
 });
 
-// ==================== mockedAuthenticatedApp — Single-User Pre-seeded Auth ====================
+// ==================== mockedAuthenticatedApp — single-user pre-seeded auth ====================
 
 /**
  * Pre-seeded single-user auth environment + IPC mock fixture
  *
- * For Group B/C (pre-seeded auth + post-auth navigation tests):
- * - Pre-seed 1 profile to userData
+ * Used for Group B/C (pre-seeded auth + post-auth navigation tests):
+ * - Pre-seeds 1 profile into userData
  * - Mock auth:getLocalActiveSessions returns 1 user
  * - App navigates to /auto-login → /loading
  */
@@ -372,7 +374,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
     },
 
     authenticatedApp: async ({ testUserDataDir, preseededAuthData }, use) => {
-      // 1. Pre-seed auth.json to userData directory before startup
+      // 1. Pre-seed auth.json into userData directory before launch
       seedUserDataDir(testUserDataDir, preseededAuthData);
 
       const entryPath = getElectronEntryPath();
@@ -388,12 +390,13 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
         env: {
           ...process.env,
           NODE_ENV: 'test',
+          DISABLE_ANALYTICS: 'true',
           KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
         },
         timeout: 30_000,
       });
 
-      // 3. Key fix: wait for firstWindow() first to stabilize CDP context
+      // 3. Critical fix: wait for firstWindow() first to stabilize the CDP context
       const window = await app.firstWindow();
       console.log(
         '[E2E Mock Auth] firstWindow obtained, injecting IPC mocks...',
@@ -414,32 +417,34 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
           ipcMain.handle(channel, handler);
         };
 
-        // 🚀 app:isReady → return true immediately (skip backend initialization wait)
+        // 🚀 app:isReady → immediately return true (skip backend initialization wait)
         safeHandle('app:isReady', () => ({
           success: true,
           data: true,
         }));
 
         // Push app:ready event
-        setTimeout(() => {
+        // Retry sending app:ready until renderer consumes it (idempotent)
+        const readyInterval = setInterval(() => {
           const wins = BrowserWindow.getAllWindows();
           if (wins.length > 0) {
             wins[0].webContents.send('app:ready', true);
           }
-        }, 100);
+        }, 200);
+        setTimeout(() => clearInterval(readyInterval), 30_000);
 
-        // Core: return pre-seeded user list (prevent getBasicValidProfiles from calling GitHub API)
-        // All return values must use { success: true, data: ... } envelope format
+        // Core: return pre-seeded user list (avoids getBasicValidProfiles calling GitHub API)
+        // All return values must use the { success: true, data: ... } envelope format
         safeHandle('auth:getLocalActiveSessions', () => ({
           success: true,
           data: dataList,
         }));
 
-        // auth:setCurrentSession → success + send auth:authChanged push
-        // Key fix: real handler calls notifyRendererAuthChanged('auth_set', authData)
-        // Mock must replicate this side effect, otherwise AuthProvider won't update isAuthenticated
+        // auth:setCurrentSession → success + send auth:authChanged push notification
+        // Critical fix: real handler calls notifyRendererAuthChanged('auth_set', authData)
+        // Mock must replicate this side effect; otherwise AuthProvider won't update isAuthenticated
         safeHandle('auth:setCurrentSession', (_event: any, authData: any) => {
-          setTimeout(() => {
+          setImmediate(() => {
             const wins = BrowserWindow.getAllWindows();
             if (wins.length > 0) {
               wins[0].webContents.send('auth:authChanged', {
@@ -447,7 +452,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
                 authData: authData || dataList[0],
               });
             }
-          }, 50);
+          });
           return { success: true };
         });
 
@@ -505,7 +510,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
           })),
         }));
 
-        // mcp:getServerStatus → empty array (prevent mcpClientCacheManager from calling un-mocked handlers)
+        // mcp:getServerStatus → empty array (prevents mcpClientCacheManager from calling unmocked handlers)
         safeHandle('mcp:getServerStatus', () => ({
           success: true,
           data: [],
@@ -513,7 +518,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
 
         // profile:getProfile → return mock profile and push profile:cacheUpdated
         // Key: profileDataManager.initialize() calls this IPC,
-        // return value is ignored, isInitialized is only set by profile:cacheUpdated push event
+        // return value is ignored; isInitialized is only set by profile:cacheUpdated push event.
         // Delay 500ms to ensure profileDataManager has set this.userAlias
         safeHandle('profile:getProfile', (_event: any, alias: string) => {
           const matchedUser = dataList.find(
@@ -552,8 +557,8 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
               createdAt: '2025-01-01T00:00:00.000Z',
               updatedAt: '2025-01-01T00:00:00.000Z',
             };
-            // Delay pushing profile:cacheUpdated (wait for profileDataManager to set userAlias)
-            setTimeout(() => {
+            // Delay push of profile:cacheUpdated (wait for profileDataManager to set userAlias)
+            setImmediate(() => {
               const wins = BrowserWindow.getAllWindows();
               if (wins.length > 0) {
                 wins[0].webContents.send('profile:cacheUpdated', {
@@ -562,7 +567,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
                   timestamp: Date.now(),
                 });
               }
-            }, 500);
+            });
             return {
               success: true,
               data: profileData,
@@ -579,7 +584,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
     },
 
     authenticatedWindow: async ({ authenticatedApp }, use) => {
-      // firstWindow() was already called in authenticatedApp fixture
+      // firstWindow() was already called in the authenticatedApp fixture
       const window = await authenticatedApp.firstWindow();
 
       await waitForAppReady(window, 'Mock Auth');
@@ -589,12 +594,12 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
   },
 );
 
-// ==================== mockedMultiUserApp — Multi-User Pre-seeded Auth ====================
+// ==================== mockedMultiUserApp — multi-user pre-seeded auth ====================
 
 /**
  * Pre-seeded multi-user auth environment + IPC mock fixture
  *
- * - Pre-seed 2 profiles to userData
+ * - Pre-seeds 2 profiles into userData
  * - Mock auth:getLocalActiveSessions returns 2 users
  * - App navigates to /login (SHOW_USER_SELECTION) showing "Choose Your Profile"
  */
@@ -631,7 +636,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
       timeout: 30_000,
     });
 
-    // Key fix: wait for firstWindow() first to stabilize CDP context
+    // Critical fix: wait for firstWindow() first to stabilize the CDP context
     const window = await app.firstWindow();
     console.log(
       '[E2E Mock MultiUser] firstWindow obtained, injecting IPC mocks...',
@@ -652,30 +657,32 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
         ipcMain.handle(channel, handler);
       };
 
-      // 🚀 app:isReady → return true immediately
+      // 🚀 app:isReady → immediately return true
       safeHandle('app:isReady', () => ({
         success: true,
         data: true,
       }));
 
       // Push app:ready event
-      setTimeout(() => {
+      // Retry sending app:ready until renderer consumes it (idempotent)
+      const readyInterval = setInterval(() => {
         const wins = BrowserWindow.getAllWindows();
         if (wins.length > 0) {
           wins[0].webContents.send('app:ready', true);
         }
-      }, 100);
+      }, 200);
+      setTimeout(() => clearInterval(readyInterval), 30_000);
 
       // Return 2 users → SHOW_USER_SELECTION
-      // All return values must use { success: true, data: ... } envelope format
+      // All return values must use the { success: true, data: ... } envelope format
       safeHandle('auth:getLocalActiveSessions', () => ({
         success: true,
         data: dataList,
       }));
 
-      // auth:setCurrentSession → success + send auth:authChanged push
+      // auth:setCurrentSession → success + send auth:authChanged push notification
       safeHandle('auth:setCurrentSession', (_event: any, authData: any) => {
-        setTimeout(() => {
+        setImmediate(() => {
           const wins = BrowserWindow.getAllWindows();
           if (wins.length > 0) {
             wins[0].webContents.send('auth:authChanged', {
@@ -683,13 +690,13 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
               authData: authData || dataList[0],
             });
           }
-        }, 50);
+        });
         return { success: true };
       });
 
-      // Multi-user environment: auth:getCurrentSession must return null (no user selected)
-      // If non-null is returned, AuthProvider.isAuthenticated will immediately be true,
-      // and SignInWrapper useEffect will skip profile selection page and navigate directly to /loading
+      // Multi-user env: auth:getCurrentSession must return null (no user selected yet)
+      // If non-null is returned, AuthProvider.isAuthenticated will be true immediately,
+      // and SignInWrapper's useEffect will skip the profile selection page and navigate directly to /loading
       safeHandle('auth:getCurrentSession', () => ({
         success: true,
         data: null,
@@ -779,7 +786,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
             createdAt: '2025-01-01T00:00:00.000Z',
             updatedAt: '2025-01-01T00:00:00.000Z',
           };
-          setTimeout(() => {
+          setImmediate(() => {
             const wins = BrowserWindow.getAllWindows();
             if (wins.length > 0) {
               wins[0].webContents.send('profile:cacheUpdated', {
@@ -788,7 +795,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
                 timestamp: Date.now(),
               });
             }
-          }, 500);
+          });
           return {
             success: true,
             data: profileData,
@@ -805,7 +812,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
   },
 
   multiUserWindow: async ({ multiUserApp }, use) => {
-    // firstWindow() was already called in multiUserApp fixture
+    // firstWindow() was already called in the multiUserApp fixture
     const window = await multiUserApp.firstWindow();
 
     await waitForAppReady(window, 'Mock MultiUser');
@@ -816,23 +823,23 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
 
 export { expect };
 
-// ==================== mockedChatReadyApp — Chat-Ready Environment ====================
+// ==================== mockedChatReadyApp — chat-ready environment ====================
 
 /**
- * Chat-Ready Mock Fixture (for Chat E2E tests)
+ * Chat-ready Mock Fixture (for Chat E2E tests)
  *
  * Extends mockedAuthenticatedApp:
- * - Pre-seeded auth + profile (with freDone=true, primaryAgent='Kobi', chats include Kobi)
- * - Mock all agentChat IPC handlers
- * - Mock startup update → complete immediately
- * - Mock profile:updateFreDone → success
- * - Finally navigate to /agent and display chat UI
+ * - Pre-seeded auth + profile (with freDone=true, primaryAgent='Kobi', chats containing Kobi)
+ * - Mocks all agentChat IPC handlers
+ * - Mocks startup update → completes immediately
+ * - Mocks profile:updateFreDone → success
+ * - Finally navigates to /agent and shows chat UI
  *
  * Provides:
  * - testUserDataDir: pre-seeded userData directory
  * - preseededAuthData: pre-seeded AuthData
  * - chatApp: ElectronApplication with all mocks injected
- * - chatWindow: main window Page (navigated to /agent chat page)
+ * - chatWindow: main window Page (arrived at /agent chat page)
  */
 type MockedChatReadyFixtures = {
   testUserDataDir: string;
@@ -875,7 +882,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       timeout: 30_000,
     });
 
-    // 3. Wait for firstWindow() first to stabilize CDP context
+    // 3. Wait for firstWindow() first to stabilize the CDP context
     const window = await app.firstWindow();
     console.log('[E2E Mock Chat] firstWindow obtained, injecting IPC mocks...');
 
@@ -894,21 +901,19 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         ipcMain.handle(channel, handler);
       };
 
-      // ==================== App Ready ====================
+      // ==================== App ready ====================
 
       safeHandle('app:isReady', () => ({
         success: true,
         data: true,
       }));
 
-      setTimeout(() => {
-        const wins = BrowserWindow.getAllWindows();
-        if (wins.length > 0) {
-          wins[0].webContents.send('app:ready', true);
-        }
-      }, 100);
+      // IMPORTANT: Do NOT send app:ready here via setTimeout.
+      // The app:ready event is triggered by a separate app.evaluate() call AFTER this one completes.
+      // This prevents the race condition where the renderer calls the REAL startup:checkAndInstallUpdates
+      // handler before the mock is registered.
 
-      // ==================== Auth Related ====================
+      // ==================== Auth-related ====================
 
       safeHandle('auth:getLocalActiveSessions', () => ({
         success: true,
@@ -916,7 +921,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       }));
 
       safeHandle('auth:setCurrentSession', (_event: any, authData: any) => {
-        setTimeout(() => {
+        setImmediate(() => {
           const wins = BrowserWindow.getAllWindows();
           if (wins.length > 0) {
             wins[0].webContents.send('auth:authChanged', {
@@ -924,7 +929,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
               authData: authData || dataList[0],
             });
           }
-        }, 50);
+        });
         return { success: true };
       });
 
@@ -970,6 +975,134 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
 
       // ==================== Profile ====================
 
+      const mockChatId = 'mock-chat-kobi';
+      const archivedChatSessions = [
+        {
+          chatSession_id: 'session-history-target',
+          title: 'Archived Session Scroll Target',
+          last_updated: '2026-03-28T12:00:00.000Z',
+          readStatus: 'read',
+        },
+        {
+          chatSession_id: 'session-history-older',
+          title: 'Archived Session Older History',
+          last_updated: '2026-03-20T09:00:00.000Z',
+          readStatus: 'read',
+        },
+      ];
+
+      const createTextMessage = (
+        id: string,
+        role: 'user' | 'assistant',
+        text: string,
+        timestamp: number,
+      ) => ({
+        id,
+        role,
+        timestamp,
+        streamingComplete: true,
+        content: [{ type: 'text', text }],
+      });
+
+      const cloneMessages = (messages: any[]) =>
+        messages.map((message) => ({
+          ...message,
+          content: Array.isArray(message.content)
+            ? message.content.map((part: any) => ({ ...part }))
+            : message.content,
+        }));
+
+      const buildSessionTranscript = (
+        prefix: string,
+        oldestMarker: string,
+        newestMarker: string,
+      ) => {
+        const transcript: any[] = [];
+
+        transcript.push(
+          createTextMessage(
+            `${prefix}-assistant-oldest`,
+            'assistant',
+            `${oldestMarker}\n\n${'Old history paragraph. '.repeat(24)}`,
+            1,
+          ),
+        );
+
+        for (let index = 1; index <= 7; index += 1) {
+          transcript.push(
+            createTextMessage(
+              `${prefix}-user-${index}`,
+              'user',
+              `${prefix} user turn ${index}: ${'context '.repeat(18)}`,
+              index * 2,
+            ),
+          );
+          transcript.push(
+            createTextMessage(
+              `${prefix}-assistant-${index}`,
+              'assistant',
+              `${prefix} assistant turn ${index}: ${'response '.repeat(28)}`,
+              index * 2 + 1,
+            ),
+          );
+        }
+
+        transcript.push(
+          createTextMessage(
+            `${prefix}-assistant-newest`,
+            'assistant',
+            `${newestMarker}\n\n${'Latest history paragraph. '.repeat(28)}`,
+            999,
+          ),
+        );
+
+        return transcript;
+      };
+
+      const chatMessagesBySessionId: Record<string, any[]> = {
+        'session-history-target': buildSessionTranscript(
+          'target-session',
+          'OLDEST_TARGET_MARKER',
+          'NEWEST_TARGET_MARKER',
+        ),
+        'session-history-older': buildSessionTranscript(
+          'older-session',
+          'OLDEST_OLDER_MARKER',
+          'NEWEST_OLDER_MARKER',
+        ),
+      };
+
+      const getMessagesForSession = (chatSessionId: string | null) => {
+        if (!chatSessionId) {
+          return [];
+        }
+
+        return cloneMessages(chatMessagesBySessionId[chatSessionId] || []);
+      };
+
+      const sendChatSessionSnapshot = (chatId: string | null, chatSessionId: string | null) => {
+        if (!chatId || !chatSessionId) {
+          return;
+        }
+
+        const wins = BrowserWindow.getAllWindows();
+        if (wins.length === 0) {
+          return;
+        }
+
+        wins[0].webContents.send('agentChat:currentChatSessionIdChanged', {
+          chatId,
+          chatSessionId,
+        });
+        wins[0].webContents.send('agentChat:chatSessionCacheCreated', {
+          chatSessionId,
+          chatId,
+          initialData: {
+            messages: getMessagesForSession(chatSessionId),
+          },
+        });
+      };
+
       const mockProfileData = (alias: string) => ({
         version: 2,
         alias,
@@ -977,14 +1110,15 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         primaryAgent: 'Kobi',
         chats: [
           {
-            chat_id: 'mock-chat-kobi',
+            chat_id: mockChatId,
             agent: {
               name: 'Kobi',
               emoji: '🤖',
               description: 'Your AI Assistant',
               system_prompt: 'You are Kobi, an AI assistant.',
             },
-            sessions: [],
+            sessions: archivedChatSessions,
+            chatSessions: archivedChatSessions,
             createdAt: '2025-01-01T00:00:00.000Z',
             updatedAt: '2025-01-01T00:00:00.000Z',
           },
@@ -1009,7 +1143,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         );
         if (matchedUser) {
           const profileData = mockProfileData(alias);
-          setTimeout(() => {
+          setImmediate(() => {
             const wins = BrowserWindow.getAllWindows();
             if (wins.length > 0) {
               wins[0].webContents.send('profile:cacheUpdated', {
@@ -1018,7 +1152,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
                 timestamp: Date.now(),
               });
             }
-          }, 500);
+          });
           return { success: true, data: profileData };
         }
         return { success: false, error: 'Profile not found' };
@@ -1026,9 +1160,64 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
 
       safeHandle('profile:updateFreDone', () => ({ success: true }));
 
+      safeHandle('profile:getChatSessions', (_event: any, alias: string, chatId: string, minCount: number = 10) => {
+        if (!dataList.some((d: any) => d.ghcAuth?.alias === alias) || chatId !== mockChatId) {
+          return {
+            success: false,
+            error: 'Chat not found',
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            sessions: archivedChatSessions.slice(0, minCount),
+            hasMore: false,
+            nextMonthIndex: 0,
+          },
+        };
+      });
+
+      safeHandle('profile:getMoreChatSessions', (_event: any, alias: string, chatId: string) => {
+        if (!dataList.some((d: any) => d.ghcAuth?.alias === alias) || chatId !== mockChatId) {
+          return {
+            success: false,
+            error: 'Chat not found',
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            sessions: [],
+            hasMore: false,
+            nextMonthIndex: 0,
+          },
+        };
+      });
+
+      safeHandle('profile:getChatSession', (_event: any, chatId: string, sessionId: string) => {
+        if (chatId !== mockChatId) {
+          return {
+            success: false,
+            error: 'Chat not found',
+          };
+        }
+
+        const session = archivedChatSessions.find(
+          (item) => item.chatSession_id === sessionId,
+        );
+
+        return {
+          success: Boolean(session),
+          data: session || null,
+          error: session ? undefined : 'Session not found',
+        };
+      });
+
       // ==================== Startup Update ====================
 
-      // startup:checkAndInstallUpdates → success immediately (skip update check)
+      // startup:checkAndInstallUpdates → immediately succeed (skip update check)
       safeHandle('startup:checkAndInstallUpdates', () => ({
         success: true,
         data: {
@@ -1040,7 +1229,45 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         },
       }));
 
-      // ==================== AgentChat Related ====================
+      // ==================== Auto Update (App Version) ====================
+      // These mocks prevent the UpdateManager from running and triggering
+      // "Unsupported platform: linux-x64" errors on Linux CI.
+
+      safeHandle('update:checkForUpdates', () => ({
+        success: true,
+        data: { hasUpdate: false },
+      }));
+
+      safeHandle('update:downloadUpdate', () => ({
+        success: true,
+      }));
+
+      safeHandle('update:quitAndInstall', () => ({
+        success: true,
+      }));
+
+      safeHandle('update:getVersion', () => ({
+        success: true,
+        data: '0.0.0-test',
+      }));
+
+      safeHandle('update:skipVersion', () => ({
+        success: true,
+      }));
+
+      safeHandle('update:getPreferences', () => ({
+        success: true,
+        data: {
+          autoDownload: false,
+          autoInstall: false,
+        },
+      }));
+
+      safeHandle('update:updatePreferences', () => ({
+        success: true,
+      }));
+
+      // ==================== AgentChat-related ====================
 
       // Chat session state
       let currentChatId: string | null = null;
@@ -1054,15 +1281,20 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
 
       // agentChat:startNewChatFor → create session, return chatSessionId
       // Note: push events (currentChatSessionIdChanged / chatSessionCacheCreated)
-      // are not pushed inside this handler, but by chatWindow fixture after detecting startNewChatFor
-      // was called. Reason: webContents.send() inside setTimeout is unreliable in Playwright
-      // test environment (events cannot reach renderer process ipcRenderer.on listeners).
+      // are NOT pushed inside this handler, but explicitly pushed by the chatWindow fixture
+      // after detecting startNewChatFor was called. Reason: setTimeout + webContents.send()
+      // inside mock handlers is unreliable in Playwright test environment
+      // (events may not reach renderer's ipcRenderer.on listeners).
       safeHandle('agentChat:startNewChatFor', (_event: any, chatId: string) => {
+        const nextCallCount =
+          (((global as any).__e2e_startNewChatForCallCount as number | undefined) ?? 0) + 1;
+        (global as any).__e2e_startNewChatForCallCount = nextCallCount;
+        (global as any).__e2e_lastStartNewChatForChatId = chatId;
         currentChatId = chatId;
         currentChatSessionId = `chatSession_mock_${Date.now()}`;
         chatMessages = [];
         console.log(
-          `[E2E Mock Chat] Started new chat session: ${currentChatSessionId} for chatId: ${chatId}`,
+          `[E2E Mock Chat] Started new chat session: ${currentChatSessionId} for chatId: ${chatId} (call ${nextCallCount})`,
         );
 
         return {
@@ -1077,6 +1309,8 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         (_event: any, chatId: string, sessionId: string) => {
           currentChatId = chatId;
           currentChatSessionId = sessionId;
+          chatMessages = getMessagesForSession(sessionId);
+          sendChatSessionSnapshot(chatId, sessionId);
           return {
             success: true,
             data: {
@@ -1089,9 +1323,9 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       );
 
       // agentChat:streamMessage → simulate LLM streaming response
-      // Note: streaming events are not pushed inside this handler (setTimeout + webContents.send is unreliable in test env).
-      // Instead, pending info is stored in global.__e2e_pendingStreamResponse, read and pushed by test side via
-      // chatApp.evaluate(). Using global instead of local variables because each
+      // Note: streaming events are NOT pushed inside this handler (setTimeout + webContents.send unreliable in test env).
+      // Instead, pending info is stored in global.__e2e_pendingStreamResponse; test side reads it via
+      // chatApp.evaluate() and pushes events. Using global instead of closure variables because each
       // chatApp.evaluate() creates a new execution context.
       safeHandle('agentChat:streamMessage', (_event: any, message: any) => {
         const assistantMessageId = `msg_assistant_${Date.now()}`;
@@ -1123,7 +1357,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       safeHandle('agentChat:getCurrentInstance', () => ({
         success: true,
         data: {
-          chatId: currentChatId || 'mock-chat-kobi',
+          chatId: currentChatId || mockChatId,
           chatSessionId: currentChatSessionId,
           agentName: 'Kobi',
         },
@@ -1151,7 +1385,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       safeHandle('agentChat:getChatStatusInfo', () => ({
         success: true,
         data: {
-          chatId: currentChatId || 'mock-chat-kobi',
+          chatId: currentChatId || mockChatId,
           chatStatus: 'idle',
           agentName: 'Kobi',
         },
@@ -1172,7 +1406,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       safeHandle('agentChat:refreshCurrentInstance', () => ({
         success: true,
         data: {
-          chatId: currentChatId || 'mock-chat-kobi',
+          chatId: currentChatId || mockChatId,
           chatSessionId: currentChatSessionId,
           agentName: 'Kobi',
         },
@@ -1209,7 +1443,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         chatSessionId: `chatSession_fork_${Date.now()}`,
       }));
 
-      // ==================== Platform Info ====================
+      // ==================== Platform info ====================
 
       safeHandle('getPlatformInfo', () => ({
         platform: process.platform,
@@ -1217,6 +1451,17 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
     }, mockData);
 
     console.log('[E2E Mock Chat] IPC mocks injected successfully.');
+
+    // Now that ALL mocks are in place (including startup:checkAndInstallUpdates),
+    // trigger the app:ready event. This ensures the renderer won't call the REAL
+    // startup:checkAndInstallUpdates handler.
+    await app.evaluate(({ BrowserWindow }) => {
+      const wins = BrowserWindow.getAllWindows();
+      if (wins.length > 0) {
+        wins[0].webContents.send('app:ready', true);
+      }
+    });
+    console.log('[E2E Mock Chat] app:ready event triggered.');
 
     await use(app);
     await safeCloseApp(app);
@@ -1239,14 +1484,14 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       }
     });
 
-    // First wait for React to mount ("Starting OpenKosmos" disappears)
+    // Wait for React to mount first ("Starting KOSMOS" disappears)
     console.log('[E2E Mock Chat] Waiting for React to mount...');
     try {
       await window.waitForFunction(
         () => {
           const body = document.querySelector('body');
-          // "Starting OpenKosmos" is the pre-React loading text from index.html
-          // After React mounts, this text is replaced
+          // "Starting KOSMOS" is the pre-React loading text in index.html
+          // React replaces this text after mounting
           return body && !body.textContent?.includes('Starting');
         },
         { timeout: 30_000 },
@@ -1307,43 +1552,93 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       }
     }
 
-    // Wait for chat UI ready — chat-textarea visible
-    try {
-      await window
-        .locator('.chat-textarea')
-        .waitFor({ state: 'visible', timeout: 30_000 });
-      console.log('[E2E Mock Chat] Chat textarea visible — chat UI ready.');
-    } catch {
-      const bodyText = await window
-        .locator('body')
-        .textContent()
-        .catch(() => '<unable to read>');
-      console.warn(
-        `[E2E Mock Chat] Chat textarea not found. URL: ${window.url()} Body: ${bodyText?.slice(0, 500)}`,
-      );
+    // Unconditional fallback: re-push profile:cacheUpdated to ensure renderer has profile data.
+    // Under CI load, the earlier push during /auto-login → /agent navigation may have been
+    // dropped if the renderer wasn't ready to process it yet.
+    await chatApp.evaluate(
+      async ({ BrowserWindow }, params) => {
+        const wins = BrowserWindow.getAllWindows();
+        if (wins.length > 0) {
+          wins[0].webContents.send('profile:cacheUpdated', {
+            alias: params.alias,
+            profile: params.profile,
+            timestamp: Date.now(),
+          });
+        }
+      },
+      { alias, profile: getMockProfileData(alias) },
+    );
+
+    // Wait for chat UI ready — chat-textarea visible.
+    // This is a hard requirement: if the chat textarea doesn't appear,
+    // the test body will fail with a confusing assertion error, so we
+    // throw here to surface the real problem (fixture setup failure).
+    //
+    // Defense in depth: If the update error overlay appears (race condition where
+    // the REAL startup:checkAndInstallUpdates was called before our mock), we'll
+    // detect and dismiss it, then retry waiting for the chat textarea.
+    let chatTextareaVisible = false;
+    for (let attempt = 0; attempt < 2 && !chatTextareaVisible; attempt++) {
+      try {
+        await window
+          .locator('.chat-textarea')
+          .waitFor({ state: 'visible', timeout: attempt === 0 ? 60_000 : 30_000 });
+        chatTextareaVisible = true;
+        console.log('[E2E Mock Chat] Chat textarea visible — chat UI ready.');
+      } catch {
+        // Check if the update error overlay is blocking us
+        const updateErrorOverlay = window.locator('text="Update Check Failed"');
+        if (await updateErrorOverlay.isVisible({ timeout: 1000 }).catch(() => false)) {
+          console.warn(
+            `[E2E Mock Chat] Update error overlay detected on attempt ${attempt + 1} — dismissing it (defense in depth).`,
+          );
+          // Click the "Close" button to dismiss the overlay
+          const closeButton = window.locator('button:has-text("Close")');
+          if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
+            await closeButton.click();
+            // Wait for the overlay to close and the app to recover
+            await window.waitForTimeout(500);
+            // Continue to next attempt
+            continue;
+          }
+        }
+        // If no overlay or couldn't dismiss, throw on last attempt
+        if (attempt === 1) {
+          const bodyText = await window
+            .locator('body')
+            .textContent()
+            .catch(() => '<unable to read>');
+          throw new Error(
+            `[E2E Mock Chat] Chat textarea not found after retries — fixture setup failed.\n` +
+              `URL: ${window.url()}\nBody: ${bodyText?.slice(0, 500)}`,
+          );
+        }
+      }
     }
 
-    // TODO: Eventually use startNewChatFor IPC to match main process behavior.
-    // Currently webContents.send inside setTimeout is unreliable in test env,
-    // so the fixture explicitly pushes events instead.
+    // TODO: Eventually use startNewChatFor IPC to stay consistent with main process behavior.
+    // Currently, since setTimeout + webContents.send inside handlers is unreliable in test environments,
+    // the fixture explicitly pushes events instead.
 
     // Wait for agentChat session initialization to complete
-    // Flow: chat-textarea visible → selectPrimaryAgentOnStartup → startNewChatFor IPC → mock returns
+    // Full chain: chat-textarea visible → InstallUpdateOnStartupView completes (~800ms) →
+    //   selectPrimaryAgentOnStartup → startNewChatFor IPC → mock returns
     //
-    // Unlike the real main process, the mock startNewChatFor does not push events
-    // (setTimeout + webContents.send is unreliable in test env).
-    // So the fixture detects when startNewChatFor is called and then
-    // explicitly pushes events to the renderer via chatApp.evaluate().
+    // Unlike the real main process, the mock startNewChatFor does NOT push push events
+    // (setTimeout + webContents.send is unreliable in test environments).
+    // Therefore, the fixture explicitly pushes push events after detecting
+    // startNewChatFor has been called, via chatApp.evaluate().
     console.log('[E2E Mock Chat] Waiting for chat session to initialize...');
     try {
-      // Step 1: Poll main process — wait for startNewChatFor to complete
+      // Step 1: Poll main process — wait for startNewChatFor to fully complete
       // startNewChatFor handler synchronously sets currentChatId and currentChatSessionId,
       // returned together via getCurrentInstance mock.
-      // Polling for non-empty chatSessionId ensures startNewChatFor has finished.
+      // Polling for non-null chatSessionId ensures startNewChatFor has executed.
+      // Note: startNewChatFor is called after InstallUpdateOnStartupView completes (~800ms)
       const sessionInfo = await window.evaluate(async () => {
-        // Poll until chatSessionId is non-empty (max 15s)
+        // Poll until chatSessionId is non-null (up to 15s)
         const startTime = Date.now();
-        const timeout = 15_000;
+        const timeout = 30_000;
         while (Date.now() - startTime < timeout) {
           try {
             const result = await (
@@ -1365,9 +1660,9 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       );
 
       if (sessionInfo?.chatId && sessionInfo?.chatSessionId) {
-        // Step 2: Explicitly push events to renderer from fixture side
-        // Using chatApp.evaluate() to directly call webContents.send() is more
-        // reliable than setTimeout + webContents.send inside mock handlers.
+        // Step 2: Explicitly push push events to renderer from fixture side
+        // Using chatApp.evaluate() to call webContents.send() directly,
+        // which is more reliable than setTimeout + webContents.send inside mock handlers.
         await chatApp.evaluate(
           ({ BrowserWindow }, info) => {
             const wins = BrowserWindow.getAllWindows();
@@ -1398,10 +1693,16 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         );
         console.log('[E2E Mock Chat] Push events sent from fixture');
 
-        // Step 3: Wait for React to complete state update chain:
+        // Step 3: Wait for React to complete the state update chain:
         //   handleCurrentChatSessionIdChanged → notifyCallbacks → setState →
-        //   React render → useEffect → directMessageUpdateCallbacks registration
-        await window.waitForTimeout(500);
+        //   React render → useEffect → directMessageUpdateCallbacks registered
+        await window.waitForFunction(
+          () => {
+            const textarea = document.querySelector('.chat-textarea');
+            return textarea !== null && !(textarea as HTMLTextAreaElement).disabled;
+          },
+          { timeout: 10_000 },
+        );
       } else {
         console.warn(
           '[E2E Mock Chat] Could not get session info — push events not sent',

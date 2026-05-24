@@ -1,4 +1,4 @@
-// Reference code in the docs directory, not bundled for release
+// Reference code in the docs directory, will not be bundled for release
 const https = require('https')
 const fs = require('fs')
 const path = require('path')

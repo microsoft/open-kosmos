@@ -1,25 +1,27 @@
 /**
  * MCP Client Cache Manager (Frontend)
- * 
- * Refactored: Unified management of frontend MCP server status cache
- * 
+ *
+ * Refactored: unified management of frontend MCP server status cache
+ *
  * Responsibilities:
- * 1. Manage MCP server runtime state cache (status, tools, error)
- * 2. Listen to backend mcpClientManager state change IPC events
- * 3. Notify subscribers of state changes
- * 4. Provide read-only access to MCP server states
- * 
+ * 1. Manage MCP server runtime status cache (status, tools, error)
+ * 2. Listen for status change IPC events from the backend mcpClientManager
+ * 3. Notify subscribers of status changes
+ * 4. Provide read-only access to MCP server status
+ *
  * No longer responsible for:
  * - MCP server configuration management (handled by profileDataManager)
- * - Relaying state through profileDataManager
+ * - Relaying status through profileDataManager
  */
 
 import type { McpServerConfig } from '../../../main/lib/userDataADO/types/profile'
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[McpClientCacheManager]');
 
 /**
  * MCP Server status enumeration
  */
-export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting'
+export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting' | 'needs-user-interaction'
 
 /**
  * MCP Tool interface
@@ -55,7 +57,11 @@ export interface MCPServerExtended {
   in_use: boolean
   /** MCP server version (from library or user-defined) */
   version?: string
-  
+  /** MCP server source: ON-DEVICE (from local machine), or PLUGIN (from plugin) */
+  source?: 'ON-DEVICE' | 'PLUGIN'
+  /** If true, server is managed by the system and hidden from user-facing UI */
+  hidden?: boolean
+
   // Runtime state fields
   status: MCPServerStatus
   error?: string
@@ -96,19 +102,19 @@ export type MCPDataListener = (data: MCPCacheData) => void
 export type MCPConnectionFailureListener = (serverName: string, error: string) => void
 
 /**
- * MCPClientCacheManager - Frontend MCP State Cache Manager (Singleton)
+ * MCPClientCacheManager - Frontend MCP status cache manager (Singleton)
  */
 export class MCPClientCacheManager {
   private static instance: MCPClientCacheManager
   private cache: MCPCacheData
   private listeners: MCPDataListener[] = []
   private cleanupFunctions: (() => void)[] = []
-  
+
   // Connection failure notification subscribers
   private connectionFailureListeners: MCPConnectionFailureListener[] = []
-  // Record previous server statuses for detecting state changes
+  // Record the previous server status to detect state changes
   private previousServerStatuses: Map<string, MCPServerStatus> = new Map()
-  
+
   // Batch notification mechanism
   private notificationTimeout: NodeJS.Timeout | null = null
   private pendingNotification = false
@@ -120,7 +126,7 @@ export class MCPClientCacheManager {
       lastUpdated: 0,
       isInitialized: false
     }
-    
+
     // Set up IPC listeners immediately
     this.setupIPCListeners()
   }
@@ -133,7 +139,7 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * Get cache data (read-only)
+   * Get cached data (read-only)
    */
   getCache(): MCPCacheData {
     return { ...this.cache }
@@ -154,7 +160,7 @@ export class MCPClientCacheManager {
 
   /**
    * Subscribe to connection failure events
-   * Triggered when MCP server status changes from 'connecting' to 'error'
+   * Triggered when an MCP server transitions from 'connecting' to 'error'
    */
   subscribeConnectionFailure(listener: MCPConnectionFailureListener): () => void {
     this.connectionFailureListeners.push(listener)
@@ -167,12 +173,12 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * Initialize the cache manager
+   * Initialize cache manager
    * Fetch initial state from the backend
    */
   async initialize(): Promise<void> {
-    console.log('[MCPClientCacheManager] Initializing...')
-    
+    logger.debug('[MCPClientCacheManager] Initializing...')
+
     try {
       // Fetch current MCP server status from the backend
       if (window.electronAPI?.mcp?.getServerStatus) {
@@ -181,65 +187,65 @@ export class MCPClientCacheManager {
           this.handleServerStatesUpdate(result.data)
         }
       }
-      
+
       this.cache.isInitialized = true
-      console.log('[MCPClientCacheManager] Initialized successfully')
+      logger.debug('[MCPClientCacheManager] Initialized successfully')
     } catch (error) {
-      console.error('[MCPClientCacheManager] Initialization failed:', error)
+      logger.error('[MCPClientCacheManager] Initialization failed:', error)
     }
   }
 
   /**
    * Set up IPC listeners
-   * Listen for state update events sent by the backend mcpClientManager
+   * Listen for status update events sent by the backend mcpClientManager
    */
   private setupIPCListeners(): void {
-    console.log('[MCPClientCacheManager] Setting up IPC listeners...')
-    
+    logger.debug('[MCPClientCacheManager] Setting up IPC listeners...')
+
     if (window.electronAPI?.mcp?.onServerStatesUpdated) {
       const cleanup = window.electronAPI.mcp.onServerStatesUpdated((serverStates: any[]) => {
-        console.log('[MCPClientCacheManager] Received server states update:', serverStates?.length || 0, 'servers')
+        logger.debug('[MCPClientCacheManager] Received server states update:', serverStates?.length || 0, 'servers')
         this.handleServerStatesUpdate(serverStates)
       })
       this.cleanupFunctions.push(cleanup)
-      console.log('[MCPClientCacheManager] IPC listener registered')
+      logger.debug('[MCPClientCacheManager] IPC listener registered')
     } else {
-      console.warn('[MCPClientCacheManager] electronAPI.mcp.onServerStatesUpdated not available')
+      logger.warn('[MCPClientCacheManager] electronAPI.mcp.onServerStatesUpdated not available')
     }
   }
 
   /**
-   * Handle server state updates sent from the backend
+   * Handle server status updates sent from the backend
    */
   private handleServerStatesUpdate(serverStates: any[]): void {
     if (!serverStates || !Array.isArray(serverStates)) {
-      console.warn('[MCPClientCacheManager] Invalid server states received')
+      logger.warn('[MCPClientCacheManager] Invalid server states received')
       return
     }
 
     let hasChanges = false
     const newRuntimeStates: MCPServerRuntimeState[] = []
     const runtimeStatesMap = new Map<string, MCPServerRuntimeState>()
-    
-    // Detect connection failures (from connecting to error)
+
+    // Detect connection failures (connecting -> error)
     const connectionFailures: Array<{ serverName: string; error: string }> = []
 
     // Convert server states to runtime states
     serverStates.forEach((state: any) => {
       const newStatus = this.mapStatus(state.status)
       const previousStatus = this.previousServerStatuses.get(state.serverName)
-      
-      // Detect connection failure: from connecting to error
+
+      // Detect connection failure: connecting -> error
       if (previousStatus === 'connecting' && newStatus === 'error') {
         connectionFailures.push({
           serverName: state.serverName,
           error: state.lastError ? String(state.lastError) : 'Connection failed'
         })
       }
-      
+
       // Update previous status record
       this.previousServerStatuses.set(state.serverName, newStatus)
-      
+
       const runtimeState: MCPServerRuntimeState = {
         serverName: state.serverName,
         status: this.mapStatus(state.status),
@@ -252,23 +258,23 @@ export class MCPClientCacheManager {
 
     // Update server list
     const updatedServers: MCPServerExtended[] = []
-    
+
     // Update runtime state for existing servers
     this.cache.servers.forEach(server => {
       const runtimeState = runtimeStatesMap.get(server.name)
       const updatedServer = { ...server }
-      
+
       if (runtimeState) {
         const newStatus = runtimeState.status
         const newError = runtimeState.lastError || undefined
-        
+
         if (server.status !== newStatus || server.error !== newError) {
           updatedServer.status = newStatus
           updatedServer.error = newError
           updatedServer.lastUpdated = Date.now()
           hasChanges = true
         }
-        
+
         // Update tool list
         const newTools: MCPTool[] = runtimeState.tools.map(tool => ({
           name: tool.name,
@@ -276,16 +282,16 @@ export class MCPClientCacheManager {
           inputSchema: tool.inputSchema,
           serverId: server.name
         }))
-        
+
         if (JSON.stringify(server.tools) !== JSON.stringify(newTools)) {
           updatedServer.tools = newTools
           updatedServer.lastUpdated = Date.now()
           hasChanges = true
         }
-        
+
         updatedServers.push(updatedServer)
       } else {
-        // Special handling for built-in server
+        // Special handling for built-in servers
         const BUILTIN_SERVER_NAME = 'builtin-tools'
         if (server.name === BUILTIN_SERVER_NAME) {
           updatedServers.push(server)
@@ -303,10 +309,10 @@ export class MCPClientCacheManager {
       }
     })
 
-    // Handle built-in server (may not be in config but needs to be displayed)
+    // Handle built-in servers (may not be in config but still need to be displayed)
     const BUILTIN_SERVER_NAME = 'builtin-tools'
     const existingServerNames = new Set(this.cache.servers.map(s => s.name))
-    
+
     serverStates.forEach((state: any) => {
       if (state.serverName === BUILTIN_SERVER_NAME && !existingServerNames.has(BUILTIN_SERVER_NAME)) {
         const runtimeState = runtimeStatesMap.get(state.serverName)
@@ -343,11 +349,11 @@ export class MCPClientCacheManager {
       this.cache.lastUpdated = Date.now()
       this.notifyListeners()
     }
-    
+
     // Notify connection failure subscribers
     if (connectionFailures.length > 0) {
       connectionFailures.forEach(failure => {
-        console.log('[MCPClientCacheManager] Connection failure detected:', failure.serverName, failure.error)
+        logger.debug('[MCPClientCacheManager] Connection failure detected:', failure.serverName, failure.error)
         this.notifyConnectionFailure(failure.serverName, failure.error)
       })
     }
@@ -361,14 +367,14 @@ export class MCPClientCacheManager {
       try {
         listener(serverName, error)
       } catch (err) {
-        console.error('[MCPClientCacheManager] Connection failure listener error:', err)
+        logger.error('[MCPClientCacheManager] Connection failure listener error:', err)
       }
     })
   }
 
   /**
-   * Update server config list (synced from profileDataManager)
-   * This method syncs configuration info; runtime state is updated via IPC events
+   * Update server config list (sync from profileDataManager)
+   * This method syncs configuration info; runtime status is updated via IPC events
    */
   updateServerConfigs(configs: McpServerConfig[]): void {
     if (!configs || !Array.isArray(configs)) {
@@ -381,7 +387,7 @@ export class MCPClientCacheManager {
     configs.forEach(config => {
       const existingServer = this.cache.servers.find(s => s.name === config.name)
       const runtimeState = this.cache.runtimeStates.find(s => s.serverName === config.name)
-      
+
       const server: MCPServerExtended = {
         name: config.name,
         transport: config.transport as 'stdio' | 'sse' | 'StreamableHttp',
@@ -390,7 +396,10 @@ export class MCPClientCacheManager {
         env: config.env,
         url: config.url,
         in_use: config.in_use,
+      // Add version and source fields
         version: config.version || existingServer?.version,
+        source: config.source || existingServer?.source,
+        hidden: config.hidden,
         status: runtimeState?.status || existingServer?.status || 'disconnected',
         tools: runtimeState?.tools.map(tool => ({
           name: tool.name,
@@ -401,18 +410,18 @@ export class MCPClientCacheManager {
         error: runtimeState?.lastError ? String(runtimeState.lastError) : existingServer?.error,
         lastUpdated: existingServer?.lastUpdated || Date.now()
       }
-      
+
       newServers.push(server)
     })
 
-    // Preserve built-in server
+    // Preserve built-in servers
     const BUILTIN_SERVER_NAME = 'builtin-tools'
     const builtinServer = this.cache.servers.find(s => s.name === BUILTIN_SERVER_NAME)
     if (builtinServer && !newServers.some(s => s.name === BUILTIN_SERVER_NAME)) {
       newServers.push(builtinServer)
     }
 
-    // Check for changes
+    // Check if there are any changes
     if (JSON.stringify(this.cache.servers) !== JSON.stringify(newServers)) {
       hasChanges = true
       this.cache.servers = newServers
@@ -425,7 +434,7 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * Map status string to enum type
+   * Map a status string to the enum type
    */
   private mapStatus(status: string): MCPServerStatus {
     const statusMapping: { [key: string]: MCPServerStatus } = {
@@ -433,6 +442,7 @@ export class MCPClientCacheManager {
       'disconnected': 'disconnected',
       'connecting': 'connecting',
       'disconnecting': 'disconnecting',
+      'needs-user-interaction': 'needs-user-interaction',
       'error': 'error'
     }
     return statusMapping[status] || 'disconnected'
@@ -465,15 +475,15 @@ export class MCPClientCacheManager {
       try {
         listener(cacheSnapshot)
       } catch (error) {
-        console.error('[MCPClientCacheManager] Listener error:', error)
+        logger.error('[MCPClientCacheManager] Listener error:', error)
       }
     })
-    
+
     this.pendingNotification = false
     this.notificationTimeout = null
   }
 
-  // ========== Read-only Access Methods ==========
+  // ========== Read-only access methods ==========
 
   /**
    * Get all MCP servers
@@ -483,7 +493,7 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * Get MCP server by name
+   * Get an MCP server by name
    */
   getMCPServerByName(name: string): MCPServerExtended | null {
     return this.cache.servers.find(s => s.name === name) || null
@@ -504,14 +514,14 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * 🆕 Get all server states (alias method, used by profileDataManager)
+   * 🆕 Get all server states (alias method for use by profileDataManager)
    */
   getAllServerStates(): MCPServerRuntimeState[] {
     return [...this.cache.runtimeStates]
   }
 
   /**
-   * 🆕 Get server state by name (alias method, used by profileDataManager)
+   * 🆕 Get state by server name (alias method for use by profileDataManager)
    */
   getServerState(serverName: string): MCPServerRuntimeState | null {
     return this.cache.runtimeStates.find(s => s.serverName === serverName) || null
@@ -531,7 +541,7 @@ export class MCPClientCacheManager {
   }
 
   /**
-   * Get MCP tools accessible to a specific Agent
+   * Get MCP tools accessible by a specific Agent
    */
   getAgentSpecificTools(agentMcpServers: Array<{ name: string; tools: string[] }>): MCPTool[] {
     if (!agentMcpServers || agentMcpServers.length === 0) {
@@ -543,29 +553,29 @@ export class MCPClientCacheManager {
     }
 
     const tools: MCPTool[] = []
-    
+
     // Build server -> tools mapping
     const serverToolsMap = new Map<string, string[]>()
     agentMcpServers.forEach(serverConfig => {
       serverToolsMap.set(serverConfig.name, serverConfig.tools || [])
     })
-    
+
     this.cache.servers.forEach(server => {
       const allowedTools = serverToolsMap.get(server.name)
-      
+
       // Only process servers specified in the Agent config
       if (allowedTools !== undefined && server.status === 'connected' && server.tools) {
         let serverTools = server.tools
-        
-        // If allowedTools is a non-empty array, filter the tools
+
+        // If allowedTools is not empty, filter the tools
         if (allowedTools.length > 0) {
           serverTools = server.tools.filter(tool => allowedTools.includes(tool.name))
         }
-        
+
         tools.push(...serverTools)
       }
     })
-    
+
     return tools
   }
 
@@ -576,7 +586,7 @@ export class MCPClientCacheManager {
     const servers = this.cache.servers
     const connectedCount = servers.filter(s => s.status === 'connected').length
     const totalTools = this.getAllMCPTools().length
-    
+
     return {
       totalServers: servers.length,
       connectedServers: connectedCount,
@@ -597,8 +607,8 @@ export class MCPClientCacheManager {
    * Refresh data
    */
   async refresh(): Promise<void> {
-    console.log('[MCPClientCacheManager] Refreshing data...')
-    
+    logger.debug('[MCPClientCacheManager] Refreshing data...')
+
     try {
       if (window.electronAPI?.mcp?.getServerStatus) {
         const result = await window.electronAPI.mcp.getServerStatus()
@@ -607,30 +617,30 @@ export class MCPClientCacheManager {
         }
       }
     } catch (error) {
-      console.error('[MCPClientCacheManager] Refresh failed:', error)
+      logger.error('[MCPClientCacheManager] Refresh failed:', error)
     }
   }
 
   /**
    * Clean up resources
-   * 🔥 Important fix: On user logout, only clear cache data, preserve IPC listeners and subscribers
-   * so that when a new user logs in, the manager can still receive backend messages and update UI
+   * 🔥 Important fix: on user sign-out, only clear cached data; preserve IPC listeners and subscribers
+   * so that when a new user signs in, they can still receive backend messages and update the UI
    */
   cleanup(): void {
-    console.log('[MCPClientCacheManager] Cleaning up...')
-    
+    logger.debug('[MCPClientCacheManager] Cleaning up...')
+
     // Clean up notification timer
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout)
       this.notificationTimeout = null
     }
     this.pendingNotification = false
-    
-    // 🔥 Important fix: Do NOT clean up IPC listeners!
-    // They are needed for the new user login to receive backend MCP server status
+
+    // 🔥 Important fix: do NOT clean up IPC listeners!
+    // These are needed to receive MCP server states from the backend when a new user signs in
     // this.cleanupFunctions.forEach(cleanup => cleanup())
     // this.cleanupFunctions = []
-    
+
     // Reset cache
     this.cache = {
       servers: [],
@@ -638,20 +648,20 @@ export class MCPClientCacheManager {
       lastUpdated: 0,
       isInitialized: false
     }
-    
-    // 🔥 Important fix: Do NOT clean up subscribers!
-    // These are React component subscriptions; clearing them would prevent components from receiving new data notifications
+
+    // 🔥 Important fix: do NOT clean up subscribers!
+    // These are React component subscriptions; once cleared, components can no longer receive new data notifications
     // this.listeners = []
     // this.connectionFailureListeners = []
-    
-    // Clean up previous server status cache (this is safe to clear)
+
+    // Clear previous server status cache (safe to clear)
     this.previousServerStatuses.clear()
-    
-    // 🔥 Notify all subscribers: cache has been cleared
-    console.log('[MCPClientCacheManager] 🔔 Notifying listeners of cleared cache')
+
+    // 🔥 Notify all subscribers that the cache has been cleared
+    logger.debug('[MCPClientCacheManager] 🔔 Notifying listeners of cleared cache')
     this.notifyListeners()
-    
-    console.log('[MCPClientCacheManager] ✅ Cleanup completed, listeners preserved')
+
+    logger.debug('[MCPClientCacheManager] ✅ Cleanup completed, listeners preserved')
   }
 }
 

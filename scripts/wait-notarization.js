@@ -1,12 +1,12 @@
-// Poll and wait for Apple notarization to complete
-// Standalone script for the notarize-macos job in GitHub Actions
+// Poll until Apple notarization is complete.
+// Standalone script used by the notarize-macos job in GitHub Actions.
 
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 // Configuration constants
-const MAX_WAIT_TIME = 2 * 60 * 60 * 1000; // Maximum wait time: 2 hours
+const MAX_WAIT_TIME = 2 * 60 * 60 * 1000; // Wait up to 2 hours
 
 // Get configuration from environment variables or command line arguments
 function getConfig() {
@@ -47,7 +47,7 @@ function getNotarizationLog(submissionId, appleId, appleIdPassword, teamId) {
   }
 }
 
-// Main flow: use notarytool wait command to wait
+// Main flow: use the notarytool wait command
 async function waitForNotarization() {
   const { submissionId, appleId, appleIdPassword, teamId } = getConfig();
   
@@ -58,8 +58,8 @@ async function waitForNotarization() {
   console.log(`   Max wait time: ${MAX_WAIT_TIME / 1000 / 60} minutes`);
   
   try {
-    // Use notarytool wait command, automatically polls until complete
-    // --timeout parameter unit is seconds
+    // Use notarytool wait, which polls automatically until done.
+    // --timeout unit is seconds
     const timeoutSeconds = Math.floor(MAX_WAIT_TIME / 1000);
     
     console.log('⏳ Starting notarytool wait...');
@@ -71,8 +71,8 @@ async function waitForNotarization() {
         --timeout ${timeoutSeconds}`,
       { 
         encoding: 'utf-8', 
-        timeout: MAX_WAIT_TIME + 60000, // Give Node.js an extra 1 minute buffer
-        stdio: 'inherit' // Output to console in real-time
+        timeout: MAX_WAIT_TIME + 60000, // Give Node.js an extra 1-minute buffer
+        stdio: 'inherit' // stream output to console in real time
       }
     );
     
@@ -104,7 +104,7 @@ async function waitForNotarization() {
     console.error(`   Submission ID: ${submissionId}`);
     console.error(`   Error: ${error.message}`);
     
-    // Try to get detailed log
+    // Try to fetch detailed log
     const log = getNotarizationLog(submissionId, appleId, appleIdPassword, teamId);
     if (log) {
       console.error('📜 Notarization log:');

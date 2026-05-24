@@ -1,6 +1,6 @@
 /**
  * GetCurrentDateTimeTool built-in tool
- * Provides the ability for LLM to proactively get the current date and time
+ * Provides LLM-initiated capability to get the current date and time
  *
  * Time source: local machine system time (obtained via JavaScript's Date object)
  * Note: This is a built-in tool, not an MCP protocol tool
@@ -13,32 +13,32 @@ export interface GetCurrentDateTimeToolArgs {
 }
 
 export interface GetCurrentDateTimeToolResult {
-  // Local date time (timezone-adjusted, without timezone offset)
+  // Local date and time (timezone-adjusted, without timezone offset)
   local_datetime: string;
-  // Local timezone information, including timezone name and UTC offset (e.g., "Asia/Shanghai (UTC+08:00)")
+  // Local timezone information, including timezone name and UTC offset (e.g. "Asia/Shanghai (UTC+08:00)")
   local_timezone: string;
 }
 
 export class GetCurrentDateTimeTool {
-  
+
   /**
-   * Execute the get current date time tool
-   * Static method, supports direct invocation by LLM
+   * Execute the get current date and time tool
+   * Static method, supports direct LLM invocation
    */
   static async execute(args: GetCurrentDateTimeToolArgs = {}): Promise<GetCurrentDateTimeToolResult> {
     try {
       const now = new Date();
-      
+
       // Get timezone name
       const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      
+
       // Get timezone offset (in minutes)
       const timezoneOffset = now.getTimezoneOffset();
       const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
       const offsetMinutes = Math.abs(timezoneOffset) % 60;
       const offsetSign = timezoneOffset <= 0 ? '+' : '-';
       const offsetString = `UTC${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
-      
+
       // Format local time (without timezone offset)
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -47,10 +47,10 @@ export class GetCurrentDateTimeTool {
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const seconds = String(now.getSeconds()).padStart(2, '0');
       const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-      
+
       const localDateTimeString = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
       const timezoneString = `${timezoneName} (${offsetString})`;
-      
+
       return {
         local_datetime: localDateTimeString,
         local_timezone: timezoneString
@@ -61,7 +61,7 @@ export class GetCurrentDateTimeTool {
   }
 
   /**
-   * Get tool definition (for registration with BuiltinToolsManager)
+   * Get tool definition (for registering with BuiltinToolsManager)
    */
   static getDefinition(): BuiltinToolDefinition {
     return {

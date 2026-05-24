@@ -1,6 +1,6 @@
 /**
  * YAML Front Matter parsing utility
- * Supports key: value, key: "value", and multiline > (folded) and | (literal) syntax
+ * Supports key: value, key: "value", and multi-line > (folded) and | (literal) syntax
  */
 
 export interface FrontMatter {
@@ -17,8 +17,8 @@ export interface ParsedMarkdown {
  * Supports:
  * - Single-line key: value
  * - Quoted key: "value" or key: 'value'
- * - Folded multiline key: > (newlines become spaces)
- * - Literal multiline key: | (preserves newlines)
+ * - Folded multi-line key: > (newlines become spaces)
+ * - Literal multi-line key: | (newlines preserved)
  * - >- and |- variants
  */
 export const parseFrontMatter = (content: string): ParsedMarkdown => {
@@ -91,7 +91,7 @@ export const parseFrontMatter = (content: string): ParsedMarkdown => {
       continue
     }
 
-    // Remove quotes
+    // Strip quotes
     if ((value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1)

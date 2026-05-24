@@ -1,6 +1,6 @@
 /**
  * Node.js fs-based Search Engine
- * Uses Node.js file system API for file search
+ * File search using the Node.js file system API
  */
 
 import * as fs from 'fs';
@@ -19,7 +19,7 @@ const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
 
 /**
- * FileMatchItemAccessor - used to extract scoring information from IFileSearchResult
+ * FileMatchItemAccessor extracts the information needed for scoring from IFileSearchResult
  */
 const FileMatchItemAccessor: IItemAccessor<IFileSearchResult> = {
   getItemLabel: item => path.basename(item.path),
@@ -56,7 +56,7 @@ export class NodeFSSearchEngine implements ISearchEngine {
 
     const duration = Date.now() - startTime;
 
-    // Sort using VSCode fuzzy scorer
+    // Use VSCode fuzzy scorer for sorting
     if (query.pattern && results.length > 0) {
       await this.scoreAndSortResults(results, query.pattern);
     }
@@ -81,7 +81,7 @@ export class NodeFSSearchEngine implements ISearchEngine {
     updateFilesScanned: (count: number) => void,
     onProgress?: (result: IFileSearchResult) => void
   ): Promise<void> {
-    // Check if max result count is reached
+    // Check if the maximum result count has been reached
     if (query.maxResults && results.length >= query.maxResults) {
       return;
     }
@@ -90,14 +90,14 @@ export class NodeFSSearchEngine implements ISearchEngine {
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (error) {
-      // Ignore permission errors, etc.
+      // Ignore permission errors etc.
       return;
     }
 
     const searchTarget = query.searchTarget || 'both';
 
     for (const entry of entries) {
-      // Check if max result count is reached
+      // Check if the maximum result count has been reached
       if (query.maxResults && results.length >= query.maxResults) {
         break;
       }
@@ -105,18 +105,18 @@ export class NodeFSSearchEngine implements ISearchEngine {
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.relative(rootDir, fullPath);
 
-      // Exclude rule check
+      // Exclusion check
       if (this.shouldExclude(entry.name, relativePath, query)) {
         continue;
       }
 
       if (entry.isDirectory()) {
-        // Check if directory needs to be added to results
+        // Check whether the directory should be added to results
         if ((searchTarget === 'folders' || searchTarget === 'both') &&
             this.matchesPattern(entry.name, relativePath, query)) {
           const result: IFileSearchResult = {
             path: relativePath.replace(/\\/g, '/'),
-            score: 0, // Temporary score, will be recalculated later by fuzzy scorer
+            score: 0, // Temporary score; recalculated later by the fuzzy scorer
             isDirectory: true
           };
 
@@ -139,12 +139,12 @@ export class NodeFSSearchEngine implements ISearchEngine {
       } else if (entry.isFile()) {
         updateFilesScanned(results.length + 1);
 
-        // Check if file matches (only when search target includes files)
+        // Check whether the file matches (only when the search target includes files)
         if ((searchTarget === 'files' || searchTarget === 'both') &&
             this.matchesPattern(entry.name, relativePath, query)) {
           const result: IFileSearchResult = {
             path: relativePath.replace(/\\/g, '/'), // Normalize to forward slashes
-            score: 0, // Temporary score, will be recalculated later by fuzzy scorer
+            score: 0, // Temporary score; recalculated later by the fuzzy scorer
             isDirectory: false
           };
 
@@ -178,7 +178,7 @@ export class NodeFSSearchEngine implements ISearchEngine {
       '**/Thumbs.db'
     ];
 
-    // Merge user-provided exclude patterns
+    // Merge with user-provided exclude patterns
     const excludePatterns = query.excludePattern
       ? [...defaultExcludePatterns, ...query.excludePattern.split(',').map(p => p.trim())]
       : defaultExcludePatterns;
@@ -205,13 +205,13 @@ export class NodeFSSearchEngine implements ISearchEngine {
         dot: true,
         nocase: process.platform === 'win32'
       });
-      
+
       if (!matchesInclude) {
         return false;
       }
     }
 
-    // If no search pattern, match as long as includePattern check passes
+    // If no search pattern, any entry that passes the includePattern check is a match
     if (!query.pattern) {
       return true;
     }
@@ -221,10 +221,10 @@ export class NodeFSSearchEngine implements ISearchEngine {
     const relativePathLower = normalizedPath.toLowerCase();
 
     if (query.fuzzy) {
-      // Fuzzy matching: check if each character of pattern appears in order
+      // Fuzzy match: check whether every character in the pattern appears in order
       return this.fuzzyMatch(fileNameLower, pattern) || this.fuzzyMatch(relativePathLower, pattern);
     } else {
-      // Simple contains matching
+      // Simple inclusion match
       return fileNameLower.includes(pattern) || relativePathLower.includes(pattern);
     }
   }
@@ -240,21 +240,21 @@ export class NodeFSSearchEngine implements ISearchEngine {
   }
 
   /**
-   * Score and sort search results using VSCode fuzzy scorer
+   * Score and sort search results using the VSCode fuzzy scorer
    */
   private async scoreAndSortResults(
     results: IFileSearchResult[],
     pattern: string
   ): Promise<void> {
     const preparedQuery = prepareQuery(pattern);
-    
+
     // Sort using VSCode's fuzzy scorer
     results.sort((a, b) =>
       compareItemsByFuzzyScore(
         a,
         b,
         preparedQuery,
-        true, // Support separator matching
+        true, // support separator matching
         FileMatchItemAccessor,
         this.scorerCache
       )

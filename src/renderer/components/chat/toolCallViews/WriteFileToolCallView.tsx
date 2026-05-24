@@ -4,7 +4,7 @@
 import React from 'react';
 import { ExternalLink } from 'lucide-react';
 import { ToolCallViewProps, WriteFileToolArgs, WriteFileToolResult } from './types';
-import { MessageHelper } from '../../../types/chatTypes';
+import { MessageHelper } from '@shared/types/chatTypes';
 import { parseStreamingJson } from '@renderer/lib/utils/streamingJsonParser';
 import FileTypeIcon from '../../ui/FileTypeIcon';
 
@@ -78,34 +78,55 @@ const handleOpenFile = (filePath: string) => {
 export const WriteFileToolCallView: React.FC<ToolCallViewProps> = ({
   toolCall,
   toolResult,
+  executionStatus,
 }) => {
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
   const resultText = toolResult ? MessageHelper.getText(toolResult) : '';
   const result = resultText ? parseToolResult(resultText) : null;
 
-  // If no arguments, don't render
-  if (!args || !args.filePath) {
+  // If no arguments at all, don't render
+  if (!args) {
     return null;
   }
 
-  const isExecuting = !toolResult;
+  const isExecuting = executionStatus === 'executing';
+  const isInterrupted = executionStatus === 'interrupted';
+
+  // In non-executing states, filePath is required to render
+  if (!args.filePath && !isExecuting) {
+    return null;
+  }
+
   const isSuccess = result?.success === true;
-  const fileName = getFileName(args.filePath);
+  const fileName = args.filePath ? getFileName(args.filePath) : '';
 
   // If executing (streaming), show content preview
   if (isExecuting && args.content) {
+    const displayName = fileName || 'Generating file...';
     return (
       <div className="write-file-view">
         <div className="write-file-streaming-container">
           <div className="write-file-streaming-header">
-            <FileTypeIcon fileName={fileName} size={16} className="write-file-icon" />
-            <span className="write-file-filename">{fileName}</span>
+            <FileTypeIcon fileName={displayName} size={16} className="write-file-icon" />
+            <span className="write-file-filename">{displayName}</span>
             <span className="write-file-streaming-indicator">Writing...</span>
           </div>
           <div className="write-file-content-preview">
             <pre className="write-file-content-pre">{args.content}</pre>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isInterrupted) {
+    return (
+      <div className="write-file-view">
+        <div className="write-file-error-container">
+          <FileTypeIcon fileName={fileName} size={24} className="write-file-icon error" />
+          <span className="write-file-filename">{fileName}</span>
+          <span className="write-file-error-text">Interrupted before file write result was recorded</span>
         </div>
       </div>
     );

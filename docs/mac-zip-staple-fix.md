@@ -1,46 +1,46 @@
-# macOS ZIP Auto-Update "App Damaged" Issue Fix
+# macOS ZIP Auto-Update "App Damaged" Fix
 
 ## Problem Description
 
-Multiple Mac users reported that after auto-updating, the application failed to launch with an "app damaged" error. This is because the app does not have a stapled notarization ticket and is blocked by macOS Gatekeeper.
+Several Mac users reported that after an automatic update, the application fails to launch with an "app damaged" error. This is because the app does not have a stapled notarization ticket and is blocked by macOS Gatekeeper.
 
 ### Symptoms
 
 - DMG installation works normally with no warnings
-- After auto-update, launch shows "app damaged" or "Apple could not verify..."
+- After auto-update, launch fails with "app damaged" or "Apple could not verify..."
 - Issue only affects users who updated via ZIP
 
 ## Root Cause Analysis
 
 ### Root Cause
 
-**The ZIP file was generated before stapling, so the .app inside the ZIP does not have a notarization ticket!**
+**The ZIP file was generated before stapling, so the .app inside the ZIP has no notarization ticket!**
 
 ### CI Pipeline Timing Issue
 
 | Stage | Job | Operation | Issue |
-|-------|-----|-----------|-------|
+|------|-----|------|------|
 | Stage 1 | `build-macos-*` | Build + Codesign + **Generate ZIP** + Submit notarization | ZIP has no staple at this point |
-| Stage 2 | `notarize-macos-*` | Wait for notarization to complete | - |
-| Stage 3 | `package-macos-*` | **Staple app** + Generate DMG + **Upload old ZIP** | ❌ Directly uploads the ZIP from Stage 1 |
+| Stage 2 | `notarize-macos-*` | Wait for notarization to complete | — |
+| Stage 3 | `package-macos-*` | **Staple app** + Generate DMG + **Upload old ZIP** | ❌ Directly uploads ZIP from Stage 1 |
 
 ### Code Flow
 
 1. [electron-builder.config.js](../electron-builder.config.js#L187) configures `target: ['dmg', 'zip']`
-2. Stage 1's `npm run dist:mac:arm64` generates both DMG and **ZIP file**
-3. At this point, the .app inside the ZIP **only has codesign, no staple**
-4. Stage 3 only staples the .app, then re-creates the DMG
-5. **But the ZIP file comes directly from Stage 1's artifact and is not repackaged!**
+2. Stage 1's `npm run dist:mac:arm64` generates both DMG and **ZIP file** simultaneously
+3. At this point the .app inside the ZIP **only has codesign, no staple**
+4. Stage 3 staples only the .app, then recreates the DMG
+5. **But the ZIP file comes directly from Stage 1's artifact and is not repacked!**
 
 ```yaml
-# Problematic code - directly uploads the old ZIP
+# Problem code — uploads old ZIP directly
 ZIP_FILE=$(find release/mac-arm64 -name "*-arm64.zip" | head -n 1)
 gh release upload "$TAG" "$ZIP_FILE" --clobber
 ```
 
-### Why Does DMG Work Fine?
+### Why Doesn't the DMG Have This Problem?
 
-The DMG is **re-created** in Stage 3 using the already stapled .app:
+The DMG is **recreated** in Stage 3, using the already-stapled .app:
 
 ```yaml
 npx electron-builder --mac dmg --arm64 --prepackaged "$APP_PATH" ...
@@ -48,32 +48,32 @@ npx electron-builder --mac dmg --arm64 --prepackaged "$APP_PATH" ...
 
 ## Fix
 
-### New `scripts/repack-zip.js`
+### Add `scripts/repack-zip.js`
 
-After stapling, repackage the ZIP file:
+After stapling, repack the ZIP file:
 
 ```javascript
-// 1. Verify the app has been stapled
+// 1. Verify app has been stapled
 execSync(`xcrun stapler validate "${appPath}"`);
 
-// 2. Delete the old ZIP
+// 2. Delete old ZIP
 fs.unlinkSync(oldZipPath);
 
-// 3. Create a new ZIP using ditto (preserves macOS extended attributes and symlinks)
+// 3. Create new ZIP using ditto (preserves macOS extended attributes and symlinks)
 execSync(`ditto -c -k --keepParent "${appName}" "${zipFilename}"`);
 
-// 4. Generate blockmap to support differential updates
+// 4. Generate blockmap for incremental updates
 execSync(`npx electron-builder blockmap --input="${zipPath}"`);
 ```
 
-### CI Pipeline Modifications
+### CI Pipeline Changes
 
 Add a "Repack ZIP with stapled app" step to the 4 package jobs:
 
 ```yaml
 - name: Repack ZIP with stapled app
   env:
-    BRAND: openkosmos
+    BRAND: kosmos
   run: |
     APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -n 1)
     node scripts/repack-zip.js "$APP_PATH" "release/mac-arm64" "arm64"
@@ -81,22 +81,22 @@ Add a "Repack ZIP with stapled app" step to the 4 package jobs:
 
 ### Modified Jobs
 
-- `package-macos-openkosmos` (arm64)
-- `package-macos-openkosmos-x64`
+- `package-macos-kosmos` (arm64)
+- `package-macos-kosmos-x64`
 
-## Post-Fix Pipeline
+## Fixed Pipeline
 
 | Stage | Job | Operation | Status |
-|-------|-----|-----------|--------|
+|------|-----|------|------|
 | Stage 1 | `build-macos-*` | Build + Codesign + Generate ZIP + Submit notarization | ZIP has no staple yet |
 | Stage 2 | `notarize-macos-*` | Wait for notarization to complete | ✅ |
-| Stage 3 | `package-macos-*` | Staple app + **Repackage ZIP** + Generate DMG + Upload | ✅ ZIP includes staple |
+| Stage 3 | `package-macos-*` | Staple app + **Repack ZIP** + Generate DMG + Upload | ✅ ZIP includes staple |
 
 ## Verification
 
 ### CI Build Verification
 
-Build logs should show:
+The build log should show:
 
 ```text
 📦 Repacking ZIP with stapled app...
@@ -117,7 +117,7 @@ Build logs should show:
 ### Local Verification of Downloaded ZIP
 
 ```bash
-# 1. Download and extract the ZIP
+# 1. Download ZIP and extract
 unzip OpenKosmos-xxx-mac-arm64.zip
 
 # 2. Verify staple
@@ -131,9 +131,9 @@ spctl -a -vvv -t execute "OpenKosmos.app"
 
 ## Related Files
 
-- [scripts/repack-zip.js](../scripts/repack-zip.js) - ZIP repackaging script
-- [scripts/staple-app.js](../scripts/staple-app.js) - Staple script
-- [.github/workflows/release.yml](../.github/workflows/release.yml) - CI pipeline
+- [scripts/repack-zip.js](../scripts/repack-zip.js) — ZIP repackaging script
+- [scripts/staple-app.js](../scripts/staple-app.js) — Staple script
+- [.github/workflows/release.yml](../.github/workflows/release.yml) — CI pipeline
 
 ## References
 
@@ -145,6 +145,5 @@ spctl -a -vvv -t execute "OpenKosmos.app"
 
 **Fix Date**: 2026-02-05  
 **Fix Branch**: `user/yanhu/fix-mac-zip-codesign`  
-**Affected Versions**: Next release  
-**Affected Products**: OpenKosmos macOS edition
-
+**Affected Version**: Next release  
+**Affected Products**: OpenKosmos macOS versions

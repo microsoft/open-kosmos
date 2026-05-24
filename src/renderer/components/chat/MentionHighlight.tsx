@@ -13,16 +13,16 @@ export const MentionHighlight: React.FC<MentionHighlightProps> = ({ text, textar
   useEffect(() => {
     const textarea = textareaRef.current;
     const highlight = highlightRef.current;
-    
+
     if (!textarea || !highlight) return;
 
-    // 🔧 FIX: Sync scroll position (vertical and horizontal)
+    // 🔧 FIX: sync scroll position (vertical and horizontal)
     const syncScroll = () => {
       highlight.scrollTop = textarea.scrollTop;
       highlight.scrollLeft = textarea.scrollLeft;
     };
 
-    // 🔧 FIX: Sync height changes (when textarea auto-resizes)
+    // 🔧 FIX: sync height changes (when textarea auto-resizes)
     const syncHeight = () => {
       const textareaHeight = textarea.style.height;
       if (textareaHeight) {
@@ -36,7 +36,7 @@ export const MentionHighlight: React.FC<MentionHighlightProps> = ({ text, textar
 
     // Listen for scroll events
     textarea.addEventListener('scroll', syncScroll);
-    
+
     // Listen for height changes (using MutationObserver)
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -74,32 +74,32 @@ export const MentionHighlight: React.FC<MentionHighlightProps> = ({ text, textar
     // Escape the entire text first
     let result = escapeHtml(text);
 
-    // 🔧 FIX: Replace [@workspace:...] mentions with highlight marks (supports spaces in paths, backward compatible)
-    // Match complete [...] bracket content
+    // 🔧 FIX: replace [@workspace:...] mentions with highlight markup (supports spaces in paths, backward-compatible)
+    // Matches the complete [...] bracket content
     result = result.replace(
       /\[@workspace:([^\]]+)\]/g,
       (match) => `<mark class="mention-highlight workspace-mention">${match}</mark>`
     );
 
-    // 🆕 Replace [@knowledge-base:...] mentions with highlight marks
+    // 🆕 Replace [@knowledge-base:...] mentions with highlight markup
     result = result.replace(
       /\[@knowledge-base:([^\]]+)\]/g,
       (match) => `<mark class="mention-highlight workspace-mention">${match}</mark>`
     );
 
-    // 🆕 Replace [@chat-session:...] mentions with highlight marks
+    // 🆕 Replace [@chat-session:...] mentions with highlight markup
     result = result.replace(
       /\[@chat-session:([^\]]+)\]/g,
       (match) => `<mark class="mention-highlight workspace-mention">${match}</mark>`
     );
 
-    // 🔧 FIX: Replace [#skill:...] mentions with highlight marks (supports spaces in names)
+    // 🔧 FIX: replace [#skill:...] mentions with highlight markup (supports spaces in names)
     result = result.replace(
       /\[#skill:([^\]]+)\]/g,
       (match) => `<mark class="mention-highlight skill-mention">${match}</mark>`
     );
 
-    // Preserve line breaks
+    // Preserve newlines
     return result.replace(/\n/g, '<br>');
   };
 

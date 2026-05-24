@@ -5,7 +5,7 @@
 
 /**
  * Built-in tool definition interface
- * Used to describe basic tool information and parameter schemas
+ * Describes the basic information and parameter schema of a tool
  */
 export interface BuiltinToolDefinition {
   name: string;
@@ -15,7 +15,7 @@ export interface BuiltinToolDefinition {
 
 /**
  * Tool execution result interface
- * Unified tool execution return format
+ * Unified return format for tool execution
  */
 export interface ToolExecutionResult {
   success: boolean;

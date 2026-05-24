@@ -89,13 +89,13 @@ export class ServiceManager extends EventEmitter {
 
   constructor(config: Partial<ServiceManagerConfig> = {}) {
     super();
-    
+
     this.config = { ...DEFAULT_SERVICE_MANAGER_CONFIG, ...config };
-    
+
     // Initialize components
     this.cacheManager = new CacheManager(this.config.cache);
     this.serviceRegistry = new ServiceRegistry(this.config.registry);
-    
+
     this.setupEventHandlers();
     this.startPerformanceMonitoring();
   }
@@ -127,11 +127,11 @@ export class ServiceManager extends EventEmitter {
    */
   async unregisterService(serviceId: string): Promise<boolean> {
     const success = this.serviceRegistry.unregister(serviceId);
-    
+
     if (success) {
       // Clear all cache entries for this service
       this.cacheManager.invalidateServer(serviceId);
-      
+
       this.emit(ServiceManager.EVENTS.SERVICE_UNREGISTERED, { serviceId });
     }
 
@@ -143,7 +143,7 @@ export class ServiceManager extends EventEmitter {
    */
   updateServiceState(serviceId: string, state: ConnectionState): boolean {
     const success = this.serviceRegistry.updateService(serviceId, { state });
-    
+
     if (success && this.config.enableSmartCaching) {
       this.optimizeCacheForService(serviceId, state);
     }
@@ -512,7 +512,7 @@ export class ServiceManager extends EventEmitter {
   private handleMemoryPressure(): void {
     // Implement memory pressure relief strategies
     const cacheInfo = this.cacheManager.getInfo();
-    
+
     if (cacheInfo.memoryUsageMB > (this.config.cache.maxMemoryMB || 50) * 0.9) {
       // Reduce TTL for new cache entries temporarily
       // This would be implemented by adjusting the cache configuration
@@ -540,7 +540,7 @@ export class ServiceManager extends EventEmitter {
   } {
     const stats = this.getStats();
     const latestReport = this.performanceHistory[this.performanceHistory.length - 1];
-    
+
     return {
       config: { ...this.config },
       stats,

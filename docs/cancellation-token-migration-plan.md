@@ -1,14 +1,14 @@
-# OpenKosmos CancellationToken Migration Plan
+# Kosmos CancellationToken Migration Plan
 
 ## 📋 Executive Summary
 
-Based on research into Roo-Code and vscode-copilot-chat, we recommend implementing the standard **CancellationToken pattern** for Kosmos to provide a unified, reliable conversation cancellation/pause feature.
+Based on research into Roo-Code and vscode-copilot-chat, we recommend implementing the standard **CancellationToken pattern** for Kosmos to provide a unified, reliable conversation cancel/pause feature.
 
 ## 🎯 Goals
 
-1. **Unified cancellation mechanism**: Establish standard cancellation signal passing between the main process and renderer process
-2. **Graceful termination**: Ensure proper resource cleanup (network connections, streaming, temporary state)
-3. **State consistency**: Guarantee UI and backend state synchronization after cancellation
+1. **Unified cancellation mechanism**: Establish a standard cancellation signal channel between the main process and the renderer process
+2. **Graceful termination**: Ensure resources are correctly cleaned up (network connections, streaming, temporary state)
+3. **State consistency**: Guarantee UI and backend state sync after cancellation
 4. **User experience**: Provide immediate response and clear status feedback
 
 ## 🏗️ Architecture Design
@@ -17,7 +17,7 @@ Based on research into Roo-Code and vscode-copilot-chat, we recommend implementi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       Frontend (Renderer)                       │
+│                        Frontend (Renderer)                    │
 ├─────────────────────────────────────────────────────────────┤
 │  UI Layer                                                     │
 │  ┌─────────────────┐           ┌──────────────────┐         │
@@ -28,7 +28,7 @@ Based on research into Roo-Code and vscode-copilot-chat, we recommend implementi
 └─────────────────────────────────────────┼─────────────────────┘
                                           │
 ┌─────────────────────────────────────────┼─────────────────────┐
-│                       Main Process (Main)  │                     │
+│                        Main Process      │                     │
 ├─────────────────────────────────────────┼─────────────────────┤
 │  ┌──────────────────────────────────────▼───────────────────┐ │
 │  │         AgentChatManager                                 │ │
@@ -62,8 +62,8 @@ Based on research into Roo-Code and vscode-copilot-chat, we recommend implementi
 // src/main/lib/cancellation/CancellationToken.ts
 
 /**
- * Cancellation Token - Read-only interface
- * Used to check if cancellation has been requested
+ * Cancellation token — read-only interface
+ * Used to check whether cancellation has been requested
  */
 export interface CancellationToken {
   /**
@@ -78,7 +78,7 @@ export interface CancellationToken {
 }
 
 /**
- * Cancellation Token Source - Manages the lifecycle of cancellation tokens
+ * Cancellation token source — manages the lifecycle of a cancellation token
  */
 export class CancellationTokenSource {
   private _token: MutableCancellationToken;
@@ -96,7 +96,7 @@ export class CancellationTokenSource {
   }
   
   /**
-   * Request cancellation
+   * Request cancellation of the operation
    */
   cancel(): void {
     if (!this._disposed) {
@@ -180,14 +180,14 @@ type Event<T> = (listener: (e: T) => void) => { dispose(): void };
 
 ## 🔄 Migration Steps
 
-### Phase 1: Infrastructure (1-2 days)
+### Phase 1: Infrastructure (1–2 days)
 
 #### 1.1 Create CancellationToken Implementation
 
 **File**: `src/main/lib/cancellation/CancellationToken.ts`
 
 ```typescript
-// Full implementation of the code from the type definitions above
+// Full implementation of the type definitions above
 ```
 
 **File**: `src/main/lib/cancellation/index.ts`
@@ -217,11 +217,11 @@ export const CancellationToken = {
 import { CancellationTokenSource } from '../cancellation';
 
 export class AgentChatManager {
-  // 🔥 New: Maintain CancellationTokenSource for each chat
+  // 🔥 New: maintain a CancellationTokenSource for each chat
   private cancellationSources: Map<string, CancellationTokenSource> = new Map();
   
   /**
-   * 🔥 New: Create or get the CancellationTokenSource for the specified chat
+   * 🔥 New: create or get the CancellationTokenSource for the specified chat
    */
   private getOrCreateCancellationSource(chatId: string): CancellationTokenSource {
     let source = this.cancellationSources.get(chatId);
@@ -233,7 +233,7 @@ export class AgentChatManager {
   }
   
   /**
-   * 🔥 New: Cancel ongoing operations for the specified chat
+   * 🔥 New: cancel the ongoing operation for the specified chat
    */
   async cancelChat(chatId: string): Promise<{ success: boolean; error?: string }> {
     try {
@@ -242,10 +242,10 @@ export class AgentChatManager {
         logger.info('[AgentChatManager] 🛑 Cancelling chat', 'cancelChat', { chatId });
         source.cancel();
         
-        // Wait for the operation to fully stop (monitored via chat status)
+        // Wait for the operation to fully stop (monitor via chat status)
         await this.waitForChatIdle(chatId);
         
-        // Clean up old source, create new one for next operation
+        // Clean up old source and create a new one for next operation
         source.dispose();
         this.cancellationSources.delete(chatId);
         
@@ -266,7 +266,7 @@ export class AgentChatManager {
   }
   
   /**
-   * 🔥 New: Wait for the chat to return to idle state
+   * 🔥 New: wait for chat to return to idle state
    */
   private async waitForChatIdle(chatId: string, timeoutMs: number = 5000): Promise<void> {
     const startTime = Date.now();
@@ -286,7 +286,7 @@ export class AgentChatManager {
     });
   }
   
-  // Modify streamMessage method to pass cancellationToken
+  // Modify streamMessage to pass cancellationToken
   async streamMessage(
     chatId: string,
     message: Message
@@ -297,15 +297,15 @@ export class AgentChatManager {
     }
     
     try {
-      // 🔥 Create new CancellationTokenSource for the new conversation turn
+      // 🔥 Create a new CancellationTokenSource for the new conversation round
       const source = this.getOrCreateCancellationSource(chatId);
       
-      // 🔥 Pass the token to AgentChat
+      // 🔥 Pass token to AgentChat
       const messages = await agentChat.streamMessage(message, source.token);
       
       return { success: true, data: messages };
     } catch (error) {
-      // Check if failure was due to cancellation
+      // Check if the failure was due to cancellation
       if (error instanceof CancellationError) {
         logger.info('[AgentChatManager] Operation cancelled', 'streamMessage', { chatId });
         return { success: true, data: [] }; // Cancellation is not an error
@@ -324,7 +324,7 @@ export class AgentChatManager {
 }
 ```
 
-### Phase 2: Integrate into AgentChat (2-3 days)
+### Phase 2: Integrate into AgentChat (2–3 days)
 
 #### 2.1 Modify AgentChat Class
 
@@ -334,18 +334,18 @@ export class AgentChatManager {
 import { CancellationToken, CancellationToken as CancellationTokenStatic } from '../cancellation';
 
 export class AgentChat {
-  // 🔥 New: Cancellation token for the current operation
+  // 🔥 New: cancellation token for the current operation
   private currentCancellationToken: CancellationToken = CancellationTokenStatic.None;
   
   /**
-   * 🔥 Modified: streamMessage accepts CancellationToken
+   * 🔥 Modified: streamMessage accepts a CancellationToken
    */
   async streamMessage(
     userMessage: Message,
     cancellationToken: CancellationToken = CancellationTokenStatic.None,
     callbacks?: StartChatCallbacks
   ): Promise<Message[]> {
-    // Save the current token
+    // Save current token
     this.currentCancellationToken = cancellationToken;
     
     // 🔥 Check if already cancelled before starting
@@ -373,13 +373,13 @@ export class AgentChat {
       logger.error(`[AgentChat] Conversation processing failed: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     } finally {
-      // Clean up token reference
+      // Clear token reference
       this.currentCancellationToken = CancellationTokenStatic.None;
     }
   }
   
   /**
-   * 🔥 New: Check for cancellation request and throw exception
+   * 🔥 New: check for cancellation request and throw exception
    */
   private throwIfCancellationRequested(): void {
     if (this.currentCancellationToken.isCancellationRequested) {
@@ -388,7 +388,7 @@ export class AgentChat {
   }
   
   /**
-   * 🔥 Modified: Check for cancellation at critical points
+   * 🔥 Modified: check for cancellation at key points
    */
   private async startChat(callbacks: StartChatCallbacks = {}): Promise<void> {
     let requiresFollowUp = true;
@@ -400,17 +400,17 @@ export class AgentChat {
       }
       
       while (requiresFollowUp) {
-        // 🔥 Checkpoint 1: Check before each loop iteration
+        // 🔥 Checkpoint 1: check at the start of each loop iteration
         this.throwIfCancellationRequested();
         
         await this.CheckAndCompress();
         
-        // 🔥 Checkpoint 2: Check after compression
+        // 🔥 Checkpoint 2: check after compression
         this.throwIfCancellationRequested();
         
         this.setChatStatus(ChatStatus.SENDING_RESPONSE);
         
-        // 🔥 Pass the token to the API call
+        // 🔥 Pass token to API call
         const response = await this.callWithToolsStreaming(this.currentCancellationToken);
         
         this.setChatStatus(ChatStatus.RECEIVED_RESPONSE);
@@ -433,7 +433,7 @@ export class AgentChat {
           const approvalMap = await this.batchValidateAndRequestApproval(response.tool_calls);
           
           for (const toolCall of response.tool_calls) {
-            // 🔥 Checkpoint 3: Check before each tool execution
+            // 🔥 Checkpoint 3: check before each tool execution
             this.throwIfCancellationRequested();
             
             const toolName = toolCall.function.name;
@@ -449,7 +449,7 @@ export class AgentChat {
           
           requiresFollowUp = true;
         } else {
-          // 🔥 Checkpoint 4: Check before final save
+          // 🔥 Checkpoint 4: check before final save
           this.throwIfCancellationRequested();
           
           // Storage compression and fact extraction
@@ -487,7 +487,7 @@ export class AgentChat {
     // 🔥 Create AbortController for cancelling fetch
     const abortController = new AbortController();
     
-    // 🔥 Listen to the cancellation token
+    // 🔥 Listen to cancellation token
     const cancellationListener = cancellationToken.onCancellationRequested(() => {
       logger.info('[AgentChat] Aborting fetch request due to cancellation', 'makeStreamingApiCall');
       abortController.abort();
@@ -586,13 +586,13 @@ export class AgentChat {
         cancellationListener.dispose();
       }
       
-      // Build the final Message...
+      // Build final Message...
       const result: Message = MessageHelper.createTextMessage(fullContent, 'assistant', messageId);
       if (toolCalls.length > 0) {
         result.tool_calls = toolCalls.filter(tc => tc && tc.id);
       }
       
-      // Send completion chunk...
+      // Send complete chunk...
       return result;
       
     } catch (error) {
@@ -617,7 +617,7 @@ export class AgentChat {
 }
 
 /**
- * 🔥 New: Cancellation error class
+ * 🔥 New: cancellation error class
  */
 export class CancellationError extends Error {
   constructor(message: string = 'Operation was cancelled') {
@@ -631,21 +631,21 @@ export class CancellationError extends Error {
 
 #### 3.1 Add IPC Handlers
 
-**File**: `src/main/preload.ts`
+**File**: `src/preload/main.ts`
 
 ```typescript
-// Add to the agentChat namespace
+// Add to agentChat namespace
 
 agentChat: {
   // ... existing methods
   
   /**
-   * 🔥 New: Cancel current conversation
+   * 🔥 New: cancel the current conversation
    */
   cancelChat: (chatId: string) => ipcRenderer.invoke('agentChat:cancelChat', chatId),
   
   /**
-   * 🔥 New: Listen for chat status changes
+   * 🔥 New: listen for chat status changes
    */
   onChatStatusChanged: (callback: (data: {
     chatId: string;
@@ -689,7 +689,7 @@ ipcMain.handle('agentChat:cancelChat', async (event, chatId: string) => {
 
 ```typescript
 class AgentChatIpc {
-  // 🔥 New: Chat status listeners
+  // 🔥 New: chat status listeners
   private chatStatusListeners: ((status: {
     chatId: string;
     chatStatus: string;
@@ -704,7 +704,7 @@ class AgentChatIpc {
   }
   
   /**
-   * 🔥 New: Set up chat status listener
+   * 🔥 New: set up chat status listener
    */
   private setupChatStatusListener(): void {
     this.chatStatusCleanup = window.electronAPI.agentChat.onChatStatusChanged((data) => {
@@ -721,7 +721,7 @@ class AgentChatIpc {
   }
   
   /**
-   * 🔥 New: Cancel current conversation
+   * 🔥 New: cancel the current conversation
    */
   async cancelChat(chatId: string): Promise<void> {
     console.log('[AgentChatIpc] Cancelling chat', { chatId });
@@ -732,7 +732,7 @@ class AgentChatIpc {
   }
   
   /**
-   * 🔥 New: Add chat status listener
+   * 🔥 New: add chat status listener
    */
   addChatStatusListener(listener: (status: {
     chatId: string;
@@ -743,7 +743,7 @@ class AgentChatIpc {
   }
   
   /**
-   * 🔥 New: Remove chat status listener
+   * 🔥 New: remove chat status listener
    */
   removeChatStatusListener(listener: (status: {
     chatId: string;
@@ -777,7 +777,7 @@ class AgentChatIpc {
 const AgentPage: React.FC = () => {
   // ... existing state
   
-  // 🔥 New: Chat status
+  // 🔥 New: chat status
   const [chatStatus, setChatStatus] = useState<string>('idle');
   const [isCancelling, setIsCancelling] = useState(false);
   
@@ -792,7 +792,7 @@ const AgentPage: React.FC = () => {
         console.log('[AgentPage] Chat status changed', status);
         setChatStatus(status.chatStatus);
         
-        // Reset state after cancellation completes
+        // Reset state after cancellation is complete
         if (isCancelling && status.chatStatus === 'idle') {
           setIsCancelling(false);
         }
@@ -807,7 +807,7 @@ const AgentPage: React.FC = () => {
   }, [currentChatId, isCancelling]);
   
   /**
-   * 🔥 New: Cancel current conversation
+   * 🔥 New: cancel the current conversation
    */
   const handleCancelChat = async () => {
     if (!currentChatId || chatStatus === 'idle') {
@@ -822,24 +822,24 @@ const AgentPage: React.FC = () => {
       
       console.log('[AgentPage] Chat cancelled successfully');
       
-      // UI will auto-update via chatStatus listener
+      // UI will automatically update via the chatStatus listener
     } catch (error) {
       console.error('[AgentPage] Failed to cancel chat', error);
       setIsCancelling(false);
       
       // Show error notification
-      // TODO: Add toast notification
+      // TODO: add toast notification
     }
   };
   
-  // 🔥 Calculate whether cancellation is possible
+  // 🔥 Compute whether cancellation is possible
   const canCancel = chatStatus !== 'idle' && !isCancelling;
   
   return (
     <div className="agent-page">
       {/* ... existing UI */}
       
-      {/* 🔥 New: Cancel button */}
+      {/* 🔥 New: cancel button */}
       {canCancel && (
         <button
           className="cancel-button"
@@ -850,7 +850,7 @@ const AgentPage: React.FC = () => {
         </button>
       )}
       
-      {/* 🔥 New: Status indicator */}
+      {/* 🔥 New: status indicator */}
       <div className="chat-status-indicator">
         <span className={`status-badge status-${chatStatus}`}>
           {getChatStatusText(chatStatus)}
@@ -863,7 +863,7 @@ const AgentPage: React.FC = () => {
 };
 
 /**
- * 🔥 Helper function: Get status display text
+ * 🔥 Helper function: get status display text
  */
 function getChatStatusText(status: string): string {
   switch (status) {
@@ -883,7 +883,7 @@ function getChatStatusText(status: string): string {
 }
 ```
 
-### Phase 4: Testing and Optimization (1-2 days)
+### Phase 4: Testing and Optimization (1–2 days)
 
 #### 4.1 Unit Tests
 
@@ -951,59 +951,59 @@ describe('CancellationToken', () => {
 #### 4.2 Integration Test Scenarios
 
 1. **Scenario 1: Cancel LLM response generation**
-      - Start conversation → Wait 1 second → Click cancel
-      - Verify: Status becomes idle, partial messages are preserved
+   - Start conversation → wait 1 second → click cancel
+   - Verify: status becomes idle, partial message is retained
 
 2. **Scenario 2: Cancel tool execution**
-      - Trigger tool call → Cancel during tool execution
-      - Verify: Current tool execution completes, subsequent tools are not executed
+   - Trigger tool call → cancel during tool execution
+   - Verify: current tool completes, subsequent tools are not executed
 
 3. **Scenario 3: Cancel compression operation**
-      - Trigger context compression → Cancel during compression
-      - Verify: Compression interrupted, uncompressed history is used
+   - Trigger context compression → cancel during compression
+   - Verify: compression is interrupted, uncompressed history is used
 
-4. **Scenario 4: Rapid consecutive cancellation**
-      - Start conversation → Cancel immediately → Start conversation again
-      - Verify: New conversation proceeds normally
+4. **Scenario 4: Rapid successive cancellation**
+   - Start conversation → cancel immediately → start conversation again
+   - Verify: new conversation proceeds normally
 
 ## 📊 Expected Results
 
 ### User Experience Improvements
 
-1. **Immediate response**: Output stops within < 500ms after clicking the cancel button
+1. **Immediate response**: Output stops within < 500ms after clicking cancel
 2. **Clear status**: Real-time display of current operation status (waiting for response, receiving, compressing, etc.)
-3. **Non-destructive cancellation**: Completed messages are preserved, conversation can continue
-4. **Resource release**: Network connections and memory are released immediately upon cancellation
+3. **Non-destructive cancellation**: Completed messages are retained, conversation can continue
+4. **Resource release**: Network connections and memory are released immediately after cancellation
 
 ### Performance Metrics
 
 - Cancellation response time: < 500ms
 - Memory leaks: 0 (via dispose pattern)
-- State synchronization accuracy: 100%
+- State sync accuracy: 100%
 
 ## 🔍 Key Decisions
 
 ### Why CancellationToken Instead of AbortFlag?
 
 | Feature | CancellationToken | AbortFlag |
-|------|-------------------|-----------|
-| **Standardization** | ✅ VS Code standard pattern | ❌ Custom implementation |
-| **Event-driven** | ✅ Supports listeners | ❌ Polling check |
-| **Lifecycle management** | ✅ Dispose pattern | ⚠️ Manual management |
-| **Test-friendly** | ✅ Easy to mock | ⚠️ Requires extra work |
-| **Composability** | ✅ Can be chained | ❌ Difficult to compose |
+|---------|-------------------|-----------|
+| **Standardized** | ✅ VS Code standard pattern | ❌ Custom implementation |
+| **Event-driven** | ✅ Supports listeners | ❌ Polling-based |
+| **Lifecycle management** | ✅ dispose pattern | ⚠️ Manual management |
+| **Test-friendly** | ✅ Easy to mock | ⚠️ Extra work needed |
+| **Composable** | ✅ Can be chained | ❌ Difficult to compose |
 
 ### Relationship with Existing ChatStatus
 
-- **ChatStatus**: Describes the current operation **type** (idle, sending, receiving, compressing)
+- **ChatStatus**: Describes the **type** of current operation (idle, sending, receiving, compressing)
 - **CancellationToken**: Controls whether the operation **should continue** (cancelled or not)
 
-The two are complementary, not conflicting:
+The two are complementary and non-conflicting:
 ```typescript
-// ChatStatus tells the UI "what is currently happening"
+// ChatStatus tells the UI "what is happening"
 setChatStatus(ChatStatus.SENDING_RESPONSE);
 
-// CancellationToken tells the backend "whether it should stop"
+// CancellationToken tells the backend "whether to stop"
 if (cancellationToken.isCancellationRequested) {
   throw new CancellationError();
 }
@@ -1012,31 +1012,31 @@ if (cancellationToken.isCancellationRequested) {
 ## 📝 Future Optimization Directions
 
 1. **Support pause/resume** (Phase 2)
-      - Add `pause()` and `resume()` methods
-      - Save state snapshot when paused
+   - Add `pause()` and `resume()` methods
+   - Save state snapshot at pause time
 
-2. **Automatic timeout cancellation** (Phase 3)
-      - Add timeout mechanism for long-running operations
-      - Implement automatic cancellation with CancellationToken
+2. **Timeout auto-cancel** (Phase 3)
+   - Add timeout mechanism for long-running operations
+   - Implement auto-cancel using CancellationToken
 
 3. **Batch operation cancellation** (Phase 4)
-      - Support batch cancellation across multiple chats
-      - Provide "cancel all" functionality
+   - Support cancelling batch operations across multiple chats
+   - Provide "Cancel All" functionality
 
-## 📚 References
+## 📚 Reference Resources
 
-- [VS Code CancellationToken Documentation](https://code.visualstudio.com/api/references/vscode-api#CancellationToken)
-- [vscode-copilot-chat Implementation](https://github.com/microsoft/vscode-copilot-release)
-- [AbortController MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
+- [VS Code CancellationToken documentation](https://code.visualstudio.com/api/references/vscode-api#CancellationToken)
+- [vscode-copilot-chat implementation](https://github.com/microsoft/vscode-copilot-release)
+- [AbortController MDN documentation](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
 
 ## ✅ Acceptance Criteria
 
-- [ ] CancellationToken base class implementation completed and unit tests passed
-- [ ] AgentChatManager integrated with CancellationTokenSource
-- [ ] AgentChat checks for cancellation requests at critical points
-- [ ] IPC layer cancelChat method added
-- [ ] Frontend UI cancel button and status display added
-- [ ] All integration test scenarios passed
+- [ ] CancellationToken base class implemented and passes unit tests
+- [ ] AgentChatManager integrates CancellationTokenSource
+- [ ] AgentChat checks cancellation requests at key points
+- [ ] IPC layer adds cancelChat method
+- [ ] Frontend UI adds cancel button and status display
+- [ ] All integration test scenarios pass
 - [ ] Performance metrics meet expectations
 - [ ] Documentation updated (API docs, user manual)
 

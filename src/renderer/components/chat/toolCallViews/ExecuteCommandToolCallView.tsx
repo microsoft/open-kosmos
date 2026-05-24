@@ -1,9 +1,9 @@
 // src/renderer/components/chat/toolCallViews/ExecuteCommandToolCallView.tsx
-// Execute Command tool call custom view component - terminal-style display
+// Custom view component for Execute Command tool calls - terminal-style display
 
 import React from 'react';
 import { ToolCallViewProps, ExecuteCommandToolArgs, ExecuteCommandToolResult } from './types';
-import { MessageHelper } from '../../../types/chatTypes';
+import { MessageHelper } from '@shared/types/chatTypes';
 
 /**
  * Parse tool call arguments
@@ -30,11 +30,11 @@ const parseToolResult = (content: string): ExecuteCommandToolResult | null => {
 };
 
 /**
- * Get shell prompt
+ * Get shell prompt string
  */
 const getPrompt = (shell?: string, cwd?: string): string => {
   const displayPath = cwd || '~';
-  // Return different style prompts based on shell type
+  // Return different prompt style based on shell type
   switch (shell) {
     case 'powershell':
       return `PS ${displayPath}>`;
@@ -50,11 +50,12 @@ const getPrompt = (shell?: string, cwd?: string): string => {
 
 /**
  * Execute Command Tool Call custom view
- * Terminal-style display for command execution results
+ * Displays command execution results in terminal style
  */
 export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
   toolCall,
   toolResult,
+  executionStatus,
 }) => {
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
@@ -66,7 +67,8 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
     return null;
   }
 
-  const isExecuting = !toolResult;
+  const isExecuting = executionStatus === 'executing';
+  const isInterrupted = executionStatus === 'interrupted';
   const command = args.command + (args.args ? ' ' + args.args.join(' ') : '');
   const prompt = getPrompt(args.shell, args.cwd);
 
@@ -110,6 +112,12 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
           </div>
         )}
 
+        {isInterrupted && (
+          <div className="terminal-line terminal-timeout">
+            <span className="terminal-timeout-text">Interrupted before command output was recorded</span>
+          </div>
+        )}
+
         {/* Output content */}
         {output && (
           <div className={`terminal-output ${hasError ? 'has-error' : ''}`}>
@@ -117,14 +125,14 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
           </div>
         )}
 
-        {/* Timeout notice */}
+        {/* Timeout indicator */}
         {timedOut && (
           <div className="terminal-line terminal-timeout">
             <span className="terminal-timeout-text">⚠ Command timed out</span>
           </div>
         )}
 
-        {/* Truncation notice */}
+        {/* Truncation indicator */}
         {result?.truncated && (
           <div className="terminal-line terminal-truncated">
             <span className="terminal-truncated-text">... (output truncated)</span>

@@ -1,29 +1,75 @@
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useRef, createElement } from 'react';
 import { FolderOpen, ExternalLink, Trash2, Copy, Download, ArrowRightToLine } from 'lucide-react';
+import { CurrentSessionStatus } from '../../lib/chat/agentChatSessionCacheManager';
+import { shouldShowMoveToKnowledgeBaseOption } from '../../lib/chat/moveToKnowledgeBase';
+import { clampMenuToViewport, CONTEXT_MENU_SIZE_PRESETS, ContextMenuPosition, getContextMenuPosition } from '../../lib/utilities/dropdownPosition';
+import { isInstallableSkillArtifact } from '../../lib/skills/installableSkillArtifacts';
+import { atom } from '@/atom';
+import { useClickOut } from '../ui/use-click-out';
+import { createLogger } from '../../lib/utilities/logger';
+import { workspaceOps } from '@renderer/lib/chat/workspaceOps';
+const logger = createLogger('[FileTreeNodeContextMenu]');
 
-interface FileTreeNodeContextMenuProps {
-  fileTreeNodeMenuRef: React.RefObject<HTMLDivElement>;
-  node: any;
-  workspacePath: string;
-  position: { top: number; left: number };
-  onClose: () => void;
-  onDelete?: (path: string) => void;
+const zeroState: {
+  isOpen: boolean;
+  position: ContextMenuPosition | null;
+  node: any | null;
+  workspacePath: string | null;
+} = { isOpen: false, position: null, node: null, workspacePath: null };
+
+export const FileTreeNodeMenuAtom = atom(zeroState, (get, set) => {
+  function close() {
+    set(zeroState);
+  }
+
+  function open(clientX: number, clientY: number, node: any, workspacePath: string) {
+    const position = getContextMenuPosition(
+      clientX,
+      clientY,
+      CONTEXT_MENU_SIZE_PRESETS.fileTreeNodeMenu,
+    );
+    set({ isOpen: true, position, node, workspacePath });
+  }
+
+  async function remove() {
+    const { workspacePath } = get();
+    // Clear cache to ensure reload on next fetch
+    if (workspacePath) {
+      await workspaceOps.clearFileTreeCache(workspacePath);
+    }
+    // Actively notify all FileExplorerSections to refresh, without relying on file watcher auto-detection
+    workspaceOps.triggerRefresh();
+  }
+
+  return { open, close, remove };
+});
+
+interface MenuProps {
   onInstallSkill?: (filePath: string) => void;
   onMoveToKnowledge?: (filePath: string) => void;
   knowledgeBasePath?: string;
 }
 
-const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
-  fileTreeNodeMenuRef,
-  node,
-  workspacePath,
-  position,
-  onClose,
-  onDelete,
+interface InnerProps extends MenuProps {
+  position: ContextMenuPosition;
+  node: any;
+  workspacePath: string;
+}
+
+const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
   onInstallSkill,
   onMoveToKnowledge,
-  knowledgeBasePath
+  knowledgeBasePath,
+  position,
+  node,
+  workspacePath,
 }) => {
+  const { close: onClose, remove: onRemove } = FileTreeNodeMenuAtom.useChange();
+  const fileTreeNodeMenuRef = useRef<HTMLDivElement>(null);
+  const { chatStatus } = CurrentSessionStatus.use();
+
+  useClickOut(fileTreeNodeMenuRef, onClose);
+
   // Get platform info
   const platform = window.electronAPI?.platform || 'darwin';
   const isMac = platform === 'darwin';
@@ -43,29 +89,22 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
       }
       const result = await window.electronAPI.workspace.openPath(fullPath);
       if (!result?.success) {
-        console.error('[FileTreeNode] Failed to open file:', result?.error);
+        logger.error('[FileTreeNode] Failed to open file:', result?.error);
       }
     } catch (error) {
-      console.error('[FileTreeNode] Error opening file:', error);
+      logger.error('[FileTreeNode] Error opening file:', error);
     }
     onClose();
   }, [fullPath, onClose]);
 
-  // 🔧 Fix: Adjust menu position if it overflows window bottom
+  // 🔧 Fix: Adjust menu position if it overflows any window edge (top, bottom, left, right)
   useLayoutEffect(() => {
     if (fileTreeNodeMenuRef.current) {
-      const rect = fileTreeNodeMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      if (rect.bottom > windowHeight - padding) {
-        const newTop = windowHeight - rect.height - padding;
-        fileTreeNodeMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-      }
+      clampMenuToViewport(fileTreeNodeMenuRef.current);
     }
   }, [position]);
 
-  // Handle reveal in file explorer
+  // Handle show in folder
   const handleShowInFolder = React.useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -76,10 +115,10 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
       }
       const result = await window.electronAPI.workspace.showInFolder(fullPath);
       if (!result?.success) {
-        console.error('[FileTreeNode] Failed to show in folder:', result?.error);
+        logger.error('[FileTreeNode] Failed to show in folder:', result?.error);
       }
     } catch (error) {
-      console.error('[FileTreeNode] Error showing in folder:', error);
+      logger.error('[FileTreeNode] Error showing in folder:', error);
     }
     onClose();
   }, [fullPath, onClose]);
@@ -91,11 +130,11 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
 
     const itemName = node.name || fullPath.split(/[/\\]/).pop();
     const itemType = node.type === 'directory' ? 'folder' : 'file';
-    
+
     // Use system confirmation dialog
     const confirmMessage = `Are you sure you want to delete this ${itemType}?\n\n${itemName}\n\nThis action cannot be undone.`;
     const confirmed = window.confirm(confirmMessage);
-    
+
     if (!confirmed) {
       onClose();
       return;
@@ -103,16 +142,16 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
 
     try {
       if (!window.electronAPI?.fs?.deletePaths) {
-        console.error('[FileTreeNode] Delete API not available');
+        logger.error('[FileTreeNode] Delete API not available');
         window.alert(`Failed to delete ${itemType}: Delete API not available`);
         onClose();
         return;
       }
-      
-      console.log('[FileTreeNode] Deleting path:', fullPath);
+
+      logger.debug('[FileTreeNode] Deleting path:', fullPath);
       const result = await window.electronAPI.fs.deletePaths([fullPath]);
-      console.log('[FileTreeNode] Delete result:', result);
-      
+      logger.debug('[FileTreeNode] Delete result:', result);
+
       if (!result?.success) {
         // Check specific error message
         let errorMsg = result?.error || 'Unknown error';
@@ -122,20 +161,18 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
             errorMsg = failedResult.error;
           }
         }
-        console.error('[FileTreeNode] Failed to delete:', errorMsg);
+        logger.error('[FileTreeNode] Failed to delete:', errorMsg);
         window.alert(`Failed to delete ${itemType}: ${errorMsg}`);
       } else {
         // Notify parent component to refresh
-        if (onDelete) {
-          onDelete(fullPath);
-        }
+        onRemove();
       }
     } catch (error) {
-      console.error('[FileTreeNode] Error deleting:', error);
+      logger.error('[FileTreeNode] Error deleting:', error);
       window.alert(`Failed to delete ${itemType}: ${error instanceof Error ? error.message : String(error)}`);
     }
     onClose();
-  }, [fullPath, node, onClose, onDelete]);
+  }, [fullPath, node, onClose]);
 
   // Copy path to clipboard
   const handleCopyPath = React.useCallback(async (e: React.MouseEvent) => {
@@ -144,7 +181,7 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
     try {
       await navigator.clipboard.writeText(fullPath);
     } catch (error) {
-      console.error('[FileTreeNode] Failed to copy path:', error);
+      logger.error('[FileTreeNode] Failed to copy path:', error);
     }
     onClose();
   }, [fullPath, onClose]);
@@ -211,7 +248,7 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
           <span className="dropdown-menu-item-text">{getOpenMenuText()}</span>
         </button>
       )}
-      
+
       {/* Reveal in Finder/File Explorer - shown for files */}
       {node.type === 'file' && (
         <button
@@ -238,8 +275,8 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
         <span className="dropdown-menu-item-text">Copy Path</span>
       </button>
 
-      {/* Move to Agent Knowledge - only for files NOT already in the knowledge base section */}
-      {node.type === 'file' && onMoveToKnowledge && knowledgeBasePath && workspacePath !== knowledgeBasePath && (
+      {/* Move to Agent Knowledge - only for files NOT already in the knowledge base section, and only when session is idle */}
+      {node.type === 'file' && onMoveToKnowledge && workspacePath !== knowledgeBasePath && shouldShowMoveToKnowledgeBaseOption(fullPath, knowledgeBasePath, !chatStatus || chatStatus === 'idle') && (
         <>
           <div className="dropdown-menu-divider" />
           <button
@@ -260,8 +297,8 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
         </>
       )}
 
-      {/* Install Skill - only for .skill files */}
-      {node.type === 'file' && node.name?.toLowerCase().endsWith('.skill') && onInstallSkill && (
+      {/* Install Skill */}
+      {node.type === 'file' && isInstallableSkillArtifact(fullPath) && onInstallSkill && (
         <>
           <div className="dropdown-menu-divider" />
           <button
@@ -281,10 +318,10 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
           </button>
         </>
       )}
-      
+
       {/* Divider */}
       <div className="dropdown-menu-divider" />
-      
+
       {/* Delete */}
       <button
         className="dropdown-menu-item dropdown-menu-item-danger"
@@ -300,4 +337,8 @@ const FileTreeNodeContextMenu: React.FC<FileTreeNodeContextMenuProps> = ({
   );
 };
 
-export default FileTreeNodeContextMenu;
+export default (props: MenuProps) => {
+  const [{ isOpen, position, node, workspacePath }] = FileTreeNodeMenuAtom.use();
+  if (!isOpen || !position || !node || !workspacePath) return null;
+  return createElement(FileTreeNodeContextMenu, { ...props, position, node, workspacePath });
+};

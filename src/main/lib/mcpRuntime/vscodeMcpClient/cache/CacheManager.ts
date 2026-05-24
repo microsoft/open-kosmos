@@ -29,7 +29,7 @@ const DEFAULT_CACHE_CONFIG: CacheConfig = {
 
 // ==================== Cache Key Types ====================
 
-export type CacheKeyType = 
+export type CacheKeyType =
   | 'tools'
   | 'resources'
   | 'prompts'

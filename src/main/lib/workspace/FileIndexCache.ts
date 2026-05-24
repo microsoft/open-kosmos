@@ -23,12 +23,12 @@ enum FileChangeType {
 
 export interface FileIndexEntry {
   path: string;                // Relative path
-  name: string;                // Filename/directory name
+  name: string;                // File/directory name
   directory: string;           // Containing directory
   extension: string;           // File extension (empty for directories)
   size: number;                // File size
   mtime: number;               // Modification time
-  isDirectory?: boolean;       // Whether it is a directory
+  isDirectory?: boolean;       // Whether this entry is a directory
 }
 
 export class FileIndexCache extends EventEmitter {
@@ -36,13 +36,13 @@ export class FileIndexCache extends EventEmitter {
   private directoryIndex = new Map<string, FileIndexEntry>();
   private isIndexing = false;
   private indexingProgress = 0;
-  
+
   constructor(private workspaceRoot: string) {
     super();
   }
 
   /**
-   * Build complete index
+   * Build the full index
    */
   async buildIndex(): Promise<void> {
     if (this.isIndexing) {
@@ -58,7 +58,7 @@ export class FileIndexCache extends EventEmitter {
 
     try {
       await this.scanDirectory(this.workspaceRoot, this.workspaceRoot);
-      
+
       const duration = Date.now() - startTime;
 
       this.emit('indexComplete', {
@@ -75,13 +75,13 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Recursively scan directory
+   * Recursively scan a directory
    */
   private async scanDirectory(dir: string, rootDir: string): Promise<void> {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      // Exclude rules
+      // Exclusion rules
       if (this.shouldExclude(entry.name)) {
         continue;
       }
@@ -111,7 +111,7 @@ export class FileIndexCache extends EventEmitter {
       } else if (entry.isFile()) {
         try {
           const stats = await fs.promises.stat(fullPath);
-          
+
           this.index.set(normalizedPath, {
             path: normalizedPath,
             name: entry.name,
@@ -134,7 +134,7 @@ export class FileIndexCache extends EventEmitter {
 
     for (const change of changes) {
       const normalizedPath = change.path.replace(/\\/g, '/');
-      
+
       switch (change.type) {
         case 0: // UPDATED
           await this.updateFile(normalizedPath);
@@ -155,19 +155,19 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Add file to index
+   * Add a file to the index
    */
   private async addFile(relativePath: string): Promise<void> {
     try {
       const fullPath = path.join(this.workspaceRoot, relativePath);
       const stats = await fs.promises.stat(fullPath);
-      
+
       if (!stats.isFile()) {
         return;
       }
 
       const fileName = path.basename(relativePath);
-      
+
       this.index.set(relativePath, {
         path: relativePath,
         name: fileName,
@@ -182,23 +182,24 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Update file index
+   * Update a file's index entry
    */
   private async updateFile(relativePath: string): Promise<void> {
-    // Same logic as add
+    // Update logic is the same as add
     await this.addFile(relativePath);
   }
 
   /**
-   * Delete file from index
+   * Remove a file from the index
    */
   private deleteFile(relativePath: string): void {
     this.index.delete(relativePath);
   }
 
   /**
-   * Search files and/or directories
-   * Strategy: take top maxResults from files and directories separately, merge, sort, then take final top maxResults
+   * Search files and/or directories.
+   * Strategy: collect top maxResults candidates from files and directories separately,
+   * merge and sort them, then take the final top maxResults.
    */
   search(
     pattern?: string,
@@ -212,16 +213,16 @@ export class FileIndexCache extends EventEmitter {
   ): IFileSearchResult[] {
     const maxResults = options?.maxResults || 100;
     const searchTarget = options?.searchTarget || 'both';
-    
 
-    // Phase 1: collect candidate results from files and directories separately
+
+    // Phase 1: collect candidate results for files and directories separately
     const fileResults: IFileSearchResult[] = [];
     const directoryResults: IFileSearchResult[] = [];
 
     // Search files
     if (searchTarget === 'files' || searchTarget === 'both') {
       for (const entry of this.index.values()) {
-        // Check if matches pattern
+        // Check whether the entry matches the pattern
         if (pattern && !this.matchesPattern(entry, pattern, options?.fuzzy)) {
           continue;
         }
@@ -240,16 +241,16 @@ export class FileIndexCache extends EventEmitter {
           isDirectory: false
         });
       }
-      
+
       // Sort file results and take top maxResults
       fileResults.sort((a, b) => (b.score || 0) - (a.score || 0));
-      fileResults.splice(maxResults); // Keep only the first maxResults items
+      fileResults.splice(maxResults); // Keep only the first maxResults entries
     }
 
     // Search directories
     if (searchTarget === 'folders' || searchTarget === 'both') {
       for (const entry of this.directoryIndex.values()) {
-        // Check if matches pattern
+        // Check whether the entry matches the pattern
         if (pattern && !this.matchesPattern(entry, pattern, options?.fuzzy)) {
           continue;
         }
@@ -268,25 +269,25 @@ export class FileIndexCache extends EventEmitter {
           isDirectory: true
         });
       }
-      
+
       // Sort directory results and take top maxResults
       directoryResults.sort((a, b) => (b.score || 0) - (a.score || 0));
-      directoryResults.splice(maxResults); // Keep only the first maxResults items
+      directoryResults.splice(maxResults); // Keep only the first maxResults entries
     }
 
-    // Phase 2: merge top results from files and directories, sort again, take final top maxResults
+    // Phase 2: merge the top results from files and directories, sort again, take final top maxResults
     const allResults = [...fileResults, ...directoryResults];
     allResults.sort((a, b) => (b.score || 0) - (a.score || 0));
-    
+
     // Limit final result count
     const results = allResults.slice(0, maxResults);
-    
+
 
     return results;
   }
 
   /**
-   * Match pattern
+   * Match a pattern
    */
   private matchesPattern(entry: FileIndexEntry, pattern: string, fuzzy?: boolean): boolean {
     const patternLower = pattern.toLowerCase();
@@ -294,16 +295,16 @@ export class FileIndexCache extends EventEmitter {
     const pathLower = entry.path.toLowerCase();
 
     if (fuzzy) {
-      return this.fuzzyMatch(fileNameLower, patternLower) || 
+      return this.fuzzyMatch(fileNameLower, patternLower) ||
              this.fuzzyMatch(pathLower, patternLower);
     } else {
-      return fileNameLower.includes(patternLower) || 
+      return fileNameLower.includes(patternLower) ||
              pathLower.includes(patternLower);
     }
   }
 
   /**
-   * Fuzzy matching
+   * Fuzzy match
    */
   private fuzzyMatch(text: string, pattern: string): boolean {
     let patternIndex = 0;
@@ -316,7 +317,7 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Calculate match score
+   * Calculate a match score
    */
   private calculateScore(entry: FileIndexEntry, pattern?: string): number {
     if (!pattern) {
@@ -331,17 +332,17 @@ export class FileIndexCache extends EventEmitter {
       return 100;
     }
 
-    // Filename prefix match
+    // Filename starts with pattern
     if (fileNameLower.startsWith(patternLower)) {
       return 90;
     }
 
-    // Filename contains
+    // Filename contains pattern
     if (fileNameLower.includes(patternLower)) {
       return 80;
     }
 
-    // Path contains
+    // Path contains pattern
     if (entry.path.toLowerCase().includes(patternLower)) {
       return 70;
     }
@@ -350,7 +351,7 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Whether to exclude
+   * Whether a name should be excluded
    */
   private shouldExclude(name: string): boolean {
     const excludePatterns = [
@@ -388,7 +389,7 @@ export class FileIndexCache extends EventEmitter {
   }
 
   /**
-   * Clear index
+   * Clear the index
    */
   clear(): void {
     this.index.clear();

@@ -1,28 +1,29 @@
 /**
- * Model cache manager
- * 
+ * Model Cache Manager
+ *
  * Architecture notes:
  * - The backend (Main Process) is the single source of truth for model data
- * - The frontend caches model data via localStorage to reduce IPC calls
- * - On each app startup, the latest model data is automatically synced from the backend
- * - Provides a type-safe API to access cached model data
+ * - Uses passive sync mode: after backend initialization, it notifies the frontend via models:updated event
+ * - Upon receiving the notification, the frontend fetches the latest model data and caches in-memory
+ * - No localStorage is used — data is always freshly synced from the backend on each app launch
  */
 
-import { GhcCopilotModel } from '../../../main/lib/types/ghcChatTypes';
-import { BRAND_NAME } from '@shared/constants/branding';
-
-const STORAGE_KEY = `${BRAND_NAME}_ghc_models_cache`;
-const CACHE_VERSION_KEY = `${BRAND_NAME}_ghc_models_cache_version`;
-const CURRENT_CACHE_VERSION = '1.0';
+import { GhcCopilotModel } from '@shared/types/ghcChatTypes';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[ModelCacheManager]');
 
 export class ModelCacheManager {
   private static instance: ModelCacheManager;
   private allModels: GhcCopilotModel[] = [];
-  private kosmosUsedModels: GhcCopilotModel[] = [];
-  private defaultModel: string = 'claude-opus-4.6'; // fallback default value
+  private openkosmosUsedModels: GhcCopilotModel[] = [];
+  private defaultModel: string = 'claude-opus-4.6'; // Fallback default value
   private initialized: boolean = false;
+  private unsubscribe: (() => void) | null = null;
 
-  private constructor() {}
+  private constructor() {
+    // Set up IPC listeners immediately so we never miss a backend push
+    this.registerBackendListener();
+  }
 
   /**
    * Get singleton instance
@@ -35,63 +36,68 @@ export class ModelCacheManager {
   }
 
   /**
-   * Initialize the cache manager
-   * Should be called at app startup to sync the latest model data from the backend
+   * Initialize cache manager (passive sync mode)
+   *
+   * Registers backend listener and waits for models:updated push from backend.
+   * No localStorage — data lives only in memory and is always fresh.
    */
-  public async initialize(): Promise<void> {
+  public initialize(): void {
     if (this.initialized) {
-      console.log('[ModelCache] Already initialized, skipping...');
+      logger.debug('[ModelCache] Already initialized, skipping...');
       return;
     }
 
-    console.log('[ModelCache] Initializing model cache manager...');
+    logger.debug('[ModelCache] Initializing model cache manager (in-memory only, passive sync mode)...');
+
+    this.initialized = true;
+    logger.debug('[ModelCache] Initialization complete (waiting for backend notification)');
+  }
+
+  /**
+   * Register backend models:updated event listener
+   * Backend pushes this event when model data is ready; frontend auto-syncs upon receiving it
+   */
+  private registerBackendListener(): void {
+    /* c8 ignore next 3 -- unsubscribe guard is defensive; registerBackendListener is only called once from constructor */
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+    }
 
     try {
-      // Check cache version
-      const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-      const needsUpdate = cachedVersion !== CURRENT_CACHE_VERSION;
-
-      if (needsUpdate) {
-        console.log('[ModelCache] Cache version mismatch, clearing old cache...');
-        localStorage.removeItem(STORAGE_KEY);
-      }
-
-      // Fetch the latest model data from the backend
-      await this.syncFromBackend();
-
-      // Update cache version
-      localStorage.setItem(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION);
-
-      this.initialized = true;
-      console.log('[ModelCache] Initialization complete');
+      this.unsubscribe = window.electronAPI.models.onModelsUpdated((data) => {
+        logger.debug('[ModelCache] Received models:updated notification from backend', data);
+        // Received backend notification, async fetch latest data
+        this.syncFromBackend().catch((error) => {
+          logger.error('[ModelCache] Failed to sync after backend notification:', error);
+        });
+      });
+      logger.debug('[ModelCache] Registered models:updated listener');
     } catch (error) {
-      console.error('[ModelCache] Initialization failed:', error);
-      // If sync fails, try loading old cache from localStorage
-      this.loadFromLocalStorage();
-      this.initialized = true; // Mark as initialized even if using old cache
+      logger.error('[ModelCache] Failed to register backend listener:', error);
     }
   }
 
   /**
-   * Sync the latest model data from the backend
+   * Sync latest model data from backend
    */
   public async syncFromBackend(): Promise<void> {
-    console.log('[ModelCache] Syncing models from backend...');
+    logger.debug('[ModelCache] Syncing models from backend...');
 
     try {
-      // Get all models
+      // Fetch all models
       const allModelsResult = await window.electronAPI.models.getAllModels();
       if (!allModelsResult.success) {
         throw new Error(allModelsResult.error || 'Failed to fetch all models');
       }
 
-      // Get Kosmos-used models
-      const kosmosModelsResult = await window.electronAPI.models.getAllKosmosUsedModels();
-      if (!kosmosModelsResult.success) {
-        throw new Error(kosmosModelsResult.error || 'Failed to fetch Kosmos models');
+      // Fetch OpenKosmos-used models
+      const openkosmosModelsResult = await window.electronAPI.models.getAllOpenKosmosUsedModels();
+      if (!openkosmosModelsResult.success) {
+        throw new Error(openkosmosModelsResult.error || 'Failed to fetch OpenKosmos models');
       }
 
-      // Get default model
+      // Fetch default model
       const defaultModelResult = await window.electronAPI.models.getDefaultModel();
       if (defaultModelResult.success && defaultModelResult.data) {
         this.defaultModel = defaultModelResult.data;
@@ -99,61 +105,24 @@ export class ModelCacheManager {
 
       // Update in-memory cache
       this.allModels = allModelsResult.data || [];
-      this.kosmosUsedModels = kosmosModelsResult.data || [];
+      this.openkosmosUsedModels = openkosmosModelsResult.data || [];
 
-      // Save to localStorage
-      this.saveToLocalStorage();
-
-      console.log('[ModelCache] Successfully synced models from backend', {
+      logger.debug('[ModelCache] Successfully synced models from backend', {
         allModels: this.allModels.length,
-        kosmosModels: this.kosmosUsedModels.length
+        openkosmosModels: this.openkosmosUsedModels.length
       });
+
+      // Dispatch custom event to notify UI components that model data has been updated
+      window.dispatchEvent(new CustomEvent('modelCacheUpdated', {
+        detail: {
+          allModelsCount: this.allModels.length,
+          openkosmosModelsCount: this.openkosmosUsedModels.length,
+          timestamp: Date.now()
+        }
+      }));
     } catch (error) {
-      console.error('[ModelCache] Failed to sync from backend:', error);
+      logger.error('[ModelCache] Failed to sync from backend:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Save model data to localStorage
-   */
-  private saveToLocalStorage(): void {
-    try {
-      const cacheData = {
-        allModels: this.allModels,
-        kosmosUsedModels: this.kosmosUsedModels,
-        defaultModel: this.defaultModel,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
-      console.log('[ModelCache] Saved to localStorage');
-    } catch (error) {
-      console.error('[ModelCache] Failed to save to localStorage:', error);
-    }
-  }
-
-  /**
-   * Load model data from localStorage
-   */
-  private loadFromLocalStorage(): void {
-    try {
-      const cachedData = localStorage.getItem(STORAGE_KEY);
-      if (cachedData) {
-        const parsedData = JSON.parse(cachedData);
-        this.allModels = parsedData.allModels || [];
-        this.kosmosUsedModels = parsedData.kosmosUsedModels || [];
-        this.defaultModel = parsedData.defaultModel || 'claude-opus-4.6';
-        console.log('[ModelCache] Loaded from localStorage', {
-          allModels: this.allModels.length,
-          kosmosModels: this.kosmosUsedModels.length,
-          defaultModel: this.defaultModel,
-          timestamp: parsedData.timestamp
-        });
-      } else {
-        console.warn('[ModelCache] No cached data found in localStorage');
-      }
-    } catch (error) {
-      console.error('[ModelCache] Failed to load from localStorage:', error);
     }
   }
 
@@ -161,22 +130,14 @@ export class ModelCacheManager {
    * Get all GitHub Copilot models
    */
   public getAllModels(): GhcCopilotModel[] {
-    if (!this.initialized) {
-      console.warn('[ModelCache] Not initialized, returning empty array');
-      return [];
-    }
     return this.allModels;
   }
 
   /**
-   * Get the list of models used by Kosmos
+   * Get the list of models used by OpenKosmos
    */
-  public getAllKosmosUsedModels(): GhcCopilotModel[] {
-    if (!this.initialized) {
-      console.warn('[ModelCache] Not initialized, returning empty array');
-      return [];
-    }
-    return this.kosmosUsedModels;
+  public getAllOpenKosmosUsedModels(): GhcCopilotModel[] {
+    return this.openkosmosUsedModels;
   }
 
   /**
@@ -193,13 +154,26 @@ export class ModelCacheManager {
     const model = this.getModelById(modelId);
     if (!model) return null;
 
+    const rawEfforts = model.capabilities.supports.reasoning_effort;
+    const reasoningEfforts: string[] = Array.isArray(rawEfforts)
+      ? Array.from(new Set(
+          rawEfforts
+            .filter((e): e is string => typeof e === 'string' && e.length > 0)
+            .map(e => e.toLowerCase())
+        ))
+      : [];
+    const supportsReasoning = reasoningEfforts.length > 0
+      || model.capabilities.family.includes('o3')
+      || model.capabilities.family.includes('o4');
+
     return {
       supportsStreaming: model.capabilities.supports.streaming || false,
       supportsTools: model.capabilities.supports.tool_calls || false,
       supportsImages: model.capabilities.supports.vision || false,
       supportsAudio: false,
       supportsVideo: false,
-      supportsReasoning: model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4'),
+      supportsReasoning,
+      reasoningEfforts: reasoningEfforts.length > 0 ? reasoningEfforts : undefined,
       maxContextLength: model.capabilities.limits?.max_context_window_tokens || 0,
       maxOutputLength: model.capabilities.limits?.max_output_tokens || 0,
       supportsTemperature: !model.capabilities.family.includes('o3') && !model.capabilities.family.includes('o4'),
@@ -215,11 +189,12 @@ export class ModelCacheManager {
   }
 
   /**
-   * Determine if a model is a reasoning model
+   * Check if a model is a reasoning model.
+   * Stays consistent with getModelCapabilities().supportsReasoning, which also
+   * accounts for models exposing `reasoning_effort` (GPT-5, Claude, Gemini, ...).
    */
   public isReasoningModel(modelId: string): boolean {
-    const model = this.getModelById(modelId);
-    return model ? (model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4')) : false;
+    return this.getModelCapabilities(modelId)?.supportsReasoning ?? false;
   }
 
   /**
@@ -233,31 +208,33 @@ export class ModelCacheManager {
    * Clear cache (for debugging or reset)
    */
   public clearCache(): void {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(CACHE_VERSION_KEY);
     this.allModels = [];
-    this.kosmosUsedModels = [];
+    this.openkosmosUsedModels = [];
     this.defaultModel = 'claude-opus-4.6';
     this.initialized = false;
-    console.log('[ModelCache] Cache cleared');
+    logger.debug('[ModelCache] Cache cleared');
+  }
+
+  /**
+   * Dispose: unregister event listeners
+   */
+  public dispose(): void {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+      logger.debug('[ModelCache] Disposed backend listener');
+    }
   }
 
   /**
    * Get cache status information
    */
   public getCacheInfo() {
-    const cachedData = localStorage.getItem(STORAGE_KEY);
-    const cacheVersion = localStorage.getItem(CACHE_VERSION_KEY);
-    
     return {
       initialized: this.initialized,
-      cacheVersion,
-      currentVersion: CURRENT_CACHE_VERSION,
       allModelsCount: this.allModels.length,
-      kosmosModelsCount: this.kosmosUsedModels.length,
-      defaultModel: this.defaultModel,
-      hasCachedData: !!cachedData,
-      timestamp: cachedData ? JSON.parse(cachedData).timestamp : null
+      openkosmosModelsCount: this.openkosmosUsedModels.length,
+      defaultModel: this.defaultModel
     };
   }
 }

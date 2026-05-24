@@ -1,75 +1,88 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import '../../../styles/Agent.css'
 import AgentBasicTab from '../agent-editor/AgentBasicTab'
 import AgentKnowledgeBaseTab from '../agent-editor/AgentKnowledgeBaseTab'
 import AgentMcpServersTab from '../agent-editor/AgentMcpServersTab'
 import AgentSkillsTab from '../agent-editor/AgentSkillsTab'
+import AgentSchedulesTab from '../agent-editor/AgentSchedulesTab'
+import AgentSubAgentsTab from '../agent-editor/AgentSubAgentsTab'
 import AgentSystemPromptTab from '../agent-editor/AgentSystemPromptTab'
-import AgentContextEnhanceTab from '../agent-editor/AgentContextEnhanceTab'
+import AgentPluginsTab from '../agent-editor/AgentPluginsTab'
 import ErrorHandler from '../agent-editor/ErrorHandler'
-import { TabState, AgentConfig } from '../agent-editor/types'
+import { TabState, AgentConfig, AgentEditorTabName } from '../agent-editor/types'
 import { useChats, useProfileData } from '../../userData/userDataProvider'
 import { ChatConfig, ChatAgent } from '../../../lib/userData/types'
 import { useToast } from '../../ui/ToastProvider'
 import { useFeatureFlag } from '../../../lib/featureFlags'
+import { createLogger } from '../../../lib/utilities/logger'
+
+const logger = createLogger('[AgentChatEditingView]')
+
+const getAgentKnowledge = (agent?: ChatAgent | null) => ({
+  knowledgeBase: agent?.knowledge?.knowledgeBase ?? agent?.knowledgeBase,
+})
 
 /**
  * AgentChatEditingView - Agent editing view component
  *
  * Routes:
- *   - /agent/chat/:chatId/settings (default redirect to basic)
+ *   - /agent/chat/:chatId/settings (defaults to redirecting to basic)
  *   - /agent/chat/:chatId/settings/basic
  *   - /agent/chat/:chatId/settings/mcp_servers
  *   - /agent/chat/:chatId/settings/skills
+ *   - /agent/chat/:chatId/settings/schedules
  *   - /agent/chat/:chatId/settings/system_prompt
- *   - /agent/chat/:chatId/settings/context_enhancement
  *
- * This component is refactored from AgentChatEditor (modal overlay),
- * now rendered as a normal View component in the main content area.
+ * This component was refactored from AgentChatEditor (modal overlay),
+ * and now renders as a normal View component in the main content area.
  *
  * Features:
- * - Load corresponding Agent config and Tab based on URL params chatId and tab
- * - Provide multi-Tab editing interface (Basic, MCP Servers, Skills, System Prompt, Context Enhancement)
- * - Support change tracking and batch save
- * - Support Tab-level URL routing
+ * - Loads Agent config and Tab based on URL params chatId and tab
+ * - Provides multi-Tab editing interface (Basic, MCP Servers, Skills, Schedules, System Prompt)
+ * - Supports change tracking and batch saving
+ * - Supports Tab-level URL routing
  */
 const AgentChatEditingView: React.FC = () => {
   const { chatId, '*': tabParam } = useParams<{ chatId: string; '*': string }>()
   const navigate = useNavigate()
-  
+
   // Use ProfileDataProvider hooks
   const { chatOps } = useProfileData()
   const { chats, updateChat } = useChats()
   const { showSuccess, showError } = useToast()
-  
+
   // Tab route mapping
   const tabRouteMap = {
     'basic': 'basic',
     'knowledge': 'knowledge',
     'mcp_servers': 'mcp',
     'skills': 'skills',
+    'plugins': 'plugins',
+    'schedules': 'schedules',
+    'sub_agents': 'sub_agents',
     'system_prompt': 'prompt',
-    'context_enhancement': 'context'
   } as const
-  
+
   // Reverse mapping - from internal tab name to route
   const tabToRouteMap = {
     'basic': 'basic',
     'knowledge': 'knowledge',
     'mcp': 'mcp_servers',
     'skills': 'skills',
+    'plugins': 'plugins',
+    'schedules': 'schedules',
+    'sub_agents': 'sub_agents',
     'prompt': 'system_prompt',
-    'context': 'context_enhancement'
   } as const
-  
+
   // Get current tab from URL, default to basic
-  const getCurrentTabFromUrl = (): 'basic' | 'knowledge' | 'mcp' | 'skills' | 'prompt' | 'context' => {
+  const getCurrentTabFromUrl = (): AgentEditorTabName => {
     if (!tabParam) return 'basic'
     const mappedTab = tabRouteMap[tabParam as keyof typeof tabRouteMap]
     return mappedTab || 'basic'
   }
-  
+
   // Tab state management - all tabs enabled by default in edit mode
   const [tabState, setTabState] = useState<TabState>({
     activeTab: getCurrentTabFromUrl(),
@@ -78,36 +91,43 @@ const AgentChatEditingView: React.FC = () => {
       knowledge: true,
       mcp: true,
       skills: true,
+      plugins: true,
+      schedules: true,
+      sub_agents: true,
       prompt: true,
-      context: true
     },
     agentCreated: true // Agent already exists in edit mode
   })
 
   // Agent data state
   const [agentData, setAgentData] = useState<AgentConfig | undefined>(undefined)
-  
+
   // Error handling state
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  
-  // Memory/Context Enhancement feature controlled by feature flag (Dev environment and non-Windows ARM)
-  const memoryEnabled = useFeatureFlag('kosmosFeatureMemory')
-  
+
+  // Sub-Agent feature controlled by feature flag
+  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent')
+  const schedulerEnabled = useFeatureFlag('openkosmosFeatureScheduler')
+  const showKnowledgeSourcesGroup = schedulerEnabled
+
   // Field-level error state
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  
-  // Key for forcing re-mount of all Tab components
+
+  // Key for force-resetting Tab component states
   const [tabResetKey, setTabResetKey] = useState(0)
-  
-  // All fields are editable
+  const [isKnowledgeGroupExpanded, setIsKnowledgeGroupExpanded] = useState(
+    getCurrentTabFromUrl() === 'knowledge'
+  )
+
   const readOnlyFlags = {
     basic: false,
     knowledge: false,
     mcp: false,
     skills: false,
+    schedules: false,
+    sub_agents: false,
     prompt: false,
-    context: false
   }
 
   // Change tracking state - records whether each Tab has unsaved changes
@@ -116,35 +136,41 @@ const AgentChatEditingView: React.FC = () => {
     knowledge: boolean
     mcp: boolean
     skills: boolean
+    plugins: boolean
+    schedules: boolean
+    sub_agents: boolean
     prompt: boolean
-    context: boolean
   }>({
     basic: false,
     knowledge: false,
     mcp: false,
     skills: false,
+    plugins: false,
+    schedules: false,
+    sub_agents: false,
     prompt: false,
-    context: false
   })
-
-  // Cache modification data for each Tab
   const [tabChangesCache, setTabChangesCache] = useState<{
     basic: Partial<AgentConfig> | null
     knowledge: Partial<AgentConfig> | null
     mcp: Partial<AgentConfig> | null
     skills: Partial<AgentConfig> | null
+    plugins: Partial<AgentConfig> | null
+    schedules: Partial<AgentConfig> | null
+    sub_agents: Partial<AgentConfig> | null
     prompt: Partial<AgentConfig> | null
-    context: Partial<AgentConfig> | null
   }>({
     basic: null,
     knowledge: null,
     mcp: null,
     skills: null,
+    plugins: null,
+    schedules: null,
+    sub_agents: null,
     prompt: null,
-    context: null
   })
 
-  // URL route sync - listen for URL param changes and update activeTab
+  // watch URL param changes and update activeTab
   useEffect(() => {
     const urlTab = getCurrentTabFromUrl()
     if (tabState.activeTab !== urlTab) {
@@ -152,11 +178,16 @@ const AgentChatEditingView: React.FC = () => {
     }
   }, [tabParam, tabState.activeTab])
 
+  useEffect(() => {
+    setIsKnowledgeGroupExpanded(tabState.activeTab === 'knowledge')
+  }, [tabState.activeTab])
+
   // Load agent data
   useEffect(() => {
     if (chatId) {
       const chat = chats.find(c => c.chat_id === chatId)
       if (chat && chat.agent) {
+        const knowledge = getAgentKnowledge(chat.agent)
         const agentConfig: AgentConfig = {
           id: chat.chat_id,
           name: chat.agent.name,
@@ -165,41 +196,65 @@ const AgentChatEditingView: React.FC = () => {
           role: chat.agent.role,
           model: chat.agent.model,
           workspace: chat.agent.workspace,
-          knowledgeBase: chat.agent.knowledgeBase,
+          knowledgeBase: knowledge.knowledgeBase,
           version: chat.agent.version,
+          source: chat.agent.source,
           mcpServers: chat.agent.mcp_servers,
           systemPrompt: chat.agent.system_prompt,
-          contextEnhancement: chat.agent.context_enhancement,
           skills: chat.agent.skills,
+          enabledPlugins: chat.agent.enabled_plugins,
+          subAgents: chat.agent.sub_agents,
+          authToken: chat.agent.authToken,
           createdAt: new Date(),
           updatedAt: new Date()
         }
         setAgentData(agentConfig)
       } else {
         // Agent not found, show error or redirect
-        console.error('[AgentChatEditingView] Agent not found for chatId:', chatId)
+        logger.error('[AgentChatEditingView] Agent not found for chatId:', chatId)
         setError('Agent not found')
       }
     }
   }, [chatId, chats])
 
+  // Reset tabs when enabledPlugins changes (plugin toggle writes directly to backend)
+  const prevEnabledPluginsRef = useRef<string[] | undefined>(agentData?.enabledPlugins)
+  useEffect(() => {
+    const prev = prevEnabledPluginsRef.current
+    const curr = agentData?.enabledPlugins
+    if (JSON.stringify(prev) !== JSON.stringify(curr)) {
+      prevEnabledPluginsRef.current = curr
+      if (prev !== undefined) {
+        setTabChangesCache({
+          basic: null, knowledge: null, mcp: null, skills: null,
+          plugins: null, schedules: null, sub_agents: null, prompt: null,
+        })
+        setPendingChanges({
+          basic: false, knowledge: false, mcp: false, skills: false,
+          plugins: false, schedules: false, sub_agents: false, prompt: false,
+        })
+        setTabResetKey(prev => prev + 1)
+      }
+    }
+  }, [agentData?.enabledPlugins])
+
   // Callback for handling Tab modification state changes
-  const handleTabDataChange = useCallback((tabName: 'basic' | 'knowledge' | 'mcp' | 'skills' | 'prompt' | 'context', data: Partial<AgentConfig>, hasChanges: boolean) => {
+  const handleTabDataChange = useCallback((tabName: AgentEditorTabName, data: Partial<AgentConfig>, hasChanges: boolean) => {
     setPendingChanges(prev => ({
       ...prev,
       [tabName]: hasChanges
     }))
-    
+
     setTabChangesCache(prev => ({
       ...prev,
       [tabName]: hasChanges ? data : null
     }))
   }, [])
 
-  // Validate all pending save data
+  // Validate all pending changes
   const validateAllChanges = useCallback(() => {
     const allChanges: Partial<AgentConfig> = {}
-    
+
     if (pendingChanges.basic && tabChangesCache.basic) {
       Object.assign(allChanges, tabChangesCache.basic)
     }
@@ -212,42 +267,42 @@ const AgentChatEditingView: React.FC = () => {
     if (pendingChanges.skills && tabChangesCache.skills) {
       Object.assign(allChanges, tabChangesCache.skills)
     }
+    if (pendingChanges.sub_agents && tabChangesCache.sub_agents) {
+      Object.assign(allChanges, tabChangesCache.sub_agents)
+    }
     if (pendingChanges.prompt && tabChangesCache.prompt) {
       Object.assign(allChanges, tabChangesCache.prompt)
     }
-    if (pendingChanges.context && tabChangesCache.context) {
-      Object.assign(allChanges, tabChangesCache.context)
-    }
 
-    // Agent Name validation - check for name duplication
+    // Agent Name validation - check for duplicate names
     const currentName = allChanges.name || agentData?.name
-    
+
     if (currentName && currentName.trim() !== '') {
       const existingAgent = chats.find(chat =>
         chat.agent &&
         chat.agent.name === currentName.trim() &&
         chat.chat_id !== chatId
       )
-      
+
       if (existingAgent) {
         return { isValid: false, errorMessage: `Agent name "${currentName.trim()}" already exists. Please choose a different name.`, showError: true }
       }
     }
-    
+
     return { isValid: true, errorMessage: null, showError: false }
   }, [pendingChanges, tabChangesCache, agentData, chatId, chats])
-  
+
   // Check if there are any pending changes
   const hasAnyPendingChanges = Object.values(pendingChanges).some(hasChange => hasChange)
-  
-  // Check if saving is possible (has changes and validation passed)
+
+  // Check if save is possible (has changes and validation passes)
   const validationResult = validateAllChanges()
   const canSaveAll = hasAnyPendingChanges && validationResult.isValid
 
   // Use useEffect to update field errors
   useEffect(() => {
     const { isValid, errorMessage, showError: shouldShowError } = validationResult
-    
+
     if (!isValid && shouldShowError && errorMessage) {
       if (fieldErrors.name !== errorMessage) {
         setFieldErrors({ name: errorMessage })
@@ -262,24 +317,34 @@ const AgentChatEditingView: React.FC = () => {
     }
   }, [validationResult.isValid, validationResult.errorMessage, validationResult.showError, fieldErrors.name, tabState.activeTab])
 
-  // Tab switch handling - update URL route
-  const handleTabSwitch = useCallback((tab: 'basic' | 'knowledge' | 'mcp' | 'skills' | 'prompt' | 'context') => {
+  // Tab switch handler - update URL route
+  const handleTabSwitch = useCallback((tab: AgentEditorTabName) => {
     if (tabState.tabsEnabled[tab] && chatId) {
       const routeTab = tabToRouteMap[tab]
       navigate(`/agent/chat/${chatId}/settings/${routeTab}`)
     }
   }, [tabState.tabsEnabled, chatId, navigate])
 
-  // Clear errors
+  const handleKnowledgeGroupToggle = useCallback(() => {
+    const nextExpanded = !isKnowledgeGroupExpanded
+
+    setIsKnowledgeGroupExpanded(nextExpanded)
+
+    if (nextExpanded && chatId && tabState.activeTab !== 'knowledge') {
+      navigate(`/agent/chat/${chatId}/settings/knowledge`)
+    }
+  }, [chatId, isKnowledgeGroupExpanded, navigate, tabState.activeTab])
+
+  // Clear error
   const handleClearError = useCallback(() => {
     setError(null)
   }, [])
 
-  // Data save handling - strictly isolate data per Tab
+  // Data save handler - strictly isolate data by Tab
   const handleSave = useCallback(async (data: Partial<AgentConfig>): Promise<AgentConfig> => {
     setError(null)
     setIsLoading(true)
-    
+
     try {
       if (!chatId) {
         throw new Error('No chat ID found for update operation')
@@ -289,18 +354,21 @@ const AgentChatEditingView: React.FC = () => {
       if (!chat || !chat.agent) {
         throw new Error('Agent not found')
       }
-      
-      // Start from existing data, only update fields for current Tab
+
+      // Start from existing data, only update fields for the current Tab
       const updateData: ChatAgent = { ...chat.agent }
-      
-      // Only update corresponding fields based on current Tab
+      updateData.knowledge = {
+        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? chat.agent.knowledgeBase ?? '',
+      }
+
+      // Only update fields corresponding to current Tab
       if (tabState.activeTab === 'basic') {
         if (data.name !== undefined) updateData.name = data.name // 🆕 Support ON-DEVICE agent renaming
         if (data.emoji !== undefined) updateData.emoji = data.emoji
         if (data.role !== undefined) updateData.role = data.role
         if (data.model !== undefined) updateData.model = data.model
       } else if (tabState.activeTab === 'knowledge') {
-        if (data.knowledgeBase !== undefined) updateData.knowledgeBase = data.knowledgeBase
+        if (data.knowledgeBase !== undefined) updateData.knowledge!.knowledgeBase = data.knowledgeBase
       } else if (tabState.activeTab === 'mcp') {
         if (data.mcpServers !== undefined) {
           updateData.mcp_servers = data.mcpServers
@@ -309,21 +377,22 @@ const AgentChatEditingView: React.FC = () => {
         if (data.skills !== undefined) {
           updateData.skills = data.skills
         }
+      } else if (tabState.activeTab === 'sub_agents') {
+        if (data.subAgents !== undefined) {
+          updateData.sub_agents = data.subAgents
+        }
       } else if (tabState.activeTab === 'prompt') {
         if (data.systemPrompt !== undefined) {
           updateData.system_prompt = data.systemPrompt
         }
-      } else if (tabState.activeTab === 'context') {
-        if (data.contextEnhancement !== undefined) {
-          updateData.context_enhancement = data.contextEnhancement
-        }
       }
-      
+
       const result = await updateChat(chatId, {
         agent: updateData
       })
-      
+
       if (result.success) {
+        const persistedKnowledge = getAgentKnowledge(chat.agent)
         const currentAgentData = agentData || {
           id: chatId,
           name: chat.agent.name,
@@ -331,26 +400,25 @@ const AgentChatEditingView: React.FC = () => {
           role: chat.agent.role,
           model: chat.agent.model,
           workspace: chat.agent.workspace,
-          knowledgeBase: chat.agent.knowledgeBase,
+          knowledgeBase: persistedKnowledge.knowledgeBase,
           version: chat.agent.version,
+          source: chat.agent.source,
           mcpServers: chat.agent.mcp_servers,
           systemPrompt: chat.agent.system_prompt,
-          contextEnhancement: chat.agent.context_enhancement,
-          skills: chat.agent.skills,
           createdAt: new Date(),
           updatedAt: new Date()
         }
-        
+
         const updatedAgent: AgentConfig = { ...currentAgentData }
-        
+
         if (tabState.activeTab === 'mcp') {
           updatedAgent.mcpServers = data.mcpServers !== undefined ? data.mcpServers : currentAgentData.mcpServers
         } else if (tabState.activeTab === 'skills') {
           updatedAgent.skills = data.skills !== undefined ? data.skills : currentAgentData.skills
+        } else if (tabState.activeTab === 'sub_agents') {
+          updatedAgent.subAgents = data.subAgents !== undefined ? data.subAgents : currentAgentData.subAgents
         } else if (tabState.activeTab === 'prompt') {
           updatedAgent.systemPrompt = data.systemPrompt !== undefined ? data.systemPrompt : currentAgentData.systemPrompt
-        } else if (tabState.activeTab === 'context') {
-          updatedAgent.contextEnhancement = data.contextEnhancement !== undefined ? data.contextEnhancement : currentAgentData.contextEnhancement
         } else if (tabState.activeTab === 'knowledge') {
           if (data.knowledgeBase !== undefined) updatedAgent.knowledgeBase = data.knowledgeBase
         } else if (tabState.activeTab === 'basic') {
@@ -359,15 +427,15 @@ const AgentChatEditingView: React.FC = () => {
           if (data.role !== undefined) updatedAgent.role = data.role
           if (data.model !== undefined) updatedAgent.model = data.model
         }
-        
+
         updatedAgent.updatedAt = new Date()
         setAgentData(updatedAgent)
-        
+
         return updatedAgent
       } else {
         throw new Error(result.error || 'Failed to update agent')
       }
-      
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
       setError(`Failed to save: ${errorMessage}`)
@@ -377,7 +445,7 @@ const AgentChatEditingView: React.FC = () => {
     }
   }, [tabState, agentData, chatId, updateChat, chats])
 
-  // Unified function to save all changes
+  // Unified save-all function
   const handleSaveAll = useCallback(async () => {
     if (!canSaveAll) return
 
@@ -385,9 +453,9 @@ const AgentChatEditingView: React.FC = () => {
     setError(null)
 
     try {
-      // Collect all data pending save
+      // Collect all pending changes
       const allChanges: Partial<AgentConfig> = {}
-      
+
       if (pendingChanges.basic && tabChangesCache.basic) {
         Object.assign(allChanges, tabChangesCache.basic)
       }
@@ -400,11 +468,14 @@ const AgentChatEditingView: React.FC = () => {
       if (pendingChanges.skills && tabChangesCache.skills) {
         Object.assign(allChanges, tabChangesCache.skills)
       }
+      if (pendingChanges.sub_agents && tabChangesCache.sub_agents) {
+        Object.assign(allChanges, tabChangesCache.sub_agents)
+      }
+      if (pendingChanges.schedules && tabChangesCache.schedules) {
+        Object.assign(allChanges, tabChangesCache.schedules)
+      }
       if (pendingChanges.prompt && tabChangesCache.prompt) {
         Object.assign(allChanges, tabChangesCache.prompt)
-      }
-      if (pendingChanges.context && tabChangesCache.context) {
-        Object.assign(allChanges, tabChangesCache.context)
       }
 
       if (!chatId) {
@@ -415,25 +486,28 @@ const AgentChatEditingView: React.FC = () => {
       if (!chat || !chat.agent) {
         throw new Error('Agent not found')
       }
-      
+
       // Start from existing data, update all modified fields
       const updateData: ChatAgent = { ...chat.agent }
-      
+      updateData.knowledge = {
+        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? chat.agent.knowledgeBase ?? '',
+      }
+
       // Update all modified fields
       if (allChanges.name !== undefined) updateData.name = allChanges.name // 🆕 Support ON-DEVICE agent renaming
       if (allChanges.emoji !== undefined) updateData.emoji = allChanges.emoji
       if (allChanges.role !== undefined) updateData.role = allChanges.role
       if (allChanges.model !== undefined) updateData.model = allChanges.model
-      if (allChanges.knowledgeBase !== undefined) updateData.knowledgeBase = allChanges.knowledgeBase
+      if (allChanges.knowledgeBase !== undefined) updateData.knowledge.knowledgeBase = allChanges.knowledgeBase
       if (allChanges.mcpServers !== undefined) updateData.mcp_servers = allChanges.mcpServers
       if (allChanges.skills !== undefined) updateData.skills = allChanges.skills
+      if (allChanges.subAgents !== undefined) updateData.sub_agents = allChanges.subAgents
       if (allChanges.systemPrompt !== undefined) updateData.system_prompt = allChanges.systemPrompt
-      if (allChanges.contextEnhancement !== undefined) updateData.context_enhancement = allChanges.contextEnhancement
-      
+
       const result = await updateChat(chatId, {
         agent: updateData
       })
-      
+
       if (result.success) {
         // Update local agent data
         const updatedAgent: AgentConfig = {
@@ -443,16 +517,18 @@ const AgentChatEditingView: React.FC = () => {
           role: updateData.role,
           model: updateData.model,
           workspace: updateData.workspace,
-          knowledgeBase: updateData.knowledgeBase,
+          knowledgeBase: updateData.knowledge?.knowledgeBase,
           version: updateData.version,
+          source: updateData.source,
           mcpServers: updateData.mcp_servers,
           systemPrompt: updateData.system_prompt,
-          contextEnhancement: updateData.context_enhancement,
           skills: updateData.skills,
+          enabledPlugins: updateData.enabled_plugins,
+          subAgents: updateData.sub_agents,
           createdAt: agentData?.createdAt || new Date(),
           updatedAt: new Date()
         }
-        
+
         setAgentData(updatedAgent)
       } else {
         throw new Error(result.error || 'Failed to update agent')
@@ -464,19 +540,23 @@ const AgentChatEditingView: React.FC = () => {
         knowledge: false,
         mcp: false,
         skills: false,
+        plugins: false,
+        schedules: false,
+        sub_agents: false,
         prompt: false,
-        context: false
       })
       setTabChangesCache({
         basic: null,
         knowledge: null,
         mcp: null,
         skills: null,
+        plugins: null,
+        schedules: null,
+        sub_agents: null,
         prompt: null,
-        context: null
       })
 
-      // Force re-mount all Tab components
+      // Force remount all Tab components
       setTabResetKey(prev => prev + 1)
 
       showSuccess('All changes saved successfully')
@@ -490,12 +570,26 @@ const AgentChatEditingView: React.FC = () => {
 
   // Navigate back to chat page
   const handleBackToChat = useCallback(() => {
-    if (chatId) {
-      navigate(`/agent/chat/${chatId}`)
-    } else {
+    if (!chatId) {
       navigate('/agent/chat')
+      return
     }
-  }, [chatId, navigate])
+
+    const targetChat = chats.find(chat => chat.chat_id === chatId)
+    const hasExistingSessions = Boolean(targetChat?.chatSessions?.length)
+
+    if (!hasExistingSessions) {
+      navigate(`/agent/chat/${chatId}`, {
+        state: {
+          intent: 'new-chat',
+          source: 'agent-settings-back'
+        }
+      })
+      return
+    }
+
+    navigate(`/agent/chat/${chatId}`)
+  }, [chatId, chats, navigate])
 
   // Handle default route redirect - if URL has no tab param, redirect to basic
   useEffect(() => {
@@ -534,7 +628,7 @@ const AgentChatEditingView: React.FC = () => {
          </span>
         </div>
         <div className="header-actions">
-          {/* Save button - show warning red when there are unsaved changes */}
+          {/* Save button - shows warning red when there are unsaved changes */}
           <button
             className={`btn-save ${canSaveAll ? 'has-changes' : ''}`}
             onClick={handleSaveAll}
@@ -564,6 +658,7 @@ const AgentChatEditingView: React.FC = () => {
        </div>
      </header>
 
+
      {/* Content */}
      <div className="agent-editing-view-content">
        {/* Error Display */}
@@ -585,13 +680,40 @@ const AgentChatEditingView: React.FC = () => {
             Basic
             {pendingChanges.basic && <span className="change-indicator">●</span>}
           </div>
-          <div
-            className={`nav-tab ${tabState.activeTab === 'knowledge' ? 'active' : ''} ${tabState.tabsEnabled.knowledge ? '' : 'disabled'}`}
-            onClick={() => handleTabSwitch('knowledge')}
-          >
-            Knowledge
-            {pendingChanges.knowledge && <span className="change-indicator">●</span>}
-          </div>
+          {showKnowledgeSourcesGroup ? (
+            <div className="nav-group">
+              <button
+                type="button"
+                className={`nav-tab nav-group-trigger ${tabState.activeTab === 'knowledge' ? 'active' : ''}`}
+                onClick={handleKnowledgeGroupToggle}
+              >
+                <span className="nav-group-label">
+                  <span>Knowledge</span>
+                </span>
+                {(pendingChanges.knowledge) && <span className="change-indicator">●</span>}
+              </button>
+              {isKnowledgeGroupExpanded && (
+                <div className="nav-group-children">
+                  <button
+                    type="button"
+                    className={`nav-tab nav-sub-tab ${tabState.activeTab === 'knowledge' ? 'active' : ''} ${tabState.tabsEnabled.knowledge ? '' : 'disabled'}`}
+                    onClick={() => handleTabSwitch('knowledge')}
+                  >
+                    <span>Knowledge Folder</span>
+                    {pendingChanges.knowledge && <span className="change-indicator">●</span>}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className={`nav-tab ${tabState.activeTab === 'knowledge' ? 'active' : ''} ${tabState.tabsEnabled.knowledge ? '' : 'disabled'}`}
+              onClick={() => handleTabSwitch('knowledge')}
+            >
+              Knowledge
+              {pendingChanges.knowledge && <span className="change-indicator">●</span>}
+            </div>
+          )}
           <div
             className={`nav-tab ${tabState.activeTab === 'mcp' ? 'active' : ''} ${tabState.tabsEnabled.mcp ? '' : 'disabled'}`}
             onClick={() => handleTabSwitch('mcp')}
@@ -607,22 +729,35 @@ const AgentChatEditingView: React.FC = () => {
             {pendingChanges.skills && <span className="change-indicator">●</span>}
           </div>
           <div
+            className={`nav-tab ${tabState.activeTab === 'plugins' ? 'active' : ''} ${tabState.tabsEnabled.plugins ? '' : 'disabled'}`}
+            onClick={() => handleTabSwitch('plugins')}
+          >
+            Plugins
+          </div>
+          {schedulerEnabled && (
+            <div
+              className={`nav-tab ${tabState.activeTab === 'schedules' ? 'active' : ''} ${tabState.tabsEnabled.schedules ? '' : 'disabled'}`}
+              onClick={() => handleTabSwitch('schedules')}
+            >
+              Schedules
+            </div>
+          )}
+          {subAgentEnabled && (
+            <div
+              className={`nav-tab ${tabState.activeTab === 'sub_agents' ? 'active' : ''} ${tabState.tabsEnabled.sub_agents ? '' : 'disabled'}`}
+              onClick={() => handleTabSwitch('sub_agents')}
+            >
+              Sub-Agents
+              {pendingChanges.sub_agents && <span className="change-indicator">●</span>}
+            </div>
+          )}
+          <div
             className={`nav-tab ${tabState.activeTab === 'prompt' ? 'active' : ''} ${tabState.tabsEnabled.prompt ? '' : 'disabled'}`}
             onClick={() => handleTabSwitch('prompt')}
           >
             System Prompt
             {pendingChanges.prompt && <span className="change-indicator">●</span>}
           </div>
-          {/* Context Enhancement tab only shown in Dev environment */}
-          {memoryEnabled && (
-            <div
-              className={`nav-tab ${tabState.activeTab === 'context' ? 'active' : ''} ${tabState.tabsEnabled.context ? '' : 'disabled'}`}
-              onClick={() => handleTabSwitch('context')}
-            >
-              Context Enhancement
-              {pendingChanges.context && <span className="change-indicator">●</span>}
-            </div>
-          )}
         </div>
 
         {/* Right Content Area */}
@@ -635,7 +770,7 @@ const AgentChatEditingView: React.FC = () => {
             </div>
           )}
 
-          {/* Only render the corresponding Tab content based on selection state */}
+          {/* Render only the selected Tab content based on active state */}
           {tabState.activeTab === 'basic' && (
             <AgentBasicTab
               key={`basic-${tabResetKey}`}
@@ -649,7 +784,7 @@ const AgentChatEditingView: React.FC = () => {
               readOnly={readOnlyFlags.basic}
             />
           )}
-          
+
           {tabState.activeTab === 'knowledge' && tabState.tabsEnabled.knowledge && (
             <AgentKnowledgeBaseTab
               key={`knowledge-${tabResetKey}`}
@@ -663,7 +798,7 @@ const AgentChatEditingView: React.FC = () => {
               readOnly={readOnlyFlags.knowledge}
             />
           )}
-          
+
           {tabState.activeTab === 'mcp' && tabState.tabsEnabled.mcp && (
             <AgentMcpServersTab
               key={`mcp-${tabResetKey}`}
@@ -677,7 +812,7 @@ const AgentChatEditingView: React.FC = () => {
               readOnly={readOnlyFlags.mcp}
             />
           )}
-          
+
           {tabState.activeTab === 'skills' && tabState.tabsEnabled.skills && (
             <AgentSkillsTab
               key={`skills-${tabResetKey}`}
@@ -691,7 +826,46 @@ const AgentChatEditingView: React.FC = () => {
               readOnly={readOnlyFlags.skills}
             />
           )}
-          
+
+          {tabState.activeTab === 'plugins' && tabState.tabsEnabled.plugins && (
+            <AgentPluginsTab
+              key={`plugins-${tabResetKey}`}
+              mode="update"
+              agentId={chatId}
+              agentData={agentData}
+              onSave={handleSave}
+              readOnly={readOnlyFlags.skills}
+            />
+          )}
+
+          {schedulerEnabled && tabState.activeTab === 'schedules' && tabState.tabsEnabled.schedules && (
+            <AgentSchedulesTab
+              key={`schedules-${tabResetKey}`}
+              mode="update"
+              agentId={chatId}
+              agentData={agentData}
+              onSave={handleSave}
+              onDataChange={handleTabDataChange}
+              cachedData={tabChangesCache.schedules}
+              fieldErrors={fieldErrors}
+              readOnly={readOnlyFlags.schedules}
+            />
+          )}
+
+          {subAgentEnabled && tabState.activeTab === 'sub_agents' && tabState.tabsEnabled.sub_agents && (
+            <AgentSubAgentsTab
+              key={`sub_agents-${tabResetKey}`}
+              mode="update"
+              agentId={chatId}
+              agentData={agentData}
+              onSave={handleSave}
+              onDataChange={handleTabDataChange}
+              cachedData={tabChangesCache.sub_agents}
+              fieldErrors={fieldErrors}
+              readOnly={readOnlyFlags.sub_agents}
+            />
+          )}
+
           {tabState.activeTab === 'prompt' && tabState.tabsEnabled.prompt && (
             <AgentSystemPromptTab
               key={`prompt-${tabResetKey}`}
@@ -703,20 +877,6 @@ const AgentChatEditingView: React.FC = () => {
               cachedData={tabChangesCache.prompt}
               fieldErrors={fieldErrors}
               readOnly={readOnlyFlags.prompt}
-            />
-          )}
-          
-          {tabState.activeTab === 'context' && tabState.tabsEnabled.context && (
-            <AgentContextEnhanceTab
-              key={`context-${tabResetKey}`}
-              mode="update"
-              agentId={chatId}
-              agentData={agentData}
-              onSave={handleSave}
-              onDataChange={handleTabDataChange}
-              cachedData={tabChangesCache.context}
-              fieldErrors={fieldErrors}
-              readOnly={readOnlyFlags.context}
             />
           )}
         </div>

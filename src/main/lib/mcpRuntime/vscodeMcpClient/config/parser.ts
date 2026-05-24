@@ -1,28 +1,28 @@
 /**
- * Configuration Parser
+ * Configuration parser
  * VSCode MCP Client configuration parsing and format conversion
  */
 
-import { 
-  ParsedMcpConfig, 
-  McpConfigParseResult, 
+import {
+  ParsedMcpConfig,
+  McpConfigParseResult,
   McpServerConfig,
-  KosmosAppMCPServerConfig,
-  TransportType 
+  OpenKosmosAppMCPServerConfig,
+  TransportType
 } from './types';
-import { 
-  validateJsonFormat, 
-  detectConfigFormat, 
-  safeJsonParse 
+import {
+  validateJsonFormat,
+  detectConfigFormat,
+  safeJsonParse
 } from './utils';
 
-// ==================== Main Configuration Parsing Functions ====================
+// ==================== Main configuration parsing function ====================
 
 /**
- * Parse MCP configuration and detect format
+ * Parse MCP configuration and detect its format
  */
 export function parseMcpConfig(
-  input: string, 
+  input: string,
   currentTransportType?: TransportType
 ): McpConfigParseResult {
   try {
@@ -35,7 +35,7 @@ export function parseMcpConfig(
 
     // Clean invisible characters
     const cleanedInput = cleanInvisibleCharacters(input.trim());
-    
+
     // Validate JSON format
     const jsonValidation = validateJsonFormat(cleanedInput);
     if (!jsonValidation.isValid) {
@@ -59,24 +59,24 @@ export function parseMcpConfig(
     // Extract server name and configuration
     const extractedServerName = extractServerName(parsedConfig);
     const extractedConfig = extractConfigFromFormat(parsedConfig);
-    
+
     let detectedFormat = '';
     let serverName = extractedServerName;
     let transportType: 'stdio' | 'sse' | 'StreamableHttp';
     let config: ParsedMcpConfig['config'] = {};
-    
+
     // Determine format and extract data
     if (parsedConfig.mcpServers) {
-      // Formats 3, 4, 7, 8 (mcpServers wrapper)
+      // Format 3, 4, 7, 8 (mcpServers wrapper)
       if (extractedConfig.type) {
         transportType = getTransportTypeFromTypeField(extractedConfig.type);
         if (transportType === 'stdio') {
-          detectedFormat = 'Format 4: Stdio full configuration';
+          detectedFormat = 'Format 4: Stdio complete configuration';
         } else {
-          detectedFormat = 'Format 3: StreamableHttp full configuration';
+          detectedFormat = 'Format 3: StreamableHttp complete configuration';
         }
       } else {
-        // Formats 7, 8 (no type field)
+        // Format 7, 8 (no type field)
         transportType = autoDetectTransportType(extractedConfig, currentTransportType);
         if (transportType === 'stdio') {
           detectedFormat = 'Format 8: Stdio simplified format';
@@ -85,7 +85,7 @@ export function parseMcpConfig(
         }
       }
     } else if (extractedConfig.serverName || (Object.keys(parsedConfig).length === 1 && typeof parsedConfig[Object.keys(parsedConfig)[0]] === 'object')) {
-      // Formats 5, 6, 9, 10 (server fragments)
+      // Format 5, 6, 9, 10 (server fragments)
       if (extractedConfig.type) {
         transportType = getTransportTypeFromTypeField(extractedConfig.type);
         if (transportType === 'stdio') {
@@ -94,7 +94,7 @@ export function parseMcpConfig(
           detectedFormat = 'Format 5: StreamableHttp server fragment';
         }
       } else {
-        // Formats 9, 10 (no type field)
+        // Format 9, 10 (no type field)
         transportType = autoDetectTransportType(extractedConfig, currentTransportType);
         if (transportType === 'stdio') {
           detectedFormat = 'Format 10: Stdio minimal fragment';
@@ -102,7 +102,7 @@ export function parseMcpConfig(
           detectedFormat = 'Format 9: StreamableHttp minimal fragment';
         }
       }
-      
+
       // Extract server name from fragment format
       if (!serverName && !extractedConfig.serverName) {
         const keys = Object.keys(parsedConfig);
@@ -113,7 +113,7 @@ export function parseMcpConfig(
         serverName = extractedConfig.serverName;
       }
     } else {
-      // Formats 1, 2 (basic format)
+      // Format 1, 2 (basic format)
       transportType = autoDetectTransportType(extractedConfig, currentTransportType);
       if (transportType === 'stdio') {
         detectedFormat = 'Format 1: Stdio basic format';
@@ -156,7 +156,7 @@ export function parseMcpConfig(
   } catch (error) {
     return {
       success: false,
-      error: `Parse error: ${error instanceof Error ? error.message : 'unknown error'}`
+      error: `Parse error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
@@ -178,7 +178,7 @@ export function parseVSCodeConfigToInternal(
 
     // Clean invisible characters
     const cleanedInput = cleanInvisibleCharacters(input.trim());
-    
+
     // Validate JSON format
     const jsonValidation = validateJsonFormat(cleanedInput);
     if (!jsonValidation.isValid) {
@@ -201,7 +201,7 @@ export function parseVSCodeConfigToInternal(
 
     // Extract servers based on format
     let servers: Record<string, any> = {};
-    
+
     if (format === 'settings.json' && parsedConfig.mcp?.servers) {
       servers = parsedConfig.mcp.servers;
     } else if (format === 'mcp.json' && parsedConfig.servers) {
@@ -209,7 +209,7 @@ export function parseVSCodeConfigToInternal(
     } else {
       return {
         success: false,
-        error: 'No MCP servers found in configuration'
+        error: 'No MCP server found in configuration'
       };
     }
 
@@ -218,7 +218,7 @@ export function parseVSCodeConfigToInternal(
     if (serverNames.length === 0) {
       return {
         success: false,
-        error: 'No MCP servers found in configuration'
+        error: 'No MCP server found in configuration'
       };
     }
 
@@ -227,9 +227,9 @@ export function parseVSCodeConfigToInternal(
 
     // Convert to internal format
     const transportType = convertVSCodeTransportType(firstServerConfig);
-    
+
     const config: ParsedMcpConfig['config'] = {};
-    
+
     if (transportType === 'stdio') {
       config.command = firstServerConfig.command;
       config.args = firstServerConfig.args;
@@ -257,51 +257,51 @@ export function parseVSCodeConfigToInternal(
   } catch (error) {
     return {
       success: false,
-      error: `Parse error: ${error instanceof Error ? error.message : 'unknown error'}`
+      error: `Parse error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
 
-// ==================== Format Conversion Functions ====================
+// ==================== Format conversion functions ====================
 
 /**
  * Format parsed configuration to standard JSON format
  */
 export function formatToStandardJson(parsedConfig: ParsedMcpConfig): string {
   const { transportType, config } = parsedConfig;
-  
+
   if (transportType === 'stdio') {
     const stdioConfig: any = {
       command: config.command,
       args: config.args
     };
-    
+
     if (config.env && Object.keys(config.env).length > 0) {
       stdioConfig.env = config.env;
     }
-    
+
     return JSON.stringify(stdioConfig, null, 2);
   } else {
     const httpConfig: any = {
       url: config.url
     };
-    
+
     if (config.env && Object.keys(config.env).length > 0) {
       httpConfig.env = config.env;
     }
-    
+
     return JSON.stringify(httpConfig, null, 2);
   }
 }
 
 /**
- * Format to complete mcpServers wrapper format
+ * Format to full mcpServers wrapper format
  */
 export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string {
   const { serverName, transportType, config } = parsedConfig;
-  
+
   const serverConfig: any = {};
-  
+
   if (transportType === 'stdio') {
     serverConfig.command = config.command;
     serverConfig.args = config.args;
@@ -310,29 +310,29 @@ export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string
     serverConfig.url = config.url;
     serverConfig.type = transportType;
   }
-  
+
   if (config.env && Object.keys(config.env).length > 0) {
     serverConfig.env = config.env;
   }
-  
+
   const wrapper = {
     mcpServers: {
       [serverName!]: serverConfig
     }
   };
-  
+
   return JSON.stringify(wrapper, null, 2);
 }
 
 /**
- * Convert Kosmos server configuration to VSCode format (settings.json style)
+ * Convert OpenKosmos server configuration to VSCode format (settings.json style)
  */
-export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]): string {
+export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {};
-  
+
   for (const config of serverConfigs) {
     const vscodeConfig: any = {};
-    
+
     if (config.transport === 'stdio') {
       vscodeConfig.type = 'stdio';
       vscodeConfig.command = config.command;
@@ -342,7 +342,7 @@ export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]
     } else {
       // For sse and StreamableHttp, use url
       vscodeConfig.url = config.url;
-      
+
       // Set appropriate type
       if (config.transport === 'sse') {
         vscodeConfig.type = 'sse';
@@ -350,33 +350,33 @@ export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]
         vscodeConfig.type = 'http';
       }
     }
-    
+
     // Add environment variables (if present)
     if (config.env && Object.keys(config.env).length > 0) {
       vscodeConfig.env = config.env;
     }
-    
+
     servers[config.name] = vscodeConfig;
   }
-  
+
   const settingsFormat = {
     mcp: {
       servers: servers
     }
   };
-  
+
   return JSON.stringify(settingsFormat, null, 2);
 }
 
 /**
- * Convert Kosmos server configuration to VSCode mcp.json format (Windows style)
+ * Convert OpenKosmos server configuration to VSCode mcp.json format (Windows style)
  */
-export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[]): string {
+export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {};
-  
+
   for (const config of serverConfigs) {
     const vscodeConfig: any = {};
-    
+
     if (config.transport === 'stdio') {
       vscodeConfig.type = 'stdio';
       vscodeConfig.command = config.command;
@@ -386,7 +386,7 @@ export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[])
     } else {
       // For sse and StreamableHttp, use url
       vscodeConfig.url = config.url;
-      
+
       // Set appropriate type
       if (config.transport === 'sse') {
         vscodeConfig.type = 'sse';
@@ -394,24 +394,24 @@ export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[])
         vscodeConfig.type = 'http';
       }
     }
-    
+
     // Add environment variables (if present)
     if (config.env && Object.keys(config.env).length > 0) {
       vscodeConfig.env = config.env;
     }
-    
+
     servers[config.name] = vscodeConfig;
   }
-  
+
   const mcpJsonFormat = {
     servers: servers,
     inputs: []
   };
-  
+
   return JSON.stringify(mcpJsonFormat, null, 2);
 }
 
-// ==================== Utility Functions ====================
+// ==================== Utility functions ====================
 
 /**
  * Generate a timestamp-based server name
@@ -431,7 +431,7 @@ function generateServerName(): string {
 function cleanInvisibleCharacters(text: string): string {
   return text
     .replace(/\u00A0/g, ' ')  // Replace NBSP (non-breaking space) with regular space
-    .replace(/\u202F/g, ' ')  // Replace narrow non-breaking space
+    .replace(/\u202F/g, ' ')  // Replace narrow no-break space
     .replace(/\u2060/g, '')   // Remove word joiner
     .replace(/\uFEFF/g, '')   // Remove byte order mark (BOM)
     .replace(/\u180E/g, ' ')  // Replace Mongolian vowel separator
@@ -441,7 +441,7 @@ function cleanInvisibleCharacters(text: string): string {
 }
 
 /**
- * Determine transport type based on the type field value
+ * Determine transport type from the type field value
  */
 function getTransportTypeFromTypeField(type: string): 'stdio' | 'sse' | 'StreamableHttp' {
   const lowerType = type.toLowerCase();
@@ -466,7 +466,7 @@ function autoDetectTransportType(config: any, currentType?: TransportType): 'std
   }
   if (config.url) {
     const url = config.url.toLowerCase();
-    
+
     // Enhanced SSE endpoint detection
     if (url.includes('/sse') ||
         url.includes('/mcp/sse') ||
@@ -474,12 +474,12 @@ function autoDetectTransportType(config: any, currentType?: TransportType): 'std
         url.endsWith('/sse')) {
       return 'sse';
     }
-    
-    // Apply format 2 rule: if current is stdio, auto-select StreamableHttp
+
+    // Apply Format 2 rule: if current type is stdio, auto-select StreamableHttp
     if (currentType === 'stdio') {
       return 'StreamableHttp';
     }
-    // If user selected sse, keep it unchanged
+    // If the user selected sse, keep it unchanged
     if (currentType === 'sse') {
       return 'sse';
     }
@@ -495,7 +495,7 @@ function extractServerName(parsedConfig: any): string | undefined {
   if (parsedConfig.mcpServers && typeof parsedConfig.mcpServers === 'object') {
     const serverNames = Object.keys(parsedConfig.mcpServers);
     if (serverNames.length > 0) {
-      return serverNames[0]; // Take the first server name
+      return serverNames[0]; // Use the first server name
     }
   }
   return undefined;
@@ -505,25 +505,25 @@ function extractServerName(parsedConfig: any): string | undefined {
  * Extract configuration from various format structures
  */
 function extractConfigFromFormat(parsedConfig: any): any {
-  // Formats 3-6: mcpServers wrapper
+  // Format 3-6: mcpServers wrapper
   if (parsedConfig.mcpServers && typeof parsedConfig.mcpServers === 'object') {
     const serverNames = Object.keys(parsedConfig.mcpServers);
     if (serverNames.length > 0) {
       return parsedConfig.mcpServers[serverNames[0]];
     }
   }
-  
-  // Formats 5-6, 9-10: Server fragment (direct object with server name as key)
+
+  // Format 5-6, 9-10: server fragments (direct object with server name as key)
   const keys = Object.keys(parsedConfig);
   if (keys.length === 1 && typeof parsedConfig[keys[0]] === 'object' && parsedConfig[keys[0]] !== null) {
     const serverConfig = parsedConfig[keys[0]];
-    // Check if this looks like a server config (has command/args or url)
+    // Check whether this looks like a server configuration (has command/args or url)
     if (serverConfig.command || serverConfig.args || serverConfig.url || serverConfig.type) {
       return { serverName: keys[0], ...serverConfig };
     }
   }
-  
-  // Formats 1-2: Direct configuration
+
+  // Format 1-2: direct configuration
   return parsedConfig;
 }
 
@@ -552,7 +552,7 @@ function convertVSCodeTransportType(vscodeConfig: any): 'stdio' | 'sse' | 'Strea
         }
         return 'StreamableHttp';
       default:
-        // Continue auto-detection
+        // Continue with auto-detection
         break;
     }
   }
@@ -571,12 +571,12 @@ function convertVSCodeTransportType(vscodeConfig: any): 'stdio' | 'sse' | 'Strea
         url.endsWith('/sse')) {
       return 'sse';
     }
-    
+
     // Special handling for chrome-mcp and similar HTTP endpoints
     if (url.includes('/mcp') && !url.includes('/sse')) {
       return 'StreamableHttp';
     }
-    
+
     return 'StreamableHttp';
   }
 
@@ -585,7 +585,7 @@ function convertVSCodeTransportType(vscodeConfig: any): 'stdio' | 'sse' | 'Strea
 }
 
 /**
- * Validate if a configuration is an example template (should be rejected)
+ * Validate whether a configuration is an example template (should be rejected)
  */
 export function isExampleConfiguration(input: string): boolean {
   const stdioExample = `{

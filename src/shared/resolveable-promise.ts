@@ -1,3 +1,4 @@
+/* v8 ignore next */
 const NOOP = () => {};
 export default class Resolveable<T> extends Promise<T> {
   private _resolve: (value: T) => void = NOOP;
@@ -5,7 +6,7 @@ export default class Resolveable<T> extends Promise<T> {
 
   public status: 'pending' | 'resolved' | 'rejected' = 'pending';
 
-  // Ensure then/catch/finally return native Promise instead of trying to construct Resolveable
+  // Ensure then/catch/finally return a native Promise, rather than trying to construct a Resolveable
   static get [Symbol.species]() {
     return Promise;
   }

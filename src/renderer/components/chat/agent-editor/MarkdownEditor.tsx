@@ -3,6 +3,27 @@ import React, { useRef, useEffect } from 'react'
 import '../../../styles/Agent.css';
 import { MarkdownEditorProps } from './types'
 
+const SYSTEM_PROMPT_TIPS = [
+  'Enter your system prompt here...',
+  '',
+  'You can use Markdown formatting:',
+  '# Headers',
+  '**Bold text**',
+  '*Italic text*',
+  '- List items',
+  '',
+  'Example:',
+  'You are a helpful AI assistant specialized in [your domain].',
+  '',
+  '## Guidelines',
+  '- Be professional and helpful',
+  '- Provide accurate information',
+  '- Ask clarifying questions when needed',
+  '',
+  '## Specific Instructions',
+  '[Add your specific instructions here...]'
+] as const
+
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   value,
   onChange,
@@ -12,20 +33,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Removed auto-resize height logic, keeping textarea at fixed height with scrollbar
+  // Remove auto-height adjustment logic; let the textarea keep a fixed height with scrollbars
 
   // Simple Markdown rendering function
   const renderMarkdown = (text: string): string => {
-    // Split by lines for processing
+    // Split by line first
     const lines = text.split('\n')
     const result: string[] = []
     let inList = false
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
-      
+
       if (!line) {
-        // Empty line handling
+        // Handle empty lines
         if (inList) {
           result.push('</ul>')
           inList = false
@@ -33,7 +54,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         result.push('<br>')
         continue
       }
-      
+
       // Headers
       if (line.startsWith('### ')) {
         if (inList) {
@@ -79,12 +100,12 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         result.push(`<p>${content}</p>`)
       }
     }
-    
+
     // Close any open list
     if (inList) {
       result.push('</ul>')
     }
-    
+
     return result.join('')
   }
 
@@ -103,32 +124,28 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           />
         ) : (
           /* Edit Mode */
-          <textarea
-            ref={textareaRef}
-            className={`edit-textarea ${readOnly ? 'readonly' : ''}`}
-            value={value}
-            onChange={(e) => !readOnly && onChange(e.target.value)}
-            readOnly={readOnly}
-            style={readOnly ? { cursor: 'not-allowed', backgroundColor: '#f5f5f5' } : undefined}
-            placeholder="Enter your system prompt here...
-
-You can use Markdown formatting:
-# Headers
-**Bold text**
-*Italic text*
-- List items
-
-Example:
-You are a helpful AI assistant specialized in [your domain].
-
-## Guidelines
-- Be professional and helpful
-- Provide accurate information
-- Ask clarifying questions when needed
-
-## Specific Instructions
-[Add your specific instructions here...]"
-          />
+          <>
+            {!value && !readOnly && (
+              <div className="edit-textarea-tips" aria-hidden="true">
+                {SYSTEM_PROMPT_TIPS.map((line, index) => (
+                  <span
+                    key={`${index}-${line}`}
+                    className={line ? 'edit-textarea-tips-line' : 'edit-textarea-tips-spacer'}
+                  >
+                    {line || '\u00A0'}
+                  </span>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              className={`edit-textarea ${readOnly ? 'readonly' : ''}`}
+              value={value}
+              onChange={(e) => !readOnly && onChange(e.target.value)}
+              readOnly={readOnly}
+              style={readOnly ? { cursor: 'not-allowed', backgroundColor: '#f5f5f5' } : undefined}
+            />
+          </>
         )}
       </div>
 

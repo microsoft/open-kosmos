@@ -2,24 +2,25 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const brandConfig = require('./brand-config');
+const ASSETS_WIN = path.join(__dirname, '..', 'brands', 'openkosmos', 'assets', 'win');
+const ASSETS_MAC = path.join(__dirname, '..', 'brands', 'openkosmos', 'assets', 'mac');
 
 /**
- * Generate macOS icons with transparent padding from Windows 1024x1024 icon
- * Content scaled to 80.9%, remaining space is transparent margin
+ * Generate macOS icons with transparent padding from a Windows 1024x1024 source icon.
+ * Content is scaled to 80.9%; the remaining space is transparent margin.
  */
 
-const winSource = path.join(brandConfig.paths.assetsWin, 'icon_round_1024x1024.png');
-const macSource = path.join(brandConfig.paths.assetsMac, 'icon_round_1024x1024.png');
+const winSource = path.join(ASSETS_WIN, 'icon_round_1024x1024.png');
+const macSource = path.join(ASSETS_MAC, 'icon_round_1024x1024.png');
 console.log('macSource:', macSource);
 console.log('winSource:', winSource);
 
-// Prefer source file from Mac directory, fall back to Windows directory if not found
+// Prefer the source file under the Mac directory; fall back to the Windows directory if absent.
 const sourceIcon = fs.existsSync(macSource) ? macSource : winSource;
 
-const macIconsDir = brandConfig.paths.assetsMac;
+const macIconsDir = ASSETS_MAC;
 const macIconsetDir = path.join(macIconsDir, 'app.iconset');
-const macIconPath = brandConfig.paths.iconMac;
+const macIconPath = path.join(ASSETS_MAC, 'app.icns');
 
 // macOS iconset standard sizes
 const iconSizes = [
@@ -44,7 +45,7 @@ async function generateIconWithPadding(targetSize, outputPath) {
     const contentSize = Math.round(targetSize * CONTENT_PERCENT);
     const padding = Math.round((targetSize - contentSize) / 2);
 
-    // Resize from 1024x1024 source icon
+    // Resize from the 1024x1024 source icon
     const resizedImage = await sharp(sourceIcon)
       .resize(contentSize, contentSize, {
         fit: 'contain',
@@ -52,7 +53,7 @@ async function generateIconWithPadding(targetSize, outputPath) {
       })
       .toBuffer();
 
-    // Create canvas with padding and center the content
+    // Create a canvas with padding and center the content
     await sharp({
       create: {
         width: targetSize,
@@ -74,44 +75,44 @@ async function generateIconWithPadding(targetSize, outputPath) {
     console.log(
       `✓ Generated: ${path.basename(
         outputPath,
-      )} (${targetSize}x${targetSize}, content ${contentSize}x${contentSize}, margin ${padding}px)`,
+      )} (${targetSize}x${targetSize}, content ${contentSize}x${contentSize}, padding ${padding}px)`,
     );
   } catch (error) {
-    console.error(`✗ Generation failed ${path.basename(outputPath)}:`, error.message);
+    console.error(`✗ Failed to generate ${path.basename(outputPath)}:`, error.message);
     throw error;
   }
 }
 
 async function generateAllIcons() {
   console.log(
-    'Generating macOS icons from Windows 1024x1024 icon (content 80.9%, rest is transparent margin)...\n',
+    'Generating macOS icons from Windows 1024x1024 source (content 80.9%, remainder transparent padding)...\n',
   );
 
   // Check source icon
   if (!fs.existsSync(sourceIcon)) {
-    console.error(`Error: Source icon does not exist: ${sourceIcon}`);
+    console.error(`Error: source icon not found: ${sourceIcon}`);
     process.exit(1);
   }
 
   console.log(`Source icon: ${sourceIcon}`);
   console.log(`Target directory: ${macIconsetDir}\n`);
 
-  // Clear and rebuild iconset directory
+  // Clear and recreate the iconset directory
   if (fs.existsSync(macIconsetDir)) {
     console.log('Clearing existing iconset directory...');
     fs.rmSync(macIconsetDir, { recursive: true, force: true });
   }
   fs.mkdirSync(macIconsetDir, { recursive: true });
 
-  // Generate icons of all sizes
-  console.log('Starting icon generation...\n');
+  // Generate icons at all sizes
+  console.log('Generating icons...\n');
   for (const icon of iconSizes) {
     const outputPath = path.join(macIconsetDir, icon.name);
     await generateIconWithPadding(icon.size, outputPath);
   }
 
-  console.log('\nAll icons generated successfully!');
-  console.log(`\nGenerated icons saved in: ${macIconsetDir}`);
+  console.log('\nAll icons generated!');
+  console.log(`\nGenerated icons saved to: ${macIconsetDir}`);
 
   // Generate .icns file
   console.log('\nGenerating .icns file...');
@@ -128,37 +129,37 @@ async function generateAllIcons() {
       throw error;
     }
   } else {
-     console.log('⚠️  Windows/Linux system detected, iconutil is not available.');
-     console.log('🔄 Attempting to use png2icons to generate .icns (as fallback)...');
+     console.log('⚠️  Windows/Linux detected; iconutil is not available.');
+     console.log('🔄 Attempting to generate .icns with png2icons (fallback)...');
 
      try {
-       // Use the generated largest size icon (1024x1024) as source
+       // Use the largest generated icon (1024x1024) as source
        const sourcePng = path.join(macIconsetDir, 'icon_512x512@2x.png');
-       // png2icons will automatically add suffix, so remove the .icns extension
+       // png2icons auto-appends the extension, so strip .icns suffix
        const outputBase = macIconPath.replace(/\.icns$/, '');
        
        if (!fs.existsSync(sourcePng)) {
-         throw new Error(`Cannot find source file: ${sourcePng}`);
+         throw new Error(`Source file not found: ${sourcePng}`);
        }
 
-       // -icns flag is used to generate .icns
+       // -icns flag generates an .icns file
        const cmd = `npx -y png2icons "${sourcePng}" "${outputBase}" -icns`;
        execSync(cmd, { stdio: 'inherit' });
        
        console.log(`✓ Successfully generated .icns file: ${macIconPath}`);
      } catch (error) {
        console.error('✗ png2icons generation failed:', error.message);
-       console.log('ℹ️  Please run this script on macOS for best results, or manually convert the generated iconset.');
-       // Don't throw error since iconset was already generated successfully
+       console.log('ℹ️  Run this script on macOS for best results, or manually convert the generated iconset.');
+       // Do not throw — the iconset was generated successfully
      }
   }
 
   console.log(
-    '\n✓ Done! macOS icons have been generated (content scaled to 80.9%, remaining space is transparent margin).',
+    '\n✓ Done! macOS icons generated (content scaled to 80.9%, remaining space is transparent padding).',
   );
 }
 
-// Check if sharp is installed
+// Check that sharp is installed
 try {
   require.resolve('sharp');
   generateAllIcons().catch(error => {
@@ -166,7 +167,7 @@ try {
     process.exit(1);
   });
 } catch (e) {
-  console.error('Error: sharp library must be installed first');
+  console.error('Error: the sharp library must be installed first');
   console.error('Run: npm install --save-dev sharp');
   process.exit(1);
 }

@@ -1,6 +1,6 @@
 /**
- * TokenCounter Module Unified Export
- * Provides a concise API interface
+ * TokenCounter module unified exports
+ * Provides a clean API interface
  */
 
 // Main class

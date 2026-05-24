@@ -1,16 +1,16 @@
 /**
  * ReadHtmlTool - Agent-safe HTML reader
- * 
+ *
  * Design goals:
- * - Never return the full page HTML
- * - Structure first, content second (DOM outline first)
- * - Agent-oriented selector / section level reading
- * - Prevent minified / inline script from blowing up context
- * 
+ * - Never return full page HTML
+ * - Structure first, then content (DOM outline first)
+ * - Agent-oriented selector / section-level reading
+ * - Prevent minified / inline script from blowing the context
+ *
  * Three modes:
- * 1. outline (default): Returns DOM skeleton, Agent views structure first then decides what to read
- * 2. section: Reads plain text by semantic blocks (main/article/body)
- * 3. selector: Reads precisely by CSS selector
+ * 1. outline (default): Returns the DOM skeleton so the agent can examine structure before deciding what to read
+ * 2. section: Read plain text by semantic block (main/article/body)
+ * 3. selector: Precise reading by CSS selector
  */
 
 import * as fs from 'fs';
@@ -24,10 +24,10 @@ export type { BuiltinToolDefinition } from './types';
 // ============ Safety thresholds ============
 const HTML_READ_LIMITS = {
   PROBE_BYTES: 64 * 1024,           // 64KB for DOM probing (slightly larger than original design, covers more structure)
-  MAX_TEXT_BYTES: 96 * 1024,        // 96KB maximum text output
+  MAX_TEXT_BYTES: 96 * 1024,        // 96KB max text output
   MAX_NODES: 200,                   // Maximum number of DOM nodes to return
-  MAX_TEXT_NODE: 4 * 1024,          // 4KB maximum per text node
-  MAX_SELECTOR_DEPTH: 3,            // Maximum nesting depth for selector
+  MAX_TEXT_NODE: 4 * 1024,          // 4KB single text node limit
+  MAX_SELECTOR_DEPTH: 3,            // Maximum selector nesting depth
 } as const;
 
 // ============ Type definitions ============
@@ -41,10 +41,10 @@ export interface ReadHtmlToolArgs {
   // Mode selection (default: outline)
   mode?: HtmlReadMode;
 
-  // Section mode parameters
+  // section mode parameter
   section?: HtmlSection;
 
-  // Selector mode parameters (supports minimal CSS subset)
+  // selector mode parameter (supports a minimal CSS subset)
   selector?: string; // e.g. "#main", ".content", "article"
 
   // Operation description for UI display
@@ -56,33 +56,33 @@ export interface HtmlOutlineNode {
   id?: string;
   className?: string;
   depth: number;
-  textPreview?: string; // First 50 characters preview
+  textPreview?: string; // First 50-character preview
 }
 
 export interface ReadHtmlToolResult {
   fileName: string;
   filePath: string;
   mode: HtmlReadMode;
-  
-  // Returned in outline mode
+
+  // outline mode result
   outline?: HtmlOutlineNode[];
-  
-  // Returned in section / selector mode
+
+  // section / selector mode result
   content?: string;
-  
+
   // Metadata
   truncated: boolean;
   truncationReason?: TruncationReason;
   bytesRead: number;
-  
-  // Assists Agent decision-making
+
+  // Assist agent decision-making
   hasScript: boolean;
   hasStyle: boolean;
-  suggestedSelectors?: string[]; // Suggested selectors
+  suggestedSelectors?: string[]; // Recommended selectors
 }
 
 export class ReadHtmlTool {
-  
+
   /**
    * Get tool definition (Agent-friendly description)
    */
@@ -140,52 +140,52 @@ RECOMMENDED FLOW:
   /**
    * Execute HTML reading
    */
-  static async execute(args: ReadHtmlToolArgs): Promise<ReadHtmlToolResult> {
+  static async execute(args: ReadHtmlToolArgs, options?: { signal?: AbortSignal }): Promise<ReadHtmlToolResult> {
     const { filePath, mode = 'outline' } = args;
-    
+
     if (!filePath) {
       throw new Error('filePath is required');
     }
-    
-    // Verify file exists
+
+    // Validate file exists
     try {
       await fsPromises.access(filePath, fs.constants.R_OK);
     } catch {
       throw new Error(`File not accessible: ${filePath}`);
     }
-    
-    // Phase 1: Probe read (only reads the first N KB)
+
+    // Phase 1: Probe read (read only the first N KB)
     const { html, bytesRead } = await this.probeHtml(filePath);
-    
-    // Detect characteristics
+
+    // Detect features
     const hasScript = /<script[\s\S]*?>/i.test(html);
     const hasStyle = /<style[\s\S]*?>/i.test(html);
-    
+
     const fileName = path.basename(filePath);
-    
+
     // Execute based on mode
     switch (mode) {
       case 'outline':
         return this.buildOutline(filePath, fileName, html, bytesRead, hasScript, hasStyle);
-      
+
       case 'section':
         return this.readSection(filePath, fileName, html, bytesRead, hasScript, hasStyle, args.section || 'body');
-      
+
       case 'selector':
         if (!args.selector) {
           throw new Error('selector is required in selector mode');
         }
         return this.readBySelector(filePath, fileName, html, bytesRead, hasScript, hasStyle, args.selector);
-      
+
       default:
         throw new Error(`Unsupported mode: ${mode}`);
     }
   }
 
   // ============ Phase 1: Probe Read ============
-  
+
   /**
-   * Only reads the first N KB of the file to avoid full loading
+   * Read only the first N KB of the file to avoid full load
    */
   private static async probeHtml(filePath: string): Promise<{ html: string; bytesRead: number }> {
     const fd = await fsPromises.open(filePath, 'r');
@@ -200,9 +200,9 @@ RECOMMENDED FLOW:
   }
 
   // ============ Outline Mode ============
-  
+
   /**
-   * Build DOM skeleton (structure only, no content)
+   * Build the DOM skeleton (no content, only structure)
    */
   private static buildOutline(
     filePath: string,
@@ -214,28 +214,28 @@ RECOMMENDED FLOW:
   ): ReadHtmlToolResult {
     const outline: HtmlOutlineNode[] = [];
     const depthStack: string[] = [];
-    
-    // Void (self-closing) tags
+
+    // Self-closing tags
     const voidTags = new Set([
       'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
       'link', 'meta', 'param', 'source', 'track', 'wbr'
     ]);
-    
+
     // Match all tags
     const tagRegex = /<\s*(\/)?\s*([a-zA-Z0-9]+)([^>]*)>/g;
     let match: RegExpExecArray | null;
-    
+
     while ((match = tagRegex.exec(html)) !== null) {
       if (outline.length >= HTML_READ_LIMITS.MAX_NODES) break;
-      
+
       const isClose = Boolean(match[1]);
       const tag = match[2].toLowerCase();
       const attrs = match[3] || '';
-      
+
       // Skip script and style content
       if (tag === 'script' || tag === 'style') {
         if (!isClose) {
-          // Jump to the corresponding closing tag
+          // Skip to the matching closing tag
           const closeRegex = new RegExp(`<\\s*/\\s*${tag}\\s*>`, 'gi');
           closeRegex.lastIndex = tagRegex.lastIndex;
           const closeMatch = closeRegex.exec(html);
@@ -245,26 +245,26 @@ RECOMMENDED FLOW:
         }
         continue;
       }
-      
+
       if (isClose) {
         // Closing tag, decrease depth
         const lastOpenTag = depthStack.pop();
-        // Error tolerance: if tags don't match, attempt to fix
+        // Error tolerance: if tags don't match, attempt recovery
         if (lastOpenTag && lastOpenTag !== tag) {
           depthStack.push(lastOpenTag); // Put it back
         }
       } else {
         // Opening tag
         const depth = depthStack.length;
-        
+
         // Parse attributes
         const idMatch = attrs.match(/id\s*=\s*["']([^"']+)["']/i);
         const classMatch = attrs.match(/class\s*=\s*["']([^"']+)["']/i);
-        
-        // Get text preview (first 50 characters after the tag)
+
+        // Get text preview (first 50 chars after the tag)
         const afterTag = html.slice(tagRegex.lastIndex, tagRegex.lastIndex + 100);
         const textPreview = this.extractTextPreview(afterTag);
-        
+
         outline.push({
           tag,
           id: idMatch?.[1],
@@ -272,17 +272,17 @@ RECOMMENDED FLOW:
           depth,
           textPreview: textPreview || undefined
         });
-        
-        // Only push non-void tags onto the stack
+
+        // Only push non-self-closing tags onto the stack
         if (!voidTags.has(tag) && !attrs.includes('/>')) {
           depthStack.push(tag);
         }
       }
     }
-    
-    // Generate suggested selectors
+
+    // Generate recommended selectors
     const suggestedSelectors = this.generateSuggestedSelectors(outline);
-    
+
     return {
       fileName,
       filePath,
@@ -301,12 +301,12 @@ RECOMMENDED FLOW:
    * Extract text preview (first 50 characters)
    */
   private static extractTextPreview(html: string): string {
-    // Remove tags, keep text only
+    // Remove tags, keep only text
     const text = html
       .replace(/<[^>]+>/g, '')
       .replace(/\s+/g, ' ')
       .trim();
-    
+
     if (text.length > 50) {
       return text.slice(0, 50) + '...';
     }
@@ -314,29 +314,29 @@ RECOMMENDED FLOW:
   }
 
   /**
-   * Generate suggested selectors based on the outline
+   * Generate recommended selectors based on the outline
    */
   private static generateSuggestedSelectors(outline: HtmlOutlineNode[]): string[] {
     const selectors: string[] = [];
     const seen = new Set<string>();
-    
-    // Priority: meaningful semantic tags > elements with id > elements with common class
+
+    // Priority: meaningful semantic tags > has id > has common class
     const semanticTags = ['main', 'article', 'nav', 'header', 'footer', 'aside', 'section'];
     const meaningfulClasses = ['content', 'main', 'article', 'post', 'entry', 'body', 'text', 'container'];
-    
+
     for (const node of outline) {
       // Semantic tags
       if (semanticTags.includes(node.tag) && !seen.has(node.tag)) {
         selectors.push(node.tag);
         seen.add(node.tag);
       }
-      
+
       // Elements with id
       if (node.id && !seen.has(`#${node.id}`)) {
         selectors.push(`#${node.id}`);
         seen.add(`#${node.id}`);
       }
-      
+
       // Meaningful classes
       if (node.className) {
         const classes = node.className.split(/\s+/);
@@ -350,17 +350,17 @@ RECOMMENDED FLOW:
           }
         }
       }
-      
+
       if (selectors.length >= 10) break;
     }
-    
+
     return selectors;
   }
 
   // ============ Section Mode ============
-  
+
   /**
-   * Read by semantic section
+   * Read by semantic block
    */
   private static readSection(
     filePath: string,
@@ -371,10 +371,10 @@ RECOMMENDED FLOW:
     hasStyle: boolean,
     section: HtmlSection
   ): ReadHtmlToolResult {
-    // Match section tag and its content
+    // Match the section tag and its content
     const regex = new RegExp(`<${section}[^>]*>([\\s\\S]*?)<\\/${section}>`, 'i');
     const match = html.match(regex);
-    
+
     if (!match) {
       return {
         fileName,
@@ -387,9 +387,9 @@ RECOMMENDED FLOW:
         hasStyle
       };
     }
-    
+
     const { content, truncated, truncationReason } = this.extractAndCleanText(match[1]);
-    
+
     return {
       fileName,
       filePath,
@@ -404,9 +404,9 @@ RECOMMENDED FLOW:
   }
 
   // ============ Selector Mode ============
-  
+
   /**
-   * Read by CSS selector (supports minimal subset)
+   * Read by CSS selector (supports a minimal subset)
    */
   private static readBySelector(
     filePath: string,
@@ -418,7 +418,7 @@ RECOMMENDED FLOW:
     selector: string
   ): ReadHtmlToolResult {
     let regex: RegExp;
-    
+
     // Parse selector type
     if (selector.startsWith('#')) {
       // ID selector: #main
@@ -433,9 +433,9 @@ RECOMMENDED FLOW:
       const tag = this.escapeRegex(selector);
       regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
     }
-    
+
     const match = html.match(regex);
-    
+
     if (!match) {
       return {
         fileName,
@@ -448,11 +448,11 @@ RECOMMENDED FLOW:
         hasStyle
       };
     }
-    
+
     // match[1] is the tag name (for ID/Class selectors), match[2] is the content
     const contentMatch = selector.startsWith('#') || selector.startsWith('.') ? match[2] : match[1];
     const { content, truncated, truncationReason } = this.extractAndCleanText(contentMatch || '');
-    
+
     return {
       fileName,
       filePath,
@@ -467,9 +467,9 @@ RECOMMENDED FLOW:
   }
 
   // ============ Utility methods ============
-  
+
   /**
-   * Extract and clean text (remove script/style, limit size)
+   * Extract and clean text (remove script/style, enforce size limits)
    */
   private static extractAndCleanText(htmlFragment: string): {
     content: string;
@@ -489,17 +489,17 @@ RECOMMENDED FLOW:
       .replace(/&#\d+;/g, '')    // Remove numeric entities
       .replace(/\s+/g, ' ')      // Merge whitespace
       .trim();
-    
+
     let truncated = false;
     let truncationReason: TruncationReason | undefined;
-    
-    // Check single node limit
+
+    // Check single-node limit
     if (text.length > HTML_READ_LIMITS.MAX_TEXT_NODE) {
       text = text.slice(0, HTML_READ_LIMITS.MAX_TEXT_NODE) + '\n[... text truncated ...]';
       truncated = true;
       truncationReason = 'text_node_limit';
     }
-    
+
     // Check total byte limit
     const byteSize = Buffer.byteLength(text, 'utf8');
     if (byteSize > HTML_READ_LIMITS.MAX_TEXT_BYTES) {
@@ -509,7 +509,7 @@ RECOMMENDED FLOW:
       truncated = true;
       truncationReason = 'max_bytes';
     }
-    
+
     return { content: text, truncated, truncationReason };
   }
 

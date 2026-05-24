@@ -1,35 +1,41 @@
 // src/renderer/components/chat/ToolCallsSection.tsx
-// Tool Calls Section component, renders the entire tool calls area, calculates overall execution status
+// Tool Calls Section component, renders the entire tool calls area and computes overall execution status
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Loader2, CheckCircle } from 'lucide-react';
-import { ToolCall, Message as MessageType } from '../../types/chatTypes';
+import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { ToolCall, Message as MessageType, ToolMessage } from '@shared/types/chatTypes';
 import { ToolCallItem } from './ToolCallItem';
 import { getToolCallsSummaryText } from './toolCallDisplayConfig';
+import { ToolCallExecutionStatus } from './toolCallViews/types';
+import { ChatStatus, useMessages } from '@renderer/lib/chat/agentChatSessionCacheManager';
 
 /**
  * Tool Calls overall execution status
- * - executing: All tools are still executing (no results yet)
- * - partial: Some tools have completed, some are still executing
- * - completed: All tools have completed
+ * - executing: all tools still executing (no results yet)
+ * - partial: some tools completed, some still executing
+ * - completed: all tools completed
  */
-export type ToolCallsSectionStatus = 'executing' | 'partial' | 'completed';
+export type ToolCallsSectionStatus = 'executing' | 'partial' | 'completed' | 'interrupted';
 
 export interface ToolCallsSectionProps {
   /** Tool Calls array */
   toolCalls: ToolCall[];
-  /** All messages (used to find tool results) */
-  allMessages: MessageType[];
-  /** Message ID (used to generate unique keys) */
+  /** Current chat session status, used to distinguish actively executing vs. historically interrupted */
+  chatStatus?: ChatStatus;
+  /** Source assistant message index for this group of tool calls, used to identify if superseded by later messages */
+  sourceMessageIndex?: number;
+  /** Message ID (used for generating unique keys) */
   messageId?: string;
 }
 
 /**
- * Calculate Tool Calls overall execution status
+ * Compute the overall Tool Calls execution status
  */
 const computeToolCallsSectionStatus = (
   toolCalls: ToolCall[],
-  allMessages: MessageType[]
+  allMessages: MessageType[],
+  chatStatus?: ToolCallsSectionProps['chatStatus'],
+  sourceMessageIndex?: number
 ): ToolCallsSectionStatus => {
   // Filter valid tool calls
   const validToolCalls = toolCalls.filter(tc =>
@@ -41,15 +47,23 @@ const computeToolCallsSectionStatus = (
     return 'completed';
   }
 
-  // Count the number of completed tool calls
+  // Count completed tool calls
   const completedCount = validToolCalls.filter(tc =>
     allMessages.some(msg =>
-      msg.role === 'tool' && msg.tool_call_id === tc.id
+      msg.role === 'tool' && msg.tool_call_id === tc.id && msg.streamingComplete !== false
     )
   ).length;
 
+  const hasSubsequentConversationMessage = typeof sourceMessageIndex === 'number'
+    ? allMessages.some((msg, index) => index > sourceMessageIndex && msg.role !== 'tool')
+    : false;
+
   if (completedCount === validToolCalls.length) {
     return 'completed';
+  } else if (hasSubsequentConversationMessage) {
+    return 'interrupted';
+  } else if (!chatStatus || chatStatus === 'idle') {
+    return 'interrupted';
   } else if (completedCount > 0) {
     return 'partial';
   } else {
@@ -58,7 +72,7 @@ const computeToolCallsSectionStatus = (
 };
 
 /**
- * Render status icon
+ * Render the status icon
  */
 const StatusIcon: React.FC<{ status: ToolCallsSectionStatus }> = ({ status }) => {
   switch (status) {
@@ -73,6 +87,12 @@ const StatusIcon: React.FC<{ status: ToolCallsSectionStatus }> = ({ status }) =>
       return (
         <span className="tool-status-icon completed">
           <CheckCircle size={16} style={{ display: 'block' }} />
+        </span>
+      );
+    case 'interrupted':
+      return (
+        <span className="tool-status-icon interrupted">
+          <AlertCircle size={16} style={{ display: 'block' }} />
         </span>
       );
     default:
@@ -106,16 +126,18 @@ const ArrowIcon: React.FC<{ isExpanded: boolean }> = ({ isExpanded }) => {
 
 /**
  * ToolCallsSection component
- * Renders the entire Tool Calls area, including header status and all Tool Call items
+ * Renders the entire Tool Calls area including header status and all Tool Call items
  * Uses dashed lines to connect all icons
  */
 export const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({
   toolCalls,
-  allMessages,
+  chatStatus,
+  sourceMessageIndex,
   messageId
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
+  const allMessages: MessageType[] = useMessages();
 
   // Filter valid tool calls
   const validToolCalls = toolCalls.filter(tc =>
@@ -126,22 +148,23 @@ export const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({
     return null;
   }
 
-  // Calculate overall execution status
-  const sectionStatus = computeToolCallsSectionStatus(validToolCalls, allMessages);
+  // Compute overall execution status
+  const sectionStatus = computeToolCallsSectionStatus(validToolCalls, allMessages, chatStatus, sourceMessageIndex);
 
   // Get summary text
   const summaryText = getToolCallsSummaryText(validToolCalls.length);
 
   // Find tool result
-  const findToolResult = (toolCallId: string): MessageType | null => {
-    return allMessages.find(msg =>
-      msg.role === 'tool' && msg.tool_call_id === toolCallId
-    ) || null;
+  const findToolResult = (tid: string): ToolMessage | null => {
+    for (const m of allMessages) {
+      if (m.role === 'tool' && m.tool_call_id === tid) return m;
+    }
+    return null;
   };
 
   /**
    * Handle expand/collapse click
-   * Keep click position unchanged: expand downward when opening, collapse upward when closing
+   * Keep click position stable: expand downward, collapse upward
    */
   const handleToggle = useCallback(() => {
     if (!headerRef.current) {
@@ -153,21 +176,21 @@ export const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({
     const headerRect = headerRef.current.getBoundingClientRect();
     const headerTopBeforeToggle = headerRect.top;
 
-    // Toggle expand state
+    // Toggle expanded state
     setIsExpanded(prev => !prev);
 
-    // Use requestAnimationFrame to ensure DOM updates before adjusting scroll
+    // Use requestAnimationFrame to ensure DOM update before adjusting scroll
     requestAnimationFrame(() => {
       if (!headerRef.current) return;
 
-      // Get the updated header position
+      // Get updated header position
       const newHeaderRect = headerRef.current.getBoundingClientRect();
       const headerTopAfterToggle = newHeaderRect.top;
 
       // Calculate position difference
       const diff = headerTopAfterToggle - headerTopBeforeToggle;
 
-      // If there's a difference, adjust scroll position to keep header at its original viewport position
+      // If there's a difference, adjust scroll to keep header at original viewport position
       if (Math.abs(diff) > 1) {
         // Find the nearest scrollable container (chat-container-reverse)
         const scrollContainer = headerRef.current.closest('.chat-container-reverse');
@@ -199,13 +222,27 @@ export const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({
 
       {/* Expanded Tool Call list */}
       {isExpanded && validToolCalls.map((toolCall, index) => (
-        <ToolCallItem
-          key={`${messageId}_tool_${toolCall.id || index}`}
-          toolCall={toolCall}
-          toolResult={findToolResult(toolCall.id)}
-          itemKey={`${messageId}_tool_${toolCall.id || index}`}
-          isLast={index === validToolCalls.length - 1}
-        />
+        (() => {
+          const toolResult = findToolResult(toolCall.id);
+          const executionStatus: ToolCallExecutionStatus = toolResult
+            ? toolResult.streamingComplete === false
+              ? 'executing'
+              : 'completed'
+            : sectionStatus === 'interrupted'
+              ? 'interrupted'
+              : 'executing';
+
+          return (
+            <ToolCallItem
+              key={`${messageId}_tool_${toolCall.id || index}`}
+              toolCall={toolCall}
+              toolResult={toolResult}
+              executionStatus={executionStatus}
+              itemKey={`${messageId}_tool_${toolCall.id || index}`}
+              isLast={index === validToolCalls.length - 1}
+            />
+          );
+        })()
       ))}
     </div>
   );

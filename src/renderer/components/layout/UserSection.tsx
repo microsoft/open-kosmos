@@ -1,28 +1,23 @@
 import React from 'react';
-import { AuthData } from '../../types/authTypes';
+import { userMenuVisibleAtom } from './UserMenu';
 import '../../styles/UserSection.css';
+import { BuddyEntryButton } from '../buddy';
+import { useAuthContext } from '../auth/AuthProvider';
 
-interface UserSectionProps {
-  authData: AuthData | null;
-  onLogout: () => void;
-  onUserMenuToggle: () => void;
-  isUserMenuOpen: boolean;
-}
 
-const UserSection: React.FC<UserSectionProps> = ({
-  authData,
-  onUserMenuToggle,
-}) => {
+const UserSection: React.FC = () => {
+  const { authData } = useAuthContext();
   const user = authData?.ghcAuth?.user;
   const userDisplayName = user?.name || user?.login || authData?.ghcAuth?.alias || 'Unknown User';
   const userAvatarUrl = user?.avatarUrl;
+  const setUserMenuVisible = userMenuVisibleAtom.useChange();
 
   return (
     <div className="user-section">
       {/* Profile Button */}
       <button
         className="profile-icon-button"
-        onClick={onUserMenuToggle}
+        onClick={() => setUserMenuVisible((prev) => !prev)}
         title={userDisplayName}
         aria-label="User menu"
         type="button"
@@ -42,6 +37,9 @@ const UserSection: React.FC<UserSectionProps> = ({
           </span>
         )}
       </button>
+
+      {/* Buddy Egg Icon */}
+      <BuddyEntryButton />
     </div>
   );
 };

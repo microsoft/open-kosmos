@@ -4,7 +4,8 @@ import React, { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Download, Trash2, AlertCircle } from 'lucide-react'
 import '../../styles/ContentView.css'
-import '../../styles/ToolbarSettingsView.css'
+import '../../styles/SettingsComponents.css'
+import '../../styles/ToolbarSettings.css'
 import '../../styles/RuntimeSettings.css'
 
 import type {

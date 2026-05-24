@@ -1,6 +1,6 @@
 /**
  * Type definitions for Profile operations - Backend
- * 
+ *
  * This module exports all profile-related types used in the main process.
  */
 

@@ -66,7 +66,7 @@ export default function Canvas() {
       style={style}
       onContextMenu={e => e.preventDefault()}
       onPointerDown={isValid ? undefined : onPointerDown}
-      // Todo: implement confirm on double-click
+      // Todo: double-click to confirm
     >
       {renderContent()}
     </div>

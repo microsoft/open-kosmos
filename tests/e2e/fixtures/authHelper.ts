@@ -2,10 +2,10 @@ import type { ElectronApplication } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 
-// ==================== V3 AuthData Type Definitions ====================
+// ==================== V3 AuthData type definitions ====================
 
 /**
- * V3 AuthData structure (matches hasValidGhcAuth validation rules in src/main/lib/auth/authManager.ts)
+ * V3 AuthData structure (matches the hasValidGhcAuth validation rules in src/main/lib/auth/authManager.ts)
  *
  * Validation requirements:
  * - ghcAuth.user.id     — non-empty string
@@ -55,13 +55,13 @@ export interface MockAuthData {
   ghcAuth: MockGhcAuth;
 }
 
-// ==================== Mock Data Retrieval Functions ====================
+// ==================== Mock data retrieval functions ====================
 
 /**
- * Read mock-data JSON file and return V3 AuthData object
- * Alias can be dynamically adjusted
+ * Read the mock-data JSON file and return a V3 AuthData object.
+ * The alias can be overridden dynamically.
  *
- * @param alias - User alias (defaults to the value in JSON)
+ * @param alias - User alias (defaults to the value in the JSON file)
  * @returns V3 AuthData object
  */
 export function getMockAuthData(alias?: string): MockAuthData {
@@ -81,9 +81,9 @@ export function getMockAuthData(alias?: string): MockAuthData {
 }
 
 /**
- * Get mock AuthData for the second user (for multi-user scenarios)
+ * Get the mock AuthData for the second user (for multi-user scenarios).
  *
- * @returns V3 AuthData object (2nd user)
+ * @returns V3 AuthData object (second user)
  */
 export function getMockAuthDataUser2(): MockAuthData {
   const jsonPath = path.resolve(
@@ -94,7 +94,7 @@ export function getMockAuthDataUser2(): MockAuthData {
 }
 
 /**
- * Write AuthData list to userData directory, creating the complete profile directory structure
+ * Write an AuthData list to the userData directory, establishing the full profile directory structure.
  *
  * Created file structure:
  * {userDataDir}/profiles/{alias}/
@@ -104,7 +104,7 @@ export function getMockAuthDataUser2(): MockAuthData {
  *   └── skills/         — skills directory
  *
  * @param userDataDir - test userData directory path
- * @param authDataList - AuthData list to write
+ * @param authDataList - list of AuthData objects to write
  */
 export function seedUserDataDir(
   userDataDir: string,
@@ -119,7 +119,7 @@ export function seedUserDataDir(
     fs.mkdirSync(path.join(profileDir, 'chatSessions'), { recursive: true });
     fs.mkdirSync(path.join(profileDir, 'skills'), { recursive: true });
 
-    // Write auth.json (complete V3 AuthData)
+    // Write auth.json (full V3 AuthData)
     fs.writeFileSync(
       path.join(profileDir, 'auth.json'),
       JSON.stringify(authData, null, 2),
@@ -135,7 +135,7 @@ export function seedUserDataDir(
 }
 
 /**
- * Return mock profile.json content
+ * Return mock profile.json content.
  *
  * @param alias - user alias
  * @returns profile.json data object
@@ -178,7 +178,7 @@ export function getMockProfileData(alias: string): Record<string, unknown> {
 }
 
 /**
- * Return mock DeviceCodeResponse (simulates GitHub OAuth device code)
+ * Return a mock DeviceCodeResponse (simulates a GitHub OAuth device code).
  *
  * @returns DeviceCodeResponse object
  */
@@ -193,7 +193,7 @@ export function getMockDeviceCode(): Record<string, unknown> {
 }
 
 /**
- * Return mock authInfo for device flow success response (for auth:deviceFlowSuccess event)
+ * Return mock authInfo for a successful device flow (used for the auth:deviceFlowSuccess event).
  *
  * @param alias - user alias
  * @returns AuthData after successful device flow
@@ -204,14 +204,14 @@ export function getMockDeviceFlowSuccessAuthInfo(
   return getMockAuthData(alias);
 }
 
-// ==================== IPC Mock Injection Functions ====================
+// ==================== IPC mock injection functions ====================
 
 /**
- * Bypass authentication via IPC Mock (V3 version)
- * Inject mock handlers in the Electron main process so the app thinks the user is logged in
+ * Bypass authentication via IPC Mock (V3 version).
+ * Injects mock handlers into the Electron main process so the app believes the user is signed in.
  *
  * @param electronApp - Playwright ElectronApplication instance
- * @param authDataList - mock AuthData list to return
+ * @param authDataList - list of mock AuthData objects to return
  */
 export async function mockAuthIpcHandlers(
   electronApp: ElectronApplication,
@@ -226,25 +226,25 @@ export async function mockAuthIpcHandlers(
         try {
           ipcMain.removeHandler(channel);
         } catch {
-          // handler may not exist, ignore error
+          // handler may not exist — ignore the error
         }
         ipcMain.handle(channel, handler);
       };
 
-      // Mock auth:getLocalActiveSessions → return pre-seeded user list
-      // This is the key mock that prevents real GitHub API calls
-      // All return values must use { success: true, data: ... } envelope format
+      // Mock auth:getLocalActiveSessions → return pre-configured user list
+      // This is the key mock that prevents real GitHub API calls.
+      // All return values must use the { success: true, data: ... } envelope format.
       safeHandle('auth:getLocalActiveSessions', () => ({
         success: true,
         data: dataList,
       }));
 
-      // Mock auth:setCurrentSession → success (skip real post-auth initialization)
+      // Mock auth:setCurrentSession → success (does not perform real post-auth initialization)
       safeHandle('auth:setCurrentSession', () => ({
         success: true,
       }));
 
-      // Mock auth:getCurrentSession → return first user (if any)
+      // Mock auth:getCurrentSession → return the first user (if any)
       safeHandle('auth:getCurrentSession', () => ({
         success: true,
         data: dataList.length > 0 ? dataList[0] : null,
@@ -255,7 +255,7 @@ export async function mockAuthIpcHandlers(
         success: true,
       }));
 
-      // Mock auth:startGhcDeviceFlow → do not actually start device flow (tests manually push events)
+      // Mock auth:startGhcDeviceFlow → does not actually start device flow (test pushes events manually)
       safeHandle('auth:startGhcDeviceFlow', () => ({
         success: true,
         message: 'Mock: device flow started (no real API call)',
@@ -303,7 +303,7 @@ export async function mockAuthIpcHandlers(
 }
 
 /**
- * Mock IPC handlers for empty user environment (for device flow tests)
+ * Mock IPC handlers for an empty user environment (used for device flow tests).
  *
  * @param electronApp - Playwright ElectronApplication instance
  */
@@ -314,7 +314,7 @@ export async function mockEmptyAuthIpcHandlers(
 }
 
 /**
- * Clear auth mocks in the main process, restoring real behavior
+ * Clear auth mocks from the main process, restoring real behavior.
  *
  * @param electronApp - Playwright ElectronApplication instance
  * @param channels - list of IPC channels to clear
@@ -349,11 +349,11 @@ export async function clearAuthMocks(
   );
 }
 
-// ==================== Backward-Compatible Legacy Functions ====================
+// ==================== Backward-compatible legacy functions ====================
 
 /**
- * Pre-seed auth data to test userData directory (backward compatible with old version)
- * @deprecated Use seedUserDataDir + getMockAuthData instead
+ * Seed authentication data into the test userData directory (backward-compatible legacy version).
+ * @deprecated Use seedUserDataDir + getMockAuthData instead.
  */
 export function seedAuthData(
   userDataDir: string,
@@ -369,8 +369,8 @@ export function seedAuthData(
 }
 
 /**
- * Bypass authentication via IPC Mock (backward compatible with old version)
- * @deprecated Use mockAuthIpcHandlers instead
+ * Bypass authentication via IPC Mock (backward-compatible legacy version).
+ * @deprecated Use mockAuthIpcHandlers instead.
  */
 export async function mockAuthInMainProcess(
   electronApp: ElectronApplication,

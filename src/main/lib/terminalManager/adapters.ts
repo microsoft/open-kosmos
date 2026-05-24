@@ -1,12 +1,12 @@
 /**
- * Adapter functions - Provide convenient integration for existing components
+ * Adapter functions — provide convenient integration points for existing components.
  */
 
 import { getTerminalManager } from './TerminalManager';
 import { TerminalConfig, TerminalResult } from './types';
 
 /**
- * Create an adapter for ExecuteCommandTool
+ * Create an adapter for ExecuteCommandTool.
  */
 export async function createExecuteCommandAdapter(): Promise<{
   execute: (config: {
@@ -37,7 +37,7 @@ export async function createExecuteCommandAdapter(): Promise<{
 }
 
 /**
- * Create an adapter for MCP Transport
+ * Create an adapter for MCP Transport.
  */
 export async function createMcpTransportAdapter(): Promise<{
   create: (config: {

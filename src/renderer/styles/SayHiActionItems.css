@@ -1,0 +1,85 @@
+/* ============================================================
+   SayHiActionItems – clickable prompt chips inside Say-Hi messages
+   Subtle orange accent; becomes vivid on hover.
+   Supports grouped action items with section headings.
+   ============================================================ */
+
+.say-hi-action-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+/* Group wrapper */
+.say-hi-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Group heading – uses orange accent so it stands out on dark backgrounds */
+.say-hi-action-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8853a;
+  letter-spacing: 0.02em;
+  padding-left: 2px;
+}
+
+/* Chips within a group – vertical stack */
+.say-hi-action-group-chips {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Each action chip – soft orange tint */
+.say-hi-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid rgba(249, 115, 22, 0.30);
+  border-radius: 18px;
+  background: rgba(249, 115, 22, 0.08);
+  color: #e8853a;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.say-hi-action-chip:hover {
+  background: rgba(249, 115, 22, 0.18);
+  border-color: rgba(249, 115, 22, 0.50);
+  color: #f59e0b;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
+}
+
+.say-hi-action-chip:active {
+  transform: translateY(0);
+  box-shadow: none;
+  background: rgba(249, 115, 22, 0.25);
+}
+
+.say-hi-action-chip-icon {
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+.say-hi-action-chip:hover .say-hi-action-chip-icon {
+  opacity: 1;
+}
+
+.say-hi-action-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

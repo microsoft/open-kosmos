@@ -5,13 +5,13 @@ import type { ScreenshotSettings } from '@shared/ipc/screenshot';
 import { getUnifiedLogger } from '../unifiedLogger';
 import { registerScreenshotShortcut } from './screenshotShortcut';
 import { isFeatureEnabled } from '../featureFlags';
+import { appCacheManager } from "../userDataADO";
 
 const logger = getUnifiedLogger();
 
 let isRegistered = false;
 
 async function getAppCacheManager() {
-  const { appCacheManager } = await import('../userDataADO');
   return appCacheManager;
 }
 
@@ -23,7 +23,7 @@ async function getSettings(): Promise<ScreenshotSettings> {
   const acManager = await getAppCacheManager();
   const settings = acManager.getScreenshotSettings();
   // When the feature flag is disabled, force enabled=false
-  if (!isFeatureEnabled('kosmosFeatureScreenshot')) {
+  if (!isFeatureEnabled('openkosmosFeatureScreenshot')) {
     return { ...settings, enabled: false };
   }
   return settings;

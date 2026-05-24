@@ -1,20 +1,21 @@
 /**
- * Token loading module
- * Reads GitHub and Copilot tokens from the auth.json file
+ * Token loading module.
+ * Reads GitHub and Copilot tokens from the auth.json file.
  */
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const brandConfig = require('../brand-config');
+
+const openkosmosConfig = require('../../brands/openkosmos/config.json');
 
 /**
- * Get the auth.json file path
+ * Get the path to the auth.json file.
  */
 function getAuthFilePath() {
-  // Default path
-  // Prefer productName as directory name, consistent with Electron app.setName()
-  const appDirName = brandConfig.config.productName || 'openkosmos-app';
+  // Default path.
+  // Prefer productName as the directory name to stay in sync with Electron app.setName().
+  const appDirName = openkosmosConfig.productName || 'openkosmos-app';
 
   // Windows: AppData/Roaming/<AppName>
   // macOS: Library/Application Support/<AppName>
@@ -32,34 +33,34 @@ function getAuthFilePath() {
     userDataRoot,
     appDirName,
     'profiles',
-    'yanhu_microsoft',
+    'demo-user',
     'auth.json',
   );
 
-  // Support custom path via environment variable
-  const customPath = process.env.KOSMOS_AUTH_FILE;
+  // Support a custom path via environment variable
+  const customPath = process.env.OPENKOSMOS_AUTH_FILE;
 
   return customPath || defaultPath;
 }
 
 /**
- * Load tokens from auth.json
+ * Load tokens from auth.json.
  */
 function loadTokensFromAuthFile() {
     const authFilePath = getAuthFilePath();
     
     try {
-        // Check if file exists
+        // Check if the file exists
         if (!fs.existsSync(authFilePath)) {
-            throw new Error(`auth.json file does not exist: ${authFilePath}`);
+            throw new Error(`auth.json file not found: ${authFilePath}`);
         }
         
         // Read and parse the file
         const authData = JSON.parse(fs.readFileSync(authFilePath, 'utf8'));
-        
-        // Validate data structure
+
+        // Validate the data structure
         if (!authData.ghcAuth || !authData.ghcAuth.gitHubTokens || !authData.ghcAuth.copilotTokens) {
-            throw new Error('auth.json file format is incorrect');
+            throw new Error('auth.json file format is invalid');
         }
         
         const gitHubTokens = authData.ghcAuth.gitHubTokens;
@@ -81,8 +82,8 @@ function loadTokensFromAuthFile() {
 }
 
 /**
- * Get tokens
- * Reads from environment variables first, otherwise from auth.json
+ * Get tokens.
+ * Reads from environment variables first; falls back to auth.json.
  */
 function getTokens() {
     // If environment variables are set, use them first
@@ -103,7 +104,7 @@ function getTokens() {
 }
 
 /**
- * Validate whether tokens are valid
+ * Validate whether tokens are valid.
  */
 function validateTokens(tokens) {
     if (!tokens.refresh || !tokens.access) {
@@ -112,7 +113,7 @@ function validateTokens(tokens) {
     
     const now = Date.now();
     if (tokens.expires && now >= tokens.expires) {
-        console.warn('⚠️  Warning: Access token has expired');
+        console.warn('⚠️  Warning: access token has expired');
         return false;
     }
     
@@ -120,11 +121,11 @@ function validateTokens(tokens) {
 }
 
 /**
- * Print token information
+ * Print token information.
  */
 function printTokenInfo(tokens) {
     console.log('🔐 Token info:');
-    console.log(`   Source: ${tokens.source === 'environment' ? 'Environment variables' : 'auth.json'}`);
+    console.log(`   Source: ${tokens.source === 'environment' ? 'environment variables' : 'auth.json'}`);
     
     if (tokens.source === 'auth_file' && tokens.authFilePath) {
         console.log(`   File path: ${tokens.authFilePath}`);
@@ -141,7 +142,7 @@ function printTokenInfo(tokens) {
             const remaining = Math.floor((tokens.expires - now) / 1000 / 60 / 60);
             console.log(`   Validity: ${remaining} hours remaining`);
         } else {
-            console.log('   Validity: Expired ❌');
+            console.log('   Validity: expired ❌');
         }
     }
     

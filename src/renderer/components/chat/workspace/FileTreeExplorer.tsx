@@ -13,6 +13,9 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { FileTreeNode } from '../../../lib/chat/workspaceOps';
+import { FileTreeNodeMenuAtom } from '../../menu/FileTreeNodeContextMenu';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[FileTreeExplorer]');
 
 interface FileTreeExplorerProps {
   nodes: FileTreeNode[];
@@ -22,7 +25,6 @@ interface FileTreeExplorerProps {
   directoryStack?: FileTreeNode[];
   onDirectoryStackChange?: (stack: FileTreeNode[]) => void;
   showBreadcrumb?: boolean; // Whether to show breadcrumb navigation
-  onFileTreeNodeMenuToggle?: (event: React.MouseEvent, node: any, workspacePath: string) => void;
   /** Lazy loading callback: called when expanding directory, parent component responsible for fetching and injecting child nodes */
   onLoadChildren?: (dirPath: string) => Promise<void>;
 }
@@ -35,7 +37,6 @@ interface FileTreeNodeItemProps {
   expandedDirs: Set<string>;
   onToggleExpand?: (path: string) => void;
   onLoadChildren?: (dirPath: string) => Promise<void>;
-  onFileTreeNodeMenuToggle?: (event: React.MouseEvent, node: any, workspacePath: string) => void;
 }
 
 /**
@@ -49,16 +50,15 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = React.memo(({
   expandedDirs,
   onToggleExpand,
   onLoadChildren,
-  onFileTreeNodeMenuToggle
 }) => {
-  
+
   const isExpanded = expandedDirs.has(node.path);
   const hasChildren = node.type === 'directory' && node.children && node.children.length > 0;
   const isDirectory = node.type === 'directory';
 
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (node.type === 'file') {
       // File click: handle through onFileClick callback
       if (onFileClick) {
@@ -70,7 +70,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = React.memo(({
             await window.electronAPI.workspace.openPath(node.path);
           }
         } catch (error) {
-          console.error('[FileTreeExplorer] Error opening file:', error);
+          logger.error('[FileTreeExplorer] Error opening file:', error);
         }
       }
     } else if (node.type === 'directory' && onToggleExpand) {
@@ -83,20 +83,20 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = React.memo(({
     }
   }, [node, onToggleExpand, onFileClick, expandedDirs, onLoadChildren]);
 
+  const fileTreeNodeMenuActions = FileTreeNodeMenuAtom.useChange();
+
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onFileTreeNodeMenuToggle) {
-      onFileTreeNodeMenuToggle(e, node, workspacePath);
-    }
-  }, [onFileTreeNodeMenuToggle, node, workspacePath]);
+    fileTreeNodeMenuActions.open(e.clientX, e.clientY, node, workspacePath);
+  }, [node, workspacePath]);
 
   // Get icon
   const getIcon = useMemo(() => {
     if (node.type === 'directory') {
       return isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />;
     }
-    
+
     // Return different icons based on file extension
     const ext = node.name.split('.').pop()?.toLowerCase();
     switch (ext) {
@@ -146,7 +146,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = React.memo(({
           <span className="node-name">{node.name}</span>
         </div>
       </div>
-      
+
       {/* Recursively render child nodes */}
       {isDirectory && isExpanded && hasChildren && (
         <div className="file-tree-children">
@@ -160,7 +160,6 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = React.memo(({
               expandedDirs={expandedDirs}
               onToggleExpand={onToggleExpand}
               onLoadChildren={onLoadChildren}
-              onFileTreeNodeMenuToggle={onFileTreeNodeMenuToggle}
             />
           ))}
         </div>
@@ -199,12 +198,11 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
   directoryStack: externalDirectoryStack,
   onDirectoryStackChange,
   showBreadcrumb = true, // Keep this parameter for backward compatibility, but not used in Tree View
-  onFileTreeNodeMenuToggle,
   onLoadChildren
 }) => {
   // Use localStorage key to save expansion state for each workspace
   const storageKey = `fileTree_expanded_${workspacePath}`;
-  
+
   // Load saved expansion state from localStorage
   const loadExpandedDirs = useCallback((): Set<string> => {
     try {
@@ -214,9 +212,9 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
         return new Set(paths);
       }
     } catch (error) {
-      console.error('[FileTreeExplorer] Failed to load expanded dirs:', error);
+      logger.error('[FileTreeExplorer] Failed to load expanded dirs:', error);
     }
-    
+
     // Default expand root directory
     const initialExpanded = new Set<string>();
     if (nodes.length === 1 && nodes[0].type === 'directory') {
@@ -224,16 +222,16 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
     }
     return initialExpanded;
   }, [storageKey, nodes]);
-  
+
   // Save expansion state to localStorage
   const saveExpandedDirs = useCallback((dirs: Set<string>) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(Array.from(dirs)));
     } catch (error) {
-      console.error('[FileTreeExplorer] Failed to save expanded dirs:', error);
+      logger.error('[FileTreeExplorer] Failed to save expanded dirs:', error);
     }
   }, [storageKey]);
-  
+
   // Expanded directories set (using path as key)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => loadExpandedDirs());
 
@@ -285,7 +283,6 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
             expandedDirs={expandedDirs}
             onToggleExpand={handleToggleExpand}
             onLoadChildren={onLoadChildren}
-            onFileTreeNodeMenuToggle={onFileTreeNodeMenuToggle}
           />
         ))}
       </div>

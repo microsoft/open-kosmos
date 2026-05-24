@@ -1,13 +1,13 @@
 /**
- * Ripgrep Search Engine (Migrated from VSCode)
- * Uses @vscode/ripgrep NPM package for high-performance file search
- * 
+ * Ripgrep Search Engine (migrated from VSCode approach)
+ * Uses the @vscode/ripgrep NPM package for high-performance file search
+ *
  * Core features:
- * 1. Zero configuration - automatically obtains prebuilt binaries via @vscode/ripgrep
+ * 1. Zero configuration - pre-compiled binary obtained automatically via @vscode/ripgrep
  * 2. Cross-platform - supports Windows, macOS, Linux
- * 3. Electron optimized - automatically handles .asar packaging
- * 4. High-performance - based on Rust ripgrep engine
- * 5. VSCode-level Fuzzy Scoring - complete fuzzy matching and sorting algorithm
+ * 3. Electron-optimized - handles .asar packaging automatically
+ * 4. High performance - Rust-based ripgrep engine
+ * 5. VSCode-grade Fuzzy Scoring - complete fuzzy matching and sorting algorithm
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -21,43 +21,42 @@ import {
   type IItemAccessor,
   type FuzzyScorerCache
 } from './fuzzyScorer';
+import { rgPath as rgPathFromPackage } from '@vscode/ripgrep';
 
 /**
- * Get ripgrep binary path
- * Supports development and packaged environments
+ * Get the ripgrep binary path
+ * Supports both development and packaged environments
  */
 function getRipgrepPath(): string {
   try {
-    // Method 1: Try to get the path via @vscode/ripgrep package
-    const rgPathFromPackage = require('@vscode/ripgrep').rgPath;
-    
-    // Check if the path is valid
+    // Method 1: attempt to get the path via the @vscode/ripgrep package
+    // Verify the path is valid
     if (rgPathFromPackage && fs.existsSync(rgPathFromPackage)) {
       return rgPathFromPackage;
     }
-    
+
   } catch (error) {
   }
-  
-  // Method 2: Use process.cwd() as the base path
+
+  // Method 2: use process.cwd() as the base path
   try {
     const platform = process.platform;
     const binaryName = platform === 'win32' ? 'rg.exe' : 'rg';
-    
-    
-    // List of possible paths (using process.cwd() as base)
+
+
+    // List of possible paths (using process.cwd() as the base)
     const possiblePaths = [
-      // Development environment: from current working directory
+      // Development environment: from the current working directory
       path.join(process.cwd(), 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
-      // Electron app: from resources directory
+      // Electron app: from the resources directory
       path.join(process.resourcesPath || process.cwd(), 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
       // .asar.unpacked directory
       path.join(process.resourcesPath || process.cwd(), 'app.asar.unpacked', 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
-      // From __dirname relative path (after Webpack bundling)
+      // Relative path from __dirname (after Webpack bundling)
       path.join(__dirname, '..', '..', 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
       path.join(__dirname, '..', '..', '..', 'node_modules', '@vscode', 'ripgrep', 'bin', binaryName),
     ];
-    
+
     // Try each possible path
     for (const testPath of possiblePaths) {
       const normalizedPath = path.normalize(testPath);
@@ -65,14 +64,14 @@ function getRipgrepPath(): string {
         return normalizedPath;
       }
     }
-    
+
   } catch (error) {
   }
-  
+
   return '';
 }
 
-// Initialize ripgrep path
+// Initialize the ripgrep path
 const rgPath = getRipgrepPath();
 if (rgPath) {
 } else {
@@ -98,7 +97,7 @@ const FileMatchItemAccessor: IItemAccessor<IFileSearchResult> = {
 
 /**
  * Ripgrep search engine
- * Uses VSCode's ripgrep integration + Fuzzy Scoring
+ * Uses VSCode's ripgrep integration approach + Fuzzy Scoring
  */
 export class RipgrepSearchEngine implements ISearchEngine {
   private rgPath: string;
@@ -106,21 +105,21 @@ export class RipgrepSearchEngine implements ISearchEngine {
 
   constructor() {
     this.rgPath = rgPath;
-    
+
     if (!this.isAvailable()) {
     } else {
     }
   }
 
   /**
-   * Check if ripgrep is available
+   * Check whether ripgrep is available
    */
   isAvailable(): boolean {
     return Boolean(this.rgPath);
   }
 
   /**
-   * Execute file search
+   * Execute a file search
    */
   async search(
     query: IFileSearchQuery,
@@ -132,7 +131,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
       );
     }
 
-    // Validate folder parameter
+    // Validate the folder parameter
     if (!query.folder) {
       throw new Error('Search folder is required for ripgrep search. Please provide a valid workspace path.');
     }
@@ -156,7 +155,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
       }
 
 
-      // Use VSCode's Fuzzy Scorer for scoring and sorting
+      // 🎯 Use VSCode's Fuzzy Scorer for scoring and sorting
       if (query.pattern && results.length > 0) {
         await this.scoreAndSortResults(results, query.pattern);
       }
@@ -165,7 +164,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
       results.slice(0, 10).forEach((result, index) => {
       });
 
-      // Limit result count
+      // Limit the number of results
       if (query.maxResults && results.length > query.maxResults) {
         results.splice(query.maxResults);
       }
@@ -192,12 +191,12 @@ export class RipgrepSearchEngine implements ISearchEngine {
    * Score and sort results using VSCode Fuzzy Scorer
    */
   private async scoreAndSortResults(results: IFileSearchResult[], pattern: string): Promise<void> {
-    // Prepare query
+    // Prepare the query
     const preparedQuery: IPreparedQuery = prepareQuery(pattern);
-    
+
 
     // Sort using VSCode's comparison function
-    results.sort((a, b) => 
+    results.sort((a, b) =>
       compareItemsByFuzzyScore(
         a,
         b,
@@ -208,11 +207,11 @@ export class RipgrepSearchEngine implements ISearchEngine {
       )
     );
 
-    // Store scores in results (for debugging and display)
-    // Note: compareItemsByFuzzyScore already considers all factors, no need to recalculate
-    // But for compatibility, we keep the score field
+    // Store scores in the results (for debugging and display)
+    // Note: compareItemsByFuzzyScore already accounts for all factors; no need to recalculate.
+    // The score field is kept for compatibility.
     results.forEach((result, index) => {
-      // Assign score based on sort position (higher position = higher score)
+      // Assign scores based on sort position (earlier position = higher score)
       result.score = 1000 - index;
     });
   }
@@ -227,7 +226,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
     updateFilesScanned?: (count: number) => void
   ): Promise<void> {
     const rgArgs = this.buildRipgrepArgs(query, false);
-    
+
     await this.executeRipgrep(
       rgArgs,
       query,
@@ -240,7 +239,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
 
   /**
    * Search directories
-   * Extract unique directories by analyzing file paths
+   * Extracts unique directories by analyzing file paths
    */
   private async searchDirectories(
     query: IFileSearchQuery,
@@ -281,7 +280,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
     // Extract unique directory paths
     const directories = new Set<string>();
     for (const filePath of allPaths) {
-      // Fix: support Windows and Unix path separators
+      // 🔥 Fix: support both Windows and Unix path separators
       const normalizedPath = filePath.replace(/\\/g, '/');
       const parts = normalizedPath.split('/');
       // Add all parent directories
@@ -303,7 +302,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
       if (this.matchesDirectoryPattern(dirName, dirPath, query)) {
         const result: IFileSearchResult = {
           path: dirPath.replace(/\\/g, '/'),
-          score: 0, // Will be calculated by fuzzy scorer
+          score: 0, // will be computed by the fuzzy scorer
           isDirectory: true
         };
 
@@ -317,7 +316,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
   }
 
   /**
-   * Execute ripgrep command
+   * Execute the ripgrep command
    */
   private async executeRipgrep(
     rgArgs: string[],
@@ -345,10 +344,10 @@ export class RipgrepSearchEngine implements ISearchEngine {
             if (updateFilesScanned) {
               updateFilesScanned(results.length + 1);
             }
-            
+
             const result: IFileSearchResult = {
               path: line.trim().replace(/\\/g, '/'),
-              score: 0, // Will be calculated by fuzzy scorer
+              score: 0, // will be computed by the fuzzy scorer
               isDirectory
             };
 
@@ -358,7 +357,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
               onProgress(result);
             }
 
-            // Check if max result count is reached
+            // Check whether the maximum number of results has been reached
             if (query.maxResults && results.length >= query.maxResults) {
               rg.kill();
               resolve();
@@ -376,7 +375,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
       });
 
       rg.on('close', (code) => {
-        // ripgrep return codes: 0 = match found, 1 = no match found, 2+ = error
+        // ripgrep exit codes: 0 = match found, 1 = no match found, 2+ = error
         if (code === 0 || code === 1) {
           resolve();
         } else {
@@ -392,21 +391,21 @@ export class RipgrepSearchEngine implements ISearchEngine {
 
   /**
    * Build ripgrep command arguments
-   * Core optimization: use --glob for path pattern matching pre-filter
+   * ⚡ Core optimization: use --glob for path-pattern pre-filtering
    */
   private buildRipgrepArgs(query: IFileSearchQuery, forDirectoryExtraction: boolean = false): string[] {
     const args: string[] = [];
 
     // Base command: list files
     args.push('--files');
-    
+
     // Output format
     args.push('--color=never'); // Disable color output
     args.push('--no-messages'); // Disable error messages
-    
-    // Symbolic link handling
-    args.push('--follow'); // Follow symbolic links
-    
+
+    // Symlink handling
+    args.push('--follow'); // Follow symlinks
+
     // Hidden files
     args.push('--hidden'); // Search hidden files (files starting with .)
 
@@ -438,10 +437,10 @@ export class RipgrepSearchEngine implements ISearchEngine {
       }
     }
 
-    // Key improvement: use --iglob for case-insensitive path matching pre-filter
+    // 🎯 Key improvement: use --iglob for case-insensitive path-match pre-filtering
     if (query.pattern && !forDirectoryExtraction) {
       const globPatterns = this.buildGlobPatterns(query.pattern, query.fuzzy);
-      
+
       for (const globPattern of globPatterns) {
         // Use --iglob instead of --glob to ensure case-insensitive matching
         args.push('--iglob', globPattern);
@@ -462,31 +461,31 @@ export class RipgrepSearchEngine implements ISearchEngine {
   /**
    * Build glob patterns for path matching
    *
-   * Key fix:
-   * 1. Use --iglob parameter to ensure case-insensitive matching
+   * 🔑 Key fix:
+   * 1. Use the --iglob flag to ensure case-insensitive matching
    * 2. Use simple *pattern* format
-   * 3. No need to provide case variants (--iglob handles this)
+   * 3. No need to provide both uppercase and lowercase variants (--iglob handles this)
    */
   private buildGlobPatterns(pattern: string, fuzzy: boolean = true): string[] {
     const patterns: string[] = [];
-    
+
     if (fuzzy) {
-      // Simple fuzzy matching: only add wildcards at start and end
+      // ✅ Simple fuzzy matching: only add wildcards at the start and end
       // e.g.: 'license' -> '*license*'
-      // Used with --iglob, can match LICENSE, license, License, etc.
-      patterns.push(`**/*${pattern}*`);     // Any depth
-      patterns.push(`*${pattern}*`);        // Current directory
+      // Combined with --iglob, matches LICENSE, license, License, etc.
+      patterns.push(`**/*${pattern}*`);     // any depth
+      patterns.push(`*${pattern}*`);        // current directory
     } else {
-      // Exact matching (contains)
+      // Exact (contains) matching
       patterns.push(`**/*${pattern}*`);
       patterns.push(`*${pattern}*`);
     }
-    
+
     return patterns;
   }
 
   /**
-   * Check if directory matches pattern
+   * Check whether a directory matches the pattern
    */
   private matchesDirectoryPattern(dirName: string, dirPath: string, query: IFileSearchQuery): boolean {
     if (!query.pattern) {
@@ -505,7 +504,7 @@ export class RipgrepSearchEngine implements ISearchEngine {
   }
 
   /**
-   * Simple fuzzy matching algorithm (for pre-filtering)
+   * Simple fuzzy matching algorithm (used for pre-filtering)
    */
   private fuzzyMatch(text: string, pattern: string): boolean {
     let patternIndex = 0;

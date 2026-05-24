@@ -26,11 +26,11 @@ export interface McpCollectionDefinition {
 
 export type McpTransportType = 'stdio' | 'http' | 'sse';
 
-export type ConnectionState = 
-  | 'stopped' 
-  | 'starting' 
-  | 'running' 
-  | 'error' 
+export type ConnectionState =
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'error'
   | 'disconnecting';
 
 // ==================== Server Capabilities ====================
@@ -284,19 +284,19 @@ export interface CacheStats {
 // ==================== Type Guards ====================
 
 export function isMcpTool(obj: any): obj is McpTool {
-  return obj && 
-    typeof obj.name === 'string' && 
+  return obj &&
+    typeof obj.name === 'string' &&
     obj.inputSchema !== undefined;
 }
 
 export function isMcpResource(obj: any): obj is McpResource {
-  return obj && 
-    typeof obj.uri === 'string' && 
+  return obj &&
+    typeof obj.uri === 'string' &&
     typeof obj.name === 'string';
 }
 
 export function isMcpPrompt(obj: any): obj is McpPrompt {
-  return obj && 
+  return obj &&
     typeof obj.name === 'string';
 }
 

@@ -1,11 +1,30 @@
 {
   "version": "2.0.0",
   "createdAt": "2026-01-26T15:12:16.405Z",
-  "updatedAt": "2026-01-27T14:26:14.96Z",
-  "alias": "yanhu_microsoft",
+  "updatedAt": "2026-01-27T14:26:14.960Z",
+  "alias": "demo-user",
   "freDone": true,
-  "primaryAgent": "Kobi",
+  "primaryAgent": "PM Agent",
   "mcp_servers": [
+    {
+      "name": "kosmos-mcp-stable",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "kosmos-mcp"
+      ],
+      "env": {
+        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/pm-agent",
+        "REDDIT_CLIENT_ID": "",
+        "REDDIT_CLIENT_SECRET": "",
+        "DATA_AI_API_KEY": "",
+        "UNWRAP_ACCESS_TOKEN": ""
+      },
+      "url": "",
+      "in_use": true,
+      "version": "1.0.0",
+      "source": "ON-DEVICE"
+    },
     {
       "name": "studio-design-mcp",
       "transport": "stdio",
@@ -14,16 +33,40 @@
         "studio-design-mcp"
       ],
       "env": {
-        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/design-agent"
+        "WORKING_PATH": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/design-agent"
       },
       "url": "",
       "in_use": true,
       "version": "1.0.1",
-      "remoteVersion": "1.0.1",
-      "source": "IN-LIBRARY"
+      "source": "ON-DEVICE"
     }
   ],
-  "skills": [],
+  "skills": [
+    {
+      "name": "product-decision-maker",
+      "description": "Guide end-to-end product decision workflow from feature definition through data collection, decision analysis (Continue/Pivot/Deprecate), to execution planning with intelligent routing.",
+      "version": "1.0.1",
+      "source": "ON-DEVICE"
+    },
+    {
+      "name": "titan-dynamic-query",
+      "description": "Ask for any product data or manually paste a Titan SQL query to analyze the data for this product. PM Agent will analyze trends and automatically discover filters and dimensions beyond your original query.",
+      "version": "3.0.2",
+      "source": "ON-DEVICE"
+    },
+    {
+      "name": "topline-metric",
+      "description": "A demo skill to fetch BSoM, Edge Mobile DAU and Edge MAU DAU",
+      "version": "1.0.0",
+      "source": "ON-DEVICE"
+    },
+    {
+      "name": "competitive-analyze",
+      "description": "Analyze mobile competitors (iOS/Android) through Vision-Reality Gap Analysis - comparing marketing claims with user feedback to identify execution gaps and strategic insights.",
+      "version": "1.0.2",
+      "source": "ON-DEVICE"
+    }
+  ],
   "chats": [
     {
       "chat_id": "chat_1769440336405_ih2pzc459",
@@ -34,10 +77,11 @@
         "avatar": "",
         "name": "Kobi",
         "model": "claude-opus-4.6",
-        "workspace": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459",
-        "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/chat_workspaces/chat_1769440336405_ih2pzc459/knowledge",
+        "workspace": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/chat_1769440336405_ih2pzc459",
+        "knowledge": {
+          "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/chat_1769440336405_ih2pzc459/knowledge"
+        },
         "version": "1.0.0",
-        "remoteVersion": "",
         "source": "ON-DEVICE",
         "mcp_servers": [
           {
@@ -62,14 +106,103 @@
           "quick_starts": []
         }
       }
+    },
+    {
+      "chat_id": "chat_1769440354413_3mff3px3v",
+      "chat_type": "single_agent",
+      "agent": {
+        "role": "Assistant",
+        "emoji": "🦄",
+        "avatar": "https://cdn.kosmos-ai.com/images/pm-agent/logo.png",
+        "name": "PM Agent",
+        "model": "claude-sonnet-4",
+        "workspace": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/pm-agent",
+        "knowledge": {
+          "knowledgeBase": "/Users/pumpedgechina/Library/Application Support/kosmos-app/profiles/demo-user/chat_workspaces/pm-agent/knowledge"
+        },
+        "version": "1.1.10",
+        "source": "ON-DEVICE",
+        "mcp_servers": [
+          {
+            "name": "builtin-tools",
+            "tools": [
+              "read_file",
+              "read_html",
+              "read_office_file",
+              "create_file",
+              "write_file",
+              "search_files",
+              "search_text_in_files",
+              "bing_web_search",
+              "bing_image_search",
+              "google_web_search",
+              "google_image_search",
+              "fetch_web_content",
+              "download_and_save_as",
+              "execute_command",
+              "get_current_datetime"
+            ]
+          },
+          {
+            "name": "kosmos-mcp-stable",
+            "tools": []
+          }
+        ],
+        "system_prompt": "# Product Manager Agent\n\n## 1. Say Hi\n\nWhen the conversation starts, respond with a brief, friendly, and professional greeting.\n\n- Greet the user in simple, natural language.\n- Do not introduce your full role or repeat the system prompt.\n- Keep it short and human, like a real product manager saying hello at work.\n- After the greeting, wait for the user's request before taking any further action.\n\n## 2. Role Definition\n\nYou are a world-class Lead Product Manager, a product decision partner with product strategic insight and execution accuracy. Your core mission is to understand user value, maximize product value (Product Value), and ensure the perfect balance of business logic (Viability), user experience (Desirability), and technical implementation (Feasibility). You are good at but not limited to:\n\n- Product discovery & delivery\n- User research & behavioral analysis\n- Growth strategy & metrics\n- UX strategy & product design collaboration\n- Agile execution & stakeholder communication\n- AI-powered product innovation\n- Consumer & enterprise SaaS products\n\n## 3. Scheduling Priority\n\nWhen responding to user requests, you must strictly follow the priority order below to call your capabilities:\n\n### Priority 1: Skills\n\n**Principle:** If there is a predefined Skill that can solve complex analysis or decision problems in a specific domain, you must call the Skill first, and you must not use the general model for aimless generation.\n\n**Scenario examples:**\n\n- If the user asks \"analyze new opportunities for Edge\", you should directly call the product-opportunity-analyst Skill to ensure using the preset analysis framework.\n- If the user asks \"make the next-step decision for Copilot search in the Bing app\", you should directly call the product-decision-maker Skill to get standardized decision recommendations.\n\n### Priority 2: MCP Tools\n\n**Principle:** If there is no matching Skill, but answering the question needs specific external data, real-time feedback, or competitor information, then find and call MCP Tools.\n\n**Scenario example:**\n\n- If the user asks \"what are the Top 3 user DSATs for Copilot search on Reddit\", and there is no corresponding analysis Skill, you should immediately go down and call the fetch_product_insights tool to extract information from real data sources, instead of guessing based on training data.\n\n### Priority 3: General LLM Knowledge\n\n**Principle:** If there is neither a Skill nor a need for external data (such as pure logical reasoning, copy polishing, general concept explanation), then use your own general knowledge base.\n\n## 4. MCP Connection Check\n\nTo ensure the stability of data interaction, after the user starts the first chat message, or when the MCP server returns a connection error, in either case, you must execute the health check process below:\n\n1. **Check Status:** Call the check-mcp-status tool first to confirm the connection status of the kosmos-mcp-stable MCP server.\n   - If status is **Connected:** Continue the conversation with the user normally.\n   - If status is **Connecting:** Inform the user \"MCP service is connecting, please wait a moment...\" and wait for the connection to complete. Once connected successfully, inform the user \"MCP service connected successfully\" and continue the conversation.\n   - If status is **Disconnected/Error:** Proceed to step 2 for auto-recovery.\n\n2. **Auto-Recovery:** If the status shows abnormal (Disconnected/Error), try to call the toggle-mcp-by-name tool with parameter \"kosmos-mcp-stable\" to reconnect.\n\n3. **Circuit Breaker:**\n   - If checking status again after reconnecting still fails, stop the current operation immediately.\n   - You must clearly report an error to the user: \"Sorry, detected that kosmos-mcp-stable is disconnected and reconnection failed. Please manually reconfigure the MCP service.\" Do not pretend the execution succeeded and continue the conversation.\n\n## 5. Principles\n\nWhen operating in any scenario, follow these principles by default:\n\n### When information is insufficient, clarify first rather than output hallucinations\n\n- If critical information is missing, ask clarifying questions first.\n- Do not \"fill in the blanks\" with assumptions unless explicitly stated.\n- Treat ambiguity as a signal to clarify the problem, not to guess an answer.\n- Do not fabricate context, requirements, or user intent.\n\n### Clearly distinguish facts, assumptions, and judgments\n\nIn analysis or recommendation outputs, clearly separate:\n\n- **Facts** (verifiable information)\n- **Assumptions** (unstated or inferred conditions)\n- **Judgments / recommendations**\n- Make uncertainty visible rather than hiding it.\n\n### User Value First (User Value > Features)\n\n### Use PM structured and chain-of-thought thinking methods\n\n## 6. Tone and Style\n\nYour communication must be concise, professional, and information-dense.\nClarity and usefulness take priority over completeness or stylistic polish.\n\n### Tone\n\n- Speak human language, exactly the way a real product manager would speak or type at work.\n- Professional, objective, and calm\n- Direct and to the point\n- Confident but not absolute\n- **Avoid:**\n  - Unnecessary explanations\n  - Overly polite or verbose phrasing\n  - Promotional or \"AI-sounding\" language\n\n### Presentation\n\n- Prefer brevity over verbosity\n- **Default to:**\n  - Short paragraphs\n  - Bullet points\n  - Clear headings\n- **Each output should be:**\n  - Easy to read\n  - Ready to paste into docs, slides, or reviews without rewriting\n\n### Output\n\n- Structure responses as concise bullet points, frameworks, or short summaries\n- Ensure clarity, relevance, and strategic insight in every output\n- Any style output generated in response to user requests must follow industry-standard structures.\n\n## 7. Boundaries\n\n### Boundaries of Facts and Reliability\n\n- Do not state uncertain or unverified information as fact.\n- Clearly flag low-confidence areas or data gaps.\n\n### Stability and Low-Hallucination Requirements\n\n- Never fabricate business data\n- **Tool honesty:** If fetch_product_insights does not return results, honestly tell \"no related data found\", and do not fabricate fake Reddit comments.\n- Do not generate output merely to appear helpful.\n- If quality standards cannot be met due to missing context or constraints:\n  - Explicitly state the limitation\n  - Suggest what additional information is needed next\n  - A cautious, well-scoped response is preferred over a confident but unreliable one.",
+        "context_enhancement": {
+          "search_memory": {
+            "enabled": false,
+            "semantic_similarity_threshold": 0,
+            "semantic_top_n": 5
+          },
+          "generate_memory": {
+            "enabled": false
+          }
+        },
+        "skills": [
+          "product-decision-maker",
+          "competitive-analyze",
+          "titan-dynamic-query",
+          "topline-metric",
+          "product-specification"
+        ],
+        "zero_states": {
+          "greeting": "Hello! I'm your PM Agent, here to assist you with all your product management needs. How can I help you today?",
+          "quick_starts": [
+            {
+              "title": "Discover Data Insight",
+              "image": "https://cdn.kosmos-ai.com/images/pm-agent/card_data_insight.png",
+              "description": "Query product data or paste SQL. Get trends, filters, and dimensions discovered automatically.",
+              "prompt": "Load the titan-dynamic-query skill and strictly follow its instructions. Do not read all details upfront; instead, retrieve details only when they are needed. Prepare to analyze product and discovery data and generate insights."
+            },
+            {
+              "title": "Analyze Trending Competitors",
+              "image": "https://cdn.kosmos-ai.com/images/pm-agent/card_competitor_trend.png",
+              "description": "Compare competitor claimed value proposition against user feedback to identify gaps and opportunities.",
+              "prompt": "I want to use the competitive-analyze skill."
+            },
+            {
+              "title": "Make Product Decision",
+              "image": "https://cdn.kosmos-ai.com/images/pm-agent/card_product_decision.png",
+              "description": "Turns scattered user voice, data, market signals into clear product decisions and execution plan.",
+              "prompt": "I need to make a product decision."
+            },
+            {
+              "title": "Write a SPEC",
+              "image": "https://cdn.kosmos-ai.com/images/pm-agent/card_write_spec.png",
+              "description": "Generate clear, structured, and testable PRDs and specifications for various platforms.",
+              "prompt": "I want help on product specification."
+            }
+          ]
+        }
+      }
     }
   ],
-  "toolBarSettings": {
-    "enabled": false,
-    "alwaysOnTop": false,
-    "autoHide": true,
-    "shortcut": "CommandOrControl+Shift+Space",
-    "visibleAgents": []
-  }
+  "starred-chat-sessions": [],
+  "confirmationSettings": {
+    "inlineEditRegenerate": {
+      "skipConfirmation": false
+    }
+  },
+  "builtinDefaultsVersion": 1
 }
-

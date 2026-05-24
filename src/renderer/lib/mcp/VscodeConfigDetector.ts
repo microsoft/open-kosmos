@@ -4,7 +4,12 @@
  */
 
 import { getPlatformInfo, getCurrentPlatform, getVSCodeConfigPaths } from './platformDetector'
-import { checkFileExists, checkFileReadable, readFileContent, getFileStats, expandPath } from '../utilities/fileSystemUtils'
+import { checkFileExists, checkFileReadable, readFileContent, getFileStats, expandPath, listDirectory } from '../utilities/fileSystemUtils'
+
+interface ConfigCandidatePath {
+  originalPath: string
+  expandedPath: string
+}
 
 export interface VscodeConfigFile {
   path: string
@@ -34,7 +39,7 @@ export interface VscodeConfigDetectionResult {
 export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult> {
   try {
     const platformInfo = getPlatformInfo()
-    
+
     if (!platformInfo.isSupported) {
       return {
         success: false,
@@ -47,18 +52,17 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
     }
 
     // Get all VSCode config paths for current platform (prioritized order)
-    const configPaths = getVSCodeConfigPaths()
+    const configPaths = await getConfigCandidatePaths()
     const configFiles: VscodeConfigFile[] = []
     let totalServersFound = 0
-    
+
     // Scan paths in priority order until we find a valid configuration
     for (const configPath of configPaths) {
       try {
-        const expandedConfigPath = await expandPath(configPath)
-        const configFile = await detectSingleConfigFile(configPath, expandedConfigPath)
-        
+        const configFile = await detectSingleConfigFile(configPath.originalPath, configPath.expandedPath)
+
         configFiles.push(configFile)
-        
+
         // If we found a valid config with servers, we can stop scanning
         if (configFile.exists && configFile.isValid && configFile.serverCount > 0) {
           totalServersFound += configFile.serverCount
@@ -69,7 +73,7 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
         continue
       }
     }
-    
+
     return {
       success: true,
       platform: platformInfo.platform,
@@ -95,23 +99,22 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
 export async function detectVscodeConfigFile(): Promise<string | null> {
   try {
     const platformInfo = getPlatformInfo()
-    
+
     if (!platformInfo.isSupported) {
       return null
     }
-    
-    const configPaths = getVSCodeConfigPaths()
-    
+
+    const configPaths = await getConfigCandidatePaths()
+
     for (const configPath of configPaths) {
       try {
-        const expandedPath = await expandPath(configPath)
-        const fileExists = await checkFileExists(expandedPath)
-        
+        const fileExists = await checkFileExists(configPath.expandedPath)
+
         if (fileExists.exists) {
           // Verify if file contains MCP configuration
-          const configFile = await detectSingleConfigFile(configPath, expandedPath)
+          const configFile = await detectSingleConfigFile(configPath.originalPath, configPath.expandedPath)
           if (configFile.isValid && configFile.serverCount > 0) {
-            return expandedPath
+            return configPath.expandedPath
           }
         }
       } catch (error) {
@@ -119,22 +122,105 @@ export async function detectVscodeConfigFile(): Promise<string | null> {
         continue
       }
     }
-    
+
     return null
   } catch (error) {
     return null
   }
 }
 
+async function getConfigCandidatePaths(): Promise<ConfigCandidatePath[]> {
+  const configPaths = getVSCodeConfigPaths()
+  const candidates: ConfigCandidatePath[] = []
+  const seenPaths = new Set<string>()
+
+  for (const configPath of configPaths) {
+    const expandedPath = await expandPath(configPath)
+    pushCandidatePath(candidates, seenPaths, configPath, expandedPath)
+
+    const profileCandidates = await getProfileConfigCandidatePaths(configPath, expandedPath)
+    for (const candidate of profileCandidates) {
+      pushCandidatePath(candidates, seenPaths, candidate.originalPath, candidate.expandedPath)
+    }
+  }
+
+  return candidates
+}
+
+async function getProfileConfigCandidatePaths(
+  originalPath: string,
+  expandedPath: string
+): Promise<ConfigCandidatePath[]> {
+  const fileName = getPathFileName(expandedPath)
+  if (fileName !== 'mcp.json' && fileName !== 'settings.json') {
+    return []
+  }
+
+  const originalDir = getParentPath(originalPath)
+  const expandedDir = getParentPath(expandedPath)
+  if (!originalDir || !expandedDir) {
+    return []
+  }
+
+  const originalProfilesDir = joinPathSegment(originalDir, 'profiles')
+  const expandedProfilesDir = joinPathSegment(expandedDir, 'profiles')
+  const directoryResult = await listDirectory(expandedProfilesDir)
+
+  if (!directoryResult.success || !directoryResult.entries) {
+    return []
+  }
+
+  return directoryResult.entries
+    .filter(entry => entry.isDirectory)
+    .map(entry => ({
+      originalPath: joinPathSegment(originalProfilesDir, entry.name, fileName),
+      expandedPath: joinPathSegment(expandedProfilesDir, entry.name, fileName)
+    }))
+}
+
+function pushCandidatePath(
+  candidates: ConfigCandidatePath[],
+  seenPaths: Set<string>,
+  originalPath: string,
+  expandedPath: string
+): void {
+  const normalizedKey = expandedPath.toLowerCase()
+  if (seenPaths.has(normalizedKey)) {
+    return
+  }
+
+  seenPaths.add(normalizedKey)
+  candidates.push({ originalPath, expandedPath })
+}
+
+function getParentPath(filePath: string): string {
+  const normalizedPath = filePath.replace(/[\\/]+$/, '')
+  const lastSeparatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'))
+  return lastSeparatorIndex >= 0 ? normalizedPath.slice(0, lastSeparatorIndex) : ''
+}
+
+function getPathFileName(filePath: string): string {
+  const normalizedPath = filePath.replace(/[\\/]+$/, '')
+  const lastSeparatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'))
+  return (lastSeparatorIndex >= 0 ? normalizedPath.slice(lastSeparatorIndex + 1) : normalizedPath).toLowerCase()
+}
+
+function joinPathSegment(basePath: string, ...segments: string[]): string {
+  const separator = basePath.includes('\\') ? '\\' : '/'
+  const trimmedBase = basePath.replace(/[\\/]+$/, '')
+  const normalizedSegments = segments.map(segment => segment.replace(/^[\\/]+|[\\/]+$/g, ''))
+  return [trimmedBase, ...normalizedSegments].join(separator)
+}
+
 /**
  * Detect and validate a single configuration file
  */
 export async function detectSingleConfigFile(
-  originalPath: string, 
+  originalPath: string,
   expandedPath?: string
 ): Promise<VscodeConfigFile> {
   const actualPath = expandedPath || originalPath
-  
+
   // Initialize the config file object
   const configFile: VscodeConfigFile = {
     path: originalPath,
@@ -150,7 +236,7 @@ export async function detectSingleConfigFile(
     // Check if file exists
     const existsResult = await checkFileExists(actualPath)
     configFile.exists = existsResult.exists
-    
+
     if (!configFile.exists) {
       configFile.error = existsResult.error || 'File does not exist'
       return configFile
@@ -159,7 +245,7 @@ export async function detectSingleConfigFile(
     // Check if file is readable
     const accessResult = await checkFileReadable(actualPath)
     configFile.isReadable = accessResult.readable
-    
+
     if (!configFile.isReadable) {
       configFile.error = accessResult.error || 'File is not readable'
       return configFile
@@ -184,7 +270,7 @@ export async function detectSingleConfigFile(
     configFile.isValid = validationResult.isValid
     configFile.serverCount = validationResult.serverCount
     configFile.detectedFormat = validationResult.format
-    
+
     if (!configFile.isValid) {
       configFile.error = validationResult.error
     }
@@ -274,7 +360,7 @@ async function validateConfigContent(content: string, filePath: string): Promise
       // Check if it has either command/args (stdio) or url (http/sse)
       const hasStdioConfig = config.command || config.args
       const hasHttpConfig = config.url
-      
+
       if (!hasStdioConfig && !hasHttpConfig) {
         return {
           isValid: false,
@@ -313,7 +399,7 @@ export async function detectCustomConfigFile(filePath: string): Promise<VscodeCo
  */
 export function getPlatformDetectionInfo() {
   const platformInfo = getPlatformInfo()
-  
+
   return {
     platform: platformInfo.platform,
     isSupported: platformInfo.isSupported,

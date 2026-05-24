@@ -1,334 +1,125 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { screenshotApi } from '../../ipc/screenshot-main';
 import { profileDataManager } from '../../lib/userData/profileDataManager';
-import { useAgentConfig, useProfileData, useChats } from '../userData/userDataProvider';
-import { getModelById, getModelCapabilities, getAllKosmosUsedModels } from '../../lib/models/ghcModels';
-import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
-import {
-  UnifiedContentPart,
-  TextContentPart,
-  ImageContentPart,
-  FileContentPart,
-  OfficeContentPart,
-  OthersContentPart,
-  Message,
-  MessageHelper,
-  validateImageFile
-} from '../../types/chatTypes';
-import {
-  ContentPartFactory,
-  ContentConverter,
-  ContentValidator,
-  ContentAnalyzer,
-  FileProcessor,
-  formatFileSize,
-} from '../../lib/utilities/contentUtils';
-import FileTypeIcon from '../ui/FileTypeIcon';
-import { smartCompressImageVSCodeOfficial, shouldCompressImage, VSCODE_IMAGE_LIMITS } from '../../lib/utilities/imageCompression';
-import {
-  getCurrentSearchQuery,
-  insertMention,
-  ContextOption,
-  ContextMenuOptionType,
-  ContextMenuTriggerType,
-  MentionSourceType,
-  getContextMenuTriggerType,
-  getCurrentSkillSearchQuery,
-  insertSkillMention,
-} from '../../lib/chat/contextMentions';
-import { ContextMenu } from './ContextMenu';
-import { MentionHighlight } from './MentionHighlight';
-import { quickSearchFiles } from '../../lib/workspace/workspaceSearchService';
-import ApprovalBar, { ApprovalRequestItem } from './ApprovalBar';
+import { agentChatSessionCacheManager, ChatStatus, CurrentSessionError, CurrentSessionIdle } from '../../lib/chat/agentChatSessionCacheManager';
+import { Message, MessageHelper, validateImageFile, UserMessage } from '@shared/types/chatTypes';
+import { FileProcessor, } from '../../lib/utilities/contentUtils';
+import { smartCompressImageVSCodeOfficial, shouldCompressImage } from '../../lib/utilities/imageCompression';
 import ErrorBar from './ErrorBar';
 import { useFeatureFlag } from '../../lib/featureFlags';
 import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInputEnabled } from '../../lib/userData';
+import { getChatInputShortcutHint } from '../../lib/chat/chatInputKeyboard';
 import '../../styles/ChatInput.css';
+import { createLogger } from '../../lib/utilities/logger';
+import { createAttachmentsAtom, AttachmentList, AttachmentsStatus } from './chat-input/Attachments';
+import { TextArea, createTextareaAtom } from './chat-input/Textarea';
+import { ModelSelector } from './chat-input/ModelSelector';
+import { ReasoningEffortSelector } from './chat-input/ReasoningEffortSelector';
+import { attachment_icon_1, attachment_icon_2, cancel_icon, send_icon, send_icon_disabled, send_icon_spin } from './chat-input/Icons';
+import { atom } from '@/atom';
+import { useToast } from '../ui/ToastProvider';
+import { agentChatIpc } from '@renderer/lib/chat/agentChatIpc';
+import { EditAgentMenuAtom } from '../menu/EditAgentMenuDropdown';
+import { AttachMenuAtom } from '../menu/AttachMenuDropdown';
+
+const logger = createLogger('[ChatInput]');
 
 interface ChatInputProps {
-  onSendMessage: (message: Message) => void;
-  chatStatus?: {
-    chatId: string;
-    chatStatus: 'idle' | 'sending_response' | 'compressing_context' | 'compressed_context' | 'received_response';
-    agentName?: string;
-  } | null; // Use the full chatStatus object
-  onCancelChat?: () => void; // Callback to cancel the current conversation
-  onContextMenuTrigger?: (query: string, inputRect: DOMRect, triggerType?: ContextMenuTriggerType) => void; // Added triggerType parameter
-  onContextMenuClose?: () => void;
-  contextMenuState?: {
-    isOpen: boolean;
-    options: ContextOption[];
-    selectedIndex: number;
-  };
-  onContextMenuNavigate?: (direction: 'up' | 'down') => void;
-  approvalRequests?: ApprovalRequestItem[];
-  onApproveRequest?: (requestId: string) => void;
-  onRejectRequest?: (requestId: string) => void;
-  onTimeoutAutoReject?: (requestIds: string[]) => void;
+  onSendMessage: (message: UserMessage) => void;
+  enableContextMenu?: boolean;
   // ErrorBar-related props
-  errorMessage?: string | null;
   chatSessionId?: string | null;
-  onRetry?: (chatSessionId: string) => void;
-  // Replay state - disables send while replay is in progress
-  isReplaying?: boolean;
+  // Read-only mode for remote sessions
+  isReadOnly?: boolean;
+  // Lock interactions while keeping the compose UI visible (used during inline edit mode)
+  isInputLocked?: boolean;
+  // Inline edit mode for a selected user message
+  mode?: 'compose' | 'edit-inline';
+  initialMessage?: Message | null;
+  onSubmitEditedMessage?: (message: UserMessage) => Promise<void> | void;
+  onCancelEdit?: () => void;
+  warningMessage?: string | null;
 }
 
-// Unified attachment manager
-class UnifiedAttachmentManager {
-  private content: UnifiedContentPart[] = [];
-  private previewUrls: Map<string, string> = new Map();
-  private onUpdate: () => void;
-
-  constructor(onUpdate: () => void) {
-    this.onUpdate = onUpdate;
-  }
-
-  // Check whether an identical attachment already exists (by fullPath or fileName+size)
-  private isDuplicate(fileName: string, fileSize: number, fullPath?: string): boolean {
-    return this.content.some(part => {
-      if (part.type === 'text') return false;
-
-      if (part.type === 'image') {
-        const img = part as ImageContentPart;
-        if (fullPath && img.image_url.url && (img as any)._fullPath === fullPath) return true;
-        return img.metadata.fileName === fileName && img.metadata.fileSize === fileSize;
-      }
-      if (part.type === 'file') {
-        const f = part as FileContentPart;
-        if (fullPath && f.file.filePath === fullPath) return true;
-        return f.file.fileName === fileName && f.metadata.fileSize === fileSize;
-      }
-      if (part.type === 'office') {
-        const o = part as OfficeContentPart;
-        if (fullPath && o.file.filePath === fullPath) return true;
-        return o.file.fileName === fileName && o.metadata.fileSize === fileSize;
-      }
-      if (part.type === 'others') {
-        const ot = part as OthersContentPart;
-        if (fullPath && ot.file.filePath === fullPath) return true;
-        return ot.file.fileName === fileName && ot.metadata.fileSize === fileSize;
-      }
-      return false;
-    });
-  }
-
-  // Add text content
-  setText(text: string) {
-    // Remove existing text content
-    this.content = this.content.filter(part => part.type !== 'text');
-    
-    // If there is new text, prepend it
-    if (text.trim()) {
-      this.content.unshift(ContentPartFactory.createText(text));
-    }
-    
-    this.onUpdate();
-  }
-
-  // Add image content
-  async addImage(file: File): Promise<void> {
-    if (this.isDuplicate(file.name, file.size, (file as any).fullPath)) {
-      console.log(`[AttachmentManager] Duplicate image skipped: ${file.name}`);
-      throw new Error(`DUPLICATE: ${file.name}`);
-    }
-    try {
-      const imageContent = await ContentConverter.fileToImageContent(file);
-      
-      // Save fullPath for later deduplication checks
-      if ((file as any).fullPath) {
-        (imageContent as any)._fullPath = (file as any).fullPath;
-      }
-      
-      // Create preview URL
-      const previewUrl = await FileProcessor.fileToDataURL(file);
-      this.previewUrls.set(imageContent.metadata.fileName, previewUrl);
-      
-      this.content.push(imageContent);
-      this.onUpdate();
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Add file content
-  async addFile(file: File): Promise<void> {
-    console.log(`[AttachmentManager] addFile called: ${file.name}, size=${file.size}, type=${file.type}`);
-    if (this.isDuplicate(file.name, file.size, (file as any).fullPath)) {
-      console.log(`[AttachmentManager] Duplicate file skipped: ${file.name}`);
-      throw new Error(`DUPLICATE: ${file.name}`);
-    }
-    try {
-      const fileContent = await ContentConverter.fileToFileContent(file);
-      this.content.push(fileContent);
-      console.log(`[AttachmentManager] ✅ addFile success: ${file.name}`);
-      this.onUpdate();
-    } catch (error) {
-      console.error(`[AttachmentManager] ❌ addFile error:`, error);
-      throw error;
-    }
-  }
-
-  // Add other file-type content
-  async addOthers(file: File): Promise<void> {
-    console.log(`[AttachmentManager] addOthers called: ${file.name}, size=${file.size}, type=${file.type}`);
-    if (this.isDuplicate(file.name, file.size, (file as any).fullPath)) {
-      console.log(`[AttachmentManager] Duplicate others file skipped: ${file.name}`);
-      throw new Error(`DUPLICATE: ${file.name}`);
-    }
-    try {
-      const othersContent = await ContentConverter.fileToOthersContent(file);
-      this.content.push(othersContent);
-      console.log(`[AttachmentManager] ✅ addOthers success: ${file.name}`);
-      this.onUpdate();
-    } catch (error) {
-      console.error(`[AttachmentManager] ❌ addOthers error:`, error);
-      throw error;
-    }
-  }
-
-  // Add Office document content
-  async addOffice(file: File): Promise<void> {
-    console.log(`[AttachmentManager] addOffice called: ${file.name}, size=${file.size}, type=${file.type}, fullPath=${(file as any).fullPath}`);
-    if (this.isDuplicate(file.name, file.size, (file as any).fullPath)) {
-      console.log(`[AttachmentManager] Duplicate office file skipped: ${file.name}`);
-      throw new Error(`DUPLICATE: ${file.name}`);
-    }
-    try {
-      const officeContent = await ContentConverter.fileToOfficeContent(file);
-      this.content.push(officeContent);
-      console.log(`[AttachmentManager] ✅ addOffice success: ${file.name}`);
-      this.onUpdate();
-    } catch (error) {
-      console.error(`[AttachmentManager] ❌ addOffice error:`, error);
-      throw error;
-    }
-  }
-
-  // Remove content
-  removeContent(index: number) {
-    const part = this.content[index];
-    if (part) {
-      // Clean up preview URL
-      if (part.type === 'image') {
-        const fileName = (part as ImageContentPart).metadata.fileName;
-        const previewUrl = this.previewUrls.get(fileName);
-        if (previewUrl) {
-          URL.revokeObjectURL(previewUrl);
-          this.previewUrls.delete(fileName);
-        }
-      }
-      
-      this.content.splice(index, 1);
-      this.onUpdate();
-    }
-  }
-
-  // Get all content
-  getContent(): UnifiedContentPart[] {
-    return [...this.content];
-  }
-
-  // Get preview URL
-  getPreviewUrl(fileName: string): string | undefined {
-    return this.previewUrls.get(fileName);
-  }
-
-  // Get attachment statistics
-  getStats() {
-    return ContentAnalyzer.analyzeContent(this.content);
-  }
-
-  // Clear all content
-  clear() {
-    // Clean up all preview URLs
-    this.previewUrls.forEach(url => URL.revokeObjectURL(url));
-    this.previewUrls.clear();
-    
-    this.content = [];
-    this.onUpdate();
-  }
-
-  // Check whether the content is valid
-  isValid(): boolean {
-    const hasText = this.content.some(part => part.type === 'text' && part.text.trim());
-    const hasAttachments = this.content.some(part => part.type !== 'text');
-    return hasText || hasAttachments;
-  }
-
-  // Create message
-  createMessage(role: Message['role'] = 'user'): Message {
-    return {
-      id: `msg_${role}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      role,
-      content: this.getContent(),
-      timestamp: Date.now()
-    };
-  }
-}
-
-interface ChatInputPropsExtended extends ChatInputProps {
-  onOpenMcpTools?: () => void;
-  onEditAgentMenuToggle?: (buttonElement: HTMLElement) => void;
-  onAttachMenuToggle?: (buttonElement: HTMLElement) => void;
-}
-
-const ChatInput: React.FC<ChatInputPropsExtended> = ({
+const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
-  chatStatus,
-  onCancelChat,
-  onOpenMcpTools,
-  onEditAgentMenuToggle,
-  onAttachMenuToggle,
-  onContextMenuTrigger,
-  onContextMenuClose,
-  contextMenuState,
-  onContextMenuNavigate,
-  approvalRequests = [],
-  onApproveRequest,
-  onRejectRequest,
-  onTimeoutAutoReject,
+  enableContextMenu,
   // ErrorBar-related props
-  errorMessage,
   chatSessionId,
-  onRetry,
-  isReplaying,
+  isReadOnly,
+  isInputLocked = false,
+  mode = 'compose',
+  initialMessage = null,
+  onSubmitEditedMessage,
+  onCancelEdit,
+  warningMessage,
 }) => {
-  const [message, setMessage] = useState('');
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const errorMessage = CurrentSessionError.use();
+  const isEditMode = mode === 'edit-inline';
+  const editAgentMenuActions = EditAgentMenuAtom.useChange();
+  const attachMenuActions = AttachMenuAtom.useChange();
+  const textareaStateAtom = React.useMemo(() => createTextareaAtom(), []);
+  const attachmentsStateAtom = React.useMemo(() => createAttachmentsAtom(), []);
+  const validInputAtom = React.useMemo(() => atom((use) => {
+    return use(attachmentsStateAtom).length > 0 || use(textareaStateAtom).trim().length > 0;
+  }), [attachmentsStateAtom, textareaStateAtom]);
+  const shouldLockComposeUi = !isEditMode && isInputLocked;
+  const textareaManager = textareaStateAtom.useChange();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [isAwaitingEditConfirmation, setIsAwaitingEditConfirmation] = useState(false);
   // Voice Input is controlled by a feature flag and must be enabled in Settings
-  const enableVoiceInput = useFeatureFlag('kosmosFeatureVoiceInput');
+  const enableVoiceInput = useFeatureFlag('openkosmosFeatureVoiceInput');
   const voiceInputUserEnabled = useVoiceInputEnabled();
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-
-  // State used to force a re-render
-  const [forceUpdate, setForceUpdate] = useState(0);
-
-  // Unified attachment manager instance
-  const [attachmentManager] = useState(
-    () =>
-      new UnifiedAttachmentManager(() => {
-        // Force re-render
-        setForceUpdate((prev) => prev + 1);
-      }),
+  const chatInputShortcutHint = getChatInputShortcutHint(
+    typeof navigator === 'undefined' ? undefined : navigator.platform,
   );
 
-  // Used to prevent triggering edit monitoring when handling history
-  const isNavigatingHistory = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Unified attachment manager instance
+  const attachmentManager = attachmentsStateAtom.useChange();
+  const sessionIdle = CurrentSessionIdle.use();
 
   // Fully based on profileDataManager and currentChatId
   // Get currentChatId from agentChatSessionCacheManager
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     agentChatSessionCacheManager.getCurrentChatId()
   );
-  
+
+  const hasValidInput = validInputAtom.use();
+  const [supportsImages, setSupportsImages] = useState(false);
+  const { showToast } = useToast();
+
+  async function onCancelChat() {
+    try {
+      logger.debug('[ChatInput] 🛑 Cancelling chat...');
+
+      if (!currentChatId) {
+        logger.warn('[ChatInput] No current chat ID to cancel');
+        showToast('No active chat to cancel', 'warning');
+        return;
+      }
+
+      await agentChatIpc.cancelChat(currentChatId);
+
+      logger.debug('[ChatInput] ✅ Chat cancelled successfully');
+    } catch (error) {
+      logger.error('[ChatInput] ❌ Error cancelling chat:', error);
+    }
+  }
+
+  // External agents only support text — disable attachments
+  const isExternalAgent = React.useMemo(() => {
+    if (!currentChatId) return false;
+    const agent = profileDataManager.getCurrentAgent();
+    return agent?.source === 'EXTERNAL';
+  }, [currentChatId]);
+  const effectiveSupportsImages = supportsImages && !isExternalAgent;
+
   // Watch for currentChatId changes
   useEffect(() => {
     const unsubscribe = agentChatSessionCacheManager.subscribeToCurrentChatSessionId(() => {
@@ -338,226 +129,22 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
     return unsubscribe;
   }, []);
 
-  // Get the current model from profileDataManager
-  // Use currentChatId to look up the corresponding model id in config
-  const [currentModel, setCurrentModel] = useState<string | null>(() => {
-    return currentChatId ? profileDataManager.getSelectedModel(currentChatId) : null;
-  });
-
-  // Local pending state to immediately reflect UI selection
-  const [pendingModel, setPendingModel] = useState<string | null>(null);
-
-  // Use the pending model (or actual current model) to drive the UI
-  const displayModel = pendingModel || currentModel;
-
-  // Watch currentChatId changes and fetch the new model from profileDataManager
   useEffect(() => {
-    if (currentChatId) {
-      const newModel = profileDataManager.getSelectedModel(currentChatId);
-      console.log('[ChatInput] currentChatId changed, updating model selector:', {
-        currentChatId,
-        newModel
-      });
-      setCurrentModel(newModel);
-      // Clear pending state and show the new agent's model
-      setPendingModel(null);
-    } else {
-      setCurrentModel(null);
-      setPendingModel(null);
-    }
-  }, [currentChatId]);
-
-  // Watch ProfileDataManager config changes and update the model
-  useEffect(() => {
-    const unsubscribe = profileDataManager.subscribe((cache) => {
-      if (!currentChatId) return;
-      
-      // Get the current chat's model from config
-      const updatedModel = profileDataManager.getSelectedModel(currentChatId);
-      
-      // Only update when the model actually changes
-      if (updatedModel !== currentModel) {
-        console.log('[ChatInput] ProfileDataManager notified model change:', {
-          currentChatId,
-          oldModel: currentModel,
-          newModel: updatedModel
-        });
-        setCurrentModel(updatedModel);
-        // Clear pending state and use the latest value from ProfileDataManager
-        setPendingModel(null);
-      }
-    });
-    
-    return unsubscribe;
-  }, [currentChatId, currentModel]);
-
-  // When currentModel updates, clear the pending state if it matches
-  useEffect(() => {
-    if (currentModel && pendingModel && currentModel === pendingModel) {
-      setPendingModel(null);
-    }
-  }, [currentModel, pendingModel]);
-
-  // Get the updateModel function and isLoading state
-  const { updateModel, isLoading } = useAgentConfig();
-
-  // For backward compatibility, we'll need to get available models from ghcModels
-  const [availableModels, setAvailableModels] = useState<any[]>([]);
-
-  // Load available models - use Kosmos used models only
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        const kosmosModels = getAllKosmosUsedModels();
-        setAvailableModels(kosmosModels);
-      } catch (error) {
-        setAvailableModels([]);
-      }
-    };
-    loadModels();
-  }, []);
-
-  // Watch currentModel changes for debugging state updates
-  // useEffect(() => {
-  // }, [currentModel]);
-
-  // Sync text content to the attachment manager
-  useEffect(() => {
-    attachmentManager.setText(message);
-  }, [message, attachmentManager]);
-
-  // Listen for mention selection events from ChatView
-  useEffect(() => {
-    const handleMentionSelectEvent = (e: CustomEvent) => {
-      const { option } = e.detail;
-      handleMentionSelect(option);
-    };
-
-    window.addEventListener(
-      'context:mentionSelect',
-      handleMentionSelectEvent as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'context:mentionSelect',
-        handleMentionSelectEvent as EventListener,
-      );
-    };
-  }, [message]); // Depends on message because handleMentionSelect uses it
-
-  // Listen for skill mention selection events from ChatView
-  useEffect(() => {
-    const handleSkillMentionSelectEvent = (e: CustomEvent) => {
-      const { skillName } = e.detail;
-      if (!textareaRef.current || !skillName) return;
-
-      // FIX: Read the current text from the DOM directly to avoid React state / DOM desync.
-      // When the user types quickly, React state (message) may not yet reflect the DOM value.
-      // Using the DOM value ensures cursorPos and text always agree.
-      const currentText = textareaRef.current.value;
-      const cursorPos = textareaRef.current.selectionStart;
-      const { newText, newCursorPos } = insertSkillMention(
-        currentText,
-        cursorPos,
-        skillName,
-      );
-
-      setMessage(newText);
-      onContextMenuClose?.();
-
-      // Restore focus and set the cursor position
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        }
-      }, 0);
-    };
-
-    window.addEventListener(
-      'context:skillMentionSelect',
-      handleSkillMentionSelectEvent as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'context:skillMentionSelect',
-        handleSkillMentionSelectEvent as EventListener,
-      );
-    };
-  }, [message, onContextMenuClose]);
-
-  // Listen for fill-input-box events from AgentPage
-  useEffect(() => {
-    const handleFillInputEvent = (e: CustomEvent) => {
-      const { text } = e.detail;
-
-      if (text && typeof text === 'string') {
-        setMessage(text);
-
-        // Focus the input and move the cursor to the end
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(text.length, text.length);
-          }
-        }, 0);
-      }
-    };
-
-    window.addEventListener(
-      'agent:fillInput',
-      handleFillInputEvent as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'agent:fillInput',
-        handleFillInputEvent as EventListener,
-      );
-    };
-  }, []);
-
-  // Auto-resize textarea based on content and control scrollbar visibility
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      // Fixed height of 68 px, shows 2 lines of text
-      textarea.style.height = '68px';
-
-      // Show scrollbar only when content exceeds fixed height
-      if (textarea.scrollHeight > 68) {
-        textarea.style.overflowY = 'auto';
-      } else {
-        textarea.style.overflowY = 'hidden';
-      }
-    }
-  }, [message]);
-
-  // Monitor container height changes and update global CSS variable
-  useEffect(() => {
-    const updateHeight = () => {
-      if (containerRef.current) {
-        const height = containerRef.current.offsetHeight;
-        document.documentElement.style.setProperty('--chat-input-height', `${height}px`);
-      }
-    };
-
-    // Initial update
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateHeight();
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
+    if (!isEditMode || !initialMessage) {
+      return;
     }
 
+    attachmentManager.loadFromMessage(initialMessage);
+    textareaManager.set(MessageHelper.getText(initialMessage));
+  }, [attachmentManager, initialMessage, isEditMode]);
+
+  useEffect(() => {
     return () => {
-      resizeObserver.disconnect();
-      // Optional: Reset variable on unmount, or leave it
-      // document.documentElement.style.removeProperty('--chat-input-height');
+      attachmentManager.clear();
+      textareaManager.set('');
     };
-  }, []);
+  }, [attachmentManager, textareaManager]);
+
 
   // Listen for attach menu CustomEvent actions dispatched from AppLayout
   useEffect(() => {
@@ -588,27 +175,6 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
     };
   }, [isProcessing]);
 
-  // Handle clicking outside to close model dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        modelDropdownRef.current &&
-        !modelDropdownRef.current.contains(event.target as Node)
-      ) {
-        setShowModelDropdown(false);
-      }
-    };
-
-    if (showModelDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showModelDropdown]);
-
-
-
   // Image handling with smart compression
   const handleImageSelect = async (file: File) => {
 
@@ -630,17 +196,6 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
 
         const compressionResult = await smartCompressImageVSCodeOfficial(file);
         processedFile = compressionResult.compressedFile;
-
-        const originalSizeMB =
-          Math.round((compressionResult.originalSize / (1024 * 1024)) * 10) /
-          10;
-        const compressedSizeMB =
-          Math.round((compressionResult.compressedSize / (1024 * 1024)) * 10) /
-          10;
-        const savings = Math.round(
-          (1 - compressionResult.compressionRatio) * 100,
-        );
-
       }
 
       // Add to the attachment manager
@@ -659,7 +214,7 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
 
   // File handling
   const handleFileSelect = async (file: File) => {
-    console.log(`[ChatInput] handleFileSelect called:`, {
+    logger.debug(`[ChatInput] handleFileSelect called:`, {
       name: file.name,
       type: file.type,
       size: file.size,
@@ -672,22 +227,22 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
 
     try {
       if (FileProcessor.isOfficeFile(file)) {
-        console.log(`[ChatInput] Processing as Office file: ${file.name}`);
+        logger.debug(`[ChatInput] Processing as Office file: ${file.name}`);
         await attachmentManager.addOffice(file);
       } else if (FileProcessor.isTextFile(file)) {
-        console.log(`[ChatInput] Processing as Text file: ${file.name}`);
+        logger.debug(`[ChatInput] Processing as Text file: ${file.name}`);
         await attachmentManager.addFile(file);
       } else {
-        console.log(`[ChatInput] Processing as Others file: ${file.name}`);
+        logger.debug(`[ChatInput] Processing as Others file: ${file.name}`);
         await attachmentManager.addOthers(file);
       }
-      console.log(`[ChatInput] ✅ File processed successfully: ${file.name}`);
+      logger.debug(`[ChatInput] ✅ File processed successfully: ${file.name}`);
     } catch (error) {
       if ((error as Error)?.message?.startsWith('DUPLICATE:')) {
         alert(`This file is already attached: ${file.name}`);
       } else {
-        console.error(`[ChatInput] ❌ handleFileSelect error for ${file.name}:`, error);
-        console.error(`[ChatInput] Error details:`, {
+        logger.error(`[ChatInput] ❌ handleFileSelect error for ${file.name}:`, error);
+        logger.error(`[ChatInput] Error details:`, {
           message: (error as Error)?.message,
           stack: (error as Error)?.stack,
           name: (error as Error)?.name,
@@ -699,90 +254,11 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
     }
   };
 
-  // Handle clipboard paste events - supports screenshot paste and text trimming
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) {
-      return;
-    }
-
-    // FIX: Prefer plain text over images.
-    // When copying a table from Excel/Word the clipboard contains both text and image formats;
-    // text should take priority.
-    const hasTextContent = clipboardData.types.includes('text/plain');
-    const textContent = clipboardData.getData('text/plain');
-    
-    // If there is non-empty text content, handle the paste manually and trim surrounding whitespace
-    if (hasTextContent && textContent.trim().length > 0) {
-      e.preventDefault();
-      const trimmedText = textContent.trim();
-      
-      // Get the current cursor position
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const newMessage = message.slice(0, start) + trimmedText + message.slice(end);
-        setMessage(newMessage);
-        
-        // Set the new cursor position and scroll to it
-        const newCursorPos = start + trimmedText.length;
-        requestAnimationFrame(() => {
-          textarea.selectionStart = newCursorPos;
-          textarea.selectionEnd = newCursorPos;
-          // Scroll to the cursor position (bottom)
-          textarea.scrollTop = textarea.scrollHeight;
-        });
-      } else {
-        setMessage(message + trimmedText);
-      }
-      return;
-    }
-
-    // Check whether the current model supports images
-    if (!supportsImages) {
-      return;
-    }
-
-    // Check whether the clipboard contains image files (only process images when there is no text)
-    const items = Array.from(clipboardData.items);
-    const imageItems = items.filter((item) => item.type.startsWith('image/'));
-
-    if (imageItems.length === 0) {
-      return;
-    }
-
-    // Prevent default paste behaviour (only for pure image pastes)
-    e.preventDefault();
-
-    // Process each image item
-    for (const item of imageItems) {
-      const file = item.getAsFile();
-      if (file) {
-
-        // Validate image format
-        if (!validateImageFile(file)) {
-          alert(
-            `Unsupported image format: ${file.type}. Please paste a PNG, JPEG, GIF, WEBP, or BMP image.`,
-          );
-          continue;
-        }
-
-        // Generate a file name for the pasted image
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const extension = file.type.split('/')[1] || 'png';
-        const fileName = `screenshot-${timestamp}.${extension}`;
-
-        // Create a new File object with the generated file name
-        const renamedFile = new File([file], fileName, { type: file.type });
-
-        await handleImageSelect(renamedFile);
-      }
-    }
-  };
-
   // Drag-and-drop event handling
   const handleDragOver = (e: React.DragEvent) => {
+    if (shouldLockComposeUi || isExternalAgent) {
+      return;
+    }
     e.preventDefault();
     if (e.dataTransfer.types.includes('Files')) {
       setIsDragOver(true);
@@ -790,6 +266,9 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
   };
 
   const handleDragEnter = (e: React.DragEvent) => {
+    if (shouldLockComposeUi || isExternalAgent) {
+      return;
+    }
     e.preventDefault();
     if (e.dataTransfer.types.includes('Files')) {
       setIsDragOver(true);
@@ -797,6 +276,9 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
+    if (shouldLockComposeUi) {
+      return;
+    }
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX;
@@ -808,58 +290,63 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
   };
 
   const handleDrop = async (e: React.DragEvent) => {
+    if (shouldLockComposeUi || isExternalAgent) {
+      e.preventDefault();
+      setIsDragOver(false);
+      return;
+    }
     e.preventDefault();
     setIsDragOver(false);
 
     const files = Array.from(e.dataTransfer.files);
-    
+
     // FIX: Use Electron webUtils.getPathForFile() to obtain the full path for dragged files.
     // This is the official solution for the missing path property under contextIsolation: true.
     for (const file of files) {
       let resolvedPath: string | undefined;
-      
+
       // Prefer the Electron API to obtain the path
       if (window.electronAPI?.fs?.getPathForFile) {
         try {
           resolvedPath = window.electronAPI.fs.getPathForFile(file);
-          console.log(`[ChatInput] 🔥 Got path from webUtils.getPathForFile: ${resolvedPath}`);
+          logger.debug(`[ChatInput] 🔥 Got path from webUtils.getPathForFile: ${resolvedPath}`);
         } catch (err) {
-          console.warn(`[ChatInput] ⚠️ webUtils.getPathForFile failed:`, err);
+          logger.warn(`[ChatInput] ⚠️ webUtils.getPathForFile failed:`, err);
         }
       }
-      
+
       // Fallback: check the path property on the File object
       if (!resolvedPath) {
         const filePath = (file as any).path;
         if (filePath) {
           resolvedPath = filePath;
-          console.log(`[ChatInput] 📁 Using file.path: ${resolvedPath}`);
+          logger.debug(`[ChatInput] 📁 Using file.path: ${resolvedPath}`);
         }
       }
-      
+
       // Attach the resolved path to the File object's fullPath property
       if (resolvedPath) {
         (file as any).fullPath = resolvedPath;
-        console.log(`[ChatInput] ✅ Attached fullPath to file: ${resolvedPath}`);
+        logger.debug(`[ChatInput] ✅ Attached fullPath to file: ${resolvedPath}`);
       } else {
-        console.log(`[ChatInput] ⚠️ No path available for file: ${file.name}`);
+        logger.debug(`[ChatInput] ⚠️ No path available for file: ${file.name}`);
       }
-      
+
       // Debug log
-      console.log(`[ChatInput] 🔍 Dropped file: ${file.name}`, {
+      logger.debug(`[ChatInput] 🔍 Dropped file: ${file.name}`, {
         fullPath: (file as any).fullPath,
         type: file.type,
         size: file.size
       });
     }
-    
+
     const imageFiles = files.filter((file) => FileProcessor.isImageFile(file));
     const textFiles = files.filter((file) => FileProcessor.isTextFile(file));
     const officeFiles = files.filter((file) => FileProcessor.isOfficeFile(file));
     const otherFiles = files.filter((file) => FileProcessor.isOthersFile(file));
 
     // Process image files (only when the model supports images)
-    if (imageFiles.length > 0 && supportsImages) {
+    if (imageFiles.length > 0 && effectiveSupportsImages) {
 
       for (const file of imageFiles) {
         if (validateImageFile(file)) {
@@ -870,7 +357,7 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
           );
         }
       }
-    } else if (imageFiles.length > 0 && !supportsImages) {
+    } else if (imageFiles.length > 0 && !effectiveSupportsImages) {
       alert('The current model does not support images. Image files were ignored.');
     }
 
@@ -903,7 +390,7 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
   const handleElectronFileSelect = async () => {
     try {
       if (!window.electronAPI?.fs?.selectFiles) {
-        console.error('Electron file selection API not available, falling back to browser selection');
+        logger.error('Electron file selection API not available, falling back to browser selection');
         // Fall back to browser file selection
         fileInputRef.current?.click();
         return;
@@ -916,7 +403,7 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
 
       if (result.success && result.filePaths && result.filePaths.length > 0) {
         setIsProcessing(true);
-        
+
         try {
           for (const filePath of result.filePaths) {
             // Read file information from the file path
@@ -924,9 +411,9 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
             const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
             const fileType = getFileTypeFromPath(filePath);
             const isImage = fileType.startsWith('image/');
-            
+
             if (!fileInfo.success || !fileInfo.stats) {
-              console.error('Failed to stat file:', filePath);
+              logger.error('Failed to stat file:', filePath);
               alert(`Failed to read file: ${filePath}`);
               continue;
             }
@@ -934,9 +421,9 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
             if (isImage) {
               // Image file: read binary data as base64
               const fileContent = await window.electronAPI.fs.readFile(filePath, 'base64');
-              
+
               if (!fileContent.success || !fileContent.content) {
-                console.error('Failed to read image file:', filePath);
+                logger.error('Failed to read image file:', filePath);
                 alert(`Failed to read file: ${filePath}`);
                 continue;
               }
@@ -947,16 +434,16 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
                 bytes[i] = binaryString.charCodeAt(i);
               }
               const blob = new Blob([bytes], { type: fileType });
-              
+
               const file = new File([blob], fileName, {
                 type: fileType,
                 lastModified: fileInfo.stats.mtime
               });
               (file as any).fullPath = filePath;
-              
-              console.log(`[ChatInput] 🔥 Image file selected with full path: ${filePath}`);
-              
-              if (supportsImages) {
+
+              logger.debug(`[ChatInput] 🔥 Image file selected with full path: ${filePath}`);
+
+              if (effectiveSupportsImages) {
                 await handleImageSelect(file);
               } else {
                 alert(`The current model does not support images. Ignored image file: ${file.name}`);
@@ -970,21 +457,21 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
               // Overwrite the empty Blob's size with the real file size from stat
               Object.defineProperty(file, 'size', { value: fileInfo.stats.size });
               (file as any).fullPath = filePath;
-              
-              console.log(`[ChatInput] 📁 Non-image file selected with full path: ${filePath}, size: ${fileInfo.stats.size}`);
-              
+
+              logger.debug(`[ChatInput] 📁 Non-image file selected with full path: ${filePath}, size: ${fileInfo.stats.size}`);
+
               await handleFileSelect(file);
             }
           }
         } catch (error) {
-          console.error('Error processing selected files:', error);
+          logger.error('Error processing selected files:', error);
           alert('An error occurred while processing the selected files.');
         } finally {
           setIsProcessing(false);
         }
       }
     } catch (error) {
-      console.error('Error selecting files:', error);
+      logger.error('Error selecting files:', error);
       alert('File selection failed. Please try again.');
     }
   };
@@ -1021,45 +508,45 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
       for (const file of Array.from(files)) {
         // FIX: Use Electron webUtils.getPathForFile() to obtain the full file path
         let resolvedPath: string | undefined;
-        
+
         // Prefer the Electron API to obtain the path
         if (window.electronAPI?.fs?.getPathForFile) {
           try {
             resolvedPath = window.electronAPI.fs.getPathForFile(file);
-            console.log(`[ChatInput] 🔥 Browser input - Got path from webUtils.getPathForFile: ${resolvedPath}`);
+            logger.debug(`[ChatInput] 🔥 Browser input - Got path from webUtils.getPathForFile: ${resolvedPath}`);
           } catch (err) {
-            console.warn(`[ChatInput] ⚠️ Browser input - webUtils.getPathForFile failed:`, err);
+            logger.warn(`[ChatInput] ⚠️ Browser input - webUtils.getPathForFile failed:`, err);
           }
         }
-        
+
         // Fallback: check the path property on the File object
         if (!resolvedPath) {
           const filePath = (file as any).path;
           if (filePath) {
             resolvedPath = filePath;
-            console.log(`[ChatInput] 📁 Browser input - Using file.path: ${resolvedPath}`);
+            logger.debug(`[ChatInput] 📁 Browser input - Using file.path: ${resolvedPath}`);
           }
         }
-        
+
         // Attach the resolved path to the File object's fullPath property
         if (resolvedPath) {
           (file as any).fullPath = resolvedPath;
-          console.log(`[ChatInput] ✅ Browser input - Attached fullPath to file: ${resolvedPath}`);
+          logger.debug(`[ChatInput] ✅ Browser input - Attached fullPath to file: ${resolvedPath}`);
         } else {
-          console.log(`[ChatInput] ⚠️ Browser input - No path available for file: ${file.name}`);
+          logger.debug(`[ChatInput] ⚠️ Browser input - No path available for file: ${file.name}`);
         }
-        
+
         // Debug log
-        console.log(`[ChatInput] 🔍 Browser selected file: ${file.name}`, {
+        logger.debug(`[ChatInput] 🔍 Browser selected file: ${file.name}`, {
           fullPath: (file as any).fullPath,
           type: file.type,
           size: file.size
         });
-        
+
         // Intelligently determine how to handle the file based on its type
         if (FileProcessor.isImageFile(file)) {
           // Check whether the current model supports images
-          if (supportsImages) {
+          if (effectiveSupportsImages) {
             await handleImageSelect(file);
           } else {
             alert(`The current model does not support images. Ignored image file: ${file.name}`);
@@ -1076,11 +563,18 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (shouldLockComposeUi) {
+      return;
+    }
     // Only allow sending when idle and content is valid
-    const isIdle = !chatStatus || chatStatus.chatStatus === 'idle';
-    if (isIdle && attachmentManager.isValid() && !isProcessing) {
-      const messageToSend = attachmentManager.createMessage();
+    if (sessionIdle && hasValidInput && !isProcessing && !isSubmittingEdit) {
+      const messageToSend = attachmentManager.createMessage(textareaManager.get(), isEditMode
+        ? {
+            id: initialMessage?.id,
+            timestamp: initialMessage?.timestamp,
+          }
+        : undefined);
 
       // Convert [@knowledge-base:...], [@chat-session:...], [@workspace:...] and [#skill:...]
       // to markdown format (strip the surrounding square brackets).
@@ -1088,31 +582,31 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
       messageToSend.content = messageToSend.content.map(part => {
         if (part.type === 'text') {
           let processedText = part.text;
-          
+
           // Convert [@knowledge-base:...] to `@knowledge-base:...` (strip brackets)
           processedText = processedText.replace(
             /\[@knowledge-base:([^\]]+)\]/g,
             '`@knowledge-base:$1`'
           );
-          
+
           // Convert [@chat-session:...] to `@chat-session:...` (strip brackets)
           processedText = processedText.replace(
             /\[@chat-session:([^\]]+)\]/g,
             '`@chat-session:$1`'
           );
-          
+
           // Convert [@workspace:...] to `@workspace:...` (strip brackets, backward-compatible)
           processedText = processedText.replace(
             /\[@workspace:([^\]]+)\]/g,
             '`@workspace:$1`'
           );
-          
+
           // Convert [#skill:...] to `#skill:...` (strip brackets)
           processedText = processedText.replace(
             /\[#skill:([^\]]+)\]/g,
             '`#skill:$1`'
           );
-          
+
           return {
             ...part,
             text: processedText
@@ -1121,674 +615,162 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
         return part;
       });
 
-      // Add to prompt history queue
-      if (message.trim()) {
-        profileDataManager.addPromptToHistory(message.trim());
+      // Add to prompt history queue only for normal send mode
+      const message = textareaManager.get().trim();
+      if (!isEditMode && message) {
+        profileDataManager.addPromptToHistory(message);
       }
 
-      // Send the message in unified format
-      onSendMessage(messageToSend);
-
-      setMessage('');
-      attachmentManager.clear();
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = '68px';
-        textareaRef.current.style.overflowY = 'hidden';
-        textareaRef.current.focus();
-      }
-    }
-  };
-
-  // Get cursor position information
-  const getCursorPosition = (): {
-    position: number;
-    isAtStart: boolean;
-    isAtEnd: boolean;
-    isInMiddle: boolean;
-  } => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      return { position: 0, isAtStart: true, isAtEnd: true, isInMiddle: false };
-    }
-
-    const position = textarea.selectionStart;
-    const textLength = message.length;
-    const isAtStart = position === 0;
-    const isAtEnd = position === textLength;
-    const isInMiddle = !isAtStart && !isAtEnd && textLength > 0;
-
-    return { position, isAtStart, isAtEnd, isInMiddle };
-  };
-
-  // Set cursor position
-  const setCursorPosition = (position: number) => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.setSelectionRange(position, position);
-      textarea.focus();
-    }
-  };
-
-  // Handle history navigation
-  const handleHistoryNavigation = (direction: 'up' | 'down') => {
-    const { isAtStart, isAtEnd, isInMiddle } = getCursorPosition();
-
-
-    if (direction === 'up') {
-      if (isAtStart) {
-        // Cursor at start, switch to previous prompt
-        const previousPrompt = profileDataManager.getPreviousPrompt();
-        if (previousPrompt !== null) {
-          isNavigatingHistory.current = true;
-          setMessage(previousPrompt);
-          // After selecting up, cursor defaults to start
-          setTimeout(() => {
-            setCursorPosition(0);
-            isNavigatingHistory.current = false;
-          }, 0);
-        }
-      } else {
-        // Cursor at middle or end, move to start
-        setCursorPosition(0);
-      }
-    } else if (direction === 'down') {
-      if (isAtEnd) {
-        // Cursor at end, switch to next prompt
-        const nextPrompt = profileDataManager.getNextPrompt();
-        if (nextPrompt !== null) {
-          isNavigatingHistory.current = true;
-          setMessage(nextPrompt);
-          // After selecting down, cursor defaults to end
-          setTimeout(() => {
-            setCursorPosition(nextPrompt.length);
-            isNavigatingHistory.current = false;
-          }, 0);
-        }
-      } else {
-        // Cursor at start or middle, move to end
-        setCursorPosition(message.length);
-      }
-    }
-  };
-
-  // Get the bounding rect of the ChatInput container
-  const getInputContainerRect = (): DOMRect | null => {
-    // Get the chat-input-container element
-    const container = textareaRef.current?.closest(
-      '.chat-input-container',
-    ) as HTMLElement;
-    return container?.getBoundingClientRect() || null;
-  };
-
-  // Handle mention selection
-  const handleMentionSelect = (option: ContextOption, fromKeyboard: boolean = false) => {
-    if (!textareaRef.current) return;
-
-    // If this is the default option (no relativePath or value), close the menu
-    // and let the existing ContextMenu onSelect flow handle it
-    if (!option.relativePath && !option.value) {
-      
-      if (fromKeyboard) {
-        // Keyboard selection: close the menu and restore focus
-        onContextMenuClose?.();
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-          }
-        }, 0);
-      }
-      
-      // Do nothing here; let ContextMenu's onSelect call ChatView's handler
-      return;
-    }
-
-    // FIX: Read the current text from the DOM directly to avoid React state / DOM desync.
-    // When the user types quickly, React state (message) may not yet reflect the DOM value.
-    // Using the DOM value ensures cursorPos and text always agree.
-    const currentText = textareaRef.current.value;
-    const cursorPos = textareaRef.current.selectionStart;
-    const pathToInsert = option.value || option.relativePath || '';
-    
-    // Determine sourceType from the option type
-    let sourceType: MentionSourceType | undefined;
-    if (option.type === ContextMenuOptionType.KnowledgeBase) {
-      sourceType = MentionSourceType.KnowledgeBase;
-    } else if (option.type === ContextMenuOptionType.ChatSession) {
-      sourceType = MentionSourceType.ChatSession;
-    }
-    
-    const { newText, newCursorPos } = insertMention(
-      currentText,
-      cursorPos,
-      pathToInsert,
-      sourceType,
-    );
-
-    setMessage(newText);
-    onContextMenuClose?.();
-
-    // Restore focus and set the cursor position
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 0);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Context menu keyboard navigation (high priority)
-    if (contextMenuState?.isOpen && contextMenuState.options.length > 0) {
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        onContextMenuNavigate?.('up');
-        return;
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        onContextMenuNavigate?.('down');
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowRight') {
-        e.preventDefault();
-        const selectedOption = contextMenuState.options[contextMenuState.selectedIndex];
-        
-        // Handle Skill-type options (triggered by #)
-        if (selectedOption.type === ContextMenuOptionType.Skill && selectedOption.value) {
-          // Fire the skill mention selection event
-          window.dispatchEvent(new CustomEvent('context:skillMentionSelect', {
-            detail: { skillName: selectedOption.value }
-          }));
+      if (isEditMode) {
+        if (!onSubmitEditedMessage) {
           return;
         }
-        
-        // For default options (no relativePath or value), delegate to ChatView
-        if (!selectedOption.relativePath && !selectedOption.value) {
-          // Handled via ChatView's ContextMenu onSelect
-          window.dispatchEvent(new CustomEvent('context:keyboardSelect', {
-            detail: { option: selectedOption }
-          }));
-        } else {
-          // For options with an actual path (@ triggered file options), use handleMentionSelect
-          handleMentionSelect(selectedOption, true);
+
+        setIsAwaitingEditConfirmation(true);
+        try {
+          const confirmed = await requestInlineEditConfirmation(editConfirmDescription);
+          if (!confirmed) {
+            return;
+          }
+
+          setIsSubmittingEdit(true);
+          try {
+            await onSubmitEditedMessage(messageToSend);
+          } catch (error) {
+            logger.error('[ChatInput] Failed to submit inline edit:', error);
+          } finally {
+            setIsSubmittingEdit(false);
+          }
+        } finally {
+          setIsAwaitingEditConfirmation(false);
         }
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onContextMenuClose?.();
-        return;
-      }
-    }
-
-    // Handle Enter key - must check IME composition state
-    if (e.key === 'Enter') {
-      // FIX: Check IME composition state; do not intercept while composing
-      if (e.nativeEvent.isComposing) {
-        // IME is composing; do not intercept Enter, let the IME handle it
-        return;
-      }
-      
-      // Alt+Enter (Windows) or Option+Enter (Mac) inserts a newline
-      if (e.altKey) {
-        e.preventDefault();
-        const textarea = textareaRef.current;
-        if (textarea) {
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          const newValue = message.substring(0, start) + '\n' + message.substring(end);
-          setMessage(newValue);
-          // Set the cursor position after the newline character
-          setTimeout(() => {
-            textarea.selectionStart = textarea.selectionEnd = start + 1;
-          }, 0);
-        }
-        return;
-      }
-      
-      // Plain Enter sends the message (Shift+Enter is handled natively by textarea for newlines)
-      if (!e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      handleHistoryNavigation('up');
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      handleHistoryNavigation('down');
-    }
-  };
-
-  // Handle input content changes, monitor editing behavior
-  const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    const cursorPos = e.target.selectionStart;
-
-    setMessage(newValue);
-
-    // Check the trigger type (@ or #) using the unified triggerType check
-    const triggerType = getContextMenuTriggerType(newValue, cursorPos);
-
-    if (triggerType === ContextMenuTriggerType.Skill) {
-      // # trigger: show the Skills list
-      const query = getCurrentSkillSearchQuery(newValue, cursorPos);
-      const inputRect = getInputContainerRect();
-      if (inputRect) {
-        onContextMenuTrigger?.(query, inputRect, ContextMenuTriggerType.Skill);
-      }
-    } else if (triggerType === ContextMenuTriggerType.Workspace) {
-      // @ trigger: show workspace files
-      const query = getCurrentSearchQuery(newValue, cursorPos);
-      const inputRect = getInputContainerRect();
-      if (inputRect) {
-        onContextMenuTrigger?.(query, inputRect, ContextMenuTriggerType.Workspace);
-      }
-    } else {
-      onContextMenuClose?.();
-    }
-
-    // If not navigating history, record as editing behavior
-    if (!isNavigatingHistory.current) {
-      profileDataManager.setCurrentEditingPrompt(newValue);
-    }
-  };
-
-  // Handle model selection
-  const handleModelSelect = async (modelId: string) => {
-    if (isLoading) return;
-
-    // FIX: Set pending state immediately to update the UI
-    setPendingModel(modelId);
-
-    try {
-      const result = await updateModel(modelId);
-
-      if (result.success) {
       } else {
-        // FIX: If the update fails, clear the pending state
-        setPendingModel(null);
-      }
-    } catch (error) {
-      // FIX: If an error occurs, clear the pending state
-      setPendingModel(null);
-    }
+        // Send the message in unified format
+        onSendMessage(messageToSend);
 
-    setShowModelDropdown(false);
+        textareaManager.set('');
+        attachmentManager.clear();
+
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }
+    }
   };
 
-  // Get current model info and capabilities - uses displayModel
-  const currentModelInfo = displayModel ? getModelById(displayModel) : null;
-  const currentModelCapabilities = displayModel
-    ? getModelCapabilities(displayModel)
-    : null;
-  const supportsImages = currentModelCapabilities?.supportsImages ?? false;
+  const editConfirmDescription = warningMessage
+    ? 'This will replace the response below and regenerate from your edited message. External actions already run will not be undone.'
+    : 'This will replace the response below and regenerate from your edited message.';
 
-  // Get current content statistics
-  const contentStats = attachmentManager.getStats();
-  const allContent = attachmentManager.getContent();
+  const requestInlineEditConfirmation = useCallback((description: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const requestId = `inline-edit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const handleResult = (event: Event) => {
+        const customEvent = event as CustomEvent<{ requestId?: string; confirmed?: boolean }>;
+        if (customEvent.detail?.requestId !== requestId) {
+          return;
+        }
+
+        window.removeEventListener('chatInput:confirmInlineEditResult', handleResult as EventListener);
+        resolve(customEvent.detail?.confirmed === true);
+      };
+
+      window.addEventListener('chatInput:confirmInlineEditResult', handleResult as EventListener);
+      window.dispatchEvent(new CustomEvent('chatInput:confirmInlineEditRequest', {
+        detail: {
+          requestId,
+          title: 'Regenerate response?',
+          description,
+        },
+      }));
+    });
+  }, []);
 
   return (
     <div
-      ref={containerRef}
-      className={`chat-input-container ${isDragOver ? 'drag-over' : ''}`}
+      className={`chat-input-container ${isDragOver ? 'drag-over' : ''} ${isEditMode ? 'inline-edit-mode' : ''}`}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Error bar - embedded directly above the input area, higher priority than ApprovalBar */}
-      {errorMessage && chatSessionId && onRetry && (
-        <ErrorBar
-          errorMessage={errorMessage}
-          chatSessionId={chatSessionId}
-          onRetry={onRetry}
-        />
+      {/* Error bar - embedded directly above the input area */}
+      {!isEditMode && errorMessage && chatSessionId && (
+        <ErrorBar errorMessage={errorMessage} chatSessionId={chatSessionId} />
       )}
-      
-      {/* Batch approval bar - embedded directly above the input area */}
-      {approvalRequests.length > 0 && onApproveRequest && onRejectRequest && (
-        <ApprovalBar
-          requests={approvalRequests}
-          onApprove={onApproveRequest}
-          onReject={onRejectRequest}
-          onTimeoutAutoReject={onTimeoutAutoReject}
-        />
+
+      {shouldLockComposeUi && (
+        <div
+          style={{
+            margin: '0 4px 10px',
+            padding: '10px 12px',
+            borderRadius: '12px',
+            border: '1px solid rgba(14, 165, 233, 0.28)',
+            background: 'rgba(14, 165, 233, 0.08)',
+            color: 'rgba(30, 41, 59, 0.92)',
+            fontSize: '12px',
+            lineHeight: 1.4,
+          }}
+        >
+          Inline message editing is active above. Save or cancel that edit to continue composing here.
+        </div>
       )}
 
       {/* Main input area - integrated design */}
-      <div className="input-area">
+      <div
+        className="input-area"
+        style={shouldLockComposeUi ? { opacity: 0.7, pointerEvents: 'none' } : undefined}
+      >
         {/* Unified attachment display area */}
-        {allContent.filter((part) => part.type !== 'text').length > 0 && (
-          <div className="attachments-area">
-            <div className="attachment-list">
-              {allContent
-                .map((part, originalIndex) => ({ part, originalIndex }))
-                .filter(({ part }) => part.type !== 'text')
-                .map(({ part, originalIndex }) => {
-                  if (part.type === 'image') {
-                    const imagePart = part as ImageContentPart;
-                    const previewUrl = attachmentManager.getPreviewUrl(
-                      imagePart.metadata.fileName,
-                    );
-
-                    return (
-                      <div
-                        key={`image-${originalIndex}`}
-                        className="attachment-item image"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          const previewUrl = attachmentManager.getPreviewUrl(imagePart.metadata.fileName);
-                          if (previewUrl) {
-                            window.dispatchEvent(new CustomEvent('imageViewer:open', {
-                              detail: {
-                                images: [{
-                                  id: `attachment-${originalIndex}`,
-                                  url: previewUrl,
-                                  alt: imagePart.metadata.fileName,
-                                }],
-                                initialIndex: 0,
-                              }
-                            }));
-                          }
-                        }}
-                      >
-                        {previewUrl && (
-                          <img
-                            src={previewUrl}
-                            alt={imagePart.metadata.fileName}
-                            className="attachment-image-preview"
-                          />
-                        )}
-                        <div className="attachment-image-overlay">
-                          <svg
-                            className="attachment-file-icon"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                        <div className="attachment-image-name">
-                          {imagePart.metadata.fileName}
-                        </div>
-                        <button
-                          className="attachment-remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            attachmentManager.removeContent(originalIndex);
-                          }}
-                          title="Remove attachment"
-                        >
-                          <svg fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  if (part.type === 'file') {
-                    const filePart = part as FileContentPart;
-
-                    return (
-                      <div
-                        key={`file-${originalIndex}`}
-                        className="attachment-item file"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          if (filePart.file.filePath) {
-                            window.dispatchEvent(new CustomEvent('fileViewer:open', {
-                              detail: {
-                                file: {
-                                  name: filePart.file.fileName,
-                                  url: `file://${filePart.file.filePath}`,
-                                  mimeType: filePart.file.mimeType,
-                                  size: filePart.metadata?.fileSize,
-                                  lastModified: filePart.metadata?.lastModified
-                                    ? new Date(filePart.metadata.lastModified).toLocaleString()
-                                    : undefined,
-                                },
-                              },
-                            }));
-                          }
-                        }}
-                      >
-                        <div className="attachment-file-icon">
-                          <FileTypeIcon fileName={filePart.file.fileName} size={16} />
-                        </div>
-                        <div className="attachment-file-info">
-                          <div
-                            className="attachment-name"
-                            title={filePart.file.fileName}
-                          >
-                            {filePart.file.fileName}
-                          </div>
-                        </div>
-                        <button
-                          className="attachment-remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            attachmentManager.removeContent(originalIndex);
-                          }}
-                          title="Remove file"
-                        >
-                          <svg fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  if (part.type === 'office') {
-                    const officePart = part as OfficeContentPart;
-
-                    return (
-                      <div
-                        key={`office-${originalIndex}`}
-                        className="attachment-item file"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          if (officePart.file.filePath) {
-                            window.dispatchEvent(new CustomEvent('fileViewer:open', {
-                              detail: {
-                                file: {
-                                  name: officePart.file.fileName,
-                                  url: `file://${officePart.file.filePath}`,
-                                  mimeType: officePart.file.mimeType,
-                                  size: officePart.metadata?.fileSize,
-                                  lastModified: officePart.metadata?.lastModified
-                                    ? new Date(officePart.metadata.lastModified).toLocaleString()
-                                    : undefined,
-                                },
-                              },
-                            }));
-                          }
-                        }}
-                      >
-                        <div className="attachment-file-icon">
-                          <FileTypeIcon fileName={officePart.file.fileName} size={16} />
-                        </div>
-                        <div className="attachment-file-info">
-                          <div
-                            className="attachment-name"
-                            title={officePart.file.fileName}
-                          >
-                            {officePart.file.fileName}
-                          </div>
-                        </div>
-                        <button
-                          className="attachment-remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            attachmentManager.removeContent(originalIndex);
-                          }}
-                          title="Remove Office file"
-                        >
-                          <svg fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  if (part.type === 'others') {
-                    const othersPart = part as OthersContentPart;
-
-                    return (
-                      <div
-                        key={`others-${originalIndex}`}
-                        className="attachment-item file"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          if (othersPart.file.filePath) {
-                            window.dispatchEvent(new CustomEvent('fileViewer:open', {
-                              detail: {
-                                file: {
-                                  name: othersPart.file.fileName,
-                                  url: `file://${othersPart.file.filePath}`,
-                                  mimeType: othersPart.file.mimeType,
-                                  size: othersPart.metadata?.fileSize,
-                                  lastModified: othersPart.metadata?.lastModified
-                                    ? new Date(othersPart.metadata.lastModified).toLocaleString()
-                                    : undefined,
-                                },
-                              },
-                            }));
-                          }
-                        }}
-                      >
-                        <div className="attachment-file-icon">
-                          <FileTypeIcon fileName={othersPart.file.fileName} size={16} />
-                        </div>
-                        <div className="attachment-file-info">
-                          <div
-                            className="attachment-name"
-                            title={othersPart.file.fileName}
-                          >
-                            {othersPart.file.fileName}
-                          </div>
-                        </div>
-                        <button
-                          className="attachment-remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            attachmentManager.removeContent(originalIndex);
-                          }}
-                          title="Remove file"
-                        >
-                          <svg fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return null;
-                })}
-            </div>
-          </div>
-        )}
-
-        {/* Highlight layer (below the textarea) */}
-        <MentionHighlight text={message} textareaRef={textareaRef} />
-
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={handleMessageChange}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={
-            supportsImages
-              ? 'Type a message, drag files/images, paste screenshot, @ to mention files, # for skills...'
-              : 'Type a message, drag files, @ to mention files, # for skills...'
-          }
-          rows={1}
-          className="chat-textarea"
+        <AttachmentList attachmentsStateAtom={attachmentsStateAtom} />
+        <TextArea
+          handleImageSelect={handleImageSelect}
+          handleSend={handleSend}
+          textareaRef={textareaRef}
+          readOnly={shouldLockComposeUi}
+          title={chatInputShortcutHint}
+          supportsImages={effectiveSupportsImages}
+          enableContextMenu={enableContextMenu}
+          textareaStateAtom={textareaStateAtom}
         />
 
         {/* Button area */}
         <div className="button-area">
           {/* Unified attach button (click to open the menu, managed by AppLayout) */}
+          {!isExternalAgent && (
           <button
             className="attachment-button file-attachment-button"
             onClick={(e) => {
-              if (onAttachMenuToggle) {
-                onAttachMenuToggle(e.currentTarget);
+              if (isEditMode) {
+                handleElectronFileSelect();
+                return;
               }
+              attachMenuActions.toggle(e.currentTarget);
             }}
-            disabled={isProcessing}
+            disabled={isProcessing || isSubmittingEdit || shouldLockComposeUi}
             title="Attach"
           >
-            <svg
-              className="attachment-icon"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <mask id="mask0_613_722" style={{maskType: 'alpha'}} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-                <path d="M12 3.25C12.4142 3.25 12.75 3.58579 12.75 4V11.25H20C20.4142 11.25 20.75 11.5858 20.75 12C20.75 12.4142 20.4142 12.75 20 12.75H12.75V20C12.75 20.4142 12.4142 20.75 12 20.75C11.5858 20.75 11.25 20.4142 11.25 20V12.75H4C3.58579 12.75 3.25 12.4142 3.25 12C3.25 11.5858 3.58579 11.25 4 11.25H11.25V4C11.25 3.58579 11.5858 3.25 12 3.25Z" fill="#242424"/>
-              </mask>
-              <g mask="url(#mask0_613_722)">
-                <rect width="24" height="24" fill="#272320"/>
-              </g>
-            </svg>
+            {attachment_icon_1}
           </button>
+          )}
 
           {/* Edit Agent button */}
+          {!isEditMode && (
           <button
             className="attachment-button edit-agent-button"
             onClick={(e) => {
-              if (onEditAgentMenuToggle) {
-                onEditAgentMenuToggle(e.currentTarget);
-              }
+                if (shouldLockComposeUi) {
+                  return;
+                }
+              editAgentMenuActions.toggle(e.currentTarget);
             }}
+              disabled={shouldLockComposeUi}
             title="Edit Agent (MCP Tools, System Prompt & Context Enhancement)"
           >
-            <svg
-              className="attachment-icon"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <mask id="mask0_613_682" style={{maskType: 'alpha'}} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-                <path d="M8.75 13.5C10.2862 13.5 11.5735 14.5658 11.9126 15.9983L21.25 16C21.6642 16 22 16.3358 22 16.75C22 17.1297 21.7178 17.4435 21.3518 17.4932L21.25 17.5L11.9129 17.5007C11.5741 18.9337 10.2866 20 8.75 20C7.21345 20 5.92594 18.9337 5.58712 17.5007L2.75 17.5C2.33579 17.5 2 17.1642 2 16.75C2 16.3703 2.28215 16.0565 2.64823 16.0068L2.75 16L5.58712 15.9993C5.92594 14.5663 7.21345 13.5 8.75 13.5ZM8.75 15C7.98586 15 7.33611 15.4898 7.09753 16.1725L7.07696 16.2352L7.03847 16.3834C7.01326 16.5016 7 16.6242 7 16.75C7 16.9048 7.02011 17.055 7.05785 17.1979L7.09766 17.3279L7.12335 17.3966C7.38055 18.0431 8.01191 18.5 8.75 18.5C9.51376 18.5 10.1632 18.0107 10.4021 17.3285L10.4422 17.1978L10.4251 17.2581C10.4738 17.0973 10.5 16.9267 10.5 16.75C10.5 16.6452 10.4908 16.5425 10.4731 16.4428L10.4431 16.3057L10.4231 16.2353L10.3763 16.1024C10.1188 15.4565 9.48771 15 8.75 15ZM15.25 4C16.7866 4 18.0741 5.06632 18.4129 6.49934L21.25 6.5C21.6642 6.5 22 6.83579 22 7.25C22 7.6297 21.7178 7.94349 21.3518 7.99315L21.25 8L18.4129 8.00066C18.0741 9.43368 16.7866 10.5 15.25 10.5C13.7134 10.5 12.4259 9.43368 12.0871 8.00066L2.75 8C2.33579 8 2 7.66421 2 7.25C2 6.8703 2.28215 6.55651 2.64823 6.50685L2.75 6.5L12.0874 6.49833C12.4265 5.06582 13.7138 4 15.25 4ZM15.25 5.5C14.4859 5.5 13.8361 5.98976 13.5975 6.6725L13.577 6.73515L13.5385 6.88337C13.5133 7.0016 13.5 7.12425 13.5 7.25C13.5 7.40483 13.5201 7.55497 13.5579 7.69794L13.5977 7.82787L13.6234 7.89664C13.8805 8.54307 14.5119 9 15.25 9C16.0138 9 16.6632 8.51073 16.9021 7.82852L16.9422 7.69781L16.9251 7.75808C16.9738 7.59729 17 7.4267 17 7.25C17 7.14518 16.9908 7.04251 16.9731 6.94275L16.9431 6.80565L16.9231 6.73529L16.8763 6.60236C16.6188 5.95647 15.9877 5.5 15.25 5.5Z" fill="#242424"/>
-              </mask>
-              <g mask="url(#mask0_613_682)">
-                <rect width="24" height="24" fill="#272320"/>
-              </g>
-            </svg>
+            {attachment_icon_2}
           </button>
+          )}
 
           {/* Unified hidden file input - supports both images and text files */}
           <input
@@ -1801,15 +783,13 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
           />
 
           {/* Voice Input Button - positioned to the left of model selector */}
-          {enableVoiceInput && voiceInputUserEnabled && (
+          {!isEditMode && enableVoiceInput && voiceInputUserEnabled && (
             <VoiceInputButton
               onTranscript={(transcript, isFinal) => {
                 if (isFinal && transcript.trim()) {
                   // Append the final transcript to the current message
-                  setMessage(prev => {
-                    const newText = prev ? `${prev} ${transcript}` : transcript;
-                    attachmentManager.setText(newText);
-                    return newText;
+                  textareaManager.set(prev => {
+                    return prev ? `${prev} ${transcript}` : transcript;
                   });
                   // Focus the textarea after voice input
                   setTimeout(() => {
@@ -1824,168 +804,107 @@ const ChatInput: React.FC<ChatInputPropsExtended> = ({
                   }, 0);
                 }
               }}
-              disabled={isProcessing || !!isReplaying || !!(chatStatus && chatStatus.chatStatus !== 'idle')}
+              disabled={isProcessing || !sessionIdle || shouldLockComposeUi}
             />
           )}
 
           {/* Send Button - on the right side */}
           <div className="right-buttons-group">
-            {/* Model selector button */}
-            <div className="model-selector" ref={modelDropdownRef}>
-              <button
-                className="model-button"
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                disabled={isLoading}
-                title="Select AI Model"
-              >
-                <span className="model-name">
-                  {currentModelInfo?.name || 'Select Model'}
-                </span>
-                <svg
-                  className={`dropdown-arrow ${
-                    showModelDropdown ? 'rotated' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
+            {!isEditMode && (
+              <ModelSelector
+                currentChatId={currentChatId}
+                shouldLockComposeUi={shouldLockComposeUi}
+                setSupportsImages={setSupportsImages}
+              />
+            )}
 
-              {/* Model dropdown */}
-              {showModelDropdown && (
-                <div className="model-dropdown">
-                  <div className="model-list">
-                    {availableModels.map((model) => (
-                      <button
-                        key={model.id}
-                        className={`model-option ${
-                          displayModel === model.id ? 'selected' : ''
-                        }`}
-                        onClick={() => handleModelSelect(model.id)}
-                        disabled={isLoading}
-                      >
-                        <div className="model-info chat-input-vertical">
-                          <span className="model-option-name">{model.name}</span>
-                          <div className="model-badges">
-                            {(model.capabilities.family.includes('o3') ||
-                              model.capabilities.family.includes('o4')) && (
-                              <span className="badge reasoning">Reasoning</span>
-                            )}
-                            {model.capabilities.supports.tool_calls && (
-                              <span className="badge tools">Tools</span>
-                            )}
-                            {model.capabilities.supports.vision && (
-                              <span className="badge files">Image</span>
-                            )}
-                          </div>
-                        </div>
-                        {displayModel === model.id && (
-                          <svg
-                            className="check-icon"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            {!isEditMode && (
+              <ReasoningEffortSelector
+                currentChatId={currentChatId}
+                shouldLockComposeUi={shouldLockComposeUi}
+              />
+            )}
 
             {/* Send/Cancel button - switches in place based on chat status */}
-          {(!chatStatus || chatStatus.chatStatus === 'idle') ? (
-            /* Send button - shown when chat status is idle or null */
+          {sessionIdle ? (
+            /* Send button - shown only when chat status is explicitly idle */
+            isEditMode ? (
+            <>
+              <button
+                onClick={onCancelEdit}
+                className="inline-edit-action-button inline-edit-action-button-secondary"
+                type="button"
+                disabled={isSubmittingEdit || isAwaitingEditConfirmation}
+                title="Cancel"
+                aria-label="Cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={!hasValidInput || isProcessing || isSubmittingEdit || isAwaitingEditConfirmation || shouldLockComposeUi}
+                className="inline-edit-action-button inline-edit-action-button-primary"
+                title="Send"
+                aria-label="Send"
+                type="button"
+              >
+                {isSubmittingEdit ? 'Sending...' : isAwaitingEditConfirmation ? 'Waiting...' : 'Send'}
+              </button>
+            </>
+            ) : (
             <button
               onClick={handleSend}
-              disabled={!attachmentManager.isValid() || isProcessing || !!isReplaying}
+              disabled={!hasValidInput || isProcessing || shouldLockComposeUi}
               className="send-button"
-              title="Send Message (Enter)"
+              title={chatInputShortcutHint}
             >
-              {isProcessing ? (
-                <svg
-                  className="send-icon animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  className="send-icon"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <mask id="mask0_342_2145" style={{maskType: 'alpha'}} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-                    <path d="M4.20938 10.7327C3.92369 11.0326 3.93523 11.5074 4.23516 11.7931C4.53509 12.0787 5.00982 12.0672 5.29551 11.7673L11.25 5.516V20.25C11.25 20.6642 11.5858 21 12 21C12.4142 21 12.75 20.6642 12.75 20.25V5.51565L18.7048 11.7673C18.9905 12.0672 19.4652 12.0787 19.7652 11.7931C20.0651 11.5074 20.0766 11.0326 19.791 10.7327L12.7243 3.31379C12.5632 3.14474 12.3578 3.04477 12.1443 3.01386C12.0976 3.00477 12.0494 3 12 3C11.9503 3 11.9017 3.00483 11.8547 3.01406C11.6417 3.04518 11.4368 3.14509 11.2761 3.31379L4.20938 10.7327Z" fill="#242424"/>
-                  </mask>
-                  <g mask="url(#mask0_342_2145)">
-                    <rect width="24" height="24" fill="#E2DDD9"/>
-                  </g>
-                </svg>
-              )}
+              {isProcessing ? send_icon_spin : send_icon}
+            </button>
+            )
+          ) : isEditMode ? (
+            <>
+              <button
+                onClick={onCancelEdit}
+                className="inline-edit-action-button inline-edit-action-button-secondary"
+                type="button"
+                disabled={isSubmittingEdit || isAwaitingEditConfirmation}
+                title="Cancel"
+                aria-label="Cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSend}
+                disabled
+                className="inline-edit-action-button inline-edit-action-button-primary"
+                title="Waiting for chat status"
+                aria-label="Send"
+                type="button"
+              >
+                {isSubmittingEdit ? 'Sending...' : isAwaitingEditConfirmation ? 'Waiting...' : 'Send'}
+              </button>
+            </>
+          ) : (!sessionIdle) ? (
+            /* Cancel button - shown when chat status is explicitly non-idle, replaces the Send button */
+            <button
+              onClick={onCancelChat}
+              disabled={shouldLockComposeUi}
+              className="send-button cancel-button" // send-button as base style, cancel-button as modifier
+              title="Cancel Chat"
+            >
+              {cancel_icon}
             </button>
           ) : (
-            /* Cancel button - shown when chat status is not idle, replaces the Send button */
-            onCancelChat && (
-              <button
-                onClick={onCancelChat}
-                className="send-button cancel-button" // send-button as base style, cancel-button as modifier
-                title="Cancel Chat"
-              >
-                <svg
-                  className="cancel-icon"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  width="24"
-                  height="24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            )
+            <button disabled className="send-button" title="Waiting for chat status" type="button">
+              {send_icon_disabled}
+            </button>
           )}
           </div>
         </div>
       </div>
 
       {/* Content statistics display (development mode only) */}
-      {process.env.NODE_ENV === 'development' && contentStats.totalSize > 0 && (
-        <div className="content-stats">
-          📊 Images: {contentStats.imageCount} | Files: {contentStats.fileCount}{' '}
-          | Others: {contentStats.othersCount || 0} | Size:{' '}
-          {formatFileSize(contentStats.totalSize)} | Est. Tokens:{' '}
-          {contentStats.estimatedTokens}
-        </div>
-      )}
+      {process.env.NODE_ENV === 'development' && <AttachmentsStatus attachmentsStateAtom={attachmentsStateAtom} />}
     </div>
   );
 };

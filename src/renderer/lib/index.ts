@@ -4,11 +4,11 @@
 export * from './auth';
 export * from './chat';
 
-// 🆕 Refactored: MCP types are now exported from ./mcp as the authoritative source
-// MCP types in ./userData have been marked as deprecated
+// 🆕 Refactored: MCP types exported from ./mcp first (authoritative source)
+// MCP types in ./userData are marked as deprecated
 export * from './mcp';
 
-// Export from userData excluding MCP types that are duplicated in ./mcp
+// Re-export from userData, excluding MCP types that are now in ./mcp
 export {
   // ProfileDataManager
   ProfileDataManager,
@@ -21,7 +21,6 @@ export {
   type McpServerConfig,
   type ProfileCacheData,
   type ProfileDataListener,
-  type ProfileSyncResponse,
   type GhcModel
 } from './userData';
 

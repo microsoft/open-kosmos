@@ -3,6 +3,8 @@ import { BackgroundImage, loadBackground } from '../common/utils/bg';
 import { InnerFrame } from '../common/screenshot';
 import { Rect } from '../type';
 import type { SaveToFileResult } from '@shared/ipc/screenshot';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[Initial]');
 
 
 export interface InitHooks {
@@ -49,7 +51,7 @@ export const initialAtom = define.view('initial', make, (set, get) => {
     set({ ...get(), frames });
     loadBackground(url, displayWidth, displayHeight).then((bg) => {
       set({ ...get(), bg });
-      console.log(`[Screenshot][Initial] initOnce took ${Date.now() - start} ms`);
+      logger.debug(`[Screenshot][Initial] initOnce took ${Date.now() - start} ms`);
     });
   };
 

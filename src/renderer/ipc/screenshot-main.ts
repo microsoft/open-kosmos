@@ -1,5 +1,5 @@
 /**
- * Screenshot API exposed for the main window
+ * Screenshot API exposed to the main window.
  */
 
 import { renderToMain } from '@shared/ipc/screenshot';

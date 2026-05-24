@@ -7,14 +7,20 @@ import { TabComponentProps, AgentMcpServer } from './types';
 import { useMCPServers } from '../../userData/userDataProvider';
 import { useLayout } from '../../layout/LayoutProvider';
 import { useToast } from '../../ui/ToastProvider';
+import ListSearchBox from '../../ui/ListSearchBox';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[AgentMcpServersTab]');
 
 // Built-in server name constant
 const BUILTIN_SERVER_NAME = 'builtin-tools';
 
-// Server selection state: contains selected tools list
+// Plugin MCP server prefix — servers injected by the plugin system
+const PLUGIN_MCP_PREFIX = 'plugin--';
+
+// Server selection state: contains the list of selected tools
 interface ServerSelection {
   serverName: string;
-  selectedTools: Set<string>; // Empty set means all tools are selected
+  selectedTools: Set<string>; // Empty set means all tools selected
 }
 
 // Tool conflict information
@@ -37,8 +43,8 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
   const location = useLocation();
   const { showSuccess, showError, showToast } = useToast();
 
-  // Store selection state per server: Map<serverName, Set<toolName>>
-  // Empty Set means all tools selected, undefined means server not selected
+  // Store selection state for each server: Map<serverName, Set<toolName>>
+  // Empty Set means all tools selected; undefined means server is not selected
   const [serverSelections, setServerSelections] = useState<
     Map<string, Set<string>>
   >(new Map());
@@ -50,7 +56,10 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
 
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initial data for comparing changes
+  // 🆕 Search filter
+  const [agentMcpSearchQuery, setAgentMcpSearchQuery] = useState('');
+
+  // Initial data used to detect modifications
   const [initialSelections, setInitialSelections] = useState<
     Map<string, Set<string>>
   >(new Map());
@@ -63,7 +72,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
       if (agentData?.mcpServers) {
         agentData.mcpServers.forEach((server) => {
           // Empty tools array means all tools selected
-          // Non-empty tools means only selected tools are used
+          // Non-empty tools array means only partial tools selected
           const toolSet =
             server.tools && server.tools.length > 0
               ? new Set(server.tools)
@@ -72,7 +81,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         });
       }
 
-      // If cached data exists, use cached data first
+      // If cached data exists, prefer it over the base data
       let finalSelections = baseSelections;
       if (cachedData?.mcpServers) {
         finalSelections = new Map<string, Set<string>>();
@@ -112,7 +121,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
 
   // Notify parent component when data changes - use useRef to track last notified data
   const lastNotifiedDataRef = React.useRef<string | null>(null);
-  
+
   useEffect(() => {
     if (isInitialized && onDataChange) {
       const mcpServers = Array.from(serverSelections.entries()).map(
@@ -122,7 +131,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         }),
       );
       const dataKey = JSON.stringify(mcpServers);
-      
+
       // Only notify parent when data actually changes, to avoid infinite loops
       if (lastNotifiedDataRef.current !== dataKey) {
         lastNotifiedDataRef.current = dataKey;
@@ -131,15 +140,15 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     }
   }, [serverSelections, hasChanges, isInitialized, onDataChange]);
 
-  // Check if this is a Kobi Agent (default agent, builtin-tools modification disabled)
+  // Check if this is the Kobi Agent (default agent, builtin-tools modification prohibited)
   const isKobiAgent = useMemo(() => {
     return agentData?.name?.toLowerCase() === 'kobi';
   }, [agentData?.name]);
-  
-  // Check if editing is disabled (read-only mode or Kobi Agent built-in tools)
+
+  // Check if editing is disabled (read-only mode or Kobi Agent's built-in tools)
   const isEditDisabled = readOnly;
 
-  // Check if server is selected (fully or partially)
+  // Check if a server is selected (fully or partially)
   const isServerSelected = useCallback(
     (serverName: string) => {
       return serverSelections.has(serverName);
@@ -147,7 +156,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     [serverSelections],
   );
 
-  // Check if server is fully selected
+  // Check if a server is fully selected
   const isServerFullySelected = useCallback(
     (serverName: string, serverTools: any[]) => {
       const selection = serverSelections.get(serverName);
@@ -160,14 +169,14 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     [serverSelections],
   );
 
-  // Check if server is partially selected (some tools selected, some not)
+  // Check if a server is partially selected (some tools selected, some not)
   const isServerPartiallySelected = useCallback(
     (serverName: string, serverTools: any[]) => {
       const selection = serverSelections.get(serverName);
       if (!selection) return false;
       // Empty Set means all selected, not partially selected
       if (selection.size === 0) return false;
-      // Check if some tools are not selected
+      // Check if any tools are not selected
       return selection.size > 0 && selection.size < serverTools.length;
     },
     [serverSelections],
@@ -186,10 +195,10 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         const serverTools = server.tools || [];
 
         if (selectedTools.size === 0) {
-          // All selected, add all tools
+          // All-selected state, add all tools
           serverTools.forEach((tool) => toolNames.add(tool.name));
         } else {
-          // Partially selected, only add selected tools
+          // Partial selection, only add selected tools
           selectedTools.forEach((toolName) => toolNames.add(toolName));
         }
       });
@@ -198,21 +207,21 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     [serverSelections, servers],
   );
 
-  // 🔥 New: Global conflict detection - detect name conflicts among all selected tools
+  // 🔥 New: global conflict detection - detect name conflicts among all selected tools
   const detectGlobalConflicts = useCallback((): Map<
     string,
     ToolConflictInfo
   > => {
     const toolToServers = new Map<string, string[]>();
 
-    // Iterate through all selected servers and tools
+    // Iterate over all selected servers and tools
     serverSelections.forEach((selectedTools, serverName) => {
       const server = servers?.find((s) => s.name === serverName);
       if (!server || server.status !== 'connected') return;
 
       const serverTools = server.tools || [];
 
-      // Get actually selected tools for this server
+      // Get the actual selected tools for this server
       const actualSelectedTools =
         selectedTools.size === 0
           ? serverTools
@@ -228,7 +237,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
       });
     });
 
-    // Find conflicting tools (appearing in multiple servers)
+    // Find conflicting tools (appearing in more than one server)
     const conflicts = new Map<string, ToolConflictInfo>();
     toolToServers.forEach((serversList, toolName) => {
       if (serversList.length > 1) {
@@ -242,13 +251,13 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     return conflicts;
   }, [serverSelections, servers]);
 
-  // Cache conflict detection results with useMemo
+  // Cache conflict detection result with useMemo
   const globalConflicts = useMemo(
     () => detectGlobalConflicts(),
     [detectGlobalConflicts],
   );
 
-  // Check if a specific tool has conflicts
+  // Check if a specific tool is conflicted
   const isToolConflicted = useCallback(
     (toolName: string, serverName: string): boolean => {
       const conflict = globalConflicts.get(toolName);
@@ -301,6 +310,10 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
       if (isKobiAgent && serverName === BUILTIN_SERVER_NAME) {
         return;
       }
+      // Plugin MCP servers are managed by the plugin system — not user-toggleable
+      if (serverName.startsWith(PLUGIN_MCP_PREFIX)) {
+        return;
+      }
 
       setServerSelections((prev) => {
         const newSelections = new Map(prev);
@@ -310,7 +323,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
           // Currently selected, deselect
           newSelections.delete(serverName);
         } else {
-          // Currently not selected, check tool conflicts
+          // Currently not selected, check for tool conflicts
           const allSelectedTools = getAllSelectedToolNames(serverName);
           const conflictingTools: string[] = [];
           const nonConflictingTools: string[] = [];
@@ -324,7 +337,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
           });
 
           if (conflictingTools.length > 0) {
-            // Has conflicts, notify user and only select non-conflicting tools
+            // Has conflicts — notify user and select only non-conflicting tools
             const conflictMessage = (
               <div>
                 <div className="text-red-700 mb-3">
@@ -367,12 +380,16 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
   // Toggle tool selection state
   const handleToolToggle = useCallback(
     (serverName: string, toolName: string, serverTools: any[]) => {
+      // Plugin MCP servers are managed by the plugin system — not user-toggleable
+      if (serverName.startsWith(PLUGIN_MCP_PREFIX)) {
+        return;
+      }
       setServerSelections((prev) => {
         const newSelections = new Map(prev);
         const currentSelection = newSelections.get(serverName);
 
         if (!currentSelection) {
-          // Server not selected, check tool conflicts
+          // Server not selected, check for tool conflict
           if (checkToolConflict(toolName, serverName)) {
             const conflictMessage = (
               <div>
@@ -389,15 +406,15 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
             });
             return prev;
           }
-          // No conflicts, select server first and only select this tool
+          // No conflict, select the server and only this tool
           newSelections.set(serverName, new Set([toolName]));
         } else if (currentSelection.size === 0) {
-          // Server fully selected, switch to excluding only this tool
+          // Server is fully selected, switch to excluding only this tool
           const allTools = new Set(serverTools.map((t) => t.name));
           allTools.delete(toolName);
           newSelections.set(serverName, allTools);
         } else {
-          // Server partially selected state
+          // Server is partially selected
           const newToolSet = new Set(currentSelection);
           if (newToolSet.has(toolName)) {
             // Deselect
@@ -409,7 +426,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
               newSelections.set(serverName, newToolSet);
             }
           } else {
-            // Select tool, check conflicts
+            // Select tool, check for conflict
             if (checkToolConflict(toolName, serverName)) {
               const conflictMessage = (
                 <div>
@@ -429,7 +446,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
             newToolSet.add(toolName);
             // Check if all tools are now selected
             if (newToolSet.size === serverTools.length) {
-              // All selected, represented by empty Set
+              // All-selected state, use empty Set
               newSelections.set(serverName, new Set<string>());
             } else {
               newSelections.set(serverName, newToolSet);
@@ -463,20 +480,14 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     navigate('/settings/mcp');
   }, [navigate, location.pathname]);
 
-  /**
-   * Navigate to MCP Library View and select the corresponding MCP Server
-   * Following ChatViewHeader implementation: use URL query params to pass selected item
-   * Also pass returnPath state so SettingsPage Back button can navigate back correctly
-   */
-
-  // Get current server state
+  // Get server current state
   const getCurrentState = useCallback((server: any) => {
     const serverTools = server.tools || [];
     const hasError = !!server.error;
 
     // Basic state determination - priority order
-    // 1. If server status is explicitly connecting or disconnecting, use these states first
-    // This resolves timing issues after reconnect: error message may still exist, but status is already connecting
+    // 1. If server status is explicitly connecting or disconnecting, use those states first
+    // This resolves timing issues after reconnect: error messages may still exist, but status is already connecting
     if (server.status === 'connecting') return 'connecting';
     if (server.status === 'disconnecting') return 'disconnecting';
 
@@ -487,14 +498,14 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     if (server.status === 'connected' && serverTools.length > 0)
       return 'connected';
 
-    // 4. If server status is not connected and has error message, return error
+    // 4. If server is not connected and has error, return error
     if (server.status !== 'connected' && hasError) return 'error';
 
-    // 5. Default: return server original status
+    // 5. Default: return server's raw status
     return server.status || 'disconnected';
   }, []);
 
-  // Calculate total selected tools - only count connected servers
+  // Compute total selected tools count - only count connected servers
   const totalSelectedTools = useMemo(() => {
     let count = 0;
     serverSelections.forEach((selectedTools, serverName) => {
@@ -516,7 +527,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     return count;
   }, [serverSelections, servers, getCurrentState]);
 
-  // Calculate total available tools - only count connected servers
+  // Compute total available tools count - only count connected servers
   const totalAvailableTools = useMemo(() => {
     if (!servers) return 0;
     return servers.reduce((sum, server) => {
@@ -576,7 +587,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
           </button>
         </div>
       </div>
-      
+
       {/* Tab Body */}
       <div className="tab-body">
         {isLoading ? (
@@ -588,8 +599,17 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
           <>
             {/* Server List */}
             <div className="server-cards">
+              <ListSearchBox
+                value={agentMcpSearchQuery}
+                onChange={setAgentMcpSearchQuery}
+                placeholder="Search MCP servers..."
+              />
               {servers
-                // Sort server list first: built-in server at the top
+                // Filter out hidden (system-managed) servers
+                .filter((server) => !server.hidden)
+                // 🆕 Search filter
+                .filter((server) => !agentMcpSearchQuery || server.name?.includes(agentMcpSearchQuery))
+                // Sort server list: built-in server first
                 .sort((a, b) => {
                   if (a.name === BUILTIN_SERVER_NAME) return -1;
                   if (b.name === BUILTIN_SERVER_NAME) return 1;
@@ -600,7 +620,8 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                   const serverTools = server.tools || [];
                   const currentState = getCurrentState(server);
                   const isBuiltinServer = server.name === BUILTIN_SERVER_NAME;
-                  const isDisabled = isEditDisabled || (isKobiAgent && isBuiltinServer);
+                  const isPluginServer = server.name.startsWith(PLUGIN_MCP_PREFIX);
+                  const isDisabled = isEditDisabled || (isKobiAgent && isBuiltinServer) || isPluginServer;
                   const isSelected = isServerSelected(server.name);
                   const isFullySelected = isServerFullySelected(
                     server.name,
@@ -614,6 +635,11 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                   const selectedToolsSet = serverSelections.get(server.name);
                   const hasConflicts = serverHasConflicts(server.name);
 
+                  // For display: strip the "plugin--<id>--" prefix to show a cleaner name
+                  const displayName = isPluginServer
+                    ? server.name.replace(/^plugin--.*?--/, '') || server.name
+                    : server.name;
+
                   return (
                     <div
                       key={server.name}
@@ -621,9 +647,11 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                         isBuiltinServer ? 'builtin-server' : ''
                       } ${hasConflicts ? 'has-conflict' : ''}`}
                       title={
-                        hasConflicts
-                          ? '⚠️ This server contains conflicting tool names'
-                          : ''
+                        isPluginServer
+                          ? 'Managed by plugin — toggle via Plugins tab'
+                          : hasConflicts
+                            ? '⚠️ This server contains conflicting tool names'
+                            : ''
                       }
                     >
                       <div className="server-card-header">
@@ -650,9 +678,15 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                           />
                           <div className="server-name-group">
                             <div className="server-title-row">
-                              <h4 className="server-name">{server.name}</h4>
+                              <h4 className="server-name">{displayName}</h4>
                               {isBuiltinServer && (
                                 <span className="builtin-badge">Built-in</span>
+                              )}
+                              {isPluginServer && (
+                                <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)' }}>Plugin</span>
+                              )}
+                              {/[/\\]agency(?:\.exe)?$/.test(server.command) && (
+                                <span className="builtin-badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>M365</span>
                               )}
                               {hasConflicts && (
                                 <span className="conflict-badge">

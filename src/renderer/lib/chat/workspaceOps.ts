@@ -1,3 +1,4 @@
+import { updateChatAgent } from "./chatOps";
 /**
  * Workspace Operations
  *
@@ -46,6 +47,11 @@ export interface WorkspaceOperationResult {
   success: boolean;
   error?: string;
   data?: any;
+  canceled?: boolean;
+}
+
+export interface WorkspaceConflictResolutionOptions {
+  conflictResolution?: 'reject' | 'prompt' | 'replace' | 'keep-both' | 'skip';
 }
 
 /**
@@ -67,22 +73,22 @@ export interface FileTreeData {
  */
 export class WorkspaceOpsManager {
   private static instance: WorkspaceOpsManager;
-  
+
   /**
    * File change listener list (for notifying refresh needed)
    */
   private refreshListeners: Array<() => void> = [];
-  
+
   /**
    * Error listener list
    */
   private errorListeners: Array<(error: any) => void> = [];
-  
+
   /**
    * Whether currently watching
    */
   private isWatching: boolean = false;
-  
+
   /**
    * Currently watched workspace path
    */
@@ -123,7 +129,7 @@ export class WorkspaceOpsManager {
       }
 
       const result = await (window as any).electronAPI.workspace.selectFolder();
-      
+
       if (!result.success) {
         return {
           success: false,
@@ -174,7 +180,7 @@ export class WorkspaceOpsManager {
         workspacePath,
         options
       );
-      
+
       if (!result.success) {
         return {
           success: false,
@@ -183,7 +189,7 @@ export class WorkspaceOpsManager {
       }
 
       const treeData = result.data as FileTreeData;
-      
+
       return {
         success: true,
         data: treeData
@@ -244,7 +250,7 @@ export class WorkspaceOpsManager {
 
 
       const result = await (window as any).electronAPI.workspace.clearFileTreeCache(workspacePath);
-      
+
       if (!result.success) {
         return {
           success: false,
@@ -273,8 +279,7 @@ export class WorkspaceOpsManager {
   ): Promise<WorkspaceOperationResult> {
     try {
       // Dynamically import ChatOps to avoid circular dependencies
-      const { updateChatAgent } = await import('./chatOps');
-      
+
       // 🔄 workspace has been moved to agent level
       const result = await updateChatAgent(chatId, {
         workspace: workspacePath
@@ -311,10 +316,11 @@ export class WorkspaceOpsManager {
   ): Promise<WorkspaceOperationResult> {
     try {
       // Dynamically import ChatOps to avoid circular dependencies
-      const { updateChatAgent } = await import('./chatOps');
-      
+
       const result = await updateChatAgent(chatId, {
-        knowledgeBase: knowledgeBasePath
+        knowledge: {
+          knowledgeBase: knowledgeBasePath
+        }
       });
 
       if (!result.success) {
@@ -349,7 +355,7 @@ export class WorkspaceOpsManager {
     const normalizedPath = workspacePath.replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = normalizedPath.split('/');
     const lastPart = parts[parts.length - 1];
-    
+
     return lastPart || 'Workspace';
   }
 
@@ -360,9 +366,9 @@ export class WorkspaceOpsManager {
   isValidWorkspacePath(workspacePath: string): boolean {
     return !!(workspacePath && workspacePath.trim() !== '');
   }
-  
+
   // ========== VSCode-style advanced file watching feature ==========
-  
+
   /**
    * Setup simplified event listeners (only handle refresh notifications)
    */
@@ -370,19 +376,19 @@ export class WorkspaceOpsManager {
     // Listen to backend file change events, directly trigger refresh
     const removeFileChangedListener = (window as any).electronAPI?.workspace?.onFileChanged?.(
       (changes: FileChange[]) => {
-        
+
         // Simple strategy: notify all listeners that refresh is needed
         this.notifyRefreshListeners();
       }
     );
-    
+
     // Listen to error events
     const removeErrorListener = (window as any).electronAPI?.workspace?.onWatchError?.(
       (error: any) => {
         this.notifyErrorListeners(error);
       }
     );
-    
+
     // Save cleanup functions
     if (removeFileChangedListener) {
       (this as any)._removeFileChangedListener = removeFileChangedListener;
@@ -420,7 +426,7 @@ export class WorkspaceOpsManager {
    */
   onRefresh(listener: () => void): () => void {
     this.refreshListeners.push(listener);
-    
+
     return () => {
       const index = this.refreshListeners.indexOf(listener);
       if (index > -1) {
@@ -428,7 +434,7 @@ export class WorkspaceOpsManager {
       }
     };
   }
-  
+
   /**
    * Start watching Workspace file changes
    * @param workspacePath Workspace path
@@ -448,40 +454,40 @@ export class WorkspaceOpsManager {
           error: 'Workspace API not available'
         };
       }
-      
+
       if (!workspacePath || workspacePath.trim() === '') {
         return {
           success: false,
           error: 'Invalid workspace path'
         };
       }
-      
+
       // If already watching the same path, skip
       if (this.isWatching && this.currentWatchPath === workspacePath) {
         return { success: true };
       }
-      
+
       // If watching other path, stop first
       if (this.isWatching && this.currentWatchPath !== workspacePath) {
         await this.stopWatch();
       }
-      
-      
+
+
       const result = await (window as any).electronAPI.workspace.startWatch(
         workspacePath,
         options
       );
-      
+
       if (!result.success) {
         return {
           success: false,
           error: result.error || 'Failed to start file watcher'
         };
       }
-      
+
       this.isWatching = true;
       this.currentWatchPath = workspacePath;
-      
+
       return { success: true };
     } catch (error) {
       return {
@@ -490,7 +496,7 @@ export class WorkspaceOpsManager {
       };
     }
   }
-  
+
   /**
    * Stop watching Workspace file changes
    */
@@ -502,24 +508,24 @@ export class WorkspaceOpsManager {
           error: 'Workspace API not available'
         };
       }
-      
+
       if (!this.isWatching) {
         return { success: true };
       }
-      
-      
+
+
       const result = await (window as any).electronAPI.workspace.stopWatch();
-      
+
       if (!result.success) {
         return {
           success: false,
           error: result.error || 'Failed to stop file watcher'
         };
       }
-      
+
       this.isWatching = false;
       this.currentWatchPath = null;
-      
+
       return { success: true };
     } catch (error) {
       return {
@@ -528,7 +534,7 @@ export class WorkspaceOpsManager {
       };
     }
   }
-  
+
   /**
    * Get file watching statistics
    */
@@ -540,16 +546,16 @@ export class WorkspaceOpsManager {
           error: 'Workspace API not available'
         };
       }
-      
+
       const result = await (window as any).electronAPI.workspace.getWatcherStats();
-      
+
       if (!result.success) {
         return {
           success: false,
           error: result.error || 'Failed to get watcher stats'
         };
       }
-      
+
       return {
         success: true,
         data: result.data
@@ -561,7 +567,7 @@ export class WorkspaceOpsManager {
       };
     }
   }
-  
+
   /**
    * Add file change listener (kept for compatibility, actually triggers refresh)
    * @param listener Listener callback function
@@ -573,10 +579,10 @@ export class WorkspaceOpsManager {
       // Call original listener, pass empty change array since we no longer care about specific changes
       listener([]);
     };
-    
+
     return this.onRefresh(refreshListener);
   }
-  
+
   /**
    * Add error listener
    * @param listener Listener callback function
@@ -584,7 +590,7 @@ export class WorkspaceOpsManager {
    */
   onError(listener: (error: any) => void): () => void {
     this.errorListeners.push(listener);
-    
+
     return () => {
       const index = this.errorListeners.indexOf(listener);
       if (index > -1) {
@@ -592,8 +598,8 @@ export class WorkspaceOpsManager {
       }
     };
   }
-  
-  
+
+
   /**
    * Notify all error listeners
    */
@@ -605,7 +611,7 @@ export class WorkspaceOpsManager {
       }
     }
   }
-  
+
   /**
    * Get current watch status
    */
@@ -618,7 +624,7 @@ export class WorkspaceOpsManager {
       currentPath: this.currentWatchPath
     };
   }
-  
+
   /**
    * Copy file or directory to target Workspace
    * @param sourcePath Source file or directory path
@@ -626,7 +632,8 @@ export class WorkspaceOpsManager {
    */
   async copyPathToWorkspace(
     sourcePath: string,
-    destPath: string
+    destPath: string,
+    options?: WorkspaceConflictResolutionOptions,
   ): Promise<WorkspaceOperationResult> {
     try {
       if (!this.validateAPI()) {
@@ -635,30 +642,82 @@ export class WorkspaceOpsManager {
           error: 'Workspace API not available'
         };
       }
-      
+
       if (!sourcePath || !destPath) {
         return {
           success: false,
           error: 'Invalid source or destination path'
         };
       }
-      
-      
+
+
       const result = await (window as any).electronAPI.workspace.copyPath(
         sourcePath,
-        destPath
+        destPath,
+        options,
       );
-      
+
       if (!result.success) {
         return {
           success: false,
           error: result.error || 'Failed to copy path'
         };
       }
-      
+
       return {
         success: true,
         data: result.data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Copy multiple files or directories into a target workspace folder.
+   * This supports aggregated conflict resolution for multi-select imports.
+   */
+  async copyPathsToWorkspace(
+    sourcePaths: string[],
+    destPath: string,
+    options?: WorkspaceConflictResolutionOptions,
+  ): Promise<WorkspaceOperationResult> {
+    try {
+      if (!this.validateAPI()) {
+        return {
+          success: false,
+          error: 'Workspace API not available'
+        };
+      }
+
+      if (!sourcePaths || sourcePaths.length === 0 || !destPath) {
+        return {
+          success: false,
+          error: 'Invalid source or destination path'
+        };
+      }
+
+      const result = await (window as any).electronAPI.workspace.copyPaths(
+        sourcePaths,
+        destPath,
+        options,
+      );
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to copy paths',
+          canceled: result.canceled,
+          data: result.data,
+        };
+      }
+
+      return {
+        success: true,
+        data: result.data,
       };
     } catch (error) {
       return {
@@ -680,25 +739,25 @@ export class WorkspaceOpsManager {
           error: 'Workspace API not available'
         };
       }
-      
+
       if (!path || path.trim() === '') {
         return {
           success: false,
           error: 'Invalid path'
         };
       }
-      
-      
+
+
       // Use showInFolder method to display path in system file explorer
       const result = await (window as any).electronAPI.workspace.showInFolder(path);
-      
+
       if (!result.success) {
         return {
           success: false,
           error: result.error || 'Failed to open in system explorer'
         };
       }
-      
+
       return { success: true };
     } catch (error) {
       return {
@@ -850,9 +909,18 @@ export function getWatchStatus(): {
  */
 export async function copyPathToWorkspace(
   sourcePath: string,
-  destPath: string
+  destPath: string,
+  options?: WorkspaceConflictResolutionOptions,
 ): Promise<WorkspaceOperationResult> {
-  return await workspaceOps.copyPathToWorkspace(sourcePath, destPath);
+  return await workspaceOps.copyPathToWorkspace(sourcePath, destPath, options);
+}
+
+export async function copyPathsToWorkspace(
+  sourcePaths: string[],
+  destPath: string,
+  options?: WorkspaceConflictResolutionOptions,
+): Promise<WorkspaceOperationResult> {
+  return await workspaceOps.copyPathsToWorkspace(sourcePaths, destPath, options);
 }
 
 /**

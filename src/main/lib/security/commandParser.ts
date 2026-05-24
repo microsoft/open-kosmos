@@ -1,6 +1,6 @@
 /**
- * Command Parser - Parses command strings into command and argument lists
- * Used to safely extract path arguments from commands
+ * Command Parser — parses a command string into a command and argument list.
+ * Used to safely extract path parameters from commands.
  */
 
 export interface ParsedCommand {
@@ -10,16 +10,16 @@ export interface ParsedCommand {
 
 export class CommandParser {
   /**
-   * Parse a command string into <command, parameters[]>
-   * Supports quoted arguments and escape characters
-   * 
+   * Parse a command string into <command, parameters[]>.
+   * Supports quoted arguments and escape characters.
+   *
    * @param commandString - The full command string
-   * @returns Parsed command and parameter list
-   * 
+   * @returns The parsed command and argument list
+   *
    * @example
    * parseCommand('dir "C:\\Program Files" /S')
    * // => { command: 'dir', parameters: ['C:\\Program Files', '/S'] }
-   * 
+   *
    * parseCommand('cp /home/user/file.txt /tmp/')
    * // => { command: 'cp', parameters: ['/home/user/file.txt', '/tmp/'] }
    */
@@ -28,7 +28,7 @@ export class CommandParser {
       return { command: '', parameters: [] };
     }
 
-    // 🔥 New: Truncate overly long command strings to avoid performance issues
+    // 🔥 Added: truncate overly long command strings to avoid performance issues
     let processString = commandString;
     if (commandString.length > 2000) {
       // Try to find a reasonable truncation point (blank line or specific pattern)
@@ -53,13 +53,13 @@ export class CommandParser {
       }
 
       if (char === '\\') {
-        // Check if it's an escape character (next character is a quote or backslash)
+        // Check whether this is an escape character (next char is a quote or backslash)
         const nextChar = processString[i + 1];
         if (nextChar === '"' || nextChar === "'" || nextChar === '\\') {
           escaped = true;
           continue;
         }
-        // Windows path backslash, add directly
+        // Backslash in a Windows path — add directly
         currentToken += char;
         continue;
       }
@@ -87,7 +87,7 @@ export class CommandParser {
         continue;
       }
 
-      // Regular character
+      // Regular characters
       currentToken += char;
     }
 
@@ -96,9 +96,9 @@ export class CommandParser {
       tokens.push(currentToken);
     }
 
-    // First token is the command, rest are parameters
+    // The first token is the command; the rest are parameters
     const [command = '', ...parameters] = tokens;
-    
+
     return {
       command,
       parameters
@@ -106,40 +106,40 @@ export class CommandParser {
   }
 
   /**
-   * Identify path arguments from a parameter list
-   * Uses heuristic rules to determine if a parameter is a path
+   * Identify path parameters from the argument list.
+   * Uses heuristic rules to determine whether an argument is a path.
    *
    * @param command - Command name
-   * @param parameters - Parameter list
-   * @returns Array of identified path parameters
+   * @param parameters - Argument list
+   * @returns Array of identified path arguments
    */
   static extractPathParameters(command: string, parameters: string[]): string[] {
     const paths: string[] = [];
     const lowerCommand = command.toLowerCase();
-    
-    // Special handling: echo command - only identify paths after redirection symbols
+
+    // Special handling: echo command — only recognize paths after redirection operators
     if (lowerCommand === 'echo') {
       return this.extractPathsFromEchoCommand(parameters);
     }
-    
+
     // Special handling: PowerShell New-Item command
     if (lowerCommand === 'new-item') {
       return this.extractPathsFromNewItemCommand(parameters);
     }
-    
-    // General handling: Check redirection symbols
+
+    // General handling: check redirection operators
     const redirectPaths = this.extractPathsAfterRedirection(parameters);
     if (redirectPaths.length > 0) {
       return redirectPaths;
     }
-    
+
     // General handling: PowerShell command parameters
     const psParams = this.extractPathsFromPowerShellParams(parameters);
     if (psParams.length > 0) {
       return psParams;
     }
-    
-    // Default logic: iterate parameters to identify paths
+
+    // Default logic: iterate parameters and identify paths
     for (const param of parameters) {
       if (this.isPathParameter(param)) {
         paths.push(param);
@@ -150,17 +150,17 @@ export class CommandParser {
   }
 
   /**
-   * Extract paths from echo command (only identify paths after redirection)
+   * Extract paths from an echo command (only paths after redirection operators)
    */
   private static extractPathsFromEchoCommand(parameters: string[]): string[] {
     const redirectionOperators = ['>', '>>', '2>', '2>>', '1>', '&>'];
-    
+
     for (let i = 0; i < parameters.length; i++) {
       const param = parameters[i];
-      
-      // Check if it's a redirection symbol
+
+      // Check for a standalone redirection operator
       if (redirectionOperators.includes(param)) {
-        // Next parameter should be the target file path
+        // The next argument should be the target file path
         if (i + 1 < parameters.length) {
           const nextParam = parameters[i + 1];
           if (this.isPathParameter(nextParam)) {
@@ -168,8 +168,8 @@ export class CommandParser {
           }
         }
       }
-      
-      // Check if it starts with a redirection symbol (e.g., ">file.txt")
+
+      // Check for a redirection operator at the start of a token (e.g., ">file.txt")
       for (const op of redirectionOperators) {
         if (param.startsWith(op)) {
           const path = param.substring(op.length).trim();
@@ -179,30 +179,30 @@ export class CommandParser {
         }
       }
     }
-    
+
     return [];
   }
 
   /**
-   * Extract paths from PowerShell New-Item command
+   * Extract paths from a PowerShell New-Item command
    */
   private static extractPathsFromNewItemCommand(parameters: string[]): string[] {
     const paths: string[] = [];
-    
+
     for (let i = 0; i < parameters.length; i++) {
       const param = parameters[i];
-      
-      // Check -Path parameter
+
+      // Check for a -Path parameter
       if (param === '-Path' && i + 1 < parameters.length) {
         const pathValue = parameters[i + 1];
         if (this.isPathParameter(pathValue)) {
           paths.push(pathValue);
         }
-        i++; // Skip the processed value
+        i++; // Skip the already-processed value
         continue;
       }
-      
-      // Check -Path "value" format (parameter and value joined together)
+
+      // Check for the -Path "value" format (parameter and value joined together)
       if (param.startsWith('-Path')) {
         const pathValue = param.substring(5).trim();
         if (pathValue && this.isPathParameter(pathValue)) {
@@ -210,27 +210,27 @@ export class CommandParser {
         }
         continue;
       }
-      
-      // -Value parameter contains file content and should not be identified as a path
+
+      // -Value contains file content and should not be treated as a path
       if (param === '-Value') {
-        i++; // Skip -Value content
+        i++; // Skip the -Value content
         continue;
       }
     }
-    
+
     return paths;
   }
 
   /**
-   * Extract paths after redirection symbols
+   * Extract paths after redirection operators
    */
   private static extractPathsAfterRedirection(parameters: string[]): string[] {
     const redirectionOperators = ['>', '>>', '<', '2>', '2>>', '1>', '&>', '2>&1'];
-    
+
     for (let i = 0; i < parameters.length; i++) {
       const param = parameters[i];
-      
-      // Check for standalone redirection symbols
+
+      // Check for a standalone redirection operator
       if (redirectionOperators.includes(param)) {
         if (i + 1 < parameters.length) {
           const nextParam = parameters[i + 1];
@@ -239,8 +239,8 @@ export class CommandParser {
           }
         }
       }
-      
-      // Check for joined redirection symbols (e.g., ">file.txt")
+
+      // Check for a redirection operator at the start of a token (e.g., ">file.txt")
       for (const op of redirectionOperators) {
         if (param.startsWith(op)) {
           const path = param.substring(op.length).trim();
@@ -250,7 +250,7 @@ export class CommandParser {
         }
       }
     }
-    
+
     return [];
   }
 
@@ -260,29 +260,29 @@ export class CommandParser {
   private static extractPathsFromPowerShellParams(parameters: string[]): string[] {
     const pathParams = ['-Path', '-FilePath', '-File', '-LiteralPath', '-Destination', '-Source'];
     const paths: string[] = [];
-    
+
     for (let i = 0; i < parameters.length; i++) {
       const param = parameters[i];
-      
-      // Check if it's a path parameter name
+
+      // Check whether this is a path parameter name
       if (pathParams.includes(param) && i + 1 < parameters.length) {
         const pathValue = parameters[i + 1];
-        // Only consider it a path if the next parameter is not another parameter name
+        // Only treat as a path if the next argument is not another parameter name
         if (!pathValue.startsWith('-') && this.isPathParameter(pathValue)) {
           paths.push(pathValue);
         }
-        i++; // Skip the processed value
+        i++; // Skip the already-processed value
       }
     }
-    
+
     return paths;
   }
 
   /**
-   * Determine if a parameter is a path
-   * 
-   * @param param - The parameter string
-   * @returns Whether the parameter is a path
+   * Determine whether an argument is a path.
+   *
+   * @param param - The argument string
+   * @returns Whether the argument is a path parameter
    */
   private static isPathParameter(param: string): boolean {
     if (!param || typeof param !== 'string') {
@@ -294,20 +294,20 @@ export class CommandParser {
     if (param.startsWith('-')) {
       return false;
     }
-    
+
     // Windows: /FLAG (single letter or uppercase flag)
     if (/^\/[A-Z]$/i.test(param)) {
       return false;
     }
-    
-    // Windows common switch patterns: /FLAG or /FLAG:value
+
+    // Common Windows switch patterns: /FLAG or /FLAG:value
     // Extended: support /o:d, /s, /b and other common dir/command parameters
     if (/^\/[A-Z0-9]+(:[A-Z0-9-]*)?$/i.test(param) && param.length <= 15) {
       return false;
     }
 
-    // Check if it's a path pattern
-    
+    // Check for path patterns
+
     // Windows absolute path: C:\path or D:/path
     if (/^[A-Za-z]:[\\\/]/.test(param)) {
       return true;
@@ -320,62 +320,62 @@ export class CommandParser {
 
     // Unix absolute path: /path/to/file
     if (param.startsWith('/')) {
-      // Exclude root directory alone (usually a command-line flag)
+      // Exclude a standalone root directory (usually a command-line flag)
       if (param === '/') {
         return false;
       }
       return true;
     }
 
-    // Relative path pattern: ./path or ../path
+    // Relative path patterns: ./path or ../path
     if (param.startsWith('./') || param.startsWith('../')) {
       return true;
     }
 
-    // Windows relative path: .\path or ..\path
+    // Windows relative paths: .\path or ..\path
     if (param.startsWith('.\\') || param.startsWith('..\\')) {
       return true;
     }
 
-    // String containing path separators (may be a relative path)
-    // But exclude plain text (no obvious path characteristics)
+    // Strings containing path separators (possibly relative paths),
+    // but excluding plain text (no obvious path features)
     if (param.includes('/') || param.includes('\\')) {
-      // Exclude strings containing newline characters (usually code or long text)
+      // Exclude strings containing newlines (usually code or long text)
       if (param.includes('\n') || param.includes('\r')) {
         return false;
       }
-      
-      // Exclude overly long strings (may be code) - lowered threshold for early filtering
+
+      // Exclude overly long strings (possibly code) — lower threshold for early filtering
       if (param.length > 200) {
         return false;
       }
-      
-      // Exclude strings with code characteristics
-      // If they contain common code keywords, parentheses, semicolons, etc., they may be code rather than paths
+
+      // Exclude strings with code-like characteristics
+      // Strings containing common code keywords, brackets, semicolons, etc. are likely code, not paths
       const codePatterns = [
         /import\s+/,           // import statement
         /from\s+.*\s+import/,  // from ... import
         /print\s*\(/,          // print function call
         /def\s+\w+\s*\(/,      // function definition
         /class\s+\w+/,         // class definition
-        /;\s*\w+/,             // semicolon followed by identifier (multi-statement)
-        /\(\s*['"][^'"]*['"]\s*,/, // function parameter (quoted content as argument)
+        /;\s*\w+/,             // semicolon followed by an identifier (multiple statements)
+        /\(\s*['"][^'"]*['"]\s*,/, // function arguments (quoted content as argument)
       ];
-      
+
       if (codePatterns.some(pattern => pattern.test(param))) {
         return false;
       }
-      
-      // Check if it has a file extension or directory structure
+
+      // Check for a file extension or directory structure
       if (/\.[a-zA-Z0-9]+$/.test(param) || param.includes('/') && param.length > 3) {
         return true;
       }
     }
 
-    // Relative filename: contains file extension but no path separators
+    // Relative file name: contains a file extension but no path separator
     // e.g., script.js, config.json, data.txt
     if (/^[^\/\\]+\.[a-zA-Z0-9]+$/.test(param)) {
-      // Exclude pure numbers and single-letter cases (e.g., 1.2, a.b)
+      // Exclude pure numbers and single letters (e.g., 1.2, a.b)
       if (param.length > 3) {
         return true;
       }
@@ -385,30 +385,30 @@ export class CommandParser {
   }
 
   /**
-   * Extract all path arguments from a command string
-   * This is the main public interface
+   * Extract all path arguments from a command string.
+   * This is the main public interface.
    *
    * @param commandString - The full command string
    * @returns Array of extracted paths
    */
   static extractPathsFromCommand(commandString: string): string[] {
-    // 🔥 New: Handle overly long command strings (usually heredocs or commands with large content)
+    // 🔥 Added: handle overly long command strings (typically heredocs or commands with large content)
     if (commandString && commandString.length > 1000) {
-      // Check if it's heredoc syntax (cat > file << 'EOF')
+      // Check for heredoc syntax (cat > file << 'EOF')
       const heredocMatch = commandString.match(/^(cat\s*>\s*[^\s]+\s*<<\s*['"']?(\w+)['"']?)\s/);
       if (heredocMatch) {
-        // For heredocs, only parse the command part, ignore the content
+        // For heredocs, only parse the command part and ignore the content
         const commandPart = heredocMatch[1];
         const parsed = this.parseCommand(commandPart);
         return this.extractPathParameters(parsed.command, parsed.parameters);
       }
-      
+
       // For other overly long commands, only parse the first 1000 characters to avoid performance issues
       const truncatedCommand = commandString.substring(0, 1000);
       const parsed = this.parseCommand(truncatedCommand);
       return this.extractPathParameters(parsed.command, parsed.parameters);
     }
-    
+
     const parsed = this.parseCommand(commandString);
     return this.extractPathParameters(parsed.command, parsed.parameters);
   }

@@ -1,24 +1,23 @@
 /**
  * ChatSession Manager - New Architecture
- * 
- * chatSessions are no longer maintained by profile.json, replaced with independent file directory structure:
- * 
+ *
+ * chatSessions are no longer managed by profile.json; they now use an independent file directory structure:
+ *
  * Directory structure:
  * {app user data folder}/profiles/{user alias}/chat_sessions/{chat_id}/
  * {app user data folder}/profiles/{user alias}/chat_sessions/{chat_id}/index.json
  * {app user data folder}/profiles/{user alias}/chat_sessions/{chat_id}/{YYYYMM}/
  * {app user data folder}/profiles/{user alias}/chat_sessions/{chat_id}/{YYYYMM}/index.json
  * {app user data folder}/profiles/{user alias}/chat_sessions/{chat_id}/{YYYYMM}/{chatSessionId}.json
- * 
+ *
  * ChatSessionId format: "chatSession_{YYYYMMDDHHmmSS}"
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserWindow } from 'electron';
 import { createConsoleLogger } from '../unifiedLogger';
 import { ChatSession } from './types/profile';
-import { ChatSessionFile } from './chatSessionFileOps';
+import { ChatSessionFile, deserializeChatFile } from './chatSessionFileOps';
 import {
   getChatSessionsRootPath,
   getChatSessionsChatPath,
@@ -27,16 +26,32 @@ import {
   getChatSessionsMonthIndexPath,
   getChatSessionFilePath,
   extractMonthFromChatSessionId,
-  generateChatSessionId as generateChatSessionIdFromUtils,
-  getCurrentMonth,
   isValidChatSessionId
 } from './pathUtils';
 
 const logger = createConsoleLogger();
 
+function normalizeChatSessionReadStatus(status?: ChatSession['readStatus']): ChatSession['readStatus'] {
+  return status === 'unread' ? 'unread' : 'read';
+}
+
+class CorruptedMonthIndexError extends Error {
+  readonly alias: string;
+  readonly chatId: string;
+  readonly month: string;
+
+  constructor(alias: string, chatId: string, month: string, message: string) {
+    super(message);
+    this.name = 'CorruptedMonthIndexError';
+    this.alias = alias;
+    this.chatId = chatId;
+    this.month = month;
+  }
+}
+
 /**
  * Chat-level index file structure
- * Maintains the list of all months under a chat_id
+ * Maintains the list of all months under chat_id
  */
 export interface ChatSessionsChatIndex {
   /** Chat ID */
@@ -49,50 +64,104 @@ export interface ChatSessionsChatIndex {
 
 /**
  * Month-level index file structure
- * Maintains metadata for all chatSessions within the month
+ * Maintains metadata for all chatSessions in the month
  */
 export interface ChatSessionsMonthIndex {
   /** Chat ID */
   chat_id: string;
   /** Month (YYYYMM format) */
   month: string;
-  /** Metadata for all chatSessions in this month */
+  /** Metadata for all chatSessions in the month */
   sessions: ChatSession[];
   /** Last updated time */
   last_updated: string;
 }
 
 /**
- * ChatSession Manager Class
- * Manages chatSession CRUD operations and index maintenance
+ * ChatSession Manager class
+ * Manages CRUD operations and index maintenance for chatSessions
  */
 export class ChatSessionManager {
   private static instance: ChatSessionManager;
-  
+  private readonly monthIndexWriteLocks: Map<string, Promise<void>> = new Map();
+
   private constructor() {}
-  
+
   static getInstance(): ChatSessionManager {
     if (!ChatSessionManager.instance) {
       ChatSessionManager.instance = new ChatSessionManager();
     }
     return ChatSessionManager.instance;
   }
-  
+
+  private getMonthIndexLockKey(alias: string, chatId: string, month: string): string {
+    return `${alias}::${chatId}::${month}`;
+  }
+
+  private async withMonthIndexWriteLock<T>(
+    alias: string,
+    chatId: string,
+    month: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const lockKey = this.getMonthIndexLockKey(alias, chatId, month);
+    const previousLock = this.monthIndexWriteLocks.get(lockKey) || Promise.resolve();
+
+    let release!: () => void;
+    const currentLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    this.monthIndexWriteLocks.set(
+      lockKey,
+      previousLock.then(() => currentLock, () => currentLock)
+    );
+
+    await previousLock;
+
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.monthIndexWriteLocks.get(lockKey) === currentLock) {
+        this.monthIndexWriteLocks.delete(lockKey);
+      }
+    }
+  }
+
+  private async writeFileAtomically(filePath: string, content: string): Promise<void> {
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+
+    try {
+      await fs.promises.writeFile(tempPath, content, 'utf-8');
+      await fs.promises.rename(tempPath, filePath);
+    } catch (error) {
+      try {
+        if (fs.existsSync(tempPath)) {
+          await fs.promises.unlink(tempPath);
+        }
+      } catch {
+        // ignore temp file cleanup failure
+      }
+      throw error;
+    }
+  }
+
   // ========================================
-  // Index management methods
+  // Index Management Methods
   // ========================================
-  
+
   /**
-   * Read chat-level index file
+   * Read the chat-level index file
    */
   async readChatIndex(alias: string, chatId: string): Promise<ChatSessionsChatIndex | null> {
     try {
       const indexPath = getChatSessionsChatIndexPath(alias, chatId);
-      
+
       if (!fs.existsSync(indexPath)) {
         return null;
       }
-      
+
       const content = await fs.promises.readFile(indexPath, 'utf-8');
       return JSON.parse(content) as ChatSessionsChatIndex;
     } catch (error) {
@@ -104,15 +173,15 @@ export class ChatSessionManager {
       return null;
     }
   }
-  
+
   /**
-   * Write chat-level index file
+   * Write the chat-level index file
    */
   async writeChatIndex(alias: string, chatId: string, index: ChatSessionsChatIndex): Promise<boolean> {
     try {
       const indexPath = getChatSessionsChatIndexPath(alias, chatId);
       index.last_updated = new Date().toISOString();
-      
+
       await fs.promises.writeFile(indexPath, JSON.stringify(index, null, 2), 'utf-8');
       return true;
     } catch (error) {
@@ -124,21 +193,50 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
+
   /**
-   * Read month-level index file
+   * Read the month-level index file
    */
   async readMonthIndex(alias: string, chatId: string, month: string): Promise<ChatSessionsMonthIndex | null> {
     try {
       const indexPath = getChatSessionsMonthIndexPath(alias, chatId, month);
-      
+
       if (!fs.existsSync(indexPath)) {
         return null;
       }
-      
+
       const content = await fs.promises.readFile(indexPath, 'utf-8');
-      return JSON.parse(content) as ChatSessionsMonthIndex;
+      if (content.trim().length === 0) {
+        logger.warn('[ChatSessionManager] Month index file is empty, treating as missing', 'readMonthIndex', {
+          alias,
+          chatId,
+          month,
+        });
+        return null;
+      }
+
+      try {
+        return JSON.parse(content) as ChatSessionsMonthIndex;
+      } catch (parseError) {
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        logger.error('[ChatSessionManager] Failed to read month index', 'readMonthIndex', {
+          alias,
+          chatId,
+          month,
+          error: errorMessage
+        });
+        throw new CorruptedMonthIndexError(
+          alias,
+          chatId,
+          month,
+          `Month index is corrupted: ${errorMessage}`
+        );
+      }
     } catch (error) {
+      if (error instanceof CorruptedMonthIndexError) {
+        throw error;
+      }
+
       logger.error('[ChatSessionManager] Failed to read month index', 'readMonthIndex', {
         alias,
         chatId,
@@ -148,16 +246,22 @@ export class ChatSessionManager {
       return null;
     }
   }
-  
+
+  private async writeMonthIndexUnlocked(alias: string, chatId: string, month: string, index: ChatSessionsMonthIndex): Promise<void> {
+    const indexPath = getChatSessionsMonthIndexPath(alias, chatId, month);
+    index.last_updated = new Date().toISOString();
+    const content = JSON.stringify(index, null, 2);
+    await this.writeFileAtomically(indexPath, content);
+  }
+
   /**
-   * Write month-level index file
+   * Write the month-level index file
    */
   async writeMonthIndex(alias: string, chatId: string, month: string, index: ChatSessionsMonthIndex): Promise<boolean> {
     try {
-      const indexPath = getChatSessionsMonthIndexPath(alias, chatId, month);
-      index.last_updated = new Date().toISOString();
-      
-      await fs.promises.writeFile(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+      await this.withMonthIndexWriteLock(alias, chatId, month, async () => {
+        await this.writeMonthIndexUnlocked(alias, chatId, month, index);
+      });
       return true;
     } catch (error) {
       logger.error('[ChatSessionManager] Failed to write month index', 'writeMonthIndex', {
@@ -169,13 +273,13 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
+
   /**
-   * Ensure chat index exists, create if not
+   * Ensure the chat index exists, creating it if not present
    */
   async ensureChatIndex(alias: string, chatId: string): Promise<ChatSessionsChatIndex> {
     let index = await this.readChatIndex(alias, chatId);
-    
+
     if (!index) {
       index = {
         chat_id: chatId,
@@ -184,17 +288,32 @@ export class ChatSessionManager {
       };
       await this.writeChatIndex(alias, chatId, index);
     }
-    
+
     return index;
   }
-  
+
   /**
-   * Ensure month index exists, create if not
-   * 🔥 Fix: always ensure chat-level index contains the month regardless of whether the month index exists
+   * Ensure the month index exists, creating it if not present
+   * 🔥 Fix: regardless of whether the month index exists, ensure the chat-level index includes the month
+   * ⚠️ If the month index file is corrupted, do NOT automatically recreate an empty index to overwrite it
    */
   async ensureMonthIndex(alias: string, chatId: string, month: string): Promise<ChatSessionsMonthIndex> {
-    let index = await this.readMonthIndex(alias, chatId, month);
-    
+    let index: ChatSessionsMonthIndex | null;
+
+    try {
+      index = await this.readMonthIndex(alias, chatId, month);
+    } catch (error) {
+      if (error instanceof CorruptedMonthIndexError) {
+        logger.error('[ChatSessionManager] Refusing to recreate corrupted month index', 'ensureMonthIndex', {
+          alias,
+          chatId,
+          month,
+          error: error.message
+        });
+      }
+      throw error;
+    }
+
     if (!index) {
       index = {
         chat_id: chatId,
@@ -204,15 +323,15 @@ export class ChatSessionManager {
       };
       await this.writeMonthIndex(alias, chatId, month, index);
     }
-    
-    // 🔥 Fix: always ensure chat-level index contains the month regardless of whether the month index exists
-    // This ensures correct addition even if month directory/index.json exists but chat_id/index.json doesn't contain that month
+
+    // 🔥 Fix: regardless of whether the month index exists, ensure the chat-level index includes the month
+    // This correctly adds the month even if the month directory/index.json exists but is missing from chat_id/index.json
     const chatIndex = await this.ensureChatIndex(alias, chatId);
     if (!chatIndex.months.includes(month)) {
       chatIndex.months.push(month);
       chatIndex.months.sort().reverse(); // Sort months in descending order
       await this.writeChatIndex(alias, chatId, chatIndex);
-      
+
       logger.info('[ChatSessionManager] Added month to chat index', 'ensureMonthIndex', {
         alias,
         chatId,
@@ -220,91 +339,101 @@ export class ChatSessionManager {
         updatedMonths: chatIndex.months
       });
     }
-    
+
     return index;
   }
-  
+
   // ========================================
-  // ChatSession CRUD operations
+  // ChatSession CRUD Operations
   // ========================================
-  
+
   /**
-   * Add a new ChatSession
+   * Persist a newly created ChatSession to the on-disk indexes and session file.
+   * Callers are responsible for any runtime cache updates or UI notifications.
    */
-  async addChatSession(
+  async persistNewChatSession(
     alias: string,
     chatId: string,
     chatSession: ChatSession,
     chatSessionFile: ChatSessionFile
   ): Promise<boolean> {
     try {
-      logger.info('[ChatSessionManager] Adding chat session', 'addChatSession', {
+      logger.info('[ChatSessionManager] Persisting new chat session', 'persistNewChatSession', {
         alias,
         chatId,
         chatSessionId: chatSession.chatSession_id
       });
-      
+
       // Validate chatSessionId format
       if (!isValidChatSessionId(chatSession.chatSession_id)) {
-        logger.error('[ChatSessionManager] Invalid chatSessionId format', 'addChatSession', {
+        logger.error('[ChatSessionManager] Invalid chatSessionId format', 'persistNewChatSession', {
           chatSessionId: chatSession.chatSession_id
         });
         return false;
       }
-      
+
       // Extract month
       const month = extractMonthFromChatSessionId(chatSession.chatSession_id);
       if (!month) {
-        logger.error('[ChatSessionManager] Failed to extract month from chatSessionId', 'addChatSession', {
+        logger.error('[ChatSessionManager] Failed to extract month from chatSessionId', 'persistNewChatSession', {
           chatSessionId: chatSession.chatSession_id
         });
         return false;
       }
-      
+
       // Get or create month index
-      const monthIndex = await this.ensureMonthIndex(alias, chatId, month);
-      
-      // Check if already exists
-      const existingIndex = monthIndex.sessions.findIndex(s => s.chatSession_id === chatSession.chatSession_id);
-      if (existingIndex >= 0) {
-        logger.warn('[ChatSessionManager] ChatSession already exists', 'addChatSession', {
-          chatSessionId: chatSession.chatSession_id
-        });
-        return false;
-      }
-      
-      // Add to month index
-      monthIndex.sessions.push(chatSession);
-      monthIndex.sessions.sort((a, b) => 
-        new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
-      );
-      
-      // Save month index
-      const indexWriteSuccess = await this.writeMonthIndex(alias, chatId, month, monthIndex);
+      await this.ensureMonthIndex(alias, chatId, month);
+
+      const normalizedReadStatus = normalizeChatSessionReadStatus(chatSession.readStatus);
+      const normalizedChatSession: ChatSession = {
+        ...chatSession,
+        readStatus: normalizedReadStatus,
+      };
+      const normalizedChatSessionFile: ChatSessionFile = {
+        ...chatSessionFile,
+      };
+
+      const indexWriteSuccess = await this.withMonthIndexWriteLock(alias, chatId, month, async () => {
+        const monthIndex = await this.readMonthIndex(alias, chatId, month);
+        if (!monthIndex) {
+          return false;
+        }
+
+        const existingIndex = monthIndex.sessions.findIndex(s => s.chatSession_id === chatSession.chatSession_id);
+        if (existingIndex >= 0) {
+          logger.warn('[ChatSessionManager] ChatSession already exists', 'persistNewChatSession', {
+            chatSessionId: chatSession.chatSession_id
+          });
+          return false;
+        }
+
+        // Add to month index
+        monthIndex.sessions.push(normalizedChatSession);
+        monthIndex.sessions.sort((a, b) =>
+          new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+        );
+
+        await this.writeMonthIndexUnlocked(alias, chatId, month, monthIndex);
+        return true;
+      });
       if (!indexWriteSuccess) {
         return false;
       }
-      
+
       // Save chatSession file
       const filePath = getChatSessionFilePath(alias, chatId, chatSession.chatSession_id);
-      await fs.promises.writeFile(filePath, JSON.stringify(chatSessionFile, null, 2), 'utf-8');
-      
-      // Notify frontend
-      await this.notifyFrontend(alias, chatId);
-      
-      // Auto-select new ChatSession
-      await this.notifyAutoSelectChatSession(alias, chatId, chatSession.chatSession_id);
-      
-      logger.info('[ChatSessionManager] ChatSession added successfully', 'addChatSession', {
+      await fs.promises.writeFile(filePath, JSON.stringify(normalizedChatSessionFile, null, 2), 'utf-8');
+
+      logger.info('[ChatSessionManager] New chat session persisted successfully', 'persistNewChatSession', {
         alias,
         chatId,
         chatSessionId: chatSession.chatSession_id,
         month
       });
-      
+
       return true;
     } catch (error) {
-      logger.error('[ChatSessionManager] Failed to add chat session', 'addChatSession', {
+      logger.error('[ChatSessionManager] Failed to persist new chat session', 'persistNewChatSession', {
         alias,
         chatId,
         chatSessionId: chatSession.chatSession_id,
@@ -313,11 +442,12 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
+
   /**
-   * Update ChatSession
+   * Persist updates for an existing ChatSession to disk.
+   * Callers are responsible for any runtime cache updates or UI notifications.
    */
-  async updateChatSession(
+  async persistUpdatedChatSession(
     alias: string,
     chatId: string,
     chatSessionId: string,
@@ -325,84 +455,91 @@ export class ChatSessionManager {
     chatSessionFile: ChatSessionFile
   ): Promise<boolean> {
     try {
-      logger.info('[ChatSessionManager] Updating chat session', 'updateChatSession', {
+      logger.info('[ChatSessionManager] Persisting updated chat session', 'persistUpdatedChatSession', {
         alias,
         chatId,
         chatSessionId
       });
-      
+
       // Validate chatSessionId format
       if (!isValidChatSessionId(chatSessionId)) {
-        logger.error('[ChatSessionManager] Invalid chatSessionId format', 'updateChatSession', {
+        logger.error('[ChatSessionManager] Invalid chatSessionId format', 'persistUpdatedChatSession', {
           chatSessionId
         });
         return false;
       }
-      
+
       // Extract month
       const month = extractMonthFromChatSessionId(chatSessionId);
       if (!month) {
-        logger.error('[ChatSessionManager] Failed to extract month from chatSessionId', 'updateChatSession', {
+        logger.error('[ChatSessionManager] Failed to extract month from chatSessionId', 'persistUpdatedChatSession', {
           chatSessionId
         });
         return false;
       }
-      
-      // Read month index
-      const monthIndex = await this.readMonthIndex(alias, chatId, month);
-      if (!monthIndex) {
-        logger.error('[ChatSessionManager] Month index not found', 'updateChatSession', {
-          alias,
-          chatId,
-          month
-        });
-        return false;
-      }
-      
-      // Find and update session
-      const sessionIndex = monthIndex.sessions.findIndex(s => s.chatSession_id === chatSessionId);
-      if (sessionIndex < 0) {
-        logger.error('[ChatSessionManager] ChatSession not found in index', 'updateChatSession', {
-          chatSessionId
-        });
-        return false;
-      }
-      
-      // Update metadata
-      monthIndex.sessions[sessionIndex] = {
-        ...monthIndex.sessions[sessionIndex],
-        ...updates,
-        last_updated: new Date().toISOString()
-      };
-      
-      // Re-sort
-      monthIndex.sessions.sort((a, b) => 
-        new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
-      );
-      
-      // Save month index
-      const indexWriteSuccess = await this.writeMonthIndex(alias, chatId, month, monthIndex);
+
+      // Update metadata (preserve last_updated if explicitly provided in updates, otherwise auto-generate)
+      const updatedTimestamp = updates.last_updated ?? new Date().toISOString();
+      const indexWriteSuccess = await this.withMonthIndexWriteLock(alias, chatId, month, async () => {
+        const monthIndex = await this.readMonthIndex(alias, chatId, month);
+        if (!monthIndex) {
+          logger.error('[ChatSessionManager] Month index not found', 'persistUpdatedChatSession', {
+            alias,
+            chatId,
+            month
+          });
+          return false;
+        }
+
+        // Find and update the session
+        const sessionIndex = monthIndex.sessions.findIndex(s => s.chatSession_id === chatSessionId);
+        if (sessionIndex < 0) {
+          logger.error('[ChatSessionManager] ChatSession not found in index', 'persistUpdatedChatSession', {
+            chatSessionId
+          });
+          return false;
+        }
+
+        const existingSession = monthIndex.sessions[sessionIndex];
+        const normalizedReadStatus = normalizeChatSessionReadStatus(
+          updates.readStatus ?? existingSession.readStatus
+        );
+        monthIndex.sessions[sessionIndex] = {
+          ...existingSession,
+          ...updates,
+          last_updated: updatedTimestamp,
+          readStatus: normalizedReadStatus,
+        };
+
+        // Re-sort
+        monthIndex.sessions.sort((a, b) =>
+          new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+        );
+
+        await this.writeMonthIndexUnlocked(alias, chatId, month, monthIndex);
+        return true;
+      });
       if (!indexWriteSuccess) {
         return false;
       }
-      
-      // Save chatSession file
+
+      // Save chatSession file (use the same timestamp as the index)
       const filePath = getChatSessionFilePath(alias, chatId, chatSessionId);
-      chatSessionFile.last_updated = new Date().toISOString();
-      await fs.promises.writeFile(filePath, JSON.stringify(chatSessionFile, null, 2), 'utf-8');
-      
-      // Notify frontend
-      await this.notifyFrontend(alias, chatId);
-      
-      logger.info('[ChatSessionManager] ChatSession updated successfully','updateChatSession', {
+      const normalizedChatSessionFile: ChatSessionFile = {
+        ...chatSessionFile,
+        last_updated: updatedTimestamp,
+      };
+      await fs.promises.writeFile(filePath, JSON.stringify(normalizedChatSessionFile, null, 2), 'utf-8');
+
+      logger.info('[ChatSessionManager] Updated chat session persisted successfully', 'persistUpdatedChatSession', {
         alias,
         chatId,
         chatSessionId
       });
-      
+
       return true;
     } catch (error) {
-      logger.error('[ChatSessionManager] Failed to update chat session', 'updateChatSession', {
+      logger.error('[ChatSessionManager] Failed to persist updated chat session', 'persistUpdatedChatSession', {
         alias,
         chatId,
         chatSessionId,
@@ -411,9 +548,9 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
+
   /**
-   * Delete ChatSession
+   * Delete a ChatSession
    */
   async deleteChatSession(alias: string, chatId: string, chatSessionId: string): Promise<boolean> {
     try {
@@ -422,7 +559,7 @@ export class ChatSessionManager {
         chatId,
         chatSessionId
       });
-      
+
       // Validate chatSessionId format
       if (!isValidChatSessionId(chatSessionId)) {
         logger.error('[ChatSessionManager] Invalid chatSessionId format', 'deleteChatSession', {
@@ -430,7 +567,7 @@ export class ChatSessionManager {
         });
         return false;
       }
-      
+
       // Extract month
       const month = extractMonthFromChatSessionId(chatSessionId);
       if (!month) {
@@ -439,8 +576,8 @@ export class ChatSessionManager {
         });
         return false;
       }
-      
-      // Read month index
+
+      // Read the month index
       const monthIndex = await this.readMonthIndex(alias, chatId, month);
       if (!monthIndex) {
         logger.warn('[ChatSessionManager] Month index not found, session may already be deleted', 'deleteChatSession', {
@@ -448,18 +585,18 @@ export class ChatSessionManager {
           chatId,
           month
         });
-        return true; // Treat as deletion success
+        return true; // Treat as deleted successfully
       }
-      
+
       // Remove from index
       const sessionIndex = monthIndex.sessions.findIndex(s => s.chatSession_id === chatSessionId);
       if (sessionIndex >= 0) {
         monthIndex.sessions.splice(sessionIndex, 1);
         await this.writeMonthIndex(alias, chatId, month, monthIndex);
-        
-        // If month index becomes empty, consider deleting the month directory (optional)
+
+        // If the month index is now empty, optionally remove the month directory
         if (monthIndex.sessions.length === 0) {
-          // Update chat-level index, remove empty month
+          // Update the chat-level index, removing the empty month
           const chatIndex = await this.readChatIndex(alias, chatId);
           if (chatIndex) {
             chatIndex.months = chatIndex.months.filter(m => m !== month);
@@ -467,22 +604,19 @@ export class ChatSessionManager {
           }
         }
       }
-      
-      // Delete file
+
+      // Delete the file
       const filePath = getChatSessionFilePath(alias, chatId, chatSessionId);
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
       }
-      
-      // Notify frontend
-      await this.notifyFrontend(alias, chatId);
-      
-      logger.info('[ChatSessionManager] ChatSession deleted successfully','deleteChatSession', {
+
+      logger.info('[ChatSessionManager] ChatSession deleted successfully', 'deleteChatSession', {
         alias,
         chatId,
         chatSessionId
       });
-      
+
       return true;
     } catch (error) {
       logger.error('[ChatSessionManager] Failed to delete chat session', 'deleteChatSession', {
@@ -494,10 +628,10 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
+
   /**
-   * Get ChatSession file content
-   * 🔥 Fix: must first confirm session exists via index before reading file
+   * Get the ChatSession file content
+   * 🔥 Fix: must confirm session exists via index before reading the file
    */
   async getChatSessionFile(alias: string, chatId: string, chatSessionId: string): Promise<ChatSessionFile | null> {
     try {
@@ -505,8 +639,8 @@ export class ChatSessionManager {
       if (!isValidChatSessionId(chatSessionId)) {
         return null;
       }
-      
-      // 🔥 Fix: first confirm session exists via index
+
+      // 🔥 Fix: confirm session exists via index first
       const month = extractMonthFromChatSessionId(chatSessionId);
       if (!month) {
         logger.warn('[ChatSessionManager] Failed to extract month from chatSessionId', 'getChatSessionFile', {
@@ -514,7 +648,7 @@ export class ChatSessionManager {
         });
         return null;
       }
-      
+
       // Confirm session exists via month index
       const monthIndex = await this.readMonthIndex(alias, chatId, month);
       if (!monthIndex) {
@@ -525,7 +659,7 @@ export class ChatSessionManager {
         });
         return null;
       }
-      
+
       const sessionExists = monthIndex.sessions.some(s => s.chatSession_id === chatSessionId);
       if (!sessionExists) {
         logger.warn('[ChatSessionManager] ChatSession not found in index', 'getChatSessionFile', {
@@ -535,12 +669,12 @@ export class ChatSessionManager {
         });
         return null;
       }
-      
+
       // After index confirms existence, read the file
       const filePath = getChatSessionFilePath(alias, chatId, chatSessionId);
-      
+
       if (!fs.existsSync(filePath)) {
-        // Index exists but file not found, indicating data inconsistency
+        // Index exists but file does not — data inconsistency, log the error
         logger.error('[ChatSessionManager] Index exists but file not found - data inconsistency', 'getChatSessionFile', {
           alias,
           chatId,
@@ -549,9 +683,9 @@ export class ChatSessionManager {
         });
         return null;
       }
-      
+
       const content = await fs.promises.readFile(filePath, 'utf-8');
-      return JSON.parse(content) as ChatSessionFile;
+      return deserializeChatFile(JSON.parse(content));
     } catch (error) {
       logger.error('[ChatSessionManager] Failed to read chat session file', 'getChatSessionFile', {
         alias,
@@ -562,15 +696,15 @@ export class ChatSessionManager {
       return null;
     }
   }
-  
+
   /**
-   * Get ChatSession metadata for the specified chat (paginated loading)
-   * Initial load: starts from the latest month, loads until reaching minCount or all loaded
+   * Get ChatSession metadata for the specified chat (paginated)
+   * Initial load: starts from the newest month, loading until minCount sessions or all are loaded
    *
    * @param alias User alias
    * @param chatId Chat ID
-   * @param minCount Minimum load count, default 10
-   * @returns Load result, including sessions and pagination state
+   * @param minCount Minimum number of sessions to load, default 10
+   * @returns Load result containing sessions and pagination state
    */
   async getChatSessions(alias: string, chatId: string, minCount: number = 10): Promise<{
     sessions: ChatSession[];
@@ -588,42 +722,59 @@ export class ChatSessionManager {
           nextMonthIndex: 0
         };
       }
-      
+
       const allSessions: ChatSession[] = [];
       const loadedMonths: string[] = [];
       let monthIndex = 0;
-      
-      // Read months in order (months already in descending order), until reaching minCount
-      while (monthIndex < chatIndex.months.length && allSessions.length < minCount) {
+      let nonScheduledCount = 0;
+
+      // Load months in descending order until we have at least minCount non-scheduler
+      // (i.e. user-initiated) sessions. We count only manual sessions because the UI
+      // filters out scheduler sessions; counting all sessions would let a large volume
+      // of scheduler sessions exhaust the quota and prevent earlier months from loading.
+      while (monthIndex < chatIndex.months.length && nonScheduledCount < minCount) {
         const month = chatIndex.months[monthIndex];
         const monthData = await this.readMonthIndex(alias, chatId, month);
-        
+
         if (monthData && monthData.sessions.length > 0) {
           allSessions.push(...monthData.sessions);
           loadedMonths.push(month);
+          nonScheduledCount += monthData.sessions.filter(s => !s.schedulerJobId).length;
         }
-        
+
         monthIndex++;
       }
-      
-      // Ensure sorted in descending order by time
+
+      // Sort all collected sessions by time descending
       allSessions.sort((a, b) =>
         new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
       );
-      
+      const normalizedSessions = allSessions.map(session => ({
+        ...session,
+        readStatus: normalizeChatSessionReadStatus(session.readStatus),
+      }));
+
       const hasMore = monthIndex < chatIndex.months.length;
-      
-      logger.info('[ChatSessionManager] getChatSessions completed','getChatSessions', {
+      const scheduledCount = normalizedSessions.filter(session => !!session.schedulerJobId).length;
+
+      logger.info('[ChatSessionManager] getChatSessions completed', 'getChatSessions', {
         alias,
         chatId,
         loadedCount: allSessions.length,
         loadedMonths: loadedMonths.length,
         hasMore,
-        nextMonthIndex: monthIndex
+        nextMonthIndex: monthIndex,
+        scheduledCount,
+        sessionPreview: normalizedSessions.slice(0, 10).map(session => ({
+          chatSessionId: session.chatSession_id,
+          title: session.title,
+          schedulerJobId: session.schedulerJobId || null,
+          readStatus: session.readStatus,
+        }))
       });
-      
+
       return {
-        sessions: allSessions,
+        sessions: normalizedSessions,
         loadedMonths,
         hasMore,
         nextMonthIndex: monthIndex
@@ -642,15 +793,15 @@ export class ChatSessionManager {
       };
     }
   }
-  
+
   /**
-   * Load more ChatSessions (scroll loading)
+   * Load more ChatSessions (scroll-based loading)
    * Loads one month of data at a time
    *
    * @param alias User alias
    * @param chatId Chat ID
-   * @param fromMonthIndex Month index to start loading from
-   * @returns Load result, including newly loaded sessions and pagination state
+   * @param fromMonthIndex The month index to start loading from
+   * @returns Load result containing newly loaded sessions and pagination state
    */
   async getMoreChatSessions(alias: string, chatId: string, fromMonthIndex: number): Promise<{
     sessions: ChatSession[];
@@ -668,30 +819,41 @@ export class ChatSessionManager {
           nextMonthIndex: fromMonthIndex
         };
       }
-      
+
       const month = chatIndex.months[fromMonthIndex];
       const monthData = await this.readMonthIndex(alias, chatId, month);
-      
+
       const sessions = monthData?.sessions || [];
       const nextMonthIndex = fromMonthIndex + 1;
       const hasMore = nextMonthIndex < chatIndex.months.length;
-      
-      // Ensure sorted in descending order by time
+
+      // Ensure sorted in descending time order
       sessions.sort((a, b) =>
         new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
       );
-      
-      logger.info('[ChatSessionManager] getMoreChatSessions completed','getMoreChatSessions', {
+      const normalizedSessions = sessions.map(session => ({
+        ...session,
+        readStatus: normalizeChatSessionReadStatus(session.readStatus),
+      }));
+
+      logger.info('[ChatSessionManager] getMoreChatSessions completed', 'getMoreChatSessions', {
         alias,
         chatId,
         month,
         loadedCount: sessions.length,
         hasMore,
-        nextMonthIndex
+        nextMonthIndex,
+        scheduledCount: normalizedSessions.filter(session => !!session.schedulerJobId).length,
+        sessionPreview: normalizedSessions.slice(0, 10).map(session => ({
+          chatSessionId: session.chatSession_id,
+          title: session.title,
+          schedulerJobId: session.schedulerJobId || null,
+          readStatus: session.readStatus,
+        }))
       });
-      
+
       return {
-        sessions,
+        sessions: normalizedSessions,
         loadedMonth: month,
         hasMore,
         nextMonthIndex
@@ -711,10 +873,10 @@ export class ChatSessionManager {
       };
     }
   }
-  
+
   /**
    * Get all ChatSessions (non-paginated, for migration and similar scenarios)
-   * @deprecated Please use getChatSessions + getMoreChatSessions for paginated loading
+   * @deprecated Use getChatSessions + getMoreChatSessions for paginated loading
    */
   async getAllChatSessions(alias: string, chatId: string): Promise<ChatSession[]> {
     try {
@@ -722,22 +884,20 @@ export class ChatSessionManager {
       if (!chatIndex || chatIndex.months.length === 0) {
         return [];
       }
-      
+
       const allSessions: ChatSession[] = [];
-      
-      // Load all months
+
       for (const month of chatIndex.months) {
         const monthData = await this.readMonthIndex(alias, chatId, month);
         if (monthData && monthData.sessions.length > 0) {
           allSessions.push(...monthData.sessions);
         }
       }
-      
-      // Ensure sorted in descending order by time
+
       allSessions.sort((a, b) =>
         new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
       );
-      
+
       return allSessions;
     } catch (error) {
       logger.error('[ChatSessionManager] Failed to get all chat sessions', 'getAllChatSessions', {
@@ -748,187 +908,17 @@ export class ChatSessionManager {
       return [];
     }
   }
-  
+
+  // ========================================
+  // Migration Methods
+  // ========================================
+
   /**
-   * Generate a new ChatSessionId
-   * Format: "chatSession_{YYYYMMDDHHmmSS}"
-   */
-  generateChatSessionId(): string {
-    const now = new Date();
-    const timestamp = now.getFullYear().toString() +
-      (now.getMonth() + 1).toString().padStart(2, '0') +
-      now.getDate().toString().padStart(2, '0') +
-      now.getHours().toString().padStart(2, '0') +
-      now.getMinutes().toString().padStart(2, '0') +
-      now.getSeconds().toString().padStart(2, '0');
-    return `chatSession_${timestamp}`;
-  }
-  
-  /**
-   * Copy ChatSession (Fork feature)
-   *
-   * Workflow:
-   * 1. Read source ChatSession metadata and file content
-   * 2. Generate new targetChatSessionId
-   * 3. Create new ChatSession metadata (add "(Fork)" suffix to title)
-   * 4. Copy file content to new ChatSession
-   * 5. Add to index
-   * 6. Notify frontend
-   *
+   * Migrate chatSessions from profile.json to the new directory structure
    * @param alias User alias
    * @param chatId Chat ID
-   * @param sourceChatSessionId Source ChatSession ID
-   * @param targetChatSessionId Target ChatSession ID
-   * @returns Whether the copy was successful
-   */
-  async copyChatSession(
-    alias: string,
-    chatId: string,
-    sourceChatSessionId: string,
-    targetChatSessionId: string
-  ): Promise<boolean> {
-    try {
-      logger.info('[ChatSessionManager] Copying chat session', 'copyChatSession', {
-        alias,
-        chatId,
-        sourceChatSessionId,
-        targetChatSessionId
-      });
-      
-      // 1. Validate source ChatSessionId format
-      if (!isValidChatSessionId(sourceChatSessionId)) {
-        logger.error('[ChatSessionManager] Invalid source chatSessionId format', 'copyChatSession', {
-          sourceChatSessionId
-        });
-        return false;
-      }
-      
-      // 2. Validate target ChatSessionId format
-      if (!isValidChatSessionId(targetChatSessionId)) {
-        logger.error('[ChatSessionManager] Invalid target chatSessionId format', 'copyChatSession', {
-          targetChatSessionId
-        });
-        return false;
-      }
-      
-      // 3. Read source ChatSession file content
-      const sourceSessionFile = await this.getChatSessionFile(alias, chatId, sourceChatSessionId);
-      if (!sourceSessionFile) {
-        logger.error('[ChatSessionManager] Source ChatSession file not found', 'copyChatSession', {
-          alias,
-          chatId,
-          sourceChatSessionId
-        });
-        return false;
-      }
-      
-      // 4. Get source ChatSession metadata
-      const sourceMonth = extractMonthFromChatSessionId(sourceChatSessionId);
-      if (!sourceMonth) {
-        logger.error('[ChatSessionManager] Failed to extract month from source chatSessionId', 'copyChatSession', {
-          sourceChatSessionId
-        });
-        return false;
-      }
-      
-      const sourceMonthIndex = await this.readMonthIndex(alias, chatId, sourceMonth);
-      const sourceSession = sourceMonthIndex?.sessions.find(s => s.chatSession_id === sourceChatSessionId);
-      
-      if (!sourceSession) {
-        logger.error('[ChatSessionManager] Source ChatSession metadata not found', 'copyChatSession', {
-          alias,
-          chatId,
-          sourceChatSessionId
-        });
-        return false;
-      }
-      
-      // 5. Create new ChatSession metadata
-      const now = new Date().toISOString();
-      const newTitle = sourceSession.title ? `${sourceSession.title} (Fork)` : 'New Chat (Fork)';
-      
-      const newSession: ChatSession = {
-        chatSession_id: targetChatSessionId,
-        title: newTitle,
-        last_updated: now
-      };
-      
-      // 6. Create new ChatSession file content (copy source content but update ID and timestamp)
-      const newSessionFile: ChatSessionFile = {
-        ...sourceSessionFile,
-        chatSession_id: targetChatSessionId,
-        title: newTitle,
-        last_updated: now
-      };
-      
-      // 7. Use addChatSession to add the new ChatSession (automatically handles index and file saving)
-      const addResult = await this.addChatSession(alias, chatId, newSession, newSessionFile);
-      
-      if (!addResult) {
-        logger.error('[ChatSessionManager] Failed to add copied ChatSession', 'copyChatSession', {
-          alias,
-          chatId,
-          targetChatSessionId
-        });
-        return false;
-      }
-      
-      logger.info('[ChatSessionManager] ChatSession copied successfully', 'copyChatSession', {
-        alias,
-        chatId,
-        sourceChatSessionId,
-        targetChatSessionId,
-        newTitle
-      });
-      
-      return true;
-    } catch (error) {
-      logger.error('[ChatSessionManager] Failed to copy chat session', 'copyChatSession', {
-        alias,
-        chatId,
-        sourceChatSessionId,
-        targetChatSessionId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return false;
-    }
-  }
-  
-  /**
-   * Check if ChatSession exists
-   */
-  async existsChatSession(alias: string, chatId: string, chatSessionId: string): Promise<boolean> {
-    try {
-      if (!isValidChatSessionId(chatSessionId)) {
-        return false;
-      }
-      
-      const month = extractMonthFromChatSessionId(chatSessionId);
-      if (!month) {
-        return false;
-      }
-      
-      const monthIndex = await this.readMonthIndex(alias, chatId, month);
-      if (!monthIndex) {
-        return false;
-      }
-      
-      return monthIndex.sessions.some(s => s.chatSession_id === chatSessionId);
-    } catch (error) {
-      return false;
-    }
-  }
-  
-  // ========================================
-  // Migration methods
-  // ========================================
-  
-  /**
-   * Migrate from profile.json chatSessions to new structure
-   * @param alias User alias
-   * @param chatId Chat ID
-   * @param chatSessions Original chatSessions array from profile.json
-   * @param getChatSessionFileFunc Function to get chatSession file content
+   * @param chatSessions The chatSessions array from the original profile.json
+   * @param getChatSessionFileFunc Function to get the chatSession file content
    */
   async migrateFromProfile(
     alias: string,
@@ -942,7 +932,7 @@ export class ChatSessionManager {
         chatId,
         sessionCount: chatSessions.length
       });
-      
+
       if (chatSessions.length === 0) {
         logger.info('[ChatSessionManager] No sessions to migrate', 'migrateFromProfile', {
           alias,
@@ -950,10 +940,10 @@ export class ChatSessionManager {
         });
         return true;
       }
-      
+
       // Group by month
       const sessionsByMonth = new Map<string, ChatSession[]>();
-      
+
       for (const session of chatSessions) {
         if (!isValidChatSessionId(session.chatSession_id)) {
           logger.warn('[ChatSessionManager] Skipping invalid chatSessionId during migration', 'migrateFromProfile', {
@@ -961,7 +951,7 @@ export class ChatSessionManager {
           });
           continue;
         }
-        
+
         const month = extractMonthFromChatSessionId(session.chatSession_id);
         if (!month) {
           logger.warn('[ChatSessionManager] Skipping session with invalid month', 'migrateFromProfile', {
@@ -969,14 +959,14 @@ export class ChatSessionManager {
           });
           continue;
         }
-        
+
         if (!sessionsByMonth.has(month)) {
           sessionsByMonth.set(month, []);
         }
         sessionsByMonth.get(month)!.push(session);
       }
-      
-      // Create chat-level index
+
+      // Create the chat-level index
       const months = Array.from(sessionsByMonth.keys()).sort().reverse();
       const chatIndex: ChatSessionsChatIndex = {
         chat_id: chatId,
@@ -984,14 +974,14 @@ export class ChatSessionManager {
         last_updated: new Date().toISOString()
       };
       await this.writeChatIndex(alias, chatId, chatIndex);
-      
+
       // Create index and migrate files for each month
       for (const [month, sessions] of sessionsByMonth) {
         // Sort
-        sessions.sort((a, b) => 
+        sessions.sort((a, b) =>
           new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
         );
-        
+
         // Create month index
         const monthIndex: ChatSessionsMonthIndex = {
           chat_id: chatId,
@@ -1000,7 +990,7 @@ export class ChatSessionManager {
           last_updated: new Date().toISOString()
         };
         await this.writeMonthIndex(alias, chatId, month, monthIndex);
-        
+
         // Migrate each session file
         for (const session of sessions) {
           const chatSessionFile = await getChatSessionFileFunc(session.chatSession_id);
@@ -1018,14 +1008,14 @@ export class ChatSessionManager {
           }
         }
       }
-      
+
       logger.info('[ChatSessionManager] Migration completed successfully', 'migrateFromProfile', {
         alias,
         chatId,
         migratedMonths: months.length,
         totalSessions: chatSessions.length
       });
-      
+
       return true;
     } catch (error) {
       logger.error('[ChatSessionManager] Migration failed', 'migrateFromProfile', {
@@ -1036,80 +1026,7 @@ export class ChatSessionManager {
       return false;
     }
   }
-  
-  // ========================================
-  // Notification methods
-  // ========================================
-  
-  /**
-   * Notify frontend of ChatSession data update
-   */
-  private async notifyFrontend(alias: string, chatId: string): Promise<void> {
-    try {
-      const windows = BrowserWindow.getAllWindows();
-      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos');
-      
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-        // Get latest chatSessions list (using paginated load result)
-        const result = await this.getChatSessions(alias, chatId);
-        
-        mainWindow.webContents.send('chatSession:updated', {
-          alias,
-          chatId,
-          sessions: result.sessions,
-          loadedMonths: result.loadedMonths,
-          hasMore: result.hasMore,
-          nextMonthIndex: result.nextMonthIndex,
-          timestamp: Date.now()
-        });
-        
-        logger.info('[ChatSessionManager] Notified frontend of ChatSession update', 'notifyFrontend', {
-          alias,
-          chatId,
-          sessionCount: result.sessions.length,
-          hasMore: result.hasMore
-        });
-      }
-    } catch (error) {
-      logger.error('[ChatSessionManager] Failed to notify frontend', 'notifyFrontend', {
-        alias,
-        chatId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-  
-  /**
-   * Notify frontend to auto-select ChatSession
-   */
-  private async notifyAutoSelectChatSession(alias: string, chatId: string, chatSessionId: string): Promise<void> {
-    try {
-      const windows = BrowserWindow.getAllWindows();
-      const mainWindow = windows.find((window: BrowserWindow) => window.title === 'OpenKosmos');
-      
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-        mainWindow.webContents.send('chatSession:autoSelect', {
-          alias,
-          chatId,
-          chatSessionId,
-          timestamp: Date.now()
-        });
-        
-        logger.info('[ChatSessionManager] Sent auto-select notification', 'notifyAutoSelectChatSession', {
-          alias,
-          chatId,
-          chatSessionId
-        });
-      }
-    } catch (error) {
-      logger.error('[ChatSessionManager] Failed to send auto-select notification', 'notifyAutoSelectChatSession', {
-        alias,
-        chatId,
-        chatSessionId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
+
 }
 
 // Export singleton instance

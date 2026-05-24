@@ -2,14 +2,12 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 // Layout state interface
 export interface LayoutState {
-  leftPanelCollapsed: boolean;
   isMinimalMode: boolean;
   isAlwaysOnTop: boolean;
 }
 
 // Layout context interface
 export interface LayoutContextValue extends LayoutState {
-  toggleLeftPanel: () => void;
   toggleMinimalMode: () => void;
   setMinimalMode: (enabled: boolean) => void;
   toggleAlwaysOnTop: () => void;
@@ -36,21 +34,15 @@ interface LayoutProviderProps {
 // Layout provider component
 export const LayoutProvider: React.FC<LayoutProviderProps> = ({ children }) => {
   // State management
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [isMinimalMode, setIsMinimalMode] = useState(false);
   const [isAlwaysOnTop, setIsAlwaysOnTopState] = useState(false);
-
-  // Toggle left panel collapsed state
-  const toggleLeftPanel = () => {
-    setLeftPanelCollapsed((prev) => !prev);
-  };
 
   // Toggle minimal mode
   const toggleMinimalMode = () => {
     setIsMinimalMode((prev) => {
       const newMinimalMode = !prev;
-      // When enabling minimal mode, automatically enable always-on-top
-      // When exiting minimal mode, automatically disable always-on-top
+      // When minimal mode is enabled, auto-enable always-on-top
+      // When exiting minimal mode, auto-disable always-on-top
       if (newMinimalMode) {
         setAlwaysOnTop(true);
       } else {
@@ -63,8 +55,8 @@ export const LayoutProvider: React.FC<LayoutProviderProps> = ({ children }) => {
   // Set minimal mode explicitly
   const setMinimalMode = (enabled: boolean) => {
     setIsMinimalMode(enabled);
-    // When enabling minimal mode, automatically enable always-on-top
-    // When exiting minimal mode, automatically disable always-on-top
+    // When minimal mode is enabled, auto-enable always-on-top
+    // When exiting minimal mode, auto-disable always-on-top
     if (enabled) {
       setAlwaysOnTop(true);
     } else {
@@ -111,10 +103,8 @@ export const LayoutProvider: React.FC<LayoutProviderProps> = ({ children }) => {
 
   // Context value
   const value: LayoutContextValue = {
-    leftPanelCollapsed,
     isMinimalMode,
     isAlwaysOnTop,
-    toggleLeftPanel,
     toggleMinimalMode,
     setMinimalMode,
     toggleAlwaysOnTop,

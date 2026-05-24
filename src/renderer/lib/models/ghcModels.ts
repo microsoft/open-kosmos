@@ -1,30 +1,30 @@
 // src/renderer/lib/models/ghcModels.ts
-import { GhcCopilotModel } from '../../../main/lib/types/ghcChatTypes';
+import { GhcCopilotModel } from '@shared/types/ghcChatTypes';
 import { modelCacheManager } from './modelCacheManager';
 
 /**
  * Frontend model access layer
- * 
+ *
  * Architecture notes:
- * - This file no longer defines model data directly; instead it reads from modelCacheManager
+ * - This file no longer defines model data directly; it reads from modelCacheManager
  * - The backend (Main Process) is the single source of truth for model data
- * - The frontend caches via localStorage, automatically syncing on app startup
- * - All functions remain backward-compatible with an unchanged external API
+ * - The frontend caches via localStorage and auto-syncs on app startup
+ * - All functions maintain backward compatibility; the public API is unchanged
  */
 
 /**
  * Get all GitHub Copilot models
- * @deprecated Internal implementation now reads from cache; external API remains unchanged
+ * @deprecated Internal implementation changed to read from cache; public API unchanged
  */
 export function getAllModels(): GhcCopilotModel[] {
   return modelCacheManager.getAllModels();
 }
 
 /**
- * Get the list of models used by Kosmos
+ * Get the list of models used by OpenKosmos
  */
-export function getAllKosmosUsedModels(): GhcCopilotModel[] {
-  return modelCacheManager.getAllKosmosUsedModels();
+export function getAllOpenKosmosUsedModels(): GhcCopilotModel[] {
+  return modelCacheManager.getAllOpenKosmosUsedModels();
 }
 
 /**
@@ -56,7 +56,7 @@ export function getDefaultModel(): string {
 }
 
 /**
- * Determine if a model is a reasoning model
+ * Check if a model is a reasoning model
  */
 export function isReasoningModel(modelId: string): boolean {
   return modelCacheManager.isReasoningModel(modelId);
@@ -67,9 +67,9 @@ export function isReasoningModel(modelId: string): boolean {
  * Note: These categories are static and do not need to be synced from the backend
  */
 export const MODEL_CATEGORIES = {
-  claude: ['claude-3.5-sonnet', 'claude-3.7-sonnet', 'claude-sonnet-4', 'claude-sonnet-4.5', 'claude-opus-4', 'claude-opus-41', 'claude-opus-4.6', 'claude-haiku-4.5'],
-  gpt: ['gpt-4.1', 'gpt-5', 'gpt-5.1', 'gpt-4o', 'gpt-5-codex', 'gpt-5.1-codex'],
-  gemini: ['gemini-2.0-flash-001', 'gemini-2.5-pro', 'gemini-3-pro-preview'],
+  claude: ['claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.6-1m', 'claude-opus-41'],
+  gpt: ['gpt-4.1', 'gpt-5', 'gpt-4o', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.1-codex-mini'],
+  gemini: ['gemini-2.5-pro', 'gemini-3-pro-preview', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview'],
   reasoning: ['o3-mini', 'o3', 'o4-mini']
 };
 
@@ -90,11 +90,11 @@ export function getModelsByCategory(category: keyof typeof MODEL_CATEGORIES): Gh
  * This function is only for backward compatibility with legacy code
  */
 export function getLegacyModels(): any[] {
-  return getAllKosmosUsedModels().map(convertToLegacyModel);
+  return getAllOpenKosmosUsedModels().map(convertToLegacyModel);
 }
 
 /**
- * Convert GhcCopilotModel to legacy GhcModel format
+ * Convert GhcCopilotModel to the legacy GhcModel format
  * @deprecated Only for backward compatibility
  */
 function convertToLegacyModel(copilotModel: GhcCopilotModel): any {
@@ -121,13 +121,13 @@ function convertToLegacyModel(copilotModel: GhcCopilotModel): any {
 }
 
 // ============================================================================
-// Export constants - for external reference
+// Exported constants - for external reference
 // ============================================================================
 
 /**
- * @deprecated Import directly from the backend; the frontend no longer maintains a full model list
- * Use getAllModels() or getAllKosmosUsedModels() instead
+ * @deprecated Import directly from backend; frontend no longer maintains a full model list
+ * Use getAllModels() or getAllOpenKosmosUsedModels() instead
  */
 export const GITHUB_COPILOT_MODELS: GhcCopilotModel[] = [];
 
-// Note: GITHUB_COPILOT_MODELS is deprecated; use getAllModels() or getAllKosmosUsedModels() instead
+// Note: GITHUB_COPILOT_MODELS is deprecated. Use getAllModels() or getAllOpenKosmosUsedModels() instead

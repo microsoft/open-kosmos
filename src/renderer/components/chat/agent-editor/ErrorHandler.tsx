@@ -21,7 +21,7 @@ const ErrorHandler: React.FC<ErrorHandlerProps> = ({
         <div className="error-icon">⚠️</div>
         <div className="error-message">{error}</div>
         {onDismiss && (
-          <button 
+          <button
             className="error-dismiss"
             onClick={onDismiss}
             aria-label="Dismiss error"

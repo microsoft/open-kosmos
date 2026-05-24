@@ -67,6 +67,11 @@
   color: #1e293b;
 }
 
+.menu-button.sidebar-toggle-button.active {
+  background-color: rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+}
+
 .menu-button:active {
   background-color: rgba(0, 0, 0, 0.1);
 }

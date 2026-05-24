@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import PasteToWorkspaceDialog from './PasteToWorkspaceDialog';
 import { clearFileTreeCache } from '../../../lib/chat/workspaceOps';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[PasteToWorkspaceProvider]');
 
 /**
  * PasteToWorkspace Context interface
@@ -10,19 +12,19 @@ export interface PasteToWorkspaceContextValue {
    * Open the paste dialog
    * @param workspacePath - workspace directory path
    * @param targetDir - target directory (optional, defaults to workspacePath)
-   * @param onSuccess - success callback (for refreshing file tree, etc.)
+   * @param onSuccess - success callback (e.g. for refreshing the file tree)
    */
   openPasteDialog: (
     workspacePath: string,
     targetDir?: string,
     onSuccess?: () => void
   ) => void;
-  
+
   /**
    * Close the paste dialog
    */
   closePasteDialog: () => void;
-  
+
   /**
    * Whether the dialog is open
    */
@@ -33,7 +35,7 @@ export interface PasteToWorkspaceContextValue {
 const PasteToWorkspaceContext = createContext<PasteToWorkspaceContextValue | undefined>(undefined);
 
 /**
- * Hook for using the PasteToWorkspace Context
+ * Hook to use PasteToWorkspace Context
  */
 export const usePasteToWorkspace = (): PasteToWorkspaceContextValue => {
   const context = useContext(PasteToWorkspaceContext);
@@ -51,10 +53,10 @@ interface PasteToWorkspaceProviderProps {
 }
 
 /**
- * PasteToWorkspaceProvider - globally manages the Paste to Workspace dialog
- * 
- * Use this Provider to wrap the app in AppLayout, then components can call
- * openPasteDialog via usePasteToWorkspace() to open the dialog
+ * PasteToWorkspaceProvider - Globally manages the Paste to Workspace dialog
+ *
+ * Wrap the app with this Provider in AppLayout; components then call
+ * openPasteDialog via usePasteToWorkspace() to open the dialog.
  */
 export const PasteToWorkspaceProvider: React.FC<PasteToWorkspaceProviderProps> = ({ children }) => {
   // Dialog state
@@ -71,7 +73,7 @@ export const PasteToWorkspaceProvider: React.FC<PasteToWorkspaceProviderProps> =
   ) => {
     setWorkspacePath(path);
     setTargetDir(target || path);
-    // Use function form to save callback, preventing React from treating it as a state updater
+    // Use functional form to store callback, preventing React from treating it as a state updater
     setOnSuccessCallback(() => onSuccess || null);
     setIsOpen(true);
   }, []);
@@ -94,31 +96,41 @@ export const PasteToWorkspaceProvider: React.FC<PasteToWorkspaceProviderProps> =
     const separator = targetDir.includes('/') ? '/' : '\\';
     const filePath = `${targetDir}${separator}${fileName}`;
 
-    console.log('[PasteToWorkspaceProvider] Saving pasted content to:', filePath);
+    logger.debug('[PasteToWorkspaceProvider] Saving pasted content to:', filePath);
 
     try {
       // Write file
-      const result = await window.electronAPI?.fs?.writeFile?.(filePath, content, 'utf8');
-      
+      const result = await window.electronAPI?.fs?.writeFile?.(filePath, content, 'utf8', {
+        conflictResolution: 'prompt',
+      });
+
       if (!result?.success) {
+        if (result?.canceled) {
+          return { status: 'canceled' as const };
+        }
         throw new Error(result?.error || 'Failed to write file');
       }
 
-      console.log('[PasteToWorkspaceProvider] File saved successfully');
+      if (result.skipped) {
+        return { status: 'skipped' as const };
+      }
+
+      logger.debug('[PasteToWorkspaceProvider] File saved successfully');
 
       // Clear file tree cache
       try {
         await clearFileTreeCache(workspacePath);
       } catch (error) {
-        console.error('[PasteToWorkspaceProvider] Failed to clear file tree cache:', error);
+        logger.error('[PasteToWorkspaceProvider] Failed to clear file tree cache:', error);
       }
 
-      // Call success callback (refresh file tree, etc.)
+      // Invoke success callback (refresh file tree, etc.)
       if (onSuccessCallback) {
         onSuccessCallback();
       }
+      return { status: 'saved' as const };
     } catch (error) {
-      console.error('[PasteToWorkspaceProvider] Error saving pasted content:', error);
+      logger.error('[PasteToWorkspaceProvider] Error saving pasted content:', error);
       throw error;
     }
   }, [targetDir, workspacePath, onSuccessCallback]);
@@ -133,7 +145,7 @@ export const PasteToWorkspaceProvider: React.FC<PasteToWorkspaceProviderProps> =
   return (
     <PasteToWorkspaceContext.Provider value={value}>
       {children}
-      
+
       {/* Global PasteToWorkspaceDialog */}
       <PasteToWorkspaceDialog
         isOpen={isOpen}

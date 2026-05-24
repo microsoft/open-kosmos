@@ -5,13 +5,15 @@ interface AgentAvatarProps {
   emoji?: string;
   /** Agent avatar URL */
   avatar?: string;
+  /** Agent source type */
+  source?: 'ON-DEVICE' | 'EXTERNAL';
   /** Agent name (used to generate initials as fallback) */
   name?: string;
   /** Avatar size */
   size?: 'sm' | 'md' | 'lg';
-  /** Additional CSS class name */
+  /** Extra CSS class name */
   className?: string;
-  /** Agent version (for cache busting, ensures latest image on version update) */
+  /** Agent version (used for cache busting, ensures latest image is fetched on version update) */
   version?: string;
 }
 
@@ -19,12 +21,13 @@ interface AgentAvatarProps {
  * Generic component for rendering Agent avatars
  *
  * Rendering rules:
- * - If avatar URL is provided and loads successfully, renders the avatar image
- * - Otherwise renders emoji, falling back to initials
+ * - ON-DEVICE agent: render emoji only
+ * - EXTERNAL agent: prefer avatar (image), fall back to emoji if empty or failed to load
  */
 export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   emoji = '🤖',
   avatar,
+  source,
   name,
   size = 'md',
   className = '',
@@ -33,13 +36,13 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   const [imageError, setImageError] = useState(false);
 
   /**
-   * Generate image URL with version parameter (for cache busting)
-   * When the agent version is updated, URL parameter changes and browser fetches the latest image
+   * Generate avatar URL with version parameter (for cache busting)
+   * When agent version updates, the URL parameter changes so the browser fetches the latest image
    */
   const avatarUrlWithVersion = useMemo(() => {
     if (!avatar) return avatar;
     if (!version) return avatar;
-    
+
     const separator = avatar.includes('?') ? '&' : '?';
     return `${avatar}${separator}_v=${encodeURIComponent(version)}`;
   }, [avatar, version]);
@@ -57,12 +60,12 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   };
 
   /**
-   * Return image/container dimensions in pixels based on size
+   * Return image/container pixel size based on size prop
    */
   const getPixelSize = (): number => {
     switch (size) {
       case 'sm':
-        return 20;  // Matches emoji text size
+        return 20;  // Match emoji text size
       case 'lg':
         return 32;
       case 'md':
@@ -72,7 +75,7 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   };
 
   /**
-   * Return emoji text size styles based on size
+   * Return emoji text size style based on size prop
    */
   const getEmojiSizeStyles = (): string => {
     switch (size) {
@@ -86,8 +89,8 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
     }
   };
 
-  // Determine whether to render image avatar
-  // Render image if avatar is provided and no image error
+  // Determine whether to render the avatar image
+  // Only render image when avatar exists and image hasn't errored
   const shouldRenderAvatar = avatar && !imageError;
 
   const pixelSize = getPixelSize();
@@ -98,15 +101,15 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
         src={avatarUrlWithVersion}
         alt={name || 'Agent Avatar'}
         style={{ width: pixelSize, height: pixelSize }}
-        className={`agent-avatar-img object-contain flex-shrink-0 ${className}`}
+        className={`agent-avatar-img object-contain shrink-0 ${className}`}
         onError={() => setImageError(true)}
       />
     );
   }
 
-  // Render emoji when avatar is empty/failed to load
+  // ON-DEVICE or when avatar is empty/failed to load, render emoji
   return (
-    <span className={`inline-flex items-center justify-center flex-shrink-0 ${getEmojiSizeStyles()} ${className}`}>
+    <span className={`inline-flex items-center justify-center shrink-0 ${getEmojiSizeStyles()} ${className}`}>
       {emoji || getInitials(name || 'AG')}
     </span>
   );

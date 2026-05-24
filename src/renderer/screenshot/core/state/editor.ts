@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 import { setToClipboard } from "../common/utils/dom";
 import { nextTick } from "../common/utils/time";
 import { define } from "../context";

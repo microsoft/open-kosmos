@@ -7,6 +7,7 @@ import Divider from '../ui/Divider';
 import { useToast } from '../ui/ToastProvider';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { isBuiltinAgent } from '../../lib/userData/types';
+import { BRAND_NAME } from '@shared/constants/branding'; // used in isBuiltinAgent calls
 
 const PlusIcon = () => (
   <svg
@@ -37,32 +38,16 @@ const PlusIcon = () => (
 );
 
 
-interface NavigationSectionProps {
-  onNewAgent: () => void;
-  onAgentMenuToggle: (chatId: string, buttonElement: HTMLElement) => void;
-  openMenuChatId: string | null;
-  onChatSessionMenuToggle?: (
-    chatId: string,
-    sessionId: string,
-    title: string,  // 🔥 New: ChatSession title
-    buttonElement: HTMLElement,
-  ) => void;
-  openMenuChatSessionId?: string | null;
-}
 
-const NavigationSection: React.FC<NavigationSectionProps> = ({
-  onNewAgent,
-  onAgentMenuToggle,
-  openMenuChatId,
-  onChatSessionMenuToggle,
-  openMenuChatSessionId,
-}) => {
+const NavigationSection: React.FC = () => {
+  const [isAgentSearchActive, setIsAgentSearchActive] = useState(false);
+
   const { chats, data } = useProfileData();
   const { showSuccess, showError } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
-  // 🔥 Refactor: Both currentChatId and currentChatSessionId are obtained from AgentChatSessionCacheManager
+  // 🔥 Refactor: both currentChatId and currentChatSessionId are obtained from AgentChatSessionCacheManager
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     agentChatSessionCacheManager.getCurrentChatId(),
   );
@@ -70,7 +55,7 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
     string | null
   >(agentChatSessionCacheManager.getCurrentChatSessionId());
 
-  // 🔥 Listen for currentChatSessionId changes in agentChatSessionCacheManager, sync local state
+  // 🔥 Listen for changes to agentChatSessionCacheManager's currentChatSessionId and sync local state
   useEffect(() => {
     const unsubscribe =
       agentChatSessionCacheManager.subscribeToCurrentChatSessionId(
@@ -86,12 +71,17 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
   }, []);
 
   const handleSelectChat = (chatId: string) => {
-    // Navigate to the chat route with the chatId
-    // This will trigger the ChatView to handle the session creation/switching
-    navigate(`/agent/chat/${chatId}`);
+    // Navigate to the chat route with explicit new-chat intent.
+    // ChatView should only auto-create a session for this user-driven path.
+    navigate(`/agent/chat/${chatId}`, {
+      state: {
+        intent: 'new-chat',
+        source: 'agent-list',
+      },
+    });
   };
 
-  // 🔥 Handle New Agent: navigate to creation page
+  // 🔥 Handle New Agent: navigate to the creation page
   const handleNewAgent = () => {
     if (isAgentCreationView) {
       // If already in Agent Creation view, force refresh to default state
@@ -101,16 +91,16 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
     }
   };
 
-  // 🔥 Fix: Handle ChatSession selection - true two-step flow
+  // 🔥 Fix: handle ChatSession selection - true two-step flow
   const handleSelectChatSession = (chatId: string, sessionId: string) => {
     // Navigate to the specific chat session
     navigate(`/agent/chat/${chatId}/${sessionId}`);
   };
 
-  // 🔥 New: Handle deleting ChatSession
+  // 🔥 Added: handle delete ChatSession
   const handleDeleteChatSession = async (chatId: string, sessionId: string) => {
     try {
-      // Directly invoke deletion logic in ChatView
+      // Directly call the delete logic in ChatView
       window.dispatchEvent(
         new CustomEvent('chatSession:delete', {
           detail: { sessionId },
@@ -125,10 +115,10 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
     }
   };
 
-  // 🔥 New: Handle forking ChatSession
+  // 🔥 Added: handle fork ChatSession
   const handleForkChatSession = async (chatId: string, sessionId: string) => {
     try {
-      // Directly invoke fork logic in ChatView
+      // Directly call the fork logic in ChatView
       window.dispatchEvent(
         new CustomEvent('chatSession:fork', {
           detail: { sessionId },
@@ -152,49 +142,49 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
     return match ? match[1] : null;
   }, [location.pathname]);
 
-  // 🔥 Check if currently in settings view
+  // 🔥 Determine whether currently in settings view
   const isSettingsView = location.pathname.includes('/settings');
 
-  // 🔥 Check if currently in Agent Creation view (including sub-routes)
+  // 🔥 Determine whether currently in Agent Creation view (including sub-routes)
   const isAgentCreationView = location.pathname.startsWith('/agent/chat/creation');
 
-  // 🔥 Determine the actual displayed currentChatId (URL chatId takes priority)
+  // 🔥 Determine the actually displayed currentChatId (URL chatId takes priority)
   const displayCurrentChatId = urlChatId || currentChatId;
 
   /**
-   * 🔥 Compute the list of Built-in Agents to display below the Divider
-   * 
-   * Built-in agents: ['Kobi']
-   * Kobi is always visible
+   * 🔥 Calculate the list of Built-in Agents to display below the Divider
+   * Kobi is always visible.
    */
   const builtinChats = useMemo(() => {
-    // Filter out built-in agents from all chats
-    return chats.filter(chat => isBuiltinAgent(chat.agent?.name));
+    return chats.filter(chat => isBuiltinAgent(chat.agent?.name, BRAND_NAME));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats]);
 
   // 🔥 Determine whether to show Built-in Agents below the Divider
-  // Show as long as any built-in agent exists (regardless of whether it's primary)
+  // Show as long as any built-in agent exists (regardless of whether it is primary)
   const showBuiltinBelowDivider = useMemo(() => {
     return builtinChats.length > 0;
   }, [builtinChats]);
 
+  const visibleSearchSourceChats = useMemo(() => {
+    const regularChats = chats.filter(chat => !isBuiltinAgent(chat.agent?.name, BRAND_NAME));
+    return [...regularChats, ...builtinChats];
+  }, [builtinChats, chats]);
+
   const chatProps = useMemo(
     () => ({
       chats,
-      primaryAgent, // 🔥 New: get primaryAgent from profile data
-      excludeBuiltinAgents: true, // 🔥 Modified: main list excludes all built-in agents (displayed separately below Divider)
+      primaryAgent, // 🔥 Added: get primaryAgent from profile data
+      excludeBuiltinAgents: true, // 🔥 Modified: main list excludes all built-in agents (they are shown separately below the Divider)
       currentChatId: displayCurrentChatId, // 🔥 Modified: use displayCurrentChatId
       onSelectChat: handleSelectChat,
-      // 🔥 Modified: Show selected state in both chat view and settings view
+      // 🔥 Modified: show selected state in both chat view and settings view
       activeView: location.pathname.includes('/agent/chat')
         ? (isSettingsView ? 'settings' : 'chat')
         : undefined,
-      // 🔥 New: ChatSession-related props
+      // 🔥 Added: ChatSession-related props
       currentChatSessionId,
       onSelectChatSession: handleSelectChatSession,
-      onChatSessionMenuToggle,
-      openMenuChatSessionId,
       onDeleteChatSession: handleDeleteChatSession,
       onForkChatSession: handleForkChatSession,
     }),
@@ -205,8 +195,6 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
       location.pathname,
       isSettingsView,
       currentChatSessionId,
-      openMenuChatSessionId,
-      onChatSessionMenuToggle,
     ],
   );
 
@@ -214,18 +202,16 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
   const builtinChatProps = useMemo(
     () => ({
       chats: builtinChats,
-      primaryAgent, // 🔥 Pass primaryAgent so built-in agents can also display Primary badge (badge rendering is independent)
-      excludeBuiltinAgents: false, // Don't exclude, since this is specifically for displaying built-in agents
+      primaryAgent, // 🔥 Pass primaryAgent so built-in agents can also show the Primary badge (badge rendering is independent)
+      excludeBuiltinAgents: false, // Do not exclude; this list is specifically for built-in agents
       currentChatId: displayCurrentChatId, // 🔥 Modified: use displayCurrentChatId
       onSelectChat: handleSelectChat,
-      // 🔥 Modified: Show selected state in both chat view and settings view
+      // 🔥 Modified: show selected state in both chat view and settings view
       activeView: location.pathname.includes('/agent/chat')
         ? (isSettingsView ? 'settings' : 'chat')
         : undefined,
       currentChatSessionId,
       onSelectChatSession: handleSelectChatSession,
-      onChatSessionMenuToggle,
-      openMenuChatSessionId,
       onDeleteChatSession: handleDeleteChatSession,
       onForkChatSession: handleForkChatSession,
     }),
@@ -236,8 +222,6 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
       location.pathname,
       isSettingsView,
       currentChatSessionId,
-      openMenuChatSessionId,
-      onChatSessionMenuToggle,
     ],
   );
 
@@ -256,7 +240,7 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
         overflow: 'hidden',
       }}
     >
-      {/* New Agent Button - fixed at the top */}
+      {/* New Agent Button - pinned at the top */}
       <NavItem
         icon={<PlusIcon />}
         label="New Agent"
@@ -288,27 +272,26 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
       >
         <AgentList
           chats={chatProps.chats}
+          searchSourceChats={visibleSearchSourceChats}
           primaryAgent={chatProps.primaryAgent}
           excludeBuiltinAgents={chatProps.excludeBuiltinAgents}
+          showSearch={true}
           currentChatId={chatProps.currentChatId}
           onSelectChat={chatProps.onSelectChat}
-          onAgentMenuToggle={onAgentMenuToggle}
-          openMenuChatId={openMenuChatId}
           activeView={chatProps.activeView as any}
           currentChatSessionId={chatProps.currentChatSessionId}
           onSelectChatSession={chatProps.onSelectChatSession}
-          onChatSessionMenuToggle={onChatSessionMenuToggle}
-          openMenuChatSessionId={openMenuChatSessionId}
           onDeleteChatSession={chatProps.onDeleteChatSession}
           onForkChatSession={chatProps.onForkChatSession}
+          onSearchActiveChange={setIsAgentSearchActive}
         />
       </div>
 
       {/* Divider - fixed position */}
-      <Divider />
+      {!isAgentSearchActive && <Divider />}
 
-      {/* 🔥 Built-in Agents fixed below the Divider */}
-      {showBuiltinBelowDivider && (
+      {/* 🔥 Built-in Agents shown below the Divider */}
+      {showBuiltinBelowDivider && !isAgentSearchActive && (
         <div
           style={{
             width: '100%',
@@ -319,15 +302,12 @@ const NavigationSection: React.FC<NavigationSectionProps> = ({
             chats={builtinChatProps.chats}
             primaryAgent={builtinChatProps.primaryAgent}
             excludeBuiltinAgents={builtinChatProps.excludeBuiltinAgents}
+            showSearch={false}
             currentChatId={builtinChatProps.currentChatId}
             onSelectChat={builtinChatProps.onSelectChat}
-            onAgentMenuToggle={onAgentMenuToggle}
-            openMenuChatId={openMenuChatId}
             activeView={builtinChatProps.activeView as any}
             currentChatSessionId={builtinChatProps.currentChatSessionId}
             onSelectChatSession={builtinChatProps.onSelectChatSession}
-            onChatSessionMenuToggle={onChatSessionMenuToggle}
-            openMenuChatSessionId={openMenuChatSessionId}
             onDeleteChatSession={builtinChatProps.onDeleteChatSession}
             onForkChatSession={builtinChatProps.onForkChatSession}
           />

@@ -1,40 +1,40 @@
-# Lazy Loading Implementation Guide
+# On-Demand Loading Implementation Guide
 
-## Approach Comparison
+## Option Comparison
 
-### Approach 1: Code-Level Lazy Loading (Recommended, Simple)
+### Option 1: Code-Level Lazy Loading (Recommended — Simple)
 
-**Pros:**
-- No additional UI needed, automatic and transparent
-- Dependencies remain in the installer but are not loaded into memory immediately
-- Simple implementation, no download logic required
+**Advantages:**
+- No additional UI needed; automatically transparent
+- Dependencies still included in the installation package but not loaded into memory immediately
+- Simple to implement; no download logic required
 
-**Cons:**
-- Installer size is not reduced
-- Brief delay on first use
+**Disadvantages:**
+- Installation package size is not reduced
+- Brief delay the first time a feature is used
 
-**Use Cases:**
+**Best For:**
 - Optimizing memory usage and startup speed
-- No need to reduce installer size
+- When reducing installation package size is not required
 
-### Approach 2: True On-Demand Download (Complex, Smallest Size)
+### Option 2: True On-Demand Download (Complex — Smallest Package)
 
-**Pros:**
-- Installer size is significantly reduced
-- Users can choose whether to install certain features
+**Advantages:**
+- Installation package size is significantly reduced
+- Users can choose which features to install
 
-**Cons:**
-- Requires implementing download, installation, and verification logic
+**Disadvantages:**
+- Requires implementing download, install, and verification logic
 - Requires UI prompts and progress display
 - Must handle network failures, permissions, and other issues
 
-**Use Cases:**
-- Need the smallest possible installer size
-- Features are clearly optional (e.g., Playwright browser engine)
+**Best For:**
+- When minimizing installation package size is critical
+- Clearly optional features (e.g., Playwright browser engine)
 
 ---
 
-## Approach 1: Code Lazy Loading Implementation (Recommended First)
+## Option 1: Code-Level Lazy Loading (Recommended First)
 
 ### Principle
 
@@ -44,7 +44,7 @@ Use dynamic `import()` syntax to load modules only when needed, rather than load
 
 #### 1. Playwright Lazy Loading
 
-**Current Code (Immediate Loading):**
+**Current code (eager loading):**
 
 ```typescript
 // src/main/lib/mcpRuntime/builtinTools/googleWebSearchTool.ts
@@ -56,7 +56,7 @@ export async function executeGoogleSearch() {
 }
 ```
 
-**Optimized (Lazy Loading):**
+**Optimized (lazy loading):**
 
 ```typescript
 // src/main/lib/mcpRuntime/builtinTools/googleWebSearchTool.ts
@@ -83,7 +83,7 @@ export async function executeGoogleSearch() {
 
 #### 2. Neo4j Lazy Loading
 
-**Current Code:**
+**Current code:**
 
 ```typescript
 // src/main/lib/mem0/mem0-core/graph_stores/neo4j.ts
@@ -128,35 +128,33 @@ export class Neo4jGraphStore {
 
 ### Results
 
-- ✅ Application startup speed improved by 30-50%
-- ✅ Memory usage reduced by 50-100MB
-- ✅ Installer size unchanged (but can be combined with optionalDependencies)
+- ✅ Application startup speed improved by 30–50%
+- ✅ Memory usage reduced by 50–100 MB
+- ✅ Installation package size unchanged (but can be combined with optionalDependencies)
 - ✅ No UI changes required
 
 ---
 
-## Approach 2: True On-Demand Download Implementation
+## Option 2: True On-Demand Download Implementation
 
 ### Architecture Design
 
 ```
 ┌─────────────────────────────────────────┐
-│         Installer (50-80MB)             │
-│  ├─ Core Features                      │
-│  ├─ Base Dependencies                  │
-│  └─ Plugin Downloader                  │
+│         Installation Package (50–80 MB) │
+│  ├─ Core functionality                  │
+│  ├─ Base dependencies                   │
+│  └─ Plugin downloader                   │
 └─────────────────────────────────────────┘
                     │
                     ▼
         ┌───────────────────────┐
-        │  On first use of a    │
-        │  feature              │
+        │  First use of feature │
         └───────────────────────┘
                     │
                     ▼
         ┌───────────────────────┐
-        │  Check if plugin is   │
-        │  installed            │
+        │ Check plugin installed│
         └───────────────────────┘
                     │
             ┌───────┴────────┐
@@ -164,30 +162,25 @@ export class Neo4jGraphStore {
         Installed        Not Installed
             │                │
             ▼                ▼
-       Use directly   ┌──────────────┐
+        Use directly  ┌──────────────┐
                       │ Show download │
-                      │ prompt        │
-                      │ [Download]    │
-                      │ [Cancel]      │
+                      │ [Download] [Cancel] │
                       └──────────────┘
-                             │
-                        User clicks download
-                             │
-                             ▼
-                     ┌──────────────┐
-                     │  Download    │
-                     │  plugin      │
-                     │ [Progress    │
-                     │  bar 60%]    │
-                     └──────────────┘
-                             │
-                             ▼
-                     ┌──────────────┐
-                     │  Installation│
-                     │  verification│
-                     └──────────────┘
-                             │
-                             ▼
+                            │
+                      User clicks Download
+                            │
+                            ▼
+                    ┌──────────────┐
+                    │ Download plugin │
+                    │ [Progress 60%] │
+                    └──────────────┘
+                            │
+                            ▼
+                    ┌──────────────┐
+                    │ Install & verify │
+                    └──────────────┘
+                            │
+                            ▼
                         Use feature
 ```
 
@@ -219,7 +212,7 @@ export const AVAILABLE_PLUGINS: Plugin[] = [
   {
     id: 'playwright',
     name: 'Web Search Engine',
-    description: 'Supports Google search and web scraping functionality',
+    description: 'Enables Google search and web scraping functionality',
     size: '~90MB',
     npmPackage: 'playwright',
     version: '^1.56.1'
@@ -300,7 +293,7 @@ export class PluginManager {
       if (!fs.existsSync(packageJsonPath)) {
         fs.writeFileSync(
           packageJsonPath,
-          JSON.stringify({ name: 'openkosmos-plugins', version: '1.0.0' }, null, 2)
+          JSON.stringify({ name: 'kosmos-plugins', version: '1.0.0' }, null, 2)
         );
       }
 
@@ -313,7 +306,7 @@ export class PluginManager {
 
       onProgress?.(80, 'Verifying installation...');
 
-      // If it's playwright, need to install browsers
+      // For playwright, also install the browser
       if (pluginId === 'playwright') {
         onProgress?.(85, 'Downloading browser engine...');
         await execAsync(`cd "${this.pluginsDir}" && npx playwright install chromium`);
@@ -384,7 +377,7 @@ import { getPluginManager, AVAILABLE_PLUGINS } from '../lib/pluginManager';
 export function registerPluginIpc() {
   const pluginManager = getPluginManager();
 
-  // Get available plugins list
+  // Get list of available plugins
   ipcMain.handle('plugin:list', async () => {
     return AVAILABLE_PLUGINS.map(plugin => ({
       ...plugin,
@@ -392,12 +385,12 @@ export function registerPluginIpc() {
     }));
   });
 
-  // Check if plugin is installed
+  // Check if a plugin is installed
   ipcMain.handle('plugin:is-installed', async (_, pluginId: string) => {
     return pluginManager.isPluginInstalled(pluginId);
   });
 
-  // Install plugin
+  // Install a plugin
   ipcMain.handle('plugin:install', async (event, pluginId: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     
@@ -412,7 +405,7 @@ export function registerPluginIpc() {
     return { success: true };
   });
 
-  // Uninstall plugin
+  // Uninstall a plugin
   ipcMain.handle('plugin:uninstall', async (_, pluginId: string) => {
     await pluginManager.uninstallPlugin(pluginId);
     return { success: true };
@@ -420,7 +413,7 @@ export function registerPluginIpc() {
 }
 ```
 
-#### 3. Code Using Plugins
+#### 3. Code That Uses Plugins
 
 ```typescript
 // src/main/lib/mcpRuntime/builtinTools/googleWebSearchTool.ts
@@ -444,7 +437,7 @@ export async function executeGoogleSearch(query: string) {
 }
 ```
 
-#### 4. UI Component - Plugin Download Dialog
+#### 4. UI Component — Plugin Download Dialog
 
 ```typescript
 // src/renderer/components/PluginDownloadDialog.tsx
@@ -528,17 +521,17 @@ export function PluginDownloadDialog({
 }
 ```
 
-#### 5. Using It Where Needed
+#### 5. Usage at Call Sites
 
 ```typescript
 // src/renderer/lib/chat/chatOps.ts
 
 export async function executeToolWithPluginCheck(toolName: string) {
   try {
-    // Try to execute the tool
+    // Attempt to execute the tool
     await executeTool(toolName);
   } catch (error) {
-    // Check if it's a plugin-not-installed error
+    // Check if this is a plugin-not-installed error
     if (error.message?.startsWith('PLUGIN_NOT_INSTALLED:')) {
       const pluginId = error.message.split(':')[1];
       
@@ -560,35 +553,35 @@ export async function executeToolWithPluginCheck(toolName: string) {
 
 ## Recommended Approach
 
-### Quick Optimization (1-2 hours)
+### Quick Optimization (1–2 hours)
 
-1. Use **Approach 1: Code Lazy Loading**
+1. Use **Option 1 code-level lazy loading**
 2. Combine with [`electron-builder.optimized.yml`](../electron-builder.optimized.yml:1)
 3. Remove unused `@xenova/transformers`
 
-**Expected Results:**
-- Installer size reduced by 60-80MB
+**Expected results:**
+- Installation package reduced by 60–80 MB
 - Startup speed improved by 40%
-- Memory usage reduced by 80MB
+- Memory usage reduced by 80 MB
 
-### Full Optimization (1-2 days)
+### Full Optimization (1–2 days)
 
-1. Implement **Approach 2: Plugin Download System**
+1. Implement **Option 2 plugin download system**
 2. Convert Playwright and Neo4j to optional plugins
 3. Implement plugin management UI
 
-**Expected Results:**
-- Installer size reduced by 120-150MB (down to 50-80MB only)
-- Users can choose the features they need
-- First download time increases (but more flexible overall)
+**Expected results:**
+- Installation package reduced by 120–150 MB (down to 50–80 MB)
+- Users can choose which features to install
+- Longer initial download time (but overall more flexible)
 
 ---
 
 ## Recommendations
 
 **If your goal is:**
-- Quick results → Use Approach 1 + configuration optimization
-- Smallest possible size → Use Approach 2 plugin system
-- Balanced approach → Approach 1 + optionalDependencies + configuration optimization
+- Quick results → Use Option 1 + configuration optimization
+- Minimum package size → Use Option 2 plugin system
+- Balanced approach → Option 1 + optionalDependencies + configuration optimization
 
-In most cases, **Approach 1 + configuration optimization** is sufficient.
+In most cases, **Option 1 + configuration optimization** is sufficient.

@@ -825,7 +825,6 @@
 
 /* ChatSession secondary list scroll styles */
 .chat-sessions-list {
-  /* Hide scrollbar - WebKit (Chrome, Safari, Edge) */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
 }
@@ -1028,17 +1027,17 @@
   justify-content: center;
   padding: 4px 8px;
   gap: 4px;
-  
+
   background: rgba(224, 158, 102, 0.3);
   border-radius: 8px;
-  
+
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
   line-height: 16px;
   color: #6B3900;
   font-variation-settings: 'opsz' 10.5;
-  
+
   flex: none;
   align-self: flex-start;
   white-space: nowrap;
@@ -1301,23 +1300,6 @@
   align-items: center;
   padding: 1px 5px;
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-  color: white;
-  font-size: 0.55rem;
-  font-weight: 600;
-  border-radius: 3px;
-  line-height: 1.2;
-  white-space: nowrap;
-  vertical-align: super;
-  position: relative;
-  top: -0.25em;
-}
-
-/* Primary Agent Badge - used in AgentList */
-.primary-agent-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
   color: white;
   font-size: 0.55rem;
   font-weight: 600;
@@ -1642,6 +1624,24 @@
   position: relative;
 }
 
+.edit-textarea-tips {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 14px;
+  line-height: 1.6;
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
+.edit-textarea-tips-line,
+.edit-textarea-tips-spacer {
+  display: block;
+}
+
 .edit-textarea {
   width: 100%;
   height: 100%;
@@ -1655,11 +1655,6 @@
   background: white;
   box-sizing: border-box;
   overflow-y: auto;
-}
-
-.edit-textarea::placeholder {
-  color: #9ca3af;
-  line-height: 1.6;
 }
 
 .preview-content {
@@ -1841,7 +1836,7 @@
   .model-dropdown {
     border-color: #000;
   }
-  
+
   .tab-header,
   .agent-editor-left-navigation {
     border-color: #000;
@@ -1856,7 +1851,7 @@
     animation: none;
     transition: none;
   }
-  
+
   .emoji-display:hover,
   .agent-list-item:hover {
     transform: none;
@@ -2195,16 +2190,16 @@
     padding: 16px;
     margin-bottom: 24px;
   }
-  
+
   .agent-context-enhance-tab .section-title {
     font-size: 16px;
   }
-  
+
   .agent-context-enhance-tab .toggle-description {
     padding-left: 0;
     margin-top: 4px;
   }
-  
+
   .agent-context-enhance-tab .preview-item {
     flex-direction: column;
     align-items: flex-start;
@@ -2403,17 +2398,17 @@
   justify-content: center;
   padding: 4px 8px;
   gap: 4px;
-  
+
   background: rgba(224, 158, 102, 0.3);
   border-radius: 8px;
-  
+
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
   line-height: 16px;
   color: #6B3900;
   font-variation-settings: 'opsz' 10.5;
-  
+
   flex: none;
   align-self: flex-start;
   white-space: nowrap;
@@ -2425,7 +2420,7 @@
   .agent-tab .skill-card-header {
     padding: 0.875rem 1rem;
   }
-  
+
   .agent-tab .skill-card-name {
     font-size: 13px;
   }
@@ -2476,13 +2471,19 @@
   box-sizing: border-box;
 }
 
+.agent-editing-view-navigation .nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* Navigation tabs - consistent with modal-left-navigation .nav-tab */
 .agent-editing-view-navigation .nav-tab {
   /* Reset button styles */
   border: none;
   background: none;
   cursor: pointer;
-  
+
   /* Layout styles - consistent with NavItem */
   box-sizing: border-box;
   display: flex;
@@ -2490,18 +2491,18 @@
   align-items: center;
   padding: 0px 0px 0px 10px;
   gap: 2px;
-  
+
   width: 100%;
   height: 40px;
   min-height: 40px;
-  
+
   border-radius: 12px;
-  
+
   /* Layout properties */
   flex: none;
   align-self: stretch;
   flex-grow: 0;
-  
+
   /* Text styles */
   font-style: normal;
   font-weight: 410;
@@ -2509,15 +2510,39 @@
   line-height: 20px;
   color: #272320;
   font-variation-settings: 'opsz' 10.5;
-  
+
   /* Text alignment and overflow handling */
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  
+
   /* Transition effects */
   transition: background 0.2s ease;
+}
+
+.agent-editing-view-navigation .nav-group-trigger {
+  justify-content: space-between;
+}
+
+.agent-editing-view-navigation .nav-group-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.agent-editing-view-navigation .nav-group-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-editing-view-navigation .nav-sub-tab {
+  padding-left: 32px;
+  height: 36px;
+  min-height: 36px;
+  font-size: 13px;
+  color: #4b5563;
 }
 
 /* Hover state - consistent with modal-left-navigation .nav-tab */
@@ -2528,6 +2553,10 @@
 /* Active/Selected state - consistent with modal-left-navigation .nav-tab */
 .agent-editing-view-navigation .nav-tab.active {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-editing-view-navigation .nav-sub-tab.active {
+  color: #272320;
 }
 
 .agent-editing-view-navigation .nav-tab.disabled {
@@ -2660,7 +2689,7 @@
   .agent-editing-view-content {
     flex-direction: column;
   }
-  
+
   .agent-editing-view-navigation {
     width: 100%;
     min-width: unset;
@@ -2670,7 +2699,7 @@
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     padding: 12px;
   }
-  
+
   .agent-editing-view-navigation .nav-tab {
     padding: 8px 12px;
     font-size: 13px;
@@ -3014,6 +3043,17 @@
   border-color: #0369a1;
 }
 
+.workspace-action-btn.selected {
+  background: #f9fafb;
+  border-color: rgba(39, 35, 32, 0.25);
+  color: #272320;
+}
+
+.workspace-action-btn.selected:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: rgba(39, 35, 32, 0.35);
+}
+
 /* ========== Drag-and-drop Upload Styles - consistent with WorkspaceExplorerSidepane ========== */
 .agent-workspace-tab {
   position: relative;
@@ -3228,30 +3268,37 @@
   color: #3b82f6;
 }
 
-/* Workspace Item Checkbox */
-.agent-workspace-tab .skill-folder-item-checkbox {
+/* More options (...) button for workspace items */
+.agent-workspace-tab .skill-folder-item-more-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 4px;
-}
-
-.agent-workspace-tab .skill-folder-item-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
   cursor: pointer;
-  accent-color: #3b82f6;
+  color: #9ca3af;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  margin-left: auto;
+  padding: 0;
 }
 
-/* Selected state for workspace items */
-.agent-workspace-tab .skill-folder-item.selected {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.3);
+.agent-workspace-tab .skill-folder-item:hover .skill-folder-item-more-btn {
+  opacity: 1;
 }
 
-.agent-workspace-tab .skill-folder-item.selected:hover {
-  background: rgba(59, 130, 246, 0.12);
+.agent-workspace-tab .skill-folder-item-more-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+  color: #374151;
+}
+
+.agent-workspace-tab .skill-folder-item-more-btn:active {
+  background: rgba(0, 0, 0, 0.12);
 }
 
 /* Workspace Empty State */
@@ -3405,40 +3452,6 @@
   flex-shrink: 0;
 }
 
-/* Workspace Select All Row */
-.workspace-select-all-row {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(248, 250, 252, 0.6);
-  flex-shrink: 0;
-}
-
-.workspace-select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.workspace-select-all-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: #3b82f6;
-}
-
-.workspace-select-all-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-}
-
-.workspace-select-all-label:hover .workspace-select-all-text {
-  color: #374151;
-}
 
 /* Dark mode support for workspace tab */
 /* Dark mode support for workspace and meta */

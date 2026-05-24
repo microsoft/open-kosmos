@@ -1,13 +1,13 @@
 /**
  * BingImageSearchTool built-in tool - uses Playwright browser automation
- * Provides Bing image search capability for LLM to actively invoke, supports parallel search and result merging
+ * Provides LLM-callable Bing image search with parallel search support and result merging
  * Note: This is a built-in tool, not an MCP protocol tool
  */
 
 import { BuiltinToolDefinition } from './types';
-import { chromium, Browser, Page, BrowserContext, devices, BrowserContextOptions } from 'playwright';
+import { Browser, Page, BrowserContext, devices, BrowserContextOptions } from 'playwright-core';
 import { getUnifiedLogger } from '../../unifiedLogger';
-import { ensureBrowserInstalled } from './playwrightBrowserHelper';
+import { PlaywrightManager } from '../../playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -39,7 +39,7 @@ export interface BingImageSearchResult {
   width?: number;
   height?: number;
   fileSize?: string;
-  query?: string; // Source query identifier
+  query?: string; // Add source query identifier
 }
 
 type BingSafeSearchLevel = 'Off' | 'Moderate' | 'Strict';
@@ -69,14 +69,14 @@ export class BingImageSearchTool {
    * Get the actual configuration of the host machine
    */
   private static getHostMachineConfig(userLocale?: string): FingerprintConfig {
-    // Get system locale settings
+    // Get system locale
     const systemLocale = userLocale || process.env.LANG || "zh-CN";
 
     // Get system timezone
     const timezoneOffset = new Date().getTimezoneOffset();
     let timezoneId = "Asia/Shanghai"; // Default to Shanghai timezone
 
-    // Roughly infer timezone based on timezone offset
+    // Roughly infer timezone from UTC offset
     if (timezoneOffset <= -480 && timezoneOffset > -600) {
       timezoneId = "Asia/Shanghai";
     } else if (timezoneOffset <= -540) {
@@ -99,7 +99,7 @@ export class BingImageSearchTool {
     const reducedMotion = "no-preference" as const;
     const forcedColors = "none" as const;
 
-    // Select an appropriate device name
+    // Select a suitable device name
     const platform = os.platform();
     let deviceName = "Desktop Chrome";
 
@@ -111,7 +111,7 @@ export class BingImageSearchTool {
       deviceName = "Desktop Firefox";
     }
 
-    // Ultimately use Chrome
+    // Finally use Chrome
     deviceName = "Desktop Chrome";
 
     return {
@@ -125,35 +125,35 @@ export class BingImageSearchTool {
   }
 
   /**
-   * Get a random delay time
+   * Get a random delay duration
    */
   private static getRandomDelay(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   /**
-   * Check if the page is stable (URL no longer changes)
+   * Check whether the page is stable (URL no longer changes)
    */
   private static async isPageStable(page: Page, checks: number = 1, delayMs: number = 500): Promise<boolean> {
     try {
       let previousUrl = page.url();
-      
+
       for (let i = 0; i < checks; i++) {
         await page.waitForTimeout(delayMs);
         const currentUrl = page.url();
-        
+
         if (currentUrl !== previousUrl) {
           logger.debug(`[BingImageSearchTool] Page URL changed: ${previousUrl} → ${currentUrl}`);
           return false;
         }
-        
+
         previousUrl = currentUrl;
       }
-      
-      logger.debug(`[BingImageSearchTool] Page stability verification passed: ${previousUrl}`);
+
+      logger.debug(`[BingImageSearchTool] Page stability verified: ${previousUrl}`);
       return true;
     } catch (error) {
-      logger.warn('[BingImageSearchTool] Page stability check failed:', String(error));
+      logger.warn(`[BingImageSearchTool] Page stability check failed: ${String(error)}`);
       return false;
     }
   }
@@ -163,7 +163,7 @@ export class BingImageSearchTool {
    */
   private static cleanTextContent(html: string): string {
     if (!html) return '';
-    
+
     return html
       .replace(/<[^>]*>/g, '') // Remove HTML tags
       .replace(/&lt;/g, '<')
@@ -181,7 +181,7 @@ export class BingImageSearchTool {
    */
   private static decodeHTMLEntities(text: string): string {
     if (!text) return '';
-    
+
     return text
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
@@ -200,14 +200,14 @@ export class BingImageSearchTool {
    */
   private static cleanUrl(rawUrl: string): string {
     if (!rawUrl) return '';
-    
+
     // Handle base64-encoded URLs in Bing redirect URLs
     if (rawUrl.includes('bing.com/ck/a') && rawUrl.includes('&u=a')) {
       const match = rawUrl.match(/[&?]u=(a[12][A-Za-z0-9+/=]+)/);
       if (match) {
         const encodedUrl = match[1];
         const base64Part = encodedUrl.slice(2);
-        
+
         try {
           const decodedUrl = Buffer.from(base64Part, 'base64').toString('utf8');
           return decodedUrl;
@@ -216,12 +216,12 @@ export class BingImageSearchTool {
         }
       }
     }
-    
+
     return rawUrl;
   }
 
   /**
-   * Extract domain name from URL
+   * Extract domain from HTML
    */
   private static extractDomainFromUrl(url: string): string {
     try {
@@ -233,7 +233,7 @@ export class BingImageSearchTool {
   }
 
   /**
-   * Convert possible numeric fields uniformly to number
+   * Uniformly convert potentially numeric fields to number
    */
   private static extractNumeric(value: any): number | undefined {
     if (typeof value === 'number') {
@@ -251,32 +251,32 @@ export class BingImageSearchTool {
    */
   private static parseBingImageSearchResults(html: string, query: string, maxResults: number = 5): BingImageSearchResult[] {
     const results: BingImageSearchResult[] = [];
-    
+
     try {
       // Find all image search entries (a.iusc)
       const iuscPattern = /<a[^>]*class="[^"]*iusc[^"]*"[^>]*m="([^"]*)"[^>]*>/g;
       const iuscMatches = Array.from(html.matchAll(iuscPattern));
-      
-      logger.debug(`[BingImageSearchTool] Found ${iuscMatches.length}  image search result containers`);
-      
+
+      logger.debug(`[BingImageSearchTool] Found ${iuscMatches.length} image search result containers`);
+
       for (let i = 0; i < iuscMatches.length && results.length < maxResults; i++) {
         try {
           const metaAttr = iuscMatches[i][1];
           if (!metaAttr) continue;
-          
+
           // Decode HTML entities and parse JSON
           const metaText = this.decodeHTMLEntities(metaAttr);
           const meta = JSON.parse(metaText);
-          
-          // Extract original image URL, thumbnail, source page, and other core fields
+
+          // Extract core fields: original image URL, thumbnail, source page, etc.
           const originalImageUrl = this.cleanUrl(meta.murl || meta.imgurl || '');
           const thumbnailUrl = this.cleanUrl(meta.turl || meta.thumbUrl || originalImageUrl);
           const sourcePageUrl = this.cleanUrl(meta.purl || meta.surl || meta.pgUrl || '');
           const title = this.cleanTextContent(meta.t || meta.title || '');
           const source = this.cleanTextContent(meta.s || meta.site || meta.desc || '');
-          
+
           if (!thumbnailUrl) continue;
-          
+
           // Parse image size information
           const sizeInfo = meta.size || meta.imgSize || meta.sz || undefined;
           let fileSize: string | undefined;
@@ -285,11 +285,11 @@ export class BingImageSearchTool {
           } else if (sizeInfo && typeof sizeInfo === 'object') {
             fileSize = sizeInfo.text || sizeInfo.display;
           }
-          
+
           // Extract pixel dimensions
           const width = this.extractNumeric(meta.w || meta.width || meta.pixelWidth || meta.thumbWidth);
           const height = this.extractNumeric(meta.h || meta.height || meta.pixelHeight || meta.thumbHeight);
-          
+
           // Build search result
           const result: BingImageSearchResult = {
             index: results.length + 1,
@@ -302,82 +302,82 @@ export class BingImageSearchTool {
             fileSize: fileSize,
             query: query
           };
-          
+
           results.push(result);
-          logger.debug(`[BingImageSearchTool] Parsing result #${result.index} image result: "${result.title}"`);
-          
+          logger.debug(`[BingImageSearchTool] Parsing result # ${result.index} : "${result.title}"`);
+
         } catch (error) {
-          logger.warn(`[BingImageSearchTool] Parsing result #${i + 1} image result error:`, String(error));
+          logger.warn(`[BingImageSearchTool] Parsing result # ${i + 1} :`, String(error));
         }
       }
-      
+
       return results;
-      
+
     } catch (error) {
-      logger.error('[BingImageSearchTool] Failed to parse Bing image search results:', String(error));
+      logger.error(`[BingImageSearchTool] Failed to parse Bing image search results: ${String(error)}`);
       return [];
     }
   }
-  
+
   /**
    * Execute Bing image search tool
    */
-  static async execute(args: BingImageSearchToolArgs): Promise<BingImageSearchToolResult> {
+  static async execute(args: BingImageSearchToolArgs, options?: { signal?: AbortSignal }): Promise<BingImageSearchToolResult> {
     try {
-      // 🔍 Pre-execution check to ensure Playwright browser is installed
+      // 🔍 Check and ensure Playwright browser is installed before execution
       logger.debug('[BingImageSearchTool] Checking Playwright Chromium browser...');
-      const browserCheck = await ensureBrowserInstalled();
+      const browserCheck = await PlaywrightManager.getInstance().ensureBrowserInstalled();
       if (!browserCheck.installed) {
-        logger.error('[BingImageSearchTool] Playwright Chromium browser not installed and automatic installation failed');
+        logger.error('[BingImageSearchTool] Playwright Chromium browser not installed and auto-install failed');
         return {
           success: false,
           totalQueries: args.queries.length,
           totalResults: 0,
           results: [],
-          errors: [`Playwright Chromium headless browser not installed. Please run 'npx playwright install chromium-headless-shell' to install manually. Error: ${browserCheck.error || 'Unknown error'}`],
+          errors: [`Playwright Chromium headless browser is not installed. Please run 'npx playwright install chromium-headless-shell' to install manually. Error: ${browserCheck.error || 'Unknown error'}`],
           timestamp: new Date().toISOString()
         };
       }
       logger.debug(`[BingImageSearchTool] Browser check passed${browserCheck.browserPath ? ': ' + browserCheck.browserPath : ''}`);
-      
+
       const allResults: BingImageSearchResult[] = [];
       const errors: string[] = [];
-      
+
       // State file configuration
       const stateFile = path.join(os.tmpdir(), 'openkosmos-bing-image-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
-      
+
       // Load saved state
       let storageState: string | undefined = undefined;
       let savedState: SavedState = {};
-      
+
       if (fs.existsSync(stateFile)) {
         logger.debug('[BingImageSearchTool] Browser state file found');
-        
-        // Validate the JSON format of the state file
+
+        // Validate that the state file has valid JSON format
         try {
           const stateContent = fs.readFileSync(stateFile, 'utf8');
           JSON.parse(stateContent); // Validate JSON format
           storageState = stateFile;
-          logger.debug('[BingImageSearchTool] Browser state file verification passed');
+          logger.debug('[BingImageSearchTool] Browser state file validated');
         } catch (e) {
-          logger.warn('[BingImageSearchTool] Browser state file is corrupted, will delete and recreate:', String(e));
+          logger.warn(`[BingImageSearchTool] Browser state file is corrupted, deleting and recreating: ${String(e)}`);
           try {
             fs.unlinkSync(stateFile);
             logger.debug('[BingImageSearchTool] Corrupted state file deleted');
           } catch (deleteError) {
-            logger.warn('[BingImageSearchTool] Unable to delete corrupted state file:', String(deleteError));
+            logger.warn(`[BingImageSearchTool] Unable to delete corrupted state file: ${String(deleteError)}`);
           }
           storageState = undefined;
         }
-        
+
         if (fs.existsSync(fingerprintFile)) {
           try {
             const fingerprintData = fs.readFileSync(fingerprintFile, 'utf8');
             savedState = JSON.parse(fingerprintData);
-            logger.debug('[BingImageSearchTool] Saved browser fingerprint configuration loaded');
+            logger.debug('[BingImageSearchTool] Loaded saved browser fingerprint configuration');
           } catch (e) {
-            logger.warn('[BingImageSearchTool] Unable to load fingerprint configuration file, will create new fingerprint');
+            logger.warn('[BingImageSearchTool] Unable to load fingerprint config file, will create new fingerprint');
             // If the fingerprint file is also corrupted, delete it
             try {
               fs.unlinkSync(fingerprintFile);
@@ -388,16 +388,27 @@ export class BingImageSearchTool {
           }
         }
       } else {
-        logger.debug('[BingImageSearchTool] Browser state file not found, will create new browser session');
+        logger.debug('[BingImageSearchTool] No browser state file found, creating new browser session');
       }
-      
+
       // Device list
       const deviceList = ['Desktop Chrome', 'Desktop Edge', 'Desktop Firefox', 'Desktop Safari'];
-      
+
+      // External abort signal support
+      const signal = options?.signal;
+      let abortHandler: (() => void) | undefined;
+      if (signal) {
+        if (signal.aborted) throw new Error('Bing image search aborted');
+        abortHandler = () => {
+          logger.debug('[BingImageSearchTool] External abort signal received');
+        };
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+
       // Process each query in parallel
-      
+
       const searchPromises = args.queries.map(async (query, queryIndex) => {
-        
+
         try {
           const results = await this.performSingleImageSearch(
             query,
@@ -410,21 +421,24 @@ export class BingImageSearchTool {
             fingerprintFile,
             (args.timeout ? args.timeout * 1000 : 60000),
             args.maxResults || 5,
-            args.safeSearch || 'Moderate'
+            args.safeSearch || 'Moderate',
+            signal
           );
-          
+
           return { query, results, error: null };
-          
+
         } catch (error) {
           const errorMsg = `Search query "${query}" failed: ${String(error)}`;
           logger.error(`[BingImageSearchTool] ${errorMsg}`);
           return { query, results: [], error: errorMsg };
         }
       });
-      
+
       // Wait for all searches to complete
       const searchResults = await Promise.allSettled(searchPromises);
-      
+
+      if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
+
       // Process search results
       searchResults.forEach((result, index) => {
         if (result.status === 'fulfilled') {
@@ -440,8 +454,8 @@ export class BingImageSearchTool {
           errors.push(errorMsg);
         }
       });
-      
-      
+
+
       return {
         success: true,
         totalQueries: args.queries.length,
@@ -450,9 +464,9 @@ export class BingImageSearchTool {
         errors: errors.length > 0 ? errors : undefined,
         timestamp: new Date().toISOString()
       };
-      
+
     } catch (error) {
-      logger.error('[BingImageSearchTool] Search execution failed:', String(error));
+      logger.error(`[BingImageSearchTool] Search execution failed: ${String(error)}`);
       return {
         success: false,
         totalQueries: args.queries.length,
@@ -478,11 +492,12 @@ export class BingImageSearchTool {
     fingerprintFile: string,
     timeout: number,
     maxResults: number = 5,
-    safeSearch: BingSafeSearchLevel = 'Moderate'
+    safeSearch: BingSafeSearchLevel = 'Moderate',
+    externalSignal?: AbortSignal
   ): Promise<BingImageSearchResult[]> {
-    
+
     // Get device configuration
-    const getDeviceConfig= (): [string, any] => {
+    const getDeviceConfig = (): [string, any] => {
       if (savedState.fingerprint?.deviceName && devices[savedState.fingerprint.deviceName]) {
         return [savedState.fingerprint.deviceName, devices[savedState.fingerprint.deviceName]];
       } else {
@@ -493,10 +508,11 @@ export class BingImageSearchTool {
 
     // Define search function (headless mode only)
     const performSearchAndGetHtml = async (): Promise<string> => {
-      logger.debug('[BingImageSearchTool] Launching browser (headless mode)...');
-      
-      // Initialize browser
-      const browser = await chromium.launch({
+      logger.debug('[BingImageSearchTool] Starting browser (headless mode)...');
+
+      // Initialize browser — use PlaywrightManager instead of direct import,
+      // so that path changes or browser deletion trigger the auto-reinstall logic.
+      const browser = await PlaywrightManager.getInstance().launchBrowser({
         headless: true,
         timeout: timeout * 2,
         args: [
@@ -539,7 +555,7 @@ export class BingImageSearchTool {
           ...deviceConfig
         };
 
-        // If saved fingerprint config exists, use it; otherwise use the host machine's actual settings
+        // Use saved fingerprint config if available; otherwise use host machine actual settings
         if (savedState.fingerprint) {
           contextOptions = {
             ...contextOptions,
@@ -551,7 +567,7 @@ export class BingImageSearchTool {
           };
           logger.debug('[BingImageSearchTool] Using saved browser fingerprint configuration');
         } else {
-          // Get the host machine's actual settings
+          // Get actual host machine settings
           const hostConfig = this.getHostMachineConfig();
 
           contextOptions = {
@@ -563,7 +579,7 @@ export class BingImageSearchTool {
             forcedColors: hostConfig.forcedColors
           };
 
-          // Save the newly generated fingerprint configuration
+          // Save newly generated fingerprint configuration
           savedState.fingerprint = hostConfig;
           logger.debug(`[BingImageSearchTool] Generated new browser fingerprint configuration: ${hostConfig.locale}, ${hostConfig.timezoneId}`);
         }
@@ -582,7 +598,7 @@ export class BingImageSearchTool {
           storageState ? { ...contextOptions, storageState } : contextOptions
         );
 
-        // Set additional browser properties to avoid detection
+        // Set extra browser properties to avoid detection
         await context.addInitScript(() => {
           // Override navigator properties
           Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -610,6 +626,17 @@ export class BingImageSearchTool {
 
         const page = await context.newPage();
 
+        // Register external abort signal to close the page, which causes page.goto() to throw
+        let pageAbortHandler: (() => void) | undefined;
+        if (externalSignal) {
+          if (externalSignal.aborted) {
+            await page.close().catch(() => {});
+            throw new Error('Bing image search aborted');
+          }
+          pageAbortHandler = () => { page.close().catch(() => {}); };
+          externalSignal.addEventListener('abort', pageAbortHandler, { once: true });
+        }
+
         // Set additional page properties
         await page.addInitScript(() => {
           Object.defineProperty(window.screen, 'width', { get: () => 1920 });
@@ -619,27 +646,27 @@ export class BingImageSearchTool {
         });
 
         try {
-          // Calculate the number of images to request
+          // Calculate the number of requested images
           const count = Math.min(Math.max(maxResults * 2, maxResults), 50);
-          
+
           // Build Bing image search URL
           const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&setlang=${lang}&cc=${locale}&safesearch=${safeSearch}&count=${count}`;
-          
+
           logger.debug(`[BingImageSearchTool] Navigating to Bing image search page: ${searchUrl}`);
 
           // Navigate to Bing image search page - use domcontentloaded instead of networkidle to avoid long waits for async resources
           const response = await page.goto(searchUrl, {
             timeout,
-            waitUntil: 'domcontentloaded'  // networkidle is too strict; Bing image pages have many async loads that may cause timeouts
+            waitUntil: 'domcontentloaded'  // networkidle is too strict; Bing image pages have heavy async loading that may cause timeouts
           });
 
           logger.debug('[BingImageSearchTool] Waiting for image search results page to load...');
-          // Wait for image result container to appear, rather than waiting for networkidle
+          // Wait for image result container to appear instead of waiting for networkidle
           try {
             await page.waitForSelector('.dgControl, .iusc, .mimg, img.mimg', { timeout: 10000 });
-            logger.debug('[BingImageSearchTool] Image result containers appeared');
+            logger.debug('[BingImageSearchTool] Image result container appeared');
           } catch {
-            logger.warn('[BingImageSearchTool] Standard image result containers not found, continuing...');
+            logger.warn('[BingImageSearchTool] Standard image result container not found, continuing...');
           }
 
           // Get current page URL
@@ -650,13 +677,13 @@ export class BingImageSearchTool {
           logger.debug('[BingImageSearchTool] Waiting for page to stabilize...');
           await page.waitForTimeout(1000);
 
-          // Page stability detection - use more lenient detection, no longer relying on networkidle
+          // Page stability detection - using more lenient detection, no longer relying on networkidle
           logger.debug('[BingImageSearchTool] Checking page stability...');
           const isStable = await this.isPageStable(page);
           if (!isStable) {
-            logger.warn('[BingImageSearchTool] Page still navigating, waiting longer...');
+            logger.warn('[BingImageSearchTool] Page is still navigating, waiting longer...');
             await page.waitForTimeout(2000);
-            
+
             const isStableRetry = await this.isPageStable(page);
             if (!isStableRetry) {
               logger.warn('[BingImageSearchTool] Page did not fully stabilize, but continuing to avoid timeout');
@@ -683,7 +710,7 @@ export class BingImageSearchTool {
             fs.writeFileSync(fingerprintFile, JSON.stringify(savedState, null, 2), 'utf8');
             logger.debug(`[BingImageSearchTool] Fingerprint configuration saved: ${fingerprintFile}`);
           } catch (stateError) {
-            logger.warn('[BingImageSearchTool] Failed to save browser state:', String(stateError));
+            logger.warn(`[BingImageSearchTool] Failed to save browser state: ${String(stateError)}`);
           }
 
           await page.close();
@@ -691,9 +718,9 @@ export class BingImageSearchTool {
           return fullHtml;
 
         } catch (error) {
-          logger.error('[BingImageSearchTool] Error occurred during search:', String(error));
+          logger.error(`[BingImageSearchTool] Error occurred during search: ${String(error)}`);
 
-          // Try to save state even if an error occurred
+          // Attempt to save state even if an error occurred
           try {
             logger.debug('[BingImageSearchTool] Attempting to save browser state...');
             const stateDir = path.dirname(stateFile);
@@ -704,12 +731,16 @@ export class BingImageSearchTool {
             fs.writeFileSync(fingerprintFile, JSON.stringify(savedState, null, 2), 'utf8');
             logger.debug('[BingImageSearchTool] Browser state saved');
           } catch (stateError) {
-            logger.warn('[BingImageSearchTool] Failed to save browser state:', String(stateError));
+            logger.warn(`[BingImageSearchTool] Failed to save browser state: ${String(stateError)}`);
           }
 
           await page.close();
           await context.close();
           throw error;
+        } finally {
+          if (externalSignal && pageAbortHandler) {
+            externalSignal.removeEventListener('abort', pageAbortHandler);
+          }
         }
       } finally {
         await browser.close();
@@ -717,7 +748,7 @@ export class BingImageSearchTool {
     };
 
     const fullHtml = await performSearchAndGetHtml();
-    
+
     // Parse search results
     const results = this.parseBingImageSearchResults(fullHtml, query, maxResults);
     return results;
@@ -730,11 +761,6 @@ export class BingImageSearchTool {
     return {
       name: 'bing_image_search',
       description: `Search images using Bing image search with advanced browser automation. Supports multiple queries and returns up to 5 results per query. Each result includes the thumbnail URL, source page, and metadata.
-
-Differences from google_image_search:
-- Uses Bing's image search algorithm and ranking
-- May have different result ordering and content
-- Complementary to Google image search for comprehensive coverage
 
 Features:
 - Advanced browser automation with anti-detection measures
@@ -801,7 +827,7 @@ IMPORTANT: Language and locale detection:
   }
 
   /**
-   * Validate arguments
+   * Validate parameters
    */
   private static validateArgs(args: BingImageSearchToolArgs): { isValid: boolean; error?: string } {
     // Validate queries
@@ -809,7 +835,7 @@ IMPORTANT: Language and locale detection:
       return { isValid: false, error: 'queries is required and must be an array' };
     }
 
-    // Queries must not be empty
+    // queries must not be empty
     if (args.queries.length === 0) {
       return { isValid: false, error: 'queries array cannot be empty' };
     }

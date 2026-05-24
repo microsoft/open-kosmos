@@ -1,11 +1,11 @@
 /**
- * Browser Control HTTP server management
- * 
+ * Browser Control HTTP Server Manager
+ *
  * Features:
- * 1. Host update.xml and CRX files for browser extension downloads
- * 2. Automatically start when Browser Control is in the enabled state
- * 3. Coordinate lifecycle with browserControlMonitor
- * 
+ * 1. Hosts update.xml and CRX files for browser extension downloads
+ * 2. Automatically starts when Browser Control is in the enabled state
+ * 3. Receives Native Server lifecycle signals and manages MCP connections
+ *
  * Singleton pattern, decoupled from IPC handlers
  */
 
@@ -14,9 +14,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import { checkBrowserControlStatus } from './browserControlStatus';
+import { createLogger } from '../unifiedLogger';
+import { profileCacheManager } from "../userDataADO";
+import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
+const logger = createLogger();
 
 const HTTP_PORT = 8000;
-const HTTP_HOST = 'localhost';
+const HTTP_HOST = '127.0.0.1';
 
 class BrowserControlHttpServer {
   private server: http.Server | null = null;
@@ -25,14 +29,14 @@ class BrowserControlHttpServer {
   private currentUserAlias: string | null = null;
 
   /**
-   * Start HTTP server
+   * Start the HTTP server
    * @param userAlias Current user alias (used to check enabled state)
-   * @returns Promise<boolean> Whether started successfully
+   * @returns Promise<boolean> Whether the server started successfully
    */
   async start(userAlias: string): Promise<boolean> {
-    // Prevent duplicate starts
+    // Prevent duplicate start
     if (this.isRunning && this.server) {
-      console.log('[BrowserControlHttpServer] Already running, skip');
+      logger.debug('[BrowserControlHttpServer] Already running, skip');
       return true;
     }
 
@@ -42,19 +46,19 @@ class BrowserControlHttpServer {
     // Check if enabled
     const isEnabled = await this.checkEnabled();
     if (!isEnabled) {
-      console.log('[BrowserControlHttpServer] Browser Control not enabled, skip starting HTTP server');
+      logger.debug('[BrowserControlHttpServer] Browser Control not enabled, skip starting HTTP server');
       return false;
     }
 
-    console.log('[BrowserControlHttpServer] Starting HTTP server...');
+    logger.debug('[BrowserControlHttpServer] Starting HTTP server...');
 
     try {
       await this.createAndStartServer();
       this.isRunning = true;
-      console.log(`[BrowserControlHttpServer] Server started on http://${HTTP_HOST}:${HTTP_PORT}`);
+      logger.debug(`[BrowserControlHttpServer] Server started on http://${HTTP_HOST}:${HTTP_PORT}`);
       return true;
     } catch (error) {
-      console.error('[BrowserControlHttpServer] Failed to start server:', error);
+      logger.error(`[BrowserControlHttpServer] Failed to start server: ${error instanceof Error ? error.message : String(error)}`)
       this.server = null;
       this.isRunning = false;
       return false;
@@ -62,19 +66,19 @@ class BrowserControlHttpServer {
   }
 
   /**
-   * Stop HTTP server
+   * Stop the HTTP server
    */
   async stop(): Promise<void> {
     if (!this.isRunning || !this.server) {
       return;
     }
 
-    console.log('[BrowserControlHttpServer] Stopping HTTP server...');
+    logger.debug('[BrowserControlHttpServer] Stopping HTTP server...');
 
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
-          console.log('[BrowserControlHttpServer] Server stopped');
+          logger.debug('[BrowserControlHttpServer] Server stopped');
           this.server = null;
           this.isRunning = false;
           this.currentUserAlias = null;
@@ -89,21 +93,21 @@ class BrowserControlHttpServer {
   }
 
   /**
-   * Get server running status
+   * Get the server running status
    */
   getIsRunning(): boolean {
     return this.isRunning;
   }
 
   /**
-   * Get server instance (for backward compatibility with legacy code)
+   * Get the server instance (for compatibility with legacy code)
    */
   getServer(): http.Server | null {
     return this.server;
   }
 
   /**
-   * Check if enabled (registry + MCP profile)
+   * Check whether enabled (registry + MCP profile)
    */
   private async checkEnabled(): Promise<boolean> {
     if (!this.currentUserAlias) {
@@ -111,31 +115,28 @@ class BrowserControlHttpServer {
     }
 
     try {
-      // Read the user's selected browser type
-      const { profileCacheManager } = await import('../userDataADO');
+      // Read the browser type selected by the user
       const settings = profileCacheManager.getBrowserControlSettings(this.currentUserAlias);
       const browser = settings.browser || 'edge';
 
-      // Use shared status check function
+      // Use the shared status-check function
       return await checkBrowserControlStatus(browser, this.currentUserAlias);
     } catch (error) {
-      console.warn('[BrowserControlHttpServer] checkEnabled failed:', error);
+      logger.warn(`[BrowserControlHttpServer] checkEnabled failed: ${error instanceof Error ? error.message : String(error)}`)
       return false;
     }
   }
 
   /**
-   * Create and start HTTP server
+   * Create and start the HTTP server
    */
   private createAndStartServer(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const { URL } = require('url');
-
       this.server = http.createServer((req, res) => {
         const rawUrl = req.url || '/';
-        console.log(`[BrowserControlHttpServer] Request: ${rawUrl}`);
+        logger.debug(`[BrowserControlHttpServer] Request: ${rawUrl}`);
 
-        // Parse URL, extract path without query parameters
+        // Parse URL, extract pathname without query parameters
         const parsedUrl = new URL(rawUrl, `http://${req.headers.host || HTTP_HOST}`);
         const pathname = parsedUrl.pathname;
 
@@ -168,6 +169,36 @@ class BrowserControlHttpServer {
             res.writeHead(404);
             res.end('CRX file not found');
           }
+        } else if (pathname === '/api/server-up' && req.method === 'POST') {
+          // Native Server notification: started — trigger MCP connection
+          this.readJsonBody(req, (body) => {
+            logger.debug(`[BrowserControlHttpServer] Received server-up notification: ${JSON.stringify(body)}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+
+            // Execute MCP connection asynchronously, do not block response
+            this.handleServerUp().catch(err => {
+              logger.warn(`[BrowserControlHttpServer] handleServerUp error: ${err instanceof Error ? err.message : String(err)}`)
+            });
+          }, () => {
+            res.writeHead(400);
+            res.end('Invalid JSON');
+          });
+        } else if (pathname === '/api/server-down' && req.method === 'POST') {
+          // Native Server notification: about to exit — trigger MCP disconnection
+          this.readJsonBody(req, (body) => {
+            logger.debug(`[BrowserControlHttpServer] Received server-down notification: ${JSON.stringify(body)}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+
+            // Execute MCP disconnection asynchronously, do not block response
+            this.handleServerDown(body?.reason).catch(err => {
+              logger.warn(`[BrowserControlHttpServer] handleServerDown error: ${err instanceof Error ? err.message : String(err)}`)
+            });
+          }, () => {
+            res.writeHead(400);
+            res.end('Invalid JSON');
+          });
         } else {
           res.writeHead(404);
           res.end('Not found');
@@ -175,7 +206,7 @@ class BrowserControlHttpServer {
       });
 
       this.server.on('error', (err: Error) => {
-        console.error('[BrowserControlHttpServer] Server error:', err.message);
+        logger.error(`[BrowserControlHttpServer] Server error: ${err.message}`);
         this.server = null;
         this.isRunning = false;
         reject(err);
@@ -187,9 +218,84 @@ class BrowserControlHttpServer {
     });
   }
 
+  // ============================================================
+  // Native Server Signal Handlers
+  // ============================================================
+
+  private static readonly MCP_SERVER_NAME = 'openkosmos-chrome-extension';
+
   /**
-   * Ensure server is started (used during the enable flow, does not check enabled state)
-   * @returns Promise<boolean> Whether started successfully
+   * Read the JSON body of a POST request
+   */
+  private readJsonBody(
+    req: http.IncomingMessage,
+    onSuccess: (body: any) => void,
+    onError: () => void,
+  ): void {
+    let data = '';
+    req.on('data', (chunk: Buffer) => {
+      data += chunk.toString();
+      // Prevent excessively large body
+      if (data.length > 4096) {
+        req.destroy();
+        onError();
+      }
+    });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(data);
+        onSuccess(body);
+      } catch {
+        onError();
+      }
+    });
+    req.on('error', () => onError());
+  }
+
+  /**
+   * Native Server up → connect MCP
+   */
+  private async handleServerUp(): Promise<void> {
+    const runtimeState = mcpClientManager.getMcpServerRuntimeState(BrowserControlHttpServer.MCP_SERVER_NAME);
+    const isConnected = runtimeState?.status === 'connected';
+    const isConnecting = runtimeState?.status === 'connecting';
+
+    if (!isConnected && !isConnecting) {
+      logger.debug('[BrowserControlHttpServer] Native Server is up, connecting MCP...');
+      try {
+        await mcpClientManager.connect(BrowserControlHttpServer.MCP_SERVER_NAME);
+        logger.debug('[BrowserControlHttpServer] MCP connected successfully');
+      } catch (error) {
+        logger.warn(`[BrowserControlHttpServer] MCP connect failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    } else {
+      logger.debug('[BrowserControlHttpServer] MCP already connected/connecting, skip');
+    }
+  }
+
+  /**
+   * Native Server down → disconnect MCP
+   */
+  private async handleServerDown(reason?: string): Promise<void> {
+    logger.debug(`[BrowserControlHttpServer] Native Server going down, reason: ${reason || 'unknown'}`);
+    const runtimeState = mcpClientManager.getMcpServerRuntimeState(BrowserControlHttpServer.MCP_SERVER_NAME);
+    const isConnected = runtimeState?.status === 'connected';
+    const isConnecting = runtimeState?.status === 'connecting';
+
+    if (isConnected || isConnecting) {
+      logger.debug('[BrowserControlHttpServer] Disconnecting MCP...');
+      try {
+        await mcpClientManager.disconnect(BrowserControlHttpServer.MCP_SERVER_NAME);
+        logger.debug('[BrowserControlHttpServer] MCP disconnected');
+      } catch (error) {
+        logger.warn(`[BrowserControlHttpServer] MCP disconnect failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  }
+
+  /**
+   * Ensure the server is started (used in the enable flow, skips enabled-state check)
+   * @returns Promise<boolean> Whether the server started successfully
    */
   async ensureStarted(): Promise<boolean> {
     if (this.isRunning && this.server) {
@@ -201,10 +307,10 @@ class BrowserControlHttpServer {
     try {
       await this.createAndStartServer();
       this.isRunning = true;
-      console.log(`[BrowserControlHttpServer] Server ensured on http://${HTTP_HOST}:${HTTP_PORT}`);
+      logger.debug(`[BrowserControlHttpServer] Server ensured on http://${HTTP_HOST}:${HTTP_PORT}`);
       return true;
     } catch (error) {
-      console.error('[BrowserControlHttpServer] Failed to ensure server:', error);
+      logger.error(`[BrowserControlHttpServer] Failed to ensure server: ${error instanceof Error ? error.message : String(error)}`)
       this.server = null;
       this.isRunning = false;
       return false;

@@ -13,7 +13,7 @@ export interface BaseTransportConfig {
   timeout?: number;
 }
 
-export type VscodeTransportConfig = 
+export type VscodeTransportConfig =
   | (StdioTransportConfig & { type: 'stdio' })
   | (HttpTransportConfig & { type: 'http' | 'sse' });
 
@@ -39,7 +39,7 @@ export class VscodeTransportFactory {
     const transportConfig = this.normalizeVscodeConfig(serverName, config);
     return this.createTransport(transportConfig);
   }
-  
+
   /**
    * Create transport instance
    */
@@ -47,33 +47,33 @@ export class VscodeTransportFactory {
     switch (config.type) {
       case 'stdio':
         return new VscodeStdioTransport(config);
-      
+
       case 'http':
       case 'sse':
         return new VscodeHttpTransport(config);
-      
+
       default:
         throw new Error(`Unsupported transport type: ${(config as any).type}`);
     }
   }
-  
+
   /**
    * Normalize VSCode MCP configuration to transport config
    */
   static normalizeVscodeConfig(serverName: string, vscodeConfig: any): VscodeTransportConfig {
     // Detect transport type
     const transportType = this.detectTransportType(vscodeConfig);
-    
+
     const baseConfig = {
       timeout: vscodeConfig.timeout || 60000,
     };
-    
+
     switch (transportType) {
       case 'stdio': {
         if (!vscodeConfig.command) {
           throw new Error(`Stdio transport requires 'command' field for server ${serverName}`);
         }
-        
+
         return {
           type: 'stdio',
           command: vscodeConfig.command,
@@ -84,15 +84,16 @@ export class VscodeTransportFactory {
           ...baseConfig,
         };
       }
-      
+
       case 'http':
       case 'sse': {
         if (!vscodeConfig.url) {
           throw new Error(`HTTP/SSE transport requires 'url' field for server ${serverName}`);
         }
-        
+
         return {
           type: transportType,
+          serverName,
           url: vscodeConfig.url,
           headers: {
             'Content-Type': 'application/json',
@@ -101,15 +102,16 @@ export class VscodeTransportFactory {
             ...vscodeConfig.headers,
           },
           method: vscodeConfig.method || 'POST',
+          mcpServerConfig: vscodeConfig.mcpServerConfig,
           ...baseConfig,
         };
       }
-      
+
       default:
         throw new Error(`Unknown transport type: ${transportType}`);
     }
   }
-  
+
   /**
    * Detect transport type from VSCode configuration
    */
@@ -117,7 +119,7 @@ export class VscodeTransportFactory {
     // Check explicit type field
     if (config.type) {
       const normalizedType = config.type.toLowerCase();
-      
+
       switch (normalizedType) {
         case 'stdio':
           return 'stdio';
@@ -131,30 +133,30 @@ export class VscodeTransportFactory {
           break;
       }
     }
-    
+
     // Auto-detect based on configuration fields
     if (config.command || config.args) {
       return 'stdio';
     }
-    
+
     if (config.url) {
       const url = config.url.toLowerCase();
-      
+
       // Check for SSE patterns
-      if (url.includes('/sse') || 
-          url.includes('text/event-stream') || 
+      if (url.includes('/sse') ||
+          url.includes('text/event-stream') ||
           url.includes('server-sent-events')) {
         return 'sse';
       }
-      
+
       // Default to HTTP for URLs
       return 'http';
     }
-    
+
     // Default fallback
     return 'stdio';
   }
-  
+
   /**
    * Validate configuration for transport type
    */
@@ -168,7 +170,7 @@ export class VscodeTransportFactory {
           throw new Error('Stdio transport requires args array');
         }
         break;
-        
+
       case 'http':
       case 'sse':
         if (!config.url) {
@@ -178,12 +180,12 @@ export class VscodeTransportFactory {
           throw new Error(`${config.type.toUpperCase()} transport URL must start with http:// or https://`);
         }
         break;
-        
+
       default:
         throw new Error(`Unknown transport type: ${(config as any).type}`);
     }
   }
-  
+
   /**
    * Get supported transport types
    */
@@ -203,8 +205,8 @@ export function createVscodeTransport(serverName: string, vscodeConfig: any): Vs
  * Helper function to detect if URL is SSE-based
  */
 export function isSSEUrl(url: string): boolean {
-  return url.includes('/sse') || 
-         url.includes('text/event-stream') || 
+  return url.includes('/sse') ||
+         url.includes('text/event-stream') ||
          url.includes('server-sent-events');
 }
 

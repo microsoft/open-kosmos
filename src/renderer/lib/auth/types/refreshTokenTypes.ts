@@ -4,16 +4,16 @@
  * Precise error classification - six error types based on HTTP status codes
  */
 export enum RefreshTokenErrorType {
-  TOKEN_EXPIRED = 'TOKEN_EXPIRED',           // 401 - token expired but refreshable
-  TOKEN_INVALID = 'TOKEN_INVALID',           // 403 - token invalid, cannot refresh
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',           // 401 - token expired but can be refreshed
+  TOKEN_INVALID = 'TOKEN_INVALID',           // 403 - token invalid, cannot be refreshed
   RATE_LIMITED = 'RATE_LIMITED',             // 429 - rate limited
   SERVER_ERROR = 'SERVER_ERROR',             // 5xx - server error
-  NETWORK_ERROR = 'NETWORK_ERROR',           // network connection issue
+  NETWORK_ERROR = 'NETWORK_ERROR',           // network connectivity issue
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'            // other unknown errors
 }
 
 /**
- * HTTP error information interface
+ * HTTP error info interface
  */
 export interface HttpErrorInfo {
   status: number;
@@ -32,7 +32,7 @@ export interface RetryStrategy {
 }
 
 /**
- * Refresh token error analysis result
+ * Refresh Token error analysis result
  */
 export interface RefreshTokenErrorAnalysis {
   errorType: RefreshTokenErrorType;
@@ -55,7 +55,7 @@ export interface TokenValidationResult {
 }
 
 /**
- * Authentication error type (for reporting to upper-layer components)
+ * Auth error type (for reporting to upper-layer components)
  */
 export interface AuthError {
   type: RefreshTokenErrorType;

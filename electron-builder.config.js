@@ -1,80 +1,29 @@
-const brandConfig = require('./scripts/brand-config');
-const { config, paths, name: brandName } = brandConfig;
+const config = require('./brands/openkosmos/config.json');
 const path = require('path');
 
+const brandAssetsDir = path.join(__dirname, 'brands/openkosmos/assets');
+const iconMac = path.join(brandAssetsDir, 'mac/app.icns');
+const iconWin = path.join(brandAssetsDir, 'win/app.ico');
+const iconLinux = path.join(brandAssetsDir, 'win/icon_round_512x512.png');
+const assetsDir = brandAssetsDir;
+
 /**
- * Electron Builder Configuration - Multi-Brand Support
+ * Electron Builder Configuration
  * @type {import('electron-builder').Configuration}
  * @see https://www.electron.build/configuration/configuration
- * 
- * ============================================================================
- * BRAND CONFIGURATION
- * ============================================================================
- * 
- * Configuration values are loaded from: brands/<brandName>/config.json
- * Brand is determined by: BRAND environment variable (default: 'openkosmos')
- * 
- * ============================================================================
- * WINDOWS INSTALLATION PATHS
- * ============================================================================
- * 
- * EXE Installer (NSIS):
- *   Install Dir:  %LOCALAPPDATA%\Programs\<brandName>
- *                 → C:\Users\<user>\AppData\Local\Programs\openkosmos
- *   Executable:   <filenamePrefix>.exe (e.g., OpenKosmos.exe)
- *   User Data:    %APPDATA%\<userDataName>
- *                 → C:\Users\<user>\AppData\Roaming\openkosmos-app
- * 
- * ZIP Portable:
- *   Extract to:   Any folder (user choice)
- *   Executable:   <filenamePrefix>.exe (same as NSIS)
- *   User Data:    Same as NSIS (%APPDATA%\<userDataName>)
- * 
- * ⚠️ IMPORTANT: Windows exe filename must NOT contain spaces!
- *    - executableName is set to filenamePrefix to avoid issues
- *    - Spaces in exe names cause CMD parsing errors and update failures
- * 
- * ============================================================================
- * MACOS INSTALLATION PATHS
- * ============================================================================
- * 
- * DMG Installer:
- *   Install Dir:  /Applications/<productName>.app
- *                 → /Applications/OpenKosmos.app
- *   User Data:    ~/Library/Application Support/<userDataName>
- *                 → ~/Library/Application Support/openkosmos-app
- * 
- * ZIP Portable:
- *   Extract to:   Any folder → <productName>.app bundle
- *   User Data:    Same as DMG
- * 
- * ✅ macOS: Spaces in app names are OK (.app is a bundle directory)
- * 
- * ============================================================================
- * KEY CONFIGURATION MAPPINGS
- * ============================================================================
- * 
- * extraMetadata.name     → Windows install directory name (via NSIS)
- * productName            → App display name, macOS .app name
- * executableName         → Windows .exe filename (avoid spaces!)
- * artifactName           → Downloaded file name (DMG/ZIP/EXE)
- * userDataName           → User data folder (via bootstrap.ts)
- * shortcutName           → Desktop/Start Menu shortcut name
- * filenamePrefix         → Artifact filename prefix
- * 
  */
 module.exports = {
   appId: config.appId,
-  
+
   // extraMetadata.name determines Windows NSIS install directory
   // → %LOCALAPPDATA%\Programs\<name>
   extraMetadata: {
-    name: brandName,
+    name: 'openkosmos',
   },
-  
+
   // productName is the app display name and macOS .app bundle name
   productName: config.productName,
-  
+
   // artifactName is the downloaded installer/archive filename
   artifactName: (config.filenamePrefix || '${productName}') + '-${version}-${os}-${arch}.${ext}',
   directories: {
@@ -96,20 +45,27 @@ module.exports = {
     '!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}',
     '!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}',
     '!**/node_modules/playwright*/.local-browsers/**',
-    // The following two oversized native modules are not distributed with the installer; they are downloaded on-demand from npm CDN by NativeModuleManager
+    // The following large native module is not bundled with the installer; NativeModuleManager downloads it on demand from npm CDN
     '!**/node_modules/@kutalia/whisper-node-addon/**',  // 127 MB
-    '!**/node_modules/sherpa-onnx/**',                  //  13 MB
   ],
+  // ── asarUnpack ──────────────────────────────────────────────────────
+  // Packages listed here are extracted from the asar archive at install time
+  // so they can access the real filesystem (spawn processes, load .node addons).
+  //
+  // CAUTION: Moving a runtime dependency to devDependencies will silently
+  // exclude it from the build. electron-builder only packages `dependencies`
+  // and `optionalDependencies`, NOT `devDependencies`. A module that works
+  // fine in development (where all deps are installed) will fail at runtime
+  // in the packaged app. Always verify with `npx asar list <app.asar>` after
+  // build if you change dependency categories. (Lesson from 7ea925e / 09521ea)
   asarUnpack: [
     'node_modules/@vscode/ripgrep/**',
-    'node_modules/sqlite-vec/**',
-    'node_modules/sqlite-vec-darwin-arm64/**',
-    'node_modules/sqlite-vec-darwin-x64/**',
-    'node_modules/sqlite-vec-linux-x64/**',
-    'node_modules/sqlite-vec-linux-arm64/**',
-    'node_modules/sqlite-vec-windows-x64/**',
-    // Azure MSAL native broker runtime (native .node + .dylib files)
-    'node_modules/@azure/msal-node-runtime/**',
+    // sharp 0.34+ resolves native binaries from platform-specific @img packages.
+    // Keep both the loader package and native runtime packages outside asar.
+    'node_modules/sharp/**',
+    'node_modules/@img/sharp-*/**',
+    // keytar: native credential storage (.node file)
+    'node_modules/keytar/**',
     'node_modules/node-screenshots/**',
     'node_modules/node-screenshots-win32-x64-msvc/**',
     'node_modules/node-screenshots-win32-ia32-msvc/**',
@@ -119,7 +75,11 @@ module.exports = {
     'node_modules/node-screenshots-linux-x64-gnu/**',
     'node_modules/node-screenshots-linux-x64-musl/**',
     'node_modules/node-screenshots-linux-arm64-gnu/**',
-    // whisper-node-addon and sherpa-onnx are excluded from global files, no need to unpack
+    // Playwright browser automation — playwright-core spawns child processes (browser server)
+    // and performs file I/O (browser registry, profiles), which cannot work inside asar.
+    // The wrapper package "playwright" is a thin re-export and can stay in asar.
+    'node_modules/playwright-core/**',
+    // whisper-node-addon is already excluded from global files, no need to unpack
   ],
   extraResources: [
     {
@@ -132,6 +92,23 @@ module.exports = {
   nodeGypRebuild: false,
   buildDependenciesFromSource: false,
   compression: 'maximum',
+  publish: [
+    {
+      provider: 'github',
+      owner: 'gim-home',
+      repo: 'Kosmos',
+      private: false,
+      protocol: 'https',
+      releaseType: 'release',
+      publishAutoUpdate: true,
+    },
+  ],
+  releaseInfo: {
+    releaseNotes: 'See CHANGELOG.md for details',
+    releaseName: '${version}',
+  },
+  generateUpdatesFilesForAllChannels: false,
+  afterPack: 'scripts/verify-sharp-runtime-packaging.js',
   afterSign: 'scripts/notarize.js',
   
   // ==========================================================================
@@ -141,7 +118,7 @@ module.exports = {
   // User Data:  ~/Library/Application Support/<userDataName>
   // Artifacts:  <filenamePrefix>-<version>-mac-<arch>.dmg/.zip
   mac: {
-    icon: paths.iconMac,
+    icon: iconMac,
     category: 'public.app-category.productivity',
     hardenedRuntime: true,
     gatekeeperAssess: false,
@@ -149,7 +126,7 @@ module.exports = {
     entitlementsInherit: 'build/entitlements.mac.plist',
     type: 'distribution',
     artifactName: `${config.filenamePrefix}-\${version}-mac-\${arch}.\${ext}`,
-    // whisper-node-addon and sherpa-onnx are excluded in global files, no platform-level extra config needed
+    // whisper-node-addon is already excluded in global files, no platform-level extra config needed
     extendInfo: {
       NSAppleEventsUsageDescription:
         'This app needs to access Apple Events to run external programs.',
@@ -184,44 +161,26 @@ module.exports = {
   //    Spaces in exe names cause CMD parsing errors and update failures
   //    Always use filenamePrefix for exe name
   win: {
-    icon: paths.iconWin,
+    icon: iconWin,
     // executableName: Windows .exe filename (MUST NOT contain spaces!)
-    // Uses filenamePrefix to avoid spaces in exe name
     executableName: config.filenamePrefix || config.productName.replace(/\s+/g, '-'),
-    // whisper-node-addon and sherpa-onnx are excluded in global files, no platform-level config needed
+    // whisper-node-addon is already excluded in global files, no platform-level config needed
+    // sharp 0.34+ is unpacked via top-level asarUnpack entries instead of the
+    // legacy sharp/build/Release directory.
+    // Do not hardcode both x64 and arm64 here. Local `npm run dist:win` should
+    // build only the current runner architecture unless an explicit CLI arch
+    // flag (for example `--x64` or `--arm64`) is provided.
     artifactName: `${config.filenamePrefix}-\${version}-win-\${arch}.\${ext}`,
-    target: [
-      {
-        target: 'nsis',
-        arch: 'x64',
-      },
-      {
-        target: 'nsis',
-        arch: 'arm64',
-      },
-      {
-        target: 'zip',
-        arch: 'x64',
-      },
-      {
-        target: 'zip',
-        arch: 'arm64',
-      },
-    ],
+    target: ['nsis', 'zip'],
     forceCodeSigning: false,
     extraResources: [
-      {
-        from: 'node_modules/sharp/build/Release',
-        to: 'app/node_modules/sharp/build/Release',
-        filter: ['**/*'],
-      },
       {
         from: 'resources/dll',
         to: 'dll',
         filter: ['**/*'],
       },
       {
-        from: paths.assets,
+        from: assetsDir,
         to: 'brand-assets',
         filter: ['**/*'],
       },
@@ -233,7 +192,7 @@ module.exports = {
     ],
   },
   linux: {
-    icon: path.join(paths.assetsWin, 'icon_round_512x512.png'),
+    icon: iconLinux,
     extraResources: [
       {
         from: 'resources/python',
@@ -260,8 +219,7 @@ module.exports = {
     allowToChangeInstallationDirectory: false,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
-    // shortcutName: Display name for desktop/start menu shortcuts
-    // Can contain spaces - this is just the shortcut label
+    // shortcutName: Display name for desktop/start menu shortcuts (can contain spaces)
     shortcutName: config.shortcutName,
     displayLanguageSelector: false,
     multiLanguageInstaller: false,

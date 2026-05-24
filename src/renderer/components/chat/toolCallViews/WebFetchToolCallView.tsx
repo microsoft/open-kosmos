@@ -1,9 +1,9 @@
 // src/renderer/components/chat/toolCallViews/WebFetchToolCallView.tsx
-// Web Fetch tool call custom view component
+// Custom view component for Web Fetch tool calls
 
 import React from 'react';
 import { ToolCallViewProps, WebFetchToolResult, WebFetchToolArgs, WebContentResult } from './types';
-import { MessageHelper } from '../../../types/chatTypes';
+import { MessageHelper } from '@shared/types/chatTypes';
 
 /**
  * Parse tool call arguments
@@ -30,7 +30,7 @@ const parseToolResult = (content: string): WebFetchToolResult | null => {
 };
 
 /**
- * Get website favicon URL
+ * Get favicon URL for a website
  */
 const getFaviconUrl = (url: string): string => {
   try {
@@ -42,7 +42,7 @@ const getFaviconUrl = (url: string): string => {
 };
 
 /**
- * Get website domain
+ * Get website domain name
  */
 const getSiteDomain = (url: string): string => {
   try {
@@ -88,7 +88,7 @@ const parseErrorMessage = (error: string): { url: string; message: string } => {
 };
 
 /**
- * Error row component - single line layout: error message | URL + external link icon
+ * Error row component - single-line layout: error message | URL + external link icon
  */
 const WebFetchErrorRow: React.FC<{ error: string }> = ({ error }) => {
   const { url, message } = parseErrorMessage(error);
@@ -121,7 +121,7 @@ const WebFetchErrorRow: React.FC<{ error: string }> = ({ error }) => {
 };
 
 /**
- * Web fetch result row component - single line layout: favicon + title | URL + external link icon
+ * Web page fetch result row component - single-line layout: favicon + title | URL + external link icon
  */
 const WebFetchResultRow: React.FC<{ result: WebContentResult }> = ({ result }) => {
   const handleClick = () => {
@@ -159,11 +159,12 @@ const WebFetchResultRow: React.FC<{ result: WebContentResult }> = ({ result }) =
 
 /**
  * Web Fetch Tool Call custom view
- * Displays fetched web pages list
+ * Displays list of fetched web pages
  */
 export const WebFetchToolCallView: React.FC<ToolCallViewProps> = ({
   toolCall,
   toolResult,
+  executionStatus,
 }) => {
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
@@ -176,13 +177,18 @@ export const WebFetchToolCallView: React.FC<ToolCallViewProps> = ({
   }
 
   const urls = args.urls;
-  const isExecuting = !toolResult;
+  const isExecuting = executionStatus === 'executing';
+  const isInterrupted = executionStatus === 'interrupted';
 
   return (
     <div className="web-fetch-view">
       {isExecuting ? (
         <div className="web-fetch-loading">
           <span>Fetching {urls.length} page{urls.length > 1 ? 's' : ''}...</span>
+        </div>
+      ) : isInterrupted ? (
+        <div className="web-fetch-no-results">
+          Fetch interrupted before results were recorded
         </div>
       ) : result?.results && result.results.length > 0 ? (
         <div className="web-fetch-results-list">

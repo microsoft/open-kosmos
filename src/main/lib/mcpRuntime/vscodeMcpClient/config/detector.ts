@@ -1,18 +1,18 @@
 /**
- * Configuration Detector
+ * Configuration detector
  * VSCode MCP Client configuration file detection and validation
  */
 
-import { 
-  VscodeConfigFile, 
-  VscodeConfigDetectionResult,
-  PlatformInfo 
+import fs from 'node:fs/promises';
+import {
+  VscodeConfigFile,
+  VscodeConfigDetectionResult
 } from './types';
-import { 
-  checkFileExists, 
-  checkFileReadable, 
-  readFileContent, 
-  getFileStats, 
+import {
+  checkFileExists,
+  checkFileReadable,
+  readFileContent,
+  getFileStats,
   expandPath,
   getPlatformInfo,
   getVSCodeConfigPaths,
@@ -20,7 +20,12 @@ import {
   validateJsonFormat
 } from './utils';
 
-// ==================== Main Configuration Detection Functions ====================
+interface ConfigCandidatePath {
+  originalPath: string;
+  expandedPath: string;
+}
+
+// ==================== Main configuration detection functions ====================
 
 /**
  * Detect VSCode configuration files (current platform)
@@ -28,7 +33,7 @@ import {
 export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult> {
   try {
     const platformInfo = getPlatformInfo();
-    
+
     if (!platformInfo.isSupported) {
       return {
         success: false,
@@ -41,19 +46,18 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
     }
 
     // Get all VSCode configuration paths (sorted by priority)
-    const configPaths = getVSCodeConfigPaths();
+    const configPaths = await getConfigCandidatePaths();
     const configFiles: VscodeConfigFile[] = [];
     let totalServersFound = 0;
-    
+
     // Scan paths in priority order until a valid configuration is found
     for (const configPath of configPaths) {
       try {
-        const expandedConfigPath = await expandPath(configPath);
-        const configFile = await detectSingleConfigFile(configPath, expandedConfigPath);
-        
+        const configFile = await detectSingleConfigFile(configPath.originalPath, configPath.expandedPath);
+
         configFiles.push(configFile);
-        
-        // If a valid configuration with servers is found, stop scanning
+
+        // Stop scanning if a valid configuration with servers is found
         if (configFile.exists && configFile.isValid && configFile.serverCount > 0) {
           totalServersFound += configFile.serverCount;
           break;
@@ -63,7 +67,7 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
         continue;
       }
     }
-    
+
     return {
       success: true,
       platform: platformInfo.platform,
@@ -90,23 +94,22 @@ export async function detectVSCodeConfigs(): Promise<VscodeConfigDetectionResult
 export async function detectVscodeConfigFile(): Promise<string | null> {
   try {
     const platformInfo = getPlatformInfo();
-    
+
     if (!platformInfo.isSupported) {
       return null;
     }
-    
-    const configPaths = getVSCodeConfigPaths();
-    
+
+    const configPaths = await getConfigCandidatePaths();
+
     for (const configPath of configPaths) {
       try {
-        const expandedPath = await expandPath(configPath);
-        const fileExists = await checkFileExists(expandedPath);
-        
+        const fileExists = await checkFileExists(configPath.expandedPath);
+
         if (fileExists.exists) {
-          // Verify if the file contains MCP configuration
-          const configFile = await detectSingleConfigFile(configPath, expandedPath);
+          // Verify that the file contains MCP configuration
+          const configFile = await detectSingleConfigFile(configPath.originalPath, configPath.expandedPath);
           if (configFile.isValid && configFile.serverCount > 0) {
-            return expandedPath;
+            return configPath.expandedPath;
           }
         }
       } catch (error) {
@@ -114,23 +117,107 @@ export async function detectVscodeConfigFile(): Promise<string | null> {
         continue;
       }
     }
-    
+
     return null;
   } catch (error) {
     return null;
   }
 }
 
+async function getConfigCandidatePaths(): Promise<ConfigCandidatePath[]> {
+  const configPaths = getVSCodeConfigPaths();
+  const candidates: ConfigCandidatePath[] = [];
+  const seenPaths = new Set<string>();
+
+  for (const configPath of configPaths) {
+    const expandedPath = await expandPath(configPath);
+    pushCandidatePath(candidates, seenPaths, configPath, expandedPath);
+
+    const profileCandidates = await getProfileConfigCandidatePaths(configPath, expandedPath);
+    for (const candidate of profileCandidates) {
+      pushCandidatePath(candidates, seenPaths, candidate.originalPath, candidate.expandedPath);
+    }
+  }
+
+  return candidates;
+}
+
+async function getProfileConfigCandidatePaths(
+  originalPath: string,
+  expandedPath: string
+): Promise<ConfigCandidatePath[]> {
+  const fileName = getPathFileName(expandedPath);
+  if (fileName !== 'mcp.json' && fileName !== 'settings.json') {
+    return [];
+  }
+
+  const originalDir = getParentPath(originalPath);
+  const expandedDir = getParentPath(expandedPath);
+  if (!originalDir || !expandedDir) {
+    return [];
+  }
+
+  const originalProfilesDir = joinPathSegment(originalDir, 'profiles');
+  const expandedProfilesDir = joinPathSegment(expandedDir, 'profiles');
+
+  try {
+    const entries = await fs.readdir(expandedProfilesDir, { withFileTypes: true });
+
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => ({
+        originalPath: joinPathSegment(originalProfilesDir, entry.name, fileName),
+        expandedPath: joinPathSegment(expandedProfilesDir, entry.name, fileName),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function pushCandidatePath(
+  candidates: ConfigCandidatePath[],
+  seenPaths: Set<string>,
+  originalPath: string,
+  expandedPath: string
+): void {
+  const normalizedKey = expandedPath.toLowerCase();
+  if (seenPaths.has(normalizedKey)) {
+    return;
+  }
+
+  seenPaths.add(normalizedKey);
+  candidates.push({ originalPath, expandedPath });
+}
+
+function getParentPath(filePath: string): string {
+  const normalizedPath = filePath.replace(/[\\/]+$/, '');
+  const lastSeparatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+  return lastSeparatorIndex >= 0 ? normalizedPath.slice(0, lastSeparatorIndex) : '';
+}
+
+function getPathFileName(filePath: string): string {
+  const normalizedPath = filePath.replace(/[\\/]+$/, '');
+  const lastSeparatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+  return (lastSeparatorIndex >= 0 ? normalizedPath.slice(lastSeparatorIndex + 1) : normalizedPath).toLowerCase();
+}
+
+function joinPathSegment(basePath: string, ...segments: string[]): string {
+  const separator = basePath.includes('\\') ? '\\' : '/';
+  const trimmedBase = basePath.replace(/[\\/]+$/, '');
+  const normalizedSegments = segments.map((segment) => segment.replace(/^[\\/]+|[\\/]+$/g, ''));
+  return [trimmedBase, ...normalizedSegments].join(separator);
+}
+
 /**
  * Detect and validate a single configuration file
  */
 export async function detectSingleConfigFile(
-  originalPath: string, 
+  originalPath: string,
   expandedPath?: string
 ): Promise<VscodeConfigFile> {
   const actualPath = expandedPath || originalPath;
-  
-  // Initialize configuration file object
+
+  // Initialize the configuration file object
   const configFile: VscodeConfigFile = {
     path: originalPath,
     expandedPath: actualPath,
@@ -142,19 +229,19 @@ export async function detectSingleConfigFile(
   };
 
   try {
-    // Check if file exists
+    // Check whether the file exists
     const existsResult = await checkFileExists(actualPath);
     configFile.exists = existsResult.exists;
-    
+
     if (!configFile.exists) {
       configFile.error = existsResult.error || 'File does not exist';
       return configFile;
     }
 
-    // Check if file is readable
+    // Check whether the file is readable
     const accessResult = await checkFileReadable(actualPath);
     configFile.isReadable = accessResult.readable;
-    
+
     if (!configFile.isReadable) {
       configFile.error = accessResult.error || 'File is not readable';
       return configFile;
@@ -179,7 +266,7 @@ export async function detectSingleConfigFile(
     configFile.isValid = validationResult.isValid;
     configFile.serverCount = validationResult.serverCount;
     configFile.detectedFormat = validationResult.format;
-    
+
     if (!configFile.isValid) {
       configFile.error = validationResult.error;
     }
@@ -199,10 +286,10 @@ export async function detectCustomConfigFile(filePath: string): Promise<VscodeCo
   return await detectSingleConfigFile(filePath, expandedPath);
 }
 
-// ==================== Configuration Content Validation ====================
+// ==================== Configuration content validation ====================
 
 /**
- * Validate configuration file content and count the number of servers
+ * Validate configuration file content and count servers
  */
 async function validateConfigContent(content: string, filePath: string): Promise<{
   isValid: boolean;
@@ -231,7 +318,7 @@ async function validateConfigContent(content: string, filePath: string): Promise
         isValid: false,
         serverCount: 0,
         format: 'unknown',
-        error: `JSON parse error: ${parseError instanceof Error ? parseError.message : 'parse error'}`
+        error: `JSON parse error: ${parseError instanceof Error ? parseError.message : 'Parse error'}`
       };
     }
 
@@ -254,7 +341,7 @@ async function validateConfigContent(content: string, filePath: string): Promise
       }
     }
 
-    // Count the number of servers
+    // Count servers
     let serverCount = 0;
     if (mcpServers && typeof mcpServers === 'object') {
       serverCount = Object.keys(mcpServers).length;
@@ -266,11 +353,11 @@ async function validateConfigContent(content: string, filePath: string): Promise
         isValid: false,
         serverCount: 0,
         format,
-        error: 'No MCP servers found in configuration file'
+        error: 'No MCP server found in configuration file'
       };
     }
 
-    // Basic server configuration validation
+    // Basic validation of server configurations
     for (const [serverName, serverConfig] of Object.entries(mcpServers)) {
       if (!serverConfig || typeof serverConfig !== 'object') {
         return {
@@ -282,10 +369,10 @@ async function validateConfigContent(content: string, filePath: string): Promise
       }
 
       const config = serverConfig as any;
-      // Check for command/args (stdio) or url (http/sse) configuration
+      // Check whether command/args (stdio) or url (http/sse) configuration is present
       const hasStdioConfig = config.command || config.args;
       const hasHttpConfig = config.url;
-      
+
       if (!hasStdioConfig && !hasHttpConfig) {
         return {
           isValid: false,
@@ -311,14 +398,14 @@ async function validateConfigContent(content: string, filePath: string): Promise
   }
 }
 
-// ==================== Platform Detection Information ====================
+// ==================== Platform detection information ====================
 
 /**
  * Get detailed platform-specific detection information
  */
 export function getPlatformDetectionInfo() {
   const platformInfo = getPlatformInfo();
-  
+
   return {
     platform: platformInfo.platform,
     isSupported: platformInfo.isSupported,
@@ -336,7 +423,7 @@ function getDetectionStrategy(platform: string): string {
     case 'macOS':
       return 'Scan mcp.json and settings.json files across multiple VSCode installation paths (Standard, Insiders, OSS, Homebrew)';
     case 'Windows':
-      return 'Scan mcp.json files across multiple VSCode installation paths (Standard, Insiders, OSS, Portable, System-level)';
+      return 'Scan mcp.json files across multiple VSCode installation paths (Standard, Insiders, OSS, Portable, System-wide)';
     case 'Linux':
       return 'Scan settings.json files across multiple VSCode installation paths (future support)';
     default:
@@ -345,52 +432,52 @@ function getDetectionStrategy(platform: string): string {
 }
 
 /**
- * Get supported file formats for the platform
+ * Get the file formats supported by the platform
  */
 function getSupportedFormats(platform: string): string[] {
   switch (platform) {
     case 'macOS':
       return [
-        'mcp.json with servers section',
-        'settings.json with mcp.servers section'
+        'mcp.json with a servers section',
+        'settings.json with a mcp.servers section'
       ];
     case 'Windows':
       return [
-        'mcp.json with servers section'
+        'mcp.json with a servers section'
       ];
     case 'Linux':
       return [
-        'settings.json with mcp.servers section'
+        'settings.json with a mcp.servers section'
       ];
     default:
       return [];
   }
 }
 
-// ==================== Configuration Validation Tools ====================
+// ==================== Configuration validation utilities ====================
 
 /**
- * Check if a configuration file is a valid MCP configuration
+ * Validate whether a configuration file is a valid MCP configuration
  */
 export function isValidMcpConfig(configFile: VscodeConfigFile): boolean {
-  return configFile.exists && 
-         configFile.isValid && 
-         configFile.isReadable && 
+  return configFile.exists &&
+         configFile.isValid &&
+         configFile.isReadable &&
          configFile.serverCount > 0;
 }
 
 /**
- * Get the quality score of a configuration file
+ * Get the quality score for a configuration file
  */
 export function getConfigQualityScore(configFile: VscodeConfigFile): number {
   let score = 0;
-  
+
   if (configFile.exists) score += 20;
   if (configFile.isReadable) score += 20;
   if (configFile.isValid) score += 30;
   if (configFile.serverCount > 0) score += 20;
   if (configFile.detectedFormat !== 'unknown') score += 10;
-  
+
   return score;
 }
 
@@ -406,11 +493,11 @@ export function getDetectionSummary(result: VscodeConfigDetectionResult): {
   const totalFiles = result.configFiles.length;
   const validFiles = result.configFiles.filter(f => isValidMcpConfig(f)).length;
   const totalServers = result.totalServersFound;
-  
+
   // Find the best configuration (priority: valid > server count > quality score)
   let bestConfig: VscodeConfigFile | undefined;
   let bestScore = -1;
-  
+
   for (const configFile of result.configFiles) {
     if (isValidMcpConfig(configFile)) {
       const score = getConfigQualityScore(configFile) + (configFile.serverCount * 5);
@@ -420,7 +507,7 @@ export function getDetectionSummary(result: VscodeConfigDetectionResult): {
       }
     }
   }
-  
+
   return {
     totalFiles,
     validFiles,

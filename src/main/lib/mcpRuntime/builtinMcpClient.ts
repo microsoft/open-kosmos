@@ -3,18 +3,18 @@
  * Implements the IUnifiedMcpClient interface, wrapping built-in tools as an MCP server
  *
  * Features:
- * - No external process needed, directly calls built-in tools
- * - connectToServer directly returns "connected"
+ * - No external process required; built-in tools are called directly
+ * - connectToServer returns "connected" immediately
  * - Tool list comes from BuiltinToolsManager
  * - Tool execution is delegated to BuiltinToolsManager
  *
- * 🚀 Performance optimization: BuiltinToolsManager lazy loading
+ * 🚀 Performance optimization: BuiltinToolsManager is loaded lazily
  */
 
 import { createConsoleLogger } from '../unifiedLogger';
 
-// 🚀 Lazy loading: BuiltinToolsManager type is only used for type declarations
-import type { BuiltinToolsManager } from './builtinTools/builtinToolsManager';
+// 🚀 Lazy load: BuiltinToolsManager type is used for type declarations only
+import { BuiltinToolsManager } from './builtinTools/builtinToolsManager';
 
 // Fixed name for the built-in server
 export const BUILTIN_SERVER_NAME = 'builtin-tools';
@@ -27,7 +27,7 @@ let advancedLogger: any;
 
 /**
  * Built-in MCP client class
- * Implements the same interface as external MCP servers, but uses built-in tools
+ * Implements the same interface as an external MCP server, but uses built-in tools
  *
  * 🚀 Performance optimization: BuiltinToolsManager is loaded only when connectToServer is called
  */
@@ -37,15 +37,14 @@ export class BuiltinMcpClient {
   private serverName: string = BUILTIN_SERVER_NAME;
 
   constructor() {
-    // 🚀 Lazy initialization: do not load BuiltinToolsManager in the constructor
+    // 🚀 Deferred initialization: BuiltinToolsManager is not loaded in the constructor
   }
 
   /**
-   * Get BuiltinToolsManager instance (lazy loading)
+   * Get the BuiltinToolsManager instance (lazy-loaded)
    */
   private async getToolsManager(): Promise<BuiltinToolsManager> {
     if (!this.builtinToolsManager) {
-      const { BuiltinToolsManager } = await import('./builtinTools/builtinToolsManager');
       this.builtinToolsManager = BuiltinToolsManager.getInstance();
     }
     return this.builtinToolsManager;
@@ -53,23 +52,23 @@ export class BuiltinMcpClient {
 
   /**
    * Connect to the built-in server
-   * Directly returns "connected", no actual connection process needed
+   * Returns "connected" directly without an actual connection process
    */
   async connectToServer(): Promise<string | Error> {
     try {
       console.time('[BuiltinMcpClient] connectToServer');
-      
-      // 🚀 Lazy load BuiltinToolsManager
+
+      // 🚀 Lazy-load BuiltinToolsManager
       const toolsManager = await this.getToolsManager();
-      
-      // Initialize the built-in tools manager (if not yet initialized)
+
+      // Initialize the built-in tools manager (if not already initialized)
       if (!toolsManager.getStats().isInitialized) {
         await toolsManager.initialize();
       }
-      
+
       this.isConnected = true;
       console.timeEnd('[BuiltinMcpClient] connectToServer');
-      
+
       return 'connected';
     } catch (error) {
       console.timeEnd('[BuiltinMcpClient] connectToServer');
@@ -80,11 +79,11 @@ export class BuiltinMcpClient {
 
   /**
    * Get all available built-in tools
-   * Returns a tool list compatible with the MCP tool format
+   * Returns a tool list compatible with MCP tool format
    */
   async getTools(): Promise<{ name: string; description?: string; inputSchema: any }[]> {
     try {
-      
+
       if (!this.isConnected) {
         return [];
       }
@@ -92,15 +91,15 @@ export class BuiltinMcpClient {
       // Get tool definitions from BuiltinToolsManager
       const toolsManager = await this.getToolsManager();
       const builtinTools = toolsManager.getAllTools();
-      
+
       // Convert to MCP tool format
       const tools = builtinTools.map(tool => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema
       }));
-      
-      
+
+
       return tools;
     } catch (error) {
       return [];
@@ -109,25 +108,33 @@ export class BuiltinMcpClient {
 
   /**
    * Execute a built-in tool
-   * Delegated to BuiltinToolsManager for execution
+   * Delegates execution to BuiltinToolsManager
    */
-  async executeTool({ toolName, toolArgs }: { toolName: string; toolArgs: { [key: string]: unknown } }): Promise<string> {
+  async executeTool({ toolName, toolArgs, signal }: { toolName: string; toolArgs: { [key: string]: unknown }; signal?: AbortSignal }): Promise<string> {
     try {
-      
+
       if (!this.isConnected) {
         throw new Error('Not connected to builtin server');
       }
 
+      if (signal?.aborted) {
+        throw new Error(`Builtin tool execution aborted: ${toolName}`);
+      }
+
+      // Capture chatSessionId BEFORE any await — after an async boundary,
+      // currentExecutionContext may have been overwritten by a concurrent session.
+      const chatSessionId = BuiltinToolsManager.getExecutionContext()?.chatSessionId;
+
       const toolsManager = await this.getToolsManager();
 
-      // Check if the tool exists
+      // Check whether the tool exists
       if (!toolsManager.hasTool(toolName)) {
         throw new Error(`Builtin tool not found: ${toolName}`);
       }
 
       // Execute the tool
-      const result = await toolsManager.executeTool(toolName, toolArgs);
-      
+      const result = await toolsManager.executeTool(toolName, toolArgs, signal, chatSessionId);
+
       if (result.success) {
         return result.data || '';
       } else {
@@ -142,13 +149,13 @@ export class BuiltinMcpClient {
 
   /**
    * Clean up resources
-   * The built-in server does not need to clean up external processes, only reset state
+   * No external process cleanup is needed for the built-in server; just reset state
    */
   async cleanup(): Promise<void> {
     try {
-      
+
       this.isConnected = false;
-      
+
     } catch (error) {
       throw error;
     }

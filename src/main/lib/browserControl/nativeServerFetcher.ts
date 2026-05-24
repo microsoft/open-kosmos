@@ -5,6 +5,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { createLogger } from '../unifiedLogger';
 import { appendCacheBustingTimestamp } from '../utils/urlUtils';
+import StreamZip from 'node-stream-zip';
 
 export interface NativeServerInfo {
   latest: string; // Remote latest version number
@@ -13,10 +14,6 @@ export interface NativeServerInfo {
   };
 }
 
-export interface AppConfig {
-  nativeServerVersion?: string; // Local native-server version number
-  [key: string]: any; // Allow other fields
-}
 
 export interface NativeServerCheckResult {
   exists: boolean;
@@ -32,20 +29,20 @@ export interface NativeServerFetchProgress {
 }
 
 /**
- * NativeServerFetcher - Responsible for checking and downloading the native-server program
- * Ensures a correct native-server program exists locally when Chrome Extension is enabled
+ * NativeServerFetcher - Responsible for checking and downloading the native-server program.
+ * Ensures a correct native-server program is available locally when the Chrome Extension is enabled.
  */
 export class NativeServerFetcher {
   private logger = createLogger();
   private baseUrl: string;
 
   constructor() {
-    // Get base CDN URL based on environment
+    // Get the base CDN URL based on the environment
     const isDevelopment = process.env.NODE_ENV === 'development';
     this.baseUrl = isDevelopment
-      ? process.env.DEVELOPMENT_BASE_CDN_URL || ''
-      : process.env.PRODUCTION_BASE_CDN_URL || '';
-    
+      ? process.env.DEVELOPMENT_BASE_CDN_URL || 'https://cdn.kosmos-ai.com/dev'
+      : process.env.PRODUCTION_BASE_CDN_URL || 'https://cdn.kosmos-ai.com';
+
     this.logger.info('NativeServerFetcher initialized', 'NativeServerFetcher', {
       isDevelopment,
       baseUrl: this.baseUrl
@@ -53,7 +50,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Get current platform identifier
+   * Get the platform identifier for the current environment
    */
   private getCurrentPlatformKey(): string {
     const platform = process.platform;
@@ -62,7 +59,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Get local storage directory for native-server
+   * Get the local storage directory for native-server.
    * Uses app.getPath('userData')/assets/native-server/
    */
   private getNativeServerDir(): string {
@@ -70,98 +67,60 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Get app.json config file path
-   */
-  private getAppConfigPath(): string {
-    return path.join(app.getPath('userData'), 'app.json');
-  }
-
-  /**
-   * Read app.json config
-   */
-  private readAppConfig(): AppConfig {
-    try {
-      const configPath = this.getAppConfigPath();
-      if (fs.existsSync(configPath)) {
-        const content = fs.readFileSync(configPath, 'utf8');
-        return JSON.parse(content);
-      }
-    } catch (error) {
-      this.logger.warn('Failed to read app.json', 'NativeServerFetcher', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return {};
-  }
-
-  /**
-   * Write app.json config
-   */
-  private writeAppConfig(config: AppConfig): void {
-    try {
-      const configPath = this.getAppConfigPath();
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-      this.logger.info('app.json configuration updated', 'NativeServerFetcher', { configPath });
-    } catch (error) {
-      this.logger.error('Failed to write app.json', 'NativeServerFetcher', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-
-  /**
-   * Get local native-server version number
-   * Read from the nativeServerVersion field in app.json
-   * Returns "0.0.0" if app.json or the field does not exist
+   * Get the local native-server version number.
+   * Reads from the version field in native-server/package.json.
+   * Returns "0.0.0" if package.json does not exist or cannot be parsed.
    */
   public getLocalNativeServerVersion(): string {
-    const config = this.readAppConfig();
-    return config.nativeServerVersion || '0.0.0';
+    try {
+      const packageJsonPath = path.join(this.getNativeServerDir(), 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        const content = fs.readFileSync(packageJsonPath, 'utf8');
+        const pkg = JSON.parse(content);
+        if (pkg.version) {
+          return pkg.version;
+        }
+      }
+    } catch (error) {
+      this.logger.warn('Failed to read native-server package.json version', 'NativeServerFetcher', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    return '0.0.0';
   }
 
   /**
-   * Update local native-server version number
-   * Write to the nativeServerVersion field in app.json
-   */
-  public setLocalNativeServerVersion(version: string): void {
-    const config = this.readAppConfig();
-    config.nativeServerVersion = version;
-    this.writeAppConfig(config);
-    this.logger.info('Local native-server version updated', 'NativeServerFetcher', { version });
-  }
-
-  /**
-   * Compare version numbers
+   * Compare two version strings.
    * Returns: -1 (v1 < v2), 0 (v1 == v2), 1 (v1 > v2)
    */
   private compareVersions(v1: string, v2: string): number {
     const parts1 = v1.split('.').map(Number);
     const parts2 = v2.split('.').map(Number);
-    
+
     const maxLen = Math.max(parts1.length, parts2.length);
-    
+
     for (let i = 0; i < maxLen; i++) {
       const num1 = parts1[i] || 0;
       const num2 = parts2[i] || 0;
-      
+
       if (num1 < num2) return -1;
       if (num1 > num2) return 1;
     }
-    
+
     return 0;
   }
 
   /**
-   * Check if native-server exists locally
-   * Check if directory exists and contains package.json
+   * Check whether a native-server exists locally.
+   * Verifies that the directory exists and contains a package.json.
    */
   public checkLocalNativeServer(): NativeServerCheckResult {
     const nativeServerDir = this.getNativeServerDir();
     const localVersion = this.getLocalNativeServerVersion();
     const packageJsonPath = path.join(nativeServerDir, 'package.json');
-    
+
     this.logger.info('Checking local native-server', 'NativeServerFetcher', { nativeServerDir, localVersion });
-    
+
     try {
       if (fs.existsSync(nativeServerDir) && fs.existsSync(packageJsonPath)) {
         // Check if package.json is valid
@@ -181,7 +140,7 @@ export class NativeServerFetcher {
           this.logger.warn('Local native-server package.json is empty, re-download required', 'NativeServerFetcher', { nativeServerDir });
         }
       }
-      
+
       this.logger.info('Local native-server does not exist, download required', 'NativeServerFetcher', { nativeServerDir });
       return {
         exists: false,
@@ -204,23 +163,23 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Fetch latest.json from CDN
+   * Fetch latest.json from the CDN
    */
   private async fetchNativeServerInfo(): Promise<NativeServerInfo | null> {
     // Add timestamp to bypass CDN cache
     const latestJsonUrl = appendCacheBustingTimestamp(`${this.baseUrl}/tools/chrome-mcp-native-server/latest.json`);
-    
+
     this.logger.info('Fetching latest.json', 'NativeServerFetcher', { latestJsonUrl });
-    
+
     try {
       const response = await this.httpGet(latestJsonUrl);
       const nativeServerInfo: NativeServerInfo = JSON.parse(response);
-      
+
       this.logger.info('Successfully fetched latest.json', 'NativeServerFetcher', {
         latestVersion: nativeServerInfo.latest,
         downloadUrls: nativeServerInfo.downloadUrls
       });
-      
+
       return nativeServerInfo;
     } catch (error) {
       this.logger.error('Failed to fetch latest.json', 'NativeServerFetcher', {
@@ -232,7 +191,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Get remote latest version number
+   * Get the latest remote version number
    */
   public async getRemoteNativeServerVersion(): Promise<string | null> {
     const nativeServerInfo = await this.fetchNativeServerInfo();
@@ -243,8 +202,8 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Check if native-server needs to be updated
-   * Compare local version with remote version
+   * Check whether the native-server needs updating.
+   * Compares the local version against the remote version.
    */
   public async checkNativeServerNeedsUpdate(): Promise<{
     needsUpdate: boolean;
@@ -253,7 +212,7 @@ export class NativeServerFetcher {
   }> {
     const localVersion = this.getLocalNativeServerVersion();
     const remoteVersion = await this.getRemoteNativeServerVersion();
-    
+
     if (!remoteVersion) {
       this.logger.warn('Unable to fetch remote version number', 'NativeServerFetcher');
       return {
@@ -262,16 +221,16 @@ export class NativeServerFetcher {
         remoteVersion: null
       };
     }
-    
+
     const comparison = this.compareVersions(localVersion, remoteVersion);
     const needsUpdate = comparison < 0;
-    
+
     this.logger.info('Version comparison result', 'NativeServerFetcher', {
       localVersion,
       remoteVersion,
       needsUpdate
     });
-    
+
     return {
       needsUpdate,
       localVersion,
@@ -280,7 +239,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Download and extract native-server
+   * Download and extract the native-server
    */
   public async downloadNativeServer(
     onProgress?: (progress: NativeServerFetchProgress) => void,
@@ -293,14 +252,14 @@ export class NativeServerFetcher {
         return { success: false, error: 'Failed to fetch latest.json' };
       }
 
-      // 2. Get download filename for current platform
+      // 2. Get the download file name for the current platform
       const platformKey = this.getCurrentPlatformKey();
       const fileName = nativeServerInfo.downloadUrls[platformKey];
       if (!fileName) {
         return { success: false, error: `Unsupported platform: ${platformKey}` };
       }
 
-      // 3. Build download URL
+      // 3. Build the download URL
       const downloadUrl = `${this.baseUrl}/tools/chrome-mcp-native-server/${fileName}`;
       const nativeServerDir = this.getNativeServerDir();
       const tempZipPath = path.join(app.getPath('temp'), `native-server-${Date.now()}.zip`);
@@ -312,18 +271,18 @@ export class NativeServerFetcher {
         version: nativeServerInfo.latest
       });
 
-      // 4. Ensure directory exists
+      // 4. Ensure directories exist
       const assetsDir = path.dirname(nativeServerDir);
       if (!fs.existsSync(assetsDir)) {
         fs.mkdirSync(assetsDir, { recursive: true });
-        this.logger.info('Creating assets directory', 'NativeServerFetcher', { assetsDir });
+        this.logger.info('Created assets directory', 'NativeServerFetcher', { assetsDir });
       }
 
       // 5. Download zip file
       onPhaseChange?.('downloading');
       await this.downloadFile(downloadUrl, tempZipPath, onProgress);
 
-      // 6. Clean up old native-server directory (if exists)
+      // 6. Clean up old native-server directory (if it exists)
       if (fs.existsSync(nativeServerDir)) {
         this.logger.info('Cleaning up old native-server directory', 'NativeServerFetcher', { nativeServerDir });
         fs.rmSync(nativeServerDir, { recursive: true, force: true });
@@ -337,13 +296,23 @@ export class NativeServerFetcher {
       // 8. Clean up temporary zip file
       if (fs.existsSync(tempZipPath)) {
         fs.unlinkSync(tempZipPath);
-        this.logger.info('Cleaning up temporary zip file', 'NativeServerFetcher', { tempZipPath });
+        this.logger.info('Cleaned up temporary zip file', 'NativeServerFetcher', { tempZipPath });
       }
 
-      // 9. Update local version number in app.json
-      this.setLocalNativeServerVersion(nativeServerInfo.latest);
+      // 8.5. macOS: fix run_host.sh after extraction (CRLF→LF + executable permission)
+      if (process.platform === 'darwin') {
+        const runHostPath = path.join(nativeServerDir, 'dist', 'run_host.sh');
+        if (fs.existsSync(runHostPath)) {
+          // The zip from CDN may have been built on Windows, giving run_host.sh CRLF line endings
+          // macOS env command cannot recognize "bash\r", causing native host startup failure (exit 127)
+          const content = fs.readFileSync(runHostPath, 'utf8');
+          fs.writeFileSync(runHostPath, content.replace(/\r\n/g, '\n'), 'utf8');
+          fs.chmodSync(runHostPath, '755');
+          this.logger.info('macOS: fixed run_host.sh (CRLF→LF + execute permission)', 'NativeServerFetcher', { runHostPath });
+        }
+      }
 
-      this.logger.info('native-server download completed', 'NativeServerFetcher', {
+      this.logger.info('native-server download complete', 'NativeServerFetcher', {
         nativeServerDir,
         version: nativeServerInfo.latest
       });
@@ -357,12 +326,12 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Ensure native-server exists and is the latest version
-   * Complete flow:
-   * 1. Check if local native-server program exists
+   * Ensure native-server exists and is the latest version.
+   * Full flow:
+   * 1. Check if a native-server program exists locally
    * 2. If not, download directly, then update nativeServerVersion in app.json
-   * 3. If yes, compare local version with remote version
-   * 4. If local version < remote version, download latest version to overwrite local, update app.json
+   * 3. If it exists, compare local version with remote version
+   * 4. If local version < remote version, download the latest version to overwrite local, update app.json
    */
   public async ensureNativeServer(
     onProgress?: (progress: NativeServerFetchProgress) => void,
@@ -370,12 +339,12 @@ export class NativeServerFetcher {
   ): Promise<{ success: boolean; nativeServerDir?: string; error?: string; downloaded: boolean; version?: string }> {
     // 1. Check if local native-server exists
     const checkResult = this.checkLocalNativeServer();
-    
+
     if (!checkResult.exists) {
       // Local native-server does not exist, download directly
       this.logger.info('Local native-server does not exist, starting download', 'NativeServerFetcher');
       const downloadResult = await this.downloadNativeServer(onProgress, onPhaseChange);
-      
+
       return {
         success: downloadResult.success,
         nativeServerDir: downloadResult.nativeServerDir,
@@ -385,17 +354,17 @@ export class NativeServerFetcher {
       };
     }
 
-    // 2. Local native-server exists, check if it needs updating
+    // 2. Local native-server exists, check if an update is needed
     this.logger.info('Local native-server exists, checking version', 'NativeServerFetcher', {
       nativeServerDir: checkResult.nativeServerDir,
       localVersion: checkResult.localVersion
     });
-    
+
     const versionCheck = await this.checkNativeServerNeedsUpdate();
-    
+
     if (!versionCheck.needsUpdate) {
-      // Local version is already up to date, no download needed
-      this.logger.info('Local native-server version is up to date, no download needed', 'NativeServerFetcher', {
+      // Local version is already the latest, no download needed
+      this.logger.info('Local native-server version is already the latest, no download needed', 'NativeServerFetcher', {
         nativeServerDir: checkResult.nativeServerDir,
         localVersion: versionCheck.localVersion,
         remoteVersion: versionCheck.remoteVersion
@@ -408,14 +377,14 @@ export class NativeServerFetcher {
       };
     }
 
-    // 3. Local version is older than remote version, need to download update
+    // 3. Local version is older than remote, need to download update
     this.logger.info('Local native-server version is outdated, starting update', 'NativeServerFetcher', {
       localVersion: versionCheck.localVersion,
       remoteVersion: versionCheck.remoteVersion
     });
-    
+
     const downloadResult = await this.downloadNativeServer(onProgress, onPhaseChange);
-    
+
     return {
       success: downloadResult.success,
       nativeServerDir: downloadResult.nativeServerDir,
@@ -426,24 +395,22 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Extract zip file (with progress callback)
-   * Uses existing node-stream-zip dependency
+   * Extract a zip file (with progress callback).
+   * Uses the existing node-stream-zip dependency.
    */
   private async extractZip(
-    zipPath: string, 
+    zipPath: string,
     destDir: string,
     onProgress?: (progress: NativeServerFetchProgress) => void
   ): Promise<void> {
     try {
-      const StreamZip = require('node-stream-zip');
-      
-      // Ensure target directory exists
+      // Ensure destination directory exists
       if (!fs.existsSync(destDir)) {
         fs.mkdirSync(destDir, { recursive: true });
       }
-      
+
       const zip = new StreamZip.async({ file: zipPath });
-      
+
       try {
         // Get all entries
         const entries = await zip.entries();
@@ -475,12 +442,12 @@ export class NativeServerFetcher {
           }
         }
 
-        this.logger.info('Zip extraction completed', 'NativeServerFetcher', { zipPath, destDir, totalFiles });
+        this.logger.info('zip extraction complete', 'NativeServerFetcher', { zipPath, destDir, totalFiles });
       } finally {
         await zip.close();
       }
     } catch (error) {
-      this.logger.error('Zip extraction failed', 'NativeServerFetcher', {
+      this.logger.error('zip extraction failed', 'NativeServerFetcher', {
         zipPath,
         destDir,
         error: error instanceof Error ? error.message : String(error)
@@ -497,15 +464,15 @@ export class NativeServerFetcher {
       const urlObj = new URL(url);
       const isHttps = urlObj.protocol === 'https:';
       const httpModule = isHttps ? https : http;
-      
+
       httpModule.get(url, (res) => {
         // Use Buffer array to properly handle multi-byte UTF-8 characters
         const chunks: Buffer[] = [];
-        
+
         res.on('data', (chunk: Buffer) => {
           chunks.push(chunk);
         });
-        
+
         res.on('end', () => {
           // Concatenate all chunks and decode as UTF-8
           const data = Buffer.concat(chunks).toString('utf-8');
@@ -522,7 +489,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Download file
+   * Download a file
    */
   private downloadFile(
     url: string,
@@ -533,24 +500,24 @@ export class NativeServerFetcher {
       const urlObj = new URL(url);
       const isHttps = urlObj.protocol === 'https:';
       const httpModule = isHttps ? https : http;
-      
+
       const request = httpModule.get(url, (response) => {
         if (response.statusCode !== 200) {
           reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
           return;
         }
-        
+
         const totalSize = parseInt(response.headers['content-length'] || '0', 10);
         let downloadedSize = 0;
         let lastProgressTime = Date.now();
-        
+
         // Create write stream
         const fileStream = fs.createWriteStream(filePath);
-        
+
         response.on('data', (chunk) => {
           downloadedSize += chunk.length;
           fileStream.write(chunk);
-          
+
           // Throttle progress updates (at most once per 100ms)
           const now = Date.now();
           if (onProgress && now - lastProgressTime > 100) {
@@ -563,10 +530,10 @@ export class NativeServerFetcher {
             lastProgressTime = now;
           }
         });
-        
+
         response.on('end', () => {
           fileStream.end();
-          
+
           // Send final progress
           if (onProgress) {
             onProgress({
@@ -575,10 +542,10 @@ export class NativeServerFetcher {
               total: this.formatBytes(totalSize)
             });
           }
-          
+
           resolve();
         });
-        
+
         response.on('error', (error) => {
           fileStream.destroy();
           if (fs.existsSync(filePath)) {
@@ -587,14 +554,14 @@ export class NativeServerFetcher {
           reject(error);
         });
       });
-      
+
       request.on('error', (error) => {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
         reject(error);
       });
-      
+
       request.setTimeout(120000, () => { // 2-minute timeout
         request.destroy();
         if (fs.existsSync(filePath)) {
@@ -606,7 +573,7 @@ export class NativeServerFetcher {
   }
 
   /**
-   * Format byte count
+   * Format a byte count as a human-readable string
    */
   private formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';

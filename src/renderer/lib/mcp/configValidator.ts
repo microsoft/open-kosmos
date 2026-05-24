@@ -3,15 +3,15 @@
  * Validates imported configurations for completeness and compatibility
  */
 
-import { 
-  KosmosAppMCPServerConfig, 
+import {
+  OpenKosmosAppMCPServerConfig,
   ImportValidationResult,
-  VSCodeMCPServerConfig 
+  VSCodeMCPServerConfig
 } from '../../types/mcpTypes'
 
 export interface ValidationRule {
   name: string
-  validate: (config: KosmosAppMCPServerConfig) => ValidationRuleResult
+  validate: (config: OpenKosmosAppMCPServerConfig) => ValidationRuleResult
   severity: 'error' | 'warning' | 'info'
 }
 
@@ -32,7 +32,7 @@ export interface ConfigValidationReport {
 /**
  * Validate a single MCP server configuration
  */
-export function validateMcpServerConfig(config: KosmosAppMCPServerConfig): ConfigValidationReport {
+export function validateMcpServerConfig(config: OpenKosmosAppMCPServerConfig): ConfigValidationReport {
   const errors: string[] = []
   const warnings: string[] = []
   const info: string[] = []
@@ -40,7 +40,7 @@ export function validateMcpServerConfig(config: KosmosAppMCPServerConfig): Confi
   // Run all validation rules
   for (const rule of validationRules) {
     const result = rule.validate(config)
-    
+
     if (!result.passed && result.message) {
       switch (rule.severity) {
         case 'error':
@@ -72,7 +72,7 @@ export function validateMcpServerConfig(config: KosmosAppMCPServerConfig): Confi
 /**
  * Validate multiple configurations for batch import
  */
-export function validateBatchImport(configs: KosmosAppMCPServerConfig[]): ImportValidationResult {
+export function validateBatchImport(configs: OpenKosmosAppMCPServerConfig[]): ImportValidationResult {
   const allErrors: string[] = []
   const allWarnings: string[] = []
   const reports: ConfigValidationReport[] = []
@@ -81,7 +81,7 @@ export function validateBatchImport(configs: KosmosAppMCPServerConfig[]): Import
   for (const config of configs) {
     const report = validateMcpServerConfig(config)
     reports.push(report)
-    
+
     allErrors.push(...report.errors.map(err => `${config.name}: ${err}`))
     allWarnings.push(...report.warnings.map(warn => `${config.name}: ${warn}`))
   }
@@ -157,7 +157,7 @@ const validationRules: ValidationRule[] = [
     severity: 'warning',
     validate: (config) => {
       if (config.transport === 'stdio' || !config.url) return { passed: true }
-      
+
       try {
         new URL(config.url)
         return { passed: true }
@@ -178,7 +178,7 @@ const validationRules: ValidationRule[] = [
       const validNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9\-_]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/
       return {
         passed: validNamePattern.test(config.name),
-        message: !validNamePattern.test(config.name) 
+        message: !validNamePattern.test(config.name)
           ? 'Server name should contain only alphanumeric characters, hyphens, and underscores' : undefined
       }
     }
@@ -190,15 +190,15 @@ const validationRules: ValidationRule[] = [
     severity: 'warning',
     validate: (config) => {
       if (config.transport !== 'stdio' || !config.command) return { passed: true }
-      
+
       // Check if command looks like a valid executable
       const commonExecutables = ['node', 'python', 'python3', 'npm', 'npx', 'uvx', 'uv', 'cargo', 'go']
       const command = config.command.toLowerCase()
-      
-      const isCommonExecutable = commonExecutables.some(exec => 
+
+      const isCommonExecutable = commonExecutables.some(exec =>
         command === exec || command.endsWith(`/${exec}`) || command.endsWith(`\\${exec}.exe`)
       )
-      
+
       return {
         passed: isCommonExecutable || command.includes('/') || command.includes('\\'),
         message: !isCommonExecutable && !command.includes('/') && !command.includes('\\')
@@ -215,13 +215,13 @@ const validationRules: ValidationRule[] = [
       if (!config.env || Object.keys(config.env).length === 0) {
         return { passed: true }
       }
-      
+
       // Check for sensitive data in environment variables
       const sensitiveKeys = ['password', 'secret', 'token', 'key', 'api_key']
-      const hasSensitiveData = Object.keys(config.env).some(key => 
+      const hasSensitiveData = Object.keys(config.env).some(key =>
         sensitiveKeys.some(sensitive => key.toLowerCase().includes(sensitive))
       )
-      
+
       return {
         passed: true,
         message: hasSensitiveData ? 'Configuration contains environment variables that may contain sensitive data' : undefined
@@ -240,7 +240,7 @@ const validationRules: ValidationRule[] = [
           message: 'Transport type is SSE but URL does not contain "sse"'
         }
       }
-      
+
       return { passed: true }
     }
   }
@@ -250,8 +250,8 @@ const validationRules: ValidationRule[] = [
  * Calculate quality score for a configuration
  */
 function calculateQualityScore(
-  config: KosmosAppMCPServerConfig, 
-  errors: string[], 
+  config: OpenKosmosAppMCPServerConfig,
+  errors: string[],
   warnings: string[]
 ): number {
   let score = 100
@@ -271,7 +271,7 @@ function calculateQualityScore(
 /**
  * Check for duplicate server names
  */
-function checkForDuplicateNames(configs: KosmosAppMCPServerConfig[]): string[] {
+function checkForDuplicateNames(configs: OpenKosmosAppMCPServerConfig[]): string[] {
   const errors: string[] = []
   const nameCount = new Map<string, number>()
 
@@ -294,7 +294,7 @@ function checkForDuplicateNames(configs: KosmosAppMCPServerConfig[]): string[] {
 /**
  * Check for configuration conflicts
  */
-function checkForConflicts(configs: KosmosAppMCPServerConfig[]): string[] {
+function checkForConflicts(configs: OpenKosmosAppMCPServerConfig[]): string[] {
   const warnings: string[] = []
   const urlMap = new Map<string, string[]>()
 
@@ -384,7 +384,7 @@ export function getValidationSummary(reports: ConfigValidationReport[]): {
   const validServers = reports.filter(r => r.isValid).length
   const totalErrors = reports.reduce((sum, r) => sum + r.errors.length, 0)
   const totalWarnings = reports.reduce((sum, r) => sum + r.warnings.length, 0)
-  const averageScore = totalServers > 0 
+  const averageScore = totalServers > 0
     ? Math.round(reports.reduce((sum, r) => sum + r.score, 0) / totalServers)
     : 0
 

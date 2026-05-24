@@ -16,6 +16,8 @@ import {
 } from 'lucide-react'
 import { SkillConfig } from '../../lib/userData/types'
 import { FileInfo } from './SkillViewPanel'
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[SkillFolderExplorer]');
 
 interface DirectoryItem {
   name: string
@@ -100,10 +102,10 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
   const loadDirectory = useCallback(async (relativePath: string = '') => {
     setIsLoading(true)
     setError(null)
-    
+
     try {
       const result = await window.electronAPI?.skills?.getSkillDirectoryContents?.(skill.name, relativePath)
-      
+
       if (result?.success && result.data) {
         setDirectoryContents(result.data)
         setCurrentPath(relativePath)
@@ -112,7 +114,7 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
         setDirectoryContents(null)
       }
     } catch (err) {
-      console.error('Error loading directory:', err)
+      logger.error('Error loading directory:', err)
       setError(err instanceof Error ? err.message : 'Failed to load directory contents')
       setDirectoryContents(null)
     } finally {
@@ -120,7 +122,7 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
     }
   }, [skill.name])
 
-  // Initially load root directory
+  // Load root directory initially
   useEffect(() => {
     loadDirectory('')
     setPathHistory([])
@@ -160,14 +162,14 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
   const handleFileClick = useCallback(async (item: DirectoryItem) => {
     try {
       const result = await window.electronAPI?.skills?.getSkillFileContent?.(skill.name, item.path)
-      
+
       if (result?.success && result.data) {
         onFileSelect(result.data)
       } else {
-        console.error('Failed to load file:', result?.error)
+        logger.error('Failed to load file:', result?.error)
       }
     } catch (err) {
-      console.error('Error loading file:', err)
+      logger.error('Error loading file:', err)
     }
   }, [skill.name, onFileSelect])
 
@@ -209,11 +211,11 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
     if (targetPath === currentPath) {
       return
     }
-    
+
     // Build new history based on target path
-    // All paths before the target path should become new history
+    // All paths before the target path should become the new history
     const pathParts = targetPath ? targetPath.split(/[/\\]/).filter(Boolean) : []
-    const newHistory: string[] = [''] // Start from root directory (empty string represents root)
+    const newHistory: string[] = [''] // Start from root (empty string represents root)
     let accumulatedPath = ''
     for (const part of pathParts) {
       accumulatedPath = accumulatedPath ? `${accumulatedPath}/${part}` : part
@@ -221,9 +223,9 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
         newHistory.push(accumulatedPath)
       }
     }
-    // Remove root directory empty string, unless it's the only history entry
+    // Remove root empty string from history, unless it is the only entry
     if (targetPath !== '') {
-      setPathHistory(newHistory.slice(1)) // Don't include root directory in history
+      setPathHistory(newHistory.slice(1)) // Do not include root in history
     } else {
       setPathHistory([])
     }
@@ -232,10 +234,10 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
 
   return (
     <div className="skill-folder-explorer">
-      {/* Header: Breadcrumb navigation */}
+      {/* Header: breadcrumb navigation */}
       <div className="skill-folder-explorer-header">
         {pathHistory.length > 0 && (
-          <button 
+          <button
             className="skill-folder-back-btn"
             onClick={handleBack}
             title="Go back"
@@ -261,7 +263,7 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
         </div>
       </div>
 
-      {/* Content: File and directory list */}
+      {/* Content: file and directory list */}
       <div className="skill-folder-explorer-content">
         {isLoading ? (
           <LoadingSpinner />

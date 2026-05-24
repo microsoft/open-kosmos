@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-During builds in the GitHub Actions CI environment, the `@vscode/ripgrep` package's postinstall script frequently fails with a 403 error:
+When building in a GitHub Actions CI environment, the postinstall script for the `@vscode/ripgrep` package frequently fails with 403 errors:
 
 ```
 npm error GET https://api.github.com/repos/microsoft/ripgrep-prebuilt/releases/tags/v13.0.0-13
@@ -12,24 +12,24 @@ npm error Downloading ripgrep failed after multiple retries
 
 ## Root Cause
 
-1. **GitHub API Rate Limiting**
+1. **GitHub API rate limiting**
    - Unauthenticated requests: 60 per hour
    - Authenticated requests: 5,000 per hour
-   - In CI environments, multiple jobs share the same IP, making it easy to hit the limit
+   - Multiple jobs in CI share the same IP, which can easily hit the limit
 
-2. **How @vscode/ripgrep Works**
+2. **How @vscode/ripgrep works**
    - During installation, the postinstall script fetches release information from the GitHub API
-   - Downloads precompiled ripgrep binaries
-   - Retries up to 4 times on failure with increasing intervals
+   - Downloads the prebuilt ripgrep binary
+   - Retries 4 times on failure, with increasing intervals
 
-3. **Intermittent Failure Causes**
+3. **Why failures are intermittent**
    - GitHub Runners share an IP pool
-   - Other users' requests may have already consumed the API quota
+   - Requests from other users may have already consumed the API quota
    - Network jitter or temporary API unavailability
 
-## Solution
+## Solutions
 
-### 1. Pass GitHub Token (Primary Fix)
+### 1. Pass GitHub Token (primary fix)
 
 Pass `GITHUB_TOKEN` in the CI `npm ci` step:
 
@@ -40,12 +40,12 @@ Pass `GITHUB_TOKEN` in the CI `npm ci` step:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**How It Works**:
+**How it works**:
 - GitHub Actions automatically injects `secrets.GITHUB_TOKEN`
 - The `@vscode/ripgrep` postinstall script detects and uses this token
-- Authenticated requests receive a higher rate limit (5,000 per hour)
+- Authenticated requests get a higher rate limit (5,000 per hour)
 
-### 2. Optimize npm Install Options
+### 2. Optimize npm install options
 
 Add the following options to reduce unnecessary requests:
 
@@ -53,12 +53,12 @@ Add the following options to reduce unnecessary requests:
 npm ci --prefer-offline --no-audit
 ```
 
-- `--prefer-offline`: Prefer using local cache
-- `--no-audit`: Skip security audit to reduce network requests
+- `--prefer-offline`: prefer local cache
+- `--no-audit`: skip security audit, reducing network requests
 
-### 3. Leverage npm Cache
+### 3. Use npm cache
 
-GitHub Actions already has npm caching configured:
+GitHub Actions is configured with npm cache:
 
 ```yaml
 - uses: actions/setup-node@v4
@@ -67,16 +67,16 @@ GitHub Actions already has npm caching configured:
     cache: 'npm'
 ```
 
-This caches the `~/.npm` directory, including already-downloaded ripgrep binaries.
+This caches the `~/.npm` directory, including downloaded ripgrep binaries.
 
-### 4. .npmrc Configuration
+### 4. .npmrc configuration
 
-The project's `.npmrc` already includes relevant notes:
+The project's `.npmrc` has the relevant note added:
 
 ```properties
-# GitHub API configuration - for dependencies like @vscode/ripgrep
-# CI environments automatically inject the GITHUB_TOKEN environment variable to avoid API rate limiting
-# This configuration is not needed for local development
+# GitHub API configuration — for packages like @vscode/ripgrep
+# CI environments automatically inject the GITHUB_TOKEN environment variable to avoid API rate limits
+# Local development does not need this configuration
 ```
 
 ## Applied Fixes
@@ -110,15 +110,15 @@ The project's `.npmrc` already includes relevant notes:
   shell: powershell
 ```
 
-## Verification
+## Verification Methods
 
-1. **Check CI Logs**: Confirm ripgrep installation has no 403 errors
-2. **Check Build Time**: Should be somewhat reduced (leveraging cache)
-3. **Success Rate Monitoring**: Continuously monitor build success rate
+1. **Check CI logs**: Confirm ripgrep installation has no 403 errors
+2. **Check build time**: Should be reduced (using cache)
+3. **Success rate monitoring**: Continuously monitor build success rate
 
-## Alternative Solutions (If the Issue Persists)
+## Fallback Options (if the issue persists)
 
-If the above solution still does not resolve the issue, consider the following:
+If the above solutions still do not resolve the issue, consider:
 
 ### Option A: Pre-cache ripgrep
 
@@ -140,15 +140,15 @@ Manually download and cache ripgrep in CI:
     fi
 ```
 
-### Option B: Use npm Mirror
+### Option B: Use npm mirror
 
-Configure `.npmrc` to use a China mirror (if needed):
+Configure `.npmrc` to use a mirror (if needed):
 
 ```properties
 registry=https://registry.npmmirror.com
 ```
 
-### Option C: Pin ripgrep Version
+### Option C: Pin ripgrep version
 
 Pin a specific version in `package.json`:
 
@@ -172,4 +172,4 @@ Pin a specific version in `package.json`:
 
 ## Changelog
 
-- **2026-01-14**: Initial fix - Added GITHUB_TOKEN and optimized npm options
+- **2026-01-14**: Initial fix — added GITHUB_TOKEN and optimized npm options

@@ -1,18 +1,20 @@
 // src/renderer/components/auth/AuthProvider.tsx - V2.0 Auth Context Provider
-// Uses AuthData as core data structure, provides unified auth state management
+// Uses AuthData as the core data structure to provide unified auth state management
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AuthData, AuthContextType } from '../../types/authTypes';
 import { AuthManagerProxy } from '../../lib/auth/authManagerProxy';
-import { 
-  extractUser, 
-  extractCopilotToken, 
+import {
+  extractUser,
+  extractCopilotToken,
   extractGitHubToken,
   isAuthDataValid
 } from '../../lib/auth/authDataAdapter';
 import { profileDataManager } from '../../lib/userData';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { mcpClientCacheManager } from '../../lib/mcp/mcpClientCacheManager';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[AuthProvider]');
 
 /**
  * Auth Context - uses AuthData
@@ -21,31 +23,47 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
  * AuthProvider component - V2.0
- * 
+ *
  * Core features:
  * 1. Manage AuthData state
  * 2. Listen for auth:authChanged events
  * 3. Provide auth operations (signIn/signOut)
- * 4. Provide Token access methods
+ * 4. Provide token accessor methods
  */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authData, setAuthData] = useState<AuthData | null>(null);
   const [loading, setLoading] = useState(true);
   const authManager = new AuthManagerProxy();
 
+  // Track whether auth was established via ghc:authSuccess (sign-in flow)
+  // vs cold cache restore. This prevents double-calling setCurrentAuth.
+  const authEstablishedViaSignIn = useRef(false);
+
   /**
-   * Initialize auth state
+   * Initialize auth state from cache (cold start only)
+   *
+   * Two paths call this function:
+   * 1. Cold start useEffect - needs to call setCurrentAuth to trigger main process init
+   * 2. ghc:authSuccess handler - SignInPage/AutoLoginSingleUser already called setCurrentAuth
+   *
+   * We use authEstablishedViaSignIn ref to skip setCurrentAuth on path #2.
    */
   const initializeAuth = useCallback(async () => {
     try {
       const currentAuth = await authManager.getCurrentAuthAsync();
-      
+
       if (currentAuth && isAuthDataValid(currentAuth)) {
+        // Only call setCurrentAuth for cold cache restore (path #1)
+        // Skip if auth was established via sign-in flow (path #2) to avoid double initialization
+        if (!authEstablishedViaSignIn.current) {
+          await authManager.setCurrentAuth(currentAuth);
+        }
         setAuthData(currentAuth);
       } else {
         setAuthData(null);
       }
     } catch (error) {
+      logger.error('[AuthProvider] initializeAuth failed:', error);
       setAuthData(null);
     } finally {
       setLoading(false);
@@ -56,8 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Sign-in method (called by SignInPage)
    */
   const signIn = useCallback(async () => {
-    // Actual sign-in flow is handled by SignInPage
-    // After successful sign-in, auth:authChanged event is triggered to automatically update state
+    // The actual sign-in flow is handled by SignInPage
+    // After a successful sign-in, auth:authChanged is dispatched to auto-update state
   }, []);
 
   /**
@@ -65,35 +83,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const signOut = useCallback(async () => {
     try {
-      console.log('[AuthProvider] 🔄 SignOut called, cleaning up frontend caches...');
-      
-      // 🔧 Critical fix: Clean frontend caches before calling main process sign-out
-      // This ensures caches are cleaned even if IPC events are delayed
+      logger.debug('[AuthProvider] 🔄 SignOut called, cleaning up frontend caches...');
+
+      // 🔧 Critical fix: clean up frontend caches before calling main process sign-out
+      // This ensures caches are cleared even if IPC events are delayed
       try {
         profileDataManager.cleanup();
-        console.log('[AuthProvider] ✅ ProfileDataManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ ProfileDataManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean ProfileDataManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean ProfileDataManager cache:', error);
       }
-      
+
       try {
         agentChatSessionCacheManager.cleanup();
-        console.log('[AuthProvider] ✅ AgentChatSessionCacheManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ AgentChatSessionCacheManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean AgentChatSessionCacheManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean AgentChatSessionCacheManager cache:', error);
       }
-      
+
       try {
         mcpClientCacheManager.cleanup();
-        console.log('[AuthProvider] ✅ MCPClientCacheManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ MCPClientCacheManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
       }
-      
-      // Call the main process unified signOut interface
+
+      // Call the main process's unified signOut interface
       await authManager.signOut();
       setAuthData(null);
-      
+
     } catch (error) {
       throw error;
     }
@@ -120,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for auth change events from the main process
     const unsubscribe = authManager.onAuthChanged((data) => {
-      
+
       switch (data.type) {
         case 'auth_set':
         case 'copilot_token_refreshed':
@@ -128,47 +146,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setAuthData(data.authData);
           }
           break;
-          
+
         case 'auth_destroyed':
           setAuthData(null);
           break;
       }
     });
 
-    // Listen for GitHub auth success event (compatible with SignInPage)
+    // Listen for GitHub auth success event (for compatibility with SignInPage)
+    // When this fires, SignInPage/AutoLoginSingleUser already called setCurrentAuth,
+    // so we mark the flag to skip redundant setCurrentAuth in initializeAuth.
     const handleAuthSuccess = () => {
+      authEstablishedViaSignIn.current = true;
       initializeAuth();
     };
 
     // Listen for sign-out event
     const handleSignOut = () => {
-      console.log('[AuthProvider] 🔄 SignOut event received, cleaning up frontend caches...');
-      
-      // 🔧 Critical fix: Clean frontend caches on sign-out to prevent new users from seeing stale data
+      logger.debug('[AuthProvider] 🔄 SignOut event received, cleaning up frontend caches...');
+
+      // 🔧 Critical fix: clean up frontend caches on sign-out to prevent the new user from seeing old data
       try {
-        // Clean ProfileDataManager cache
+        // Clean up ProfileDataManager cache
         profileDataManager.cleanup();
-        console.log('[AuthProvider] ✅ ProfileDataManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ ProfileDataManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean ProfileDataManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean ProfileDataManager cache:', error);
       }
-      
+
       try {
-        // Clean AgentChatSessionCacheManager cache
+        // Clean up AgentChatSessionCacheManager cache
         agentChatSessionCacheManager.cleanup();
-        console.log('[AuthProvider] ✅ AgentChatSessionCacheManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ AgentChatSessionCacheManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean AgentChatSessionCacheManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean AgentChatSessionCacheManager cache:', error);
       }
-      
+
       try {
-        // Clean MCPClientCacheManager cache
+        // Clean up MCPClientCacheManager cache
         mcpClientCacheManager.cleanup();
-        console.log('[AuthProvider] ✅ MCPClientCacheManager cache cleaned');
+        logger.debug('[AuthProvider] ✅ MCPClientCacheManager cache cleaned');
       } catch (error) {
-        console.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
+        logger.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
       }
-      
+
       setAuthData(null);
     };
 
@@ -215,7 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuthContext = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuthContext must be used within AuthProvider');
+    throw new Error('useAuthContext must be used inside AuthProvider');
   }
   return context;
 };

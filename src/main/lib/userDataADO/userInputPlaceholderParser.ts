@@ -1,41 +1,45 @@
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
+
 /**
  * User Input Placeholder Parser
- * 
- * Unified handling of @USER_INPUT_ placeholder variable analysis.
- * Takes any JSON config object, recursively traverses to find placeholders, and outputs InputFields[].
- * 
- * Placeholder format: @USER_INPUT_[TYPE]_[SUBTYPE]_[REQUIRED|OPTIONAL]_{KEYNAME}
- * 
+ *
+ * Parses @USER_INPUT_ placeholder variables from arbitrary JSON config objects.
+ * Recursively traverses the object tree and extracts InputFields[].
+ *
+ * Placeholder format: @USER_INPUT_[TYPE]_[CONTROL]_[REQUIRED|OPTIONAL]_{KEYNAME}
+ * With default value: @USER_INPUT_[TYPE]_[CONTROL]_[REQUIRED|OPTIONAL]_{KEYNAME=DEFAULT_VALUE}
+ *
  * - TYPE: STRING | INT | DOUBLE | BOOLEAN - data type
- * - SUBTYPE: FOLDER | EMAIL | NORMAL - input type
+ * - CONTROL: FOLDER | FILE | TEXT - input control
  *   - FOLDER: folder picker
- *   - EMAIL: auto-generate email from current user alias
- *   - NORMAL: plain text input
+ *   - FILE: file picker
+ *   - TEXT: plain text input
  * - REQUIRED | OPTIONAL: whether the field is required
  * - KEYNAME: variable name
- * 
- * Note: INT, DOUBLE, BOOLEAN types can only be used with the NORMAL subtype
+ *
+ * Note: INT, DOUBLE, BOOLEAN types can only be used with TEXT control
  */
 
 /**
  * User input field definition
  */
 export interface UserInputField {
-  /** Key in the JSON object */
+  /** JSON object key */
   key: string;
   /** Original placeholder value */
   originalValue: string;
   /** Data type: STRING | INT | DOUBLE | BOOLEAN */
   type: 'STRING' | 'INT' | 'DOUBLE' | 'BOOLEAN';
-  /** Input type: FOLDER | EMAIL | NORMAL */
-  subtype: 'FOLDER' | 'EMAIL' | 'NORMAL';
-  /** Variable name (extracted from the placeholder) */
+  /** Input control: folder | file | text */
+  control: 'folder' | 'file' | 'text';
+  /** Variable name (extracted from placeholder) */
   varName: string;
   /** Whether the field is required */
   isRequired: boolean;
   /** Field label (for UI display) */
   label: string;
-  /** Default value (optional; e.g., EMAIL type auto-fills) */
+  /** Default value (optional) */
   defaultValue?: string;
 }
 
@@ -43,7 +47,7 @@ export interface UserInputField {
  * Parse result
  */
 export interface ParseUserInputResult {
-  /** List of parsed fields */
+  /** Parsed field list */
   fields: UserInputField[];
   /** Whether there are fields requiring user input */
   hasUserInputFields: boolean;
@@ -51,7 +55,7 @@ export interface ParseUserInputResult {
 
 /**
  * User input placeholder regex
- * Matches format: @USER_INPUT_[TYPE]_[SUBTYPE]_[REQUIRED|OPTIONAL]_{KEYNAME}
+ * Matches: @USER_INPUT_[TYPE]_[CONTROL]_[REQUIRED|OPTIONAL]_{KEYNAME}
  */
 const USER_INPUT_PLACEHOLDER_REGEX = /^@USER_INPUT_([A-Z]+)_([A-Z]+)_(REQUIRED|OPTIONAL)_(.+)$/;
 
@@ -61,19 +65,19 @@ const USER_INPUT_PLACEHOLDER_REGEX = /^@USER_INPUT_([A-Z]+)_([A-Z]+)_(REQUIRED|O
 const VALID_TYPES = ['STRING', 'INT', 'DOUBLE', 'BOOLEAN'] as const;
 
 /**
- * Valid input subtypes
+ * Valid input controls
  */
-const VALID_SUBTYPES = ['FOLDER', 'EMAIL', 'NORMAL'] as const;
+const VALID_CONTROLS = ['FOLDER', 'FILE', 'TEXT'] as const;
 
 /**
  * User Input Placeholder Parser class
- * Responsible for parsing @USER_INPUT_ placeholder variables in any JSON config
+ * Parses @USER_INPUT_ placeholder variables from arbitrary JSON configs
  */
 export class UserInputPlaceholderParser {
   private static instance: UserInputPlaceholderParser;
-  
+
   private constructor() {}
-  
+
   /**
    * Get singleton instance
    */
@@ -83,174 +87,178 @@ export class UserInputPlaceholderParser {
     }
     return UserInputPlaceholderParser.instance;
   }
-  
+
   /**
-   * Check if a value is a USER_INPUT placeholder
-   * @param value Value to check
+   * Check whether a value is a USER_INPUT placeholder
+   * @param value The value to check
    */
   isUserInputPlaceholder(value: string): boolean {
     return typeof value === 'string' && value.startsWith('@USER_INPUT_');
   }
-  
+
   /**
    * Parse a single placeholder variable
-   * @param key Environment variable key
-   * @param value Placeholder value
-   * @returns Parse result, or null if the format is invalid
+   * @param key The env/config key
+   * @param value The placeholder value
+   * @returns Parsed field, or null if the format is invalid
    */
   parseSinglePlaceholder(key: string, value: string): UserInputField | null {
     if (!this.isUserInputPlaceholder(value)) {
       return null;
     }
-    
+
     const match = value.match(USER_INPUT_PLACEHOLDER_REGEX);
     if (!match) {
-      console.warn(`[UserInputPlaceholderParser] Invalid placeholder format: ${value}. Expected: @USER_INPUT_[TYPE]_[SUBTYPE]_[REQUIRED|OPTIONAL]_{KEYNAME}`);
+      logger.warn(`[UserInputPlaceholderParser] Invalid placeholder format: ${value}. Expected: @USER_INPUT_[TYPE]_[CONTROL]_[REQUIRED|OPTIONAL]_{KEYNAME}`);
       return null;
     }
-    
-    const [, typeStr, subtypeStr, requiredStr, varName] = match;
-    
+
+    const [, typeStr, controlStr, requiredStr, varName] = match;
+
     // Validate type
     if (!VALID_TYPES.includes(typeStr as any)) {
-      console.warn(`[UserInputPlaceholderParser] Invalid type: ${typeStr}. Valid types: ${VALID_TYPES.join(', ')}`);
+      logger.warn(`[UserInputPlaceholderParser] Invalid type: ${typeStr}. Valid types: ${VALID_TYPES.join(', ')}`);
       return null;
     }
-    
-    // Validate subtype
-    if (!VALID_SUBTYPES.includes(subtypeStr as any)) {
-      console.warn(`[UserInputPlaceholderParser] Invalid subtype: ${subtypeStr}. Valid subtypes: ${VALID_SUBTYPES.join(', ')}`);
+
+    // Validate control
+    if (!VALID_CONTROLS.includes(controlStr as any)) {
+      logger.warn(`[UserInputPlaceholderParser] Invalid control: ${controlStr}. Valid controls: ${VALID_CONTROLS.join(', ')}`);
       return null;
     }
-    
-    // Validate type and subtype combination: INT, DOUBLE, BOOLEAN can only be used with NORMAL
-    if ((typeStr === 'INT' || typeStr === 'DOUBLE' || typeStr === 'BOOLEAN') && subtypeStr !== 'NORMAL') {
-      console.warn(`[UserInputPlaceholderParser] Type ${typeStr} can only be used with NORMAL subtype, got ${subtypeStr}`);
+
+    // Validate type+control combination: INT, DOUBLE, BOOLEAN only work with TEXT
+    if ((typeStr === 'INT' || typeStr === 'DOUBLE' || typeStr === 'BOOLEAN') && controlStr !== 'TEXT') {
+      logger.warn(`[UserInputPlaceholderParser] Type ${typeStr} can only be used with TEXT control, got ${controlStr}`);
       return null;
     }
-    
+
     const type = typeStr as UserInputField['type'];
-    const subtype = subtypeStr as UserInputField['subtype'];
+    const control = controlStr.toLowerCase() as UserInputField['control'];
     const isRequired = requiredStr === 'REQUIRED';
-    
+
+    // Extract default value from {KEYNAME=default} or KEYNAME=default syntax
+    let actualVarName = varName;
+    let defaultValue: string | undefined;
+    const braceMatch = varName.match(/^\{(.+)\}$/);
+    const inner = braceMatch ? braceMatch[1] : varName;
+    const eqIndex = inner.indexOf('=');
+    if (eqIndex !== -1) {
+      const nameOnly = inner.substring(0, eqIndex);
+      defaultValue = inner.substring(eqIndex + 1);
+      actualVarName = braceMatch ? `{${nameOnly}}` : nameOnly;
+    }
+
     return {
       key,
       originalValue: value,
       type,
-      subtype,
-      varName,
+      control,
+      varName: actualVarName,
       isRequired,
-      label: this.generateFieldLabel(type, subtype, varName, isRequired)
+      label: this.generateFieldLabel(type, control, actualVarName, isRequired),
+      ...(defaultValue !== undefined ? { defaultValue } : {}),
     };
   }
-  
+
   /**
-   * Generate field label
+   * Generate a human-readable field label
    * @param type Data type
-   * @param subtype Input subtype
+   * @param control Input control
    * @param varName Variable name
    * @param isRequired Whether the field is required
    */
   private generateFieldLabel(
     type: UserInputField['type'],
-    subtype: UserInputField['subtype'],
+    control: UserInputField['control'],
     varName: string,
     isRequired: boolean
   ): string {
-    // Convert variable name to readable format (underscores to spaces, capitalize first letter)
+    // Convert variable name to readable format (underscores to spaces, capitalize first letters)
     const readableName = varName
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
-    
-    // Add specific hints based on subtype
+
+    // Add control-specific hints
     let typeHint = '';
-    switch (subtype) {
-      case 'FOLDER':
+    switch (control) {
+      case 'folder':
         typeHint = ' (Select folder)';
         break;
-      case 'EMAIL':
-        typeHint = ' (Email)';
+      case 'file':
+        typeHint = ' (Select file)';
         break;
       default:
-        // For NORMAL type, add hints based on data type
+        // For text control, add type hint for non-string types
         if (type !== 'STRING') {
           typeHint = ` (${type.toLowerCase()})`;
         }
     }
-    
+
     const requiredHint = isRequired ? '' : ' (optional)';
-    
+
     return `${readableName}${typeHint}${requiredHint}`;
   }
 
   /**
-   * Recursively traverse any JSON object to extract all USER_INPUT placeholder fields
+   * Recursively traverse a JSON object, extracting all USER_INPUT placeholder fields
    * @param obj Any JSON object
-   * @param context Context information (optional)
    * @param parentKey Parent key name (for nested objects)
-   * @returns List of parsed fields
+   * @returns Extracted field list
    */
   private traverseAndParse(
-    obj: any, 
-    context?: { currentUserAlias?: string },
+    obj: any,
     parentKey?: string
   ): UserInputField[] {
     const fields: UserInputField[] = [];
-    
+
     if (obj === null || obj === undefined) {
       return fields;
     }
-    
+
     if (typeof obj === 'string') {
-      // If it's a string and is a placeholder, parse it
+      // If it's a string and a placeholder, parse it
       if (this.isUserInputPlaceholder(obj) && parentKey) {
         const field = this.parseSinglePlaceholder(parentKey, obj);
         if (field) {
-          if (field.subtype === 'EMAIL' && context?.currentUserAlias) {
-            field.defaultValue = this.generateUserEmail(context.currentUserAlias);
-          }
           fields.push(field);
         }
       }
     } else if (Array.isArray(obj)) {
       // Traverse array
       obj.forEach((item, index) => {
-        fields.push(...this.traverseAndParse(item, context, `${parentKey || ''}[${index}]`));
+        fields.push(...this.traverseAndParse(item, `${parentKey || ''}[${index}]`));
       });
     } else if (typeof obj === 'object') {
-      // Traverse all key-value pairs of the object
+      // Traverse all key-value pairs
       for (const [key, value] of Object.entries(obj)) {
         if (typeof value === 'string' && this.isUserInputPlaceholder(value)) {
           const field = this.parseSinglePlaceholder(key, value);
           if (field) {
-            if (field.subtype === 'EMAIL' && context?.currentUserAlias) {
-              field.defaultValue = this.generateUserEmail(context.currentUserAlias);
-            }
             fields.push(field);
           }
         } else {
-          // Recursively handle nested objects/arrays
-          fields.push(...this.traverseAndParse(value, context, key));
+          // Recursively process nested objects/arrays
+          fields.push(...this.traverseAndParse(value, key));
         }
       }
     }
-    
+
     return fields;
   }
-  
+
   /**
-   * Parse any JSON config object to extract all USER_INPUT placeholder fields
-   * Recursively traverses the entire object tree to find placeholders
-   * 
+   * Parse an arbitrary JSON config object, extracting all USER_INPUT placeholder fields.
+   * Recursively traverses the entire object tree to find placeholders.
+   *
    * @param config Any config object or JSON string
-   * @param context Context information (optional)
    * @returns Parse result
    */
-  parseConfig(config: any, context?: { currentUserAlias?: string }): ParseUserInputResult {
+  parseConfig(config: any): ParseUserInputResult {
     let configData: any;
-    
-    // Handle JSON string
+
+    // Handle JSON string input
     if (typeof config === 'string') {
       try {
         configData = JSON.parse(config);
@@ -262,26 +270,15 @@ export class UserInputPlaceholderParser {
     } else {
       return { fields: [], hasUserInputFields: false };
     }
-    
-    const fields = this.traverseAndParse(configData, context);
-    
+
+    const fields = this.traverseAndParse(configData);
+
     return {
       fields,
       hasUserInputFields: fields.length > 0
     };
   }
-  
-  /**
-   * Generate user email address (based on alias)
-   * @param alias User alias
-   */
-  generateUserEmail(alias: string): string {
-    if (!alias) return '';
-    
-    // If alias already contains _microsoft suffix, remove it before generating email
-    const emailPrefix = alias.replace(/_microsoft$/i, '');
-    return `${emailPrefix}@microsoft.com`;
-  }
+
 }
 
 // Export singleton instance

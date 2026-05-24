@@ -48,7 +48,7 @@
       "is_chat_fallback": false,
       "model_picker_category": "powerful",
       "model_picker_enabled": true,
-      "name": "Claude Opus 4.6 (1M context)",
+      "name": "Claude Opus 4.6 (1M context)(Internal only)",
       "object": "model",
       "policy": {
         "state": "enabled",
@@ -189,6 +189,7 @@
         "multiplier": 1,
         "restricted_to": [
           "pro",
+          "edu",
           "pro_plus",
           "business",
           "enterprise"
@@ -442,6 +443,11 @@
         "object": "model_capabilities",
         "supports": {
           "parallel_tool_calls": true,
+          "reasoning_effort": [
+            "low",
+            "medium",
+            "high"
+          ],
           "streaming": true,
           "structured_outputs": true,
           "tool_calls": true,
@@ -606,6 +612,12 @@
         "object": "model_capabilities",
         "supports": {
           "parallel_tool_calls": true,
+          "reasoning_effort": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
           "streaming": true,
           "structured_outputs": true,
           "tool_calls": true,
@@ -666,6 +678,11 @@
         "object": "model_capabilities",
         "supports": {
           "parallel_tool_calls": true,
+          "reasoning_effort": [
+            "low",
+            "medium",
+            "high"
+          ],
           "streaming": true,
           "structured_outputs": true,
           "tool_calls": true,
@@ -725,6 +742,11 @@
         "object": "model_capabilities",
         "supports": {
           "parallel_tool_calls": true,
+          "reasoning_effort": [
+            "low",
+            "medium",
+            "high"
+          ],
           "streaming": true,
           "structured_outputs": true,
           "tool_calls": true,
@@ -784,6 +806,11 @@
         "object": "model_capabilities",
         "supports": {
           "parallel_tool_calls": true,
+          "reasoning_effort": [
+            "low",
+            "medium",
+            "high"
+          ],
           "streaming": true,
           "structured_outputs": true,
           "tool_calls": true,

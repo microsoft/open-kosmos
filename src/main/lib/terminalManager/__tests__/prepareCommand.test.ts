@@ -1,44 +1,52 @@
 /**
  * Unit tests for TerminalInstance.prepareCommand() PowerShell handling
- * 
+ *
  * These test cases are derived from actual failures in:
- * - .vscode/debug/Analyze YouTube Video.json
+ * - .vscode/debug/分析 YouTube 视频.json
  * - .vscode/debug/YouTube Podcast Analysis.json
- * 
+ *
  * The bug: Commands like `python scripts/download_audio.py "url"` were being
  * incorrectly wrapped as `& "python scripts/download_audio.py url"`, causing
  * PowerShell to treat the entire string as a single command name.
  */
 
 // Mock electron app before any imports
-jest.mock('electron', () => ({
+vi.mock('electron', async () => ({
   app: {
-    getPath: jest.fn().mockReturnValue('C:\\test\\userData'),
-    getName: jest.fn().mockReturnValue('test-app'),
-    isReady: jest.fn().mockReturnValue(true),
-    on: jest.fn(),
-    whenReady: jest.fn().mockResolvedValue(undefined)
+    getPath: vi.fn().mockReturnValue('C:\\test\\userData'),
+    getName: vi.fn().mockReturnValue('test-app'),
+    isReady: vi.fn().mockReturnValue(true),
+    on: vi.fn(),
+    whenReady: vi.fn().mockResolvedValue(undefined)
   },
   ipcMain: {
-    handle: jest.fn(),
-    on: jest.fn()
+    handle: vi.fn(),
+    on: vi.fn()
   }
 }));
 
 // Mock RuntimeManager
-jest.mock('../../runtime/RuntimeManager', () => ({
+vi.mock('../../runtime/RuntimeManager', async () => ({
   runtimeManager: {
-    getMode: jest.fn().mockReturnValue('system'),
-    isInternal: jest.fn().mockReturnValue(false),
-    getBinPath: jest.fn().mockReturnValue('C:\\test\\bin'),
-    resolveCommand: jest.fn((cmd: string) => cmd)
+    getMode: vi.fn().mockReturnValue('system'),
+    isInternal: vi.fn().mockReturnValue(false),
+    getBinPath: vi.fn().mockReturnValue('C:\\test\\bin'),
+    resolveCommand: vi.fn((cmd: string) => cmd)
   }
 }));
 
 // Mock PlatformConfigManager for testing
-jest.mock('../PlatformConfigManager', () => ({
+vi.mock('../PlatformConfigManager', async () => ({
   PlatformConfigManager: {
     getInstance: () => ({
+      getRunnableShellProfile: async (shell?: string) => ({
+        shellType: shell || 'powershell',
+        profile: {
+          command: 'powershell.exe',
+          args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass'],
+          supportsPersistent: true
+        }
+      }),
       getShellProfile: (shell?: string) => ({
         command: 'powershell.exe',
         args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass'],
@@ -81,22 +89,38 @@ class TestableTerminalInstance extends TerminalInstance {
     // Access the private method via reflection for testing
     return (this as any).prepareCommand('');
   }
-  
+
+  public async testPrepareCommandWithOverride(shellType: string): Promise<{ executable: string; args: string[]; shell: boolean }> {
+    return (this as any).prepareCommand('', undefined, shellType);
+  }
+
+  public testCreateMissingCwdPrefix(originalCwd: string, shellCommand: string): string {
+    return (this as any).createMissingCwdPrefix(originalCwd, shellCommand);
+  }
+
   public testParseCommandString(command: string): { executable: string; inlineArgs: string } {
     return (this as any).parseCommandString(command);
+  }
+
+  public testCreateShellWrapper(command: string, shellType?: string): string {
+    return (this as any).createShellWrapper(command, shellType);
   }
 }
 
 describe('TerminalInstance PowerShell command handling', () => {
   const originalPlatform = process.platform;
-  
+
   beforeAll(() => {
     // Mock Windows platform
     Object.defineProperty(process, 'platform', { value: 'win32' });
   });
-  
+
   afterAll(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
   });
 
   describe('parseCommandString', () => {
@@ -104,9 +128,9 @@ describe('TerminalInstance PowerShell command handling', () => {
       const command = 'python scripts/download_audio.py "https://youtube.com/watch?v=123"';
       const config = createConfig(command);
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = instance.testParseCommandString(command);
-      
+
       expect(result.executable).toBe('python');
       expect(result.inlineArgs).toBe('scripts/download_audio.py "https://youtube.com/watch?v=123"');
     });
@@ -115,9 +139,9 @@ describe('TerminalInstance PowerShell command handling', () => {
       const command = '"C:\\Program Files\\Python\\python.exe" scripts/test.py';
       const config = createConfig(command);
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = instance.testParseCommandString(command);
-      
+
       expect(result.executable).toBe('"C:\\Program Files\\Python\\python.exe"');
       expect(result.inlineArgs).toBe('scripts/test.py');
     });
@@ -126,9 +150,9 @@ describe('TerminalInstance PowerShell command handling', () => {
       const command = 'python';
       const config = createConfig(command);
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = instance.testParseCommandString(command);
-      
+
       expect(result.executable).toBe('python');
       expect(result.inlineArgs).toBe('');
     });
@@ -137,9 +161,9 @@ describe('TerminalInstance PowerShell command handling', () => {
       const command = 'Get-ChildItem "C:\\Users\\test\\path with spaces"';
       const config = createConfig(command);
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = instance.testParseCommandString(command);
-      
+
       expect(result.executable).toBe('Get-ChildItem');
       expect(result.inlineArgs).toBe('"C:\\Users\\test\\path with spaces"');
     });
@@ -147,62 +171,62 @@ describe('TerminalInstance PowerShell command handling', () => {
 
   describe('prepareCommand - actual failure cases from chat logs', () => {
     /**
-     * Case 1: From Analyze YouTube Video.json
+     * Case 1: From "Analyze YouTube Video.json"
      * Original command: python scripts/download_audio.py "https://www.youtube.com/watch?v=6y1fcHUOHZI"
-     * 
+     *
      * BEFORE fix: & "python scripts/download_audio.py https://..." (WRONG - whole string as command)
      * AFTER fix: python scripts/download_audio.py "https://..." (CORRECT)
      */
     it('should NOT wrap python + script path in quotes', async () => {
       const config = createConfig('python scripts/download_audio.py "https://www.youtube.com/watch?v=6y1fcHUOHZI"');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
-      
+
       // The command passed to -Command should NOT have quotes around python
       const fullCommand = result.args[result.args.length - 1];
-      
+
       // Should NOT start with & " (call operator + quoted command)
       expect(fullCommand).not.toMatch(/^& "python/);
-      
+
       // Should be passed as-is or with proper argument quoting
       expect(fullCommand).toContain('python');
       expect(fullCommand).toContain('scripts/download_audio.py');
     });
 
     /**
-     * Case 2: From Analyze YouTube Video.json
+     * Case 2: From "Analyze YouTube Video.json"
      * Original command: Get-ChildItem "C:\Users\v-fuchenyu\AppData\Roaming\openkosmos-app\..."
-     * 
+     *
      * BEFORE fix: & "Get-ChildItem ..." (WRONG)
      * AFTER fix: Get-ChildItem "..." (CORRECT)
      */
     it('should NOT wrap Get-ChildItem cmdlet in quotes', async () => {
       const config = createConfig('Get-ChildItem "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\openkosmos-app\\profiles"');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
       const fullCommand = result.args[result.args.length - 1];
-      
+
       // Should NOT wrap Get-ChildItem in quotes
       expect(fullCommand).not.toMatch(/^& "Get-ChildItem/);
       expect(fullCommand).toContain('Get-ChildItem');
     });
 
     /**
-     * Case 3: From Analyze YouTube Video.json
+     * Case 3: From "Analyze YouTube Video.json"
      * Original command: dir "C:\Users\..."
-     * 
+     *
      * BEFORE fix: & "dir ..." (WRONG)
      * AFTER fix: dir "..." (CORRECT)
      */
     it('should NOT wrap dir command in quotes', async () => {
       const config = createConfig('dir "C:\\Users\\v-fuchenyu\\AppData\\Roaming\\openkosmos-app"');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
       const fullCommand = result.args[result.args.length - 1];
-      
+
       expect(fullCommand).not.toMatch(/^& "dir/);
     });
 
@@ -213,10 +237,10 @@ describe('TerminalInstance PowerShell command handling', () => {
     it('SHOULD add & for quoted executable paths with spaces', async () => {
       const config = createConfig('"C:\\Program Files\\Python\\python.exe" -V');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
       const fullCommand = result.args[result.args.length - 1];
-      
+
       // This case SHOULD have the & operator because the executable itself is quoted
       expect(fullCommand).toMatch(/^& /);
       expect(fullCommand).toContain('"C:\\Program Files\\Python\\python.exe"');
@@ -228,10 +252,10 @@ describe('TerminalInstance PowerShell command handling', () => {
     it('should handle simple commands without modification', async () => {
       const config = createConfig('python --version');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
       const fullCommand = result.args[result.args.length - 1];
-      
+
       expect(fullCommand).not.toMatch(/^& "/);
       expect(fullCommand).toBe('python --version');
     });
@@ -241,11 +265,43 @@ describe('TerminalInstance PowerShell command handling', () => {
     it('should use -Command not -c for PowerShell', async () => {
       const config = createConfig('python test.py');
       const instance = new TestableTerminalInstance(config);
-      
+
       const result = await instance.testPrepareCommand();
-      
+
       expect(result.args).toContain('-Command');
       expect(result.args).not.toContain('-c');
+    });
+  });
+
+  describe('shell wrapper fallback environment', () => {
+    it('uses the effective fallback shell when building Unix shell wrappers', () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+
+      const config = createConfig('node -v', 'bash');
+      const instance = new TestableTerminalInstance(config);
+
+      const fullCommand = instance.testCreateShellWrapper('node -v', 'zsh');
+
+      expect(fullCommand).toContain('.zshrc');
+      expect(fullCommand).not.toContain('.profile');
+    });
+  });
+
+  describe('missing cwd prefix generation', () => {
+    it('uses Set-Location for PowerShell when cwd is missing', () => {
+      const instance = new TestableTerminalInstance(createConfig('python test.py'));
+
+      const prefix = instance.testCreateMissingCwdPrefix('C:\\missing path\\session', 'powershell.exe');
+
+      expect(prefix).toBe('Set-Location -LiteralPath "C:\\missing path\\session"; ');
+    });
+
+    it('uses cmd-compatible cd /d prefix for cmd.exe', () => {
+      const instance = new TestableTerminalInstance(createConfig('dir', 'cmd'));
+
+      const prefix = instance.testCreateMissingCwdPrefix('C:\\missing path\\session', 'cmd.exe');
+
+      expect(prefix).toBe('cd /d "C:\\missing path\\session" && ');
     });
   });
 });

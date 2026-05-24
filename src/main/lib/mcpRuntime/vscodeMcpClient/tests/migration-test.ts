@@ -6,7 +6,7 @@ import { McpConnection } from '../connection/McpConnection';
 import { McpServerDefinition } from '../types/mcpTypes';
 
 async function testMigration() {
-  
+
   try {
     // Test 1: Create a McpConnection with stdio transport
     const stdioDef: McpServerDefinition = {
@@ -16,28 +16,28 @@ async function testMigration() {
       args: ['hello'],
       env: {},
     };
-    
+
     const stdioConnection = new McpConnection(stdioDef);
-    
+
     // Test 2: Create a McpConnection with http transport
     const httpDef: McpServerDefinition = {
       name: 'test-http-server',
       transport: 'http',
       url: 'http://localhost:3000/mcp',
     };
-    
+
     const httpConnection = new McpConnection(httpDef);
-    
+
     // Test 3: Verify state management
-    
+
     // Test 4: Verify connection properties
-    
+
     // Cleanup
     stdioConnection.dispose();
     httpConnection.dispose();
-    
+
     return true;
-    
+
   } catch (error) {
     return false;
   }

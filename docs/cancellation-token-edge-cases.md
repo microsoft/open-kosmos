@@ -3,25 +3,25 @@
 ## 📋 Overview
 
 Based on user feedback, a **simplified fallback strategy** is used to handle edge cases during cancellation:
-- 🎯 **Core Idea**: Retain existing content on cancellation, remove incomplete parts
-- ✅ **Advantage**: Simple, intuitive, user-friendly
+- 🎯 **Core idea**: Retain existing content on cancellation, remove incomplete parts
+- ✅ **Advantage**: Simple, intuitive, and user-friendly
 - 🔄 **Strategy**: Convert incomplete messages into plain-text Assistant Messages
 
 ## 🎯 Unified Cancellation Strategy
 
 ### Strategy Overview
 
-| Cancellation Timing | Handling Approach | Result |
-|---------|---------|------|
-| **Before Tool Execution** | Remove `tool_calls`, keep `content` | Plain-text Assistant Message |
-| **Streaming Content** | Keep already-output `content` | Partial-text Assistant Message |
-| **Streaming Tool Calls** | Remove `tool_calls`, keep `content` | Plain-text Assistant Message |
+| Cancellation Timing | Handling | Result |
+|---------------------|----------|--------|
+| **Before tool execution** | Remove `tool_calls`, retain `content` | Plain-text Assistant Message |
+| **During Streaming Content** | Retain already-output `content` | Partial-text Assistant Message |
+| **During Streaming Tool Calls** | Remove `tool_calls`, retain `content` | Plain-text Assistant Message |
 
 ### Core Principles
 
-1. ✅ **Always Save**: Messages after cancellation **must be saved** to history
+1. ✅ **Always save**: Messages after cancellation **must be saved** to history
 2. 🧹 **Clean up tool_calls**: If `tool_calls` are incomplete or unexecuted, remove them
-3. 📝 **Keep content**: Already-output text content is always retained
+3. 📝 **Retain content**: Already-output text content is always retained
 4. 🔄 **Convert to plain text**: Finally saved as a standard Assistant Message (content only, no tool_calls)
 
 ---
@@ -32,21 +32,21 @@ Based on user feedback, a **simplified fallback strategy** is used to handle edg
 
 ```
 History:
-[User] "Help me read the file"
+[User] "Help me read a file"
 [Assistant] {
   content: "Sure, let me read this file.",
   tool_calls: [{ id: "call_1", name: "read_file", arguments: '{"path":"file.txt"}' }]
 }
-👈 User cancels here (tool has not yet executed)
+👈 User cancels here (tool not yet executed)
 ```
 
 ### Handling Strategy
 
 **Steps**:
-1. Detect cancellation request
+1. Cancellation request detected
 2. Find the last Assistant Message with tool_calls
 3. Remove the `tool_calls` field
-4. Keep the `content` field
+4. Retain the `content` field
 5. Save the modified message
 
 **Code Implementation**:
@@ -58,19 +58,19 @@ if (error instanceof CancellationError) {
     agentName: this.getAgentName()
   });
   
-  // 🔥 Key: Clean up unexecuted tool calls in the last message
+  // 🔥 Key: clean up unexecuted tool calls from the last message
   await this.cleanupIncompleteToolCalls();
   
   // Set status to idle
   this.setChatStatus(ChatStatus.IDLE);
   
-  // Return current messages (cleaned up)
+  // Return current messages (already cleaned)
   return this.getDisplayMessages();
 }
 
 /**
- * 🔥 New: Clean up unexecuted tool calls
- * Called on cancellation, removes tool_calls from the last Assistant Message
+ * 🔥 New: clean up unexecuted tool calls
+ * Called on cancellation to remove tool_calls from the last Assistant Message
  */
 private async cleanupIncompleteToolCalls(): Promise<void> {
   if (!this.currentChatSession) {
@@ -79,7 +79,7 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
   
   const chatHistory = this.currentChatSession.chat_history;
   
-  // Search backwards for the last Assistant Message with tool_calls
+  // Search backward for the last Assistant Message with tool_calls
   for (let i = chatHistory.length - 1; i >= 0; i--) {
     const msg = chatHistory[i];
     
@@ -90,7 +90,7 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
         hasContent: !!MessageHelper.getText(msg)
       });
       
-      // 🔥 Remove tool_calls, keep content
+      // 🔥 Remove tool_calls, retain content
       delete msg.tool_calls;
       
       // Also update context_history
@@ -103,7 +103,7 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
       // Save changes
       await this.saveChatSession();
       
-      break; // Only process the last one
+      break; // Only handle the last one
     }
   }
 }
@@ -112,10 +112,10 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
 **Result**:
 ```
 History:
-[User] "Help me read the file"
+[User] "Help me read a file"
 [Assistant] {
   content: "Sure, let me read this file."
-  // tool_calls have been removed ✅
+  // tool_calls removed ✅
 }
 ```
 
@@ -126,25 +126,25 @@ History:
 ### Scenario Description
 
 ```
-Streaming process:
-[Assistant] content = "This is an explanation about asynchronous programming. In JavaScript, async/await is..."
+Streaming in progress:
+[Assistant] content = "This is an explanation of asynchronous programming. In JavaScript, async/await is..."
 👈 User cancels here
-Not received: "...syntactic sugar for handling asynchronous operations."
+Not received: "...a syntactic sugar for handling asynchronous operations."
 ```
 
 ### Handling Strategy
 
 **Steps**:
-1. Detect cancellation request
+1. Cancellation request detected
 2. Stop streaming
-3. Use already-accumulated `fullContent`
-4. Build Assistant Message (content only, no tool_calls)
+3. Use the already-accumulated `fullContent`
+4. Build an Assistant Message (content only, no tool_calls)
 5. Save to history
 
 **Code Implementation**:
 
 ```typescript
-// In makeStreamingApiCall()
+// Inside makeStreamingApiCall()
 private async makeStreamingApiCall(
   requestOptions: any,
   cancellationToken: CancellationToken
@@ -165,7 +165,7 @@ private async makeStreamingApiCall(
           accumulatedToolCallsCount: toolCalls.length
         });
         
-        // 🔥 Break directly, use already-accumulated content
+        // 🔥 Break directly, use accumulated content
         break;
       }
       
@@ -178,26 +178,26 @@ private async makeStreamingApiCall(
     reader.releaseLock();
   }
   
-  // 🔥 Build the final Message
+  // 🔥 Build final Message
   const result: Message = MessageHelper.createTextMessage(
     fullContent,  // Use accumulated content (may be partial)
     'assistant',
     messageId
   );
   
-  // 🔥 Key: If ended due to cancellation, do not add tool_calls
+  // 🔥 Key: do not add tool_calls if cancelled
   if (!cancellationToken.isCancellationRequested && toolCalls.length > 0) {
-    // Normal completion → add tool_calls
+    // Only add tool_calls on normal completion
     result.tool_calls = toolCalls.filter(tc => tc && tc.id);
   } else if (cancellationToken.isCancellationRequested && toolCalls.length > 0) {
-    // Cancelled with tool_calls present, log but do not add
+    // Cancelled with tool_calls — log but do not add
     logger.info('[AgentChat] Discarding tool_calls due to cancellation', 'makeStreamingApiCall', {
       toolCallsCount: toolCalls.length,
       messageId
     });
   }
   
-  // Send completion chunk
+  // Send complete chunk
   if (this.eventSender) {
     const completeChunk: StreamingChunk = {
       chunkId: `${messageId}_complete`,
@@ -222,7 +222,7 @@ private async makeStreamingApiCall(
 History:
 [User] "Explain async/await"
 [Assistant] {
-  content: "This is an explanation about asynchronous programming. In JavaScript, async/await is..."
+  content: "This is an explanation of asynchronous programming. In JavaScript, async/await is..."
   // Partial content, but valid ✅
 }
 ```
@@ -234,7 +234,7 @@ History:
 ### Scenario Description
 
 ```
-Streaming process:
+Streaming in progress:
 [Assistant] content = "Let me read this file."
 [Tool Call Chunk 1] { id: "call_1", name: "read_file" }
 [Tool Call Chunk 2] { arguments: '{"path":' }
@@ -245,7 +245,7 @@ Not received: { arguments: '"/file.txt"}' }
 ### Handling Strategy
 
 **Steps**:
-1. Detect cancellation request
+1. Cancellation request detected
 2. Stop streaming
 3. Use already-accumulated `fullContent`
 4. **Discard** incomplete `toolCalls`
@@ -254,15 +254,15 @@ Not received: { arguments: '"/file.txt"}' }
 
 **Code Implementation**:
 
-Same code as Scenario 2. The key part is:
+Same code as Scenario 2. The key is:
 
 ```typescript
-// 🔥 Key check: Always discard tool_calls on cancellation
+// 🔥 Key decision: always discard tool_calls on cancellation
 if (!cancellationToken.isCancellationRequested && toolCalls.length > 0) {
   // Normal completion → add tool_calls
   result.tool_calls = toolCalls.filter(tc => tc && tc.id);
 } else if (cancellationToken.isCancellationRequested && toolCalls.length > 0) {
-  // Cancelled → discard tool_calls, keep content only
+  // Cancelled → discard tool_calls, keep only content
   logger.info('[AgentChat] Discarding incomplete tool_calls due to cancellation', 'makeStreamingApiCall', {
     toolCallsCount: toolCalls.length,
     messageId,
@@ -275,22 +275,22 @@ if (!cancellationToken.isCancellationRequested && toolCalls.length > 0) {
 **Result**:
 ```
 History:
-[User] "Help me read the file"
+[User] "Help me read a file"
 [Assistant] {
   content: "Let me read this file."
-  // tool_calls have been discarded ✅
+  // tool_calls discarded ✅
 }
 ```
 
 ---
 
-## 🔄 Complete Cancellation Flow
+## 🔄 Complete Cancellation Handling Flow
 
 ```typescript
 // src/main/lib/chat/agentChat.ts
 
 /**
- * 🔄 Modified: streamMessage with cancellation support
+ * 🔄 Modified: streamMessage supports cancellation
  */
 async streamMessage(
   userMessage: Message,
@@ -315,26 +315,26 @@ async streamMessage(
         agentName: this.getAgentName()
       });
       
-      // 🔥 Scenario 1 handling: Clean up unexecuted tool calls in the last message
+      // 🔥 Scenario 1 handling: clean up unexecuted tool calls from the last message
       await this.cleanupIncompleteToolCalls();
       
       // Set status to idle
       this.setChatStatus(ChatStatus.IDLE);
       
-      // 🔥 Return current messages (cleaned up, with partial content)
+      // 🔥 Return current messages (cleaned, including partial content)
       return this.getDisplayMessages();
     }
     
     logger.error(`[AgentChat] Conversation processing failed: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   } finally {
-    // Clean up token reference
+    // Clear token reference
     this.currentCancellationToken = CancellationTokenStatic.None;
   }
 }
 
 /**
- * 🔥 New: Clean up unexecuted tool calls
+ * 🔥 New: clean up unexecuted tool calls
  */
 private async cleanupIncompleteToolCalls(): Promise<void> {
   if (!this.currentChatSession) {
@@ -344,18 +344,18 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
   const chatHistory = this.currentChatSession.chat_history;
   let cleaned = false;
   
-  // Search backwards for the last Assistant Message with tool_calls
+  // Search backward for the last Assistant Message with tool_calls
   for (let i = chatHistory.length - 1; i >= 0; i--) {
     const msg = chatHistory[i];
     
     if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      // Check if these tool_calls have been executed (i.e., corresponding tool messages exist after them)
+      // Check whether these tool_calls have been executed (i.e., there are corresponding tool messages after them)
       const hasCorrespondingToolMessages = msg.tool_calls.every(tc =>
         chatHistory.some(m => m.role === 'tool' && m.tool_call_id === tc.id)
       );
       
       if (!hasCorrespondingToolMessages) {
-        // 🔥 Has unexecuted tool_calls, remove them
+        // 🔥 There are unexecuted tool_calls — remove them
         logger.info('[AgentChat] Removing incomplete tool_calls from assistant message', 'cleanupIncompleteToolCalls', {
           messageId: msg.id,
           toolCallsCount: msg.tool_calls.length,
@@ -373,7 +373,7 @@ private async cleanupIncompleteToolCalls(): Promise<void> {
           delete contextMsg.tool_calls;
         }
         
-        break; // Only process the last one
+        break; // Only handle the last one
       }
     }
   }
@@ -404,7 +404,7 @@ private async makeStreamingApiCall(
   try {
     const abortController = new AbortController();
     
-    // Listen for cancellation token
+    // Listen to cancellation token
     const cancellationListener = cancellationToken.onCancellationRequested(() => {
       logger.info('[AgentChat] Aborting fetch request due to cancellation', 'makeStreamingApiCall');
       abortController.abort();
@@ -439,7 +439,7 @@ private async makeStreamingApiCall(
             messageId
           });
           
-          // Break directly, use already-accumulated content
+          // Break directly, use accumulated content
           break;
         }
         
@@ -464,7 +464,7 @@ private async makeStreamingApiCall(
               if (data.choices && data.choices[0] && data.choices[0].delta) {
                 const delta = data.choices[0].delta;
                 
-                // Process content
+                // Handle content
                 if (delta.content) {
                   fullContent += delta.content;
                   
@@ -485,7 +485,7 @@ private async makeStreamingApiCall(
                   }
                 }
                 
-                // Process tool_calls
+                // Handle tool_calls
                 if (delta.tool_calls) {
                   if (toolCalls.length === 0 && delta.tool_calls.length > 0) {
                     this.setChatStatus(ChatStatus.RECEIVED_RESPONSE);
@@ -538,14 +538,14 @@ private async makeStreamingApiCall(
       cancellationListener.dispose();
     }
     
-    // 🔥 Build the final Message
+    // 🔥 Build final Message
     const result: Message = MessageHelper.createTextMessage(
       fullContent,  // Use accumulated content (may be partial)
       'assistant',
       messageId
     );
     
-    // 🔥 Key check: Only add tool_calls when not cancelled and tool_calls are complete
+    // 🔥 Key decision: only add tool_calls if not cancelled and complete
     if (!cancellationToken.isCancellationRequested && toolCalls.length > 0) {
       // Normal completion → add tool_calls
       result.tool_calls = toolCalls.filter(tc => tc && tc.id);
@@ -564,7 +564,7 @@ private async makeStreamingApiCall(
       // Do not set result.tool_calls
     }
     
-    // Send completion chunk
+    // Send complete chunk
     if (this.eventSender) {
       const completeChunk: StreamingChunk = {
         chunkId: `${messageId}_complete`,
@@ -603,10 +603,10 @@ private async makeStreamingApiCall(
 
 ---
 
-## 📊 Unified Cancellation Flow Chart
+## 📊 Unified Cancellation Flow Diagram
 
 ```
-User clicks cancel
+User clicks Cancel
      ↓
 CancellationToken.cancel()
      ↓
@@ -626,7 +626,7 @@ Call cleanupIncompleteToolCalls()
      ↓
 Remove tool_calls from the last message (if any)
      ↓
-saveChatSession() saves cleaned-up messages ✅
+saveChatSession() saves the cleaned message ✅
      ↓
 setChatStatus(IDLE)
      ↓
@@ -640,12 +640,12 @@ Return getDisplayMessages()
 ### Comparison with VSCode Approach
 
 | Feature | VSCode Approach | Kosmos Simplified Approach |
-|------|------------|----------------|
-| **Complexity** | High (requires validateToolMessages) | Low (directly clean up tool_calls) |
-| **User Experience** | Cannot see partial output after cancellation | Retains partial output after cancellation ✅ |
-| **History Consistency** | Requires filtering history messages | History is always complete and valid ✅ |
-| **Implementation Difficulty** | Requires validation in multiple places | Centralized handling ✅ |
-| **Error Risk** | May miss edge cases | Unified strategy, low risk ✅ |
+|---------|----------------|----------------------------|
+| **Complexity** | High (requires validateToolMessages) | Low (directly clean tool_calls) |
+| **User experience** | Partial output not visible after cancel | Partial output retained after cancel ✅ |
+| **History consistency** | Requires filtering history messages | History always complete and valid ✅ |
+| **Implementation difficulty** | Requires validation in multiple places | Centralized handling ✅ |
+| **Error risk** | May miss edge cases | Unified strategy, low risk ✅ |
 
 ### Core Advantages
 
@@ -669,7 +669,7 @@ test('should remove tool_calls when cancelled before execution', async () => {
   const userMessage = MessageHelper.createTextMessage('Read file.txt', 'user', 'msg_1');
   const source = new CancellationTokenSource();
   
-  // Simulate: Cancel immediately after receiving assistant message with tool_calls
+  // Simulate: cancel immediately after receiving assistant message with tool_calls
   const streamPromise = agentChat.streamMessage(userMessage, source.token);
   
   await waitForAssistantMessage();
@@ -677,11 +677,11 @@ test('should remove tool_calls when cancelled before execution', async () => {
   
   const messages = await streamPromise;
   
-  // Verify: The last assistant message has no tool_calls
+  // Verify: the last assistant message has no tool_calls
   const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
   expect(lastAssistant).toBeDefined();
   expect(lastAssistant!.tool_calls).toBeUndefined();
-  expect(MessageHelper.getText(lastAssistant!)).toBeTruthy(); // Has content
+  expect(MessageHelper.getText(lastAssistant!)).toBeTruthy(); // has content
 });
 ```
 
@@ -711,13 +711,13 @@ test('should keep partial content when cancelled during streaming', async () => 
   
   const messages = await streamPromise;
   
-  // Verify: Partial content was retained
+  // Verify: partial content is retained
   const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
   const content = MessageHelper.getText(lastAssistant!);
   
   expect(content).toBeTruthy();
   expect(content.length).toBeGreaterThan(0);
-  expect(chunks.join('')).toContain(content); // Content matches
+  expect(chunks.join('')).toContain(content); // content matches
 });
 ```
 
@@ -733,7 +733,7 @@ test('should discard incomplete tool_calls when cancelled', async () => {
   
   const streamPromise = agentChat.streamMessage(userMessage, source.token);
   
-  // Wait for tool_calls streaming to begin
+  // Wait until tool_calls start arriving
   await waitForToolCallStart();
   
   // Cancel immediately (tool_calls are incomplete)
@@ -741,11 +741,11 @@ test('should discard incomplete tool_calls when cancelled', async () => {
   
   const messages = await streamPromise;
   
-  // Verify: No tool_calls, but has content
+  // Verify: no tool_calls, but has content
   const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
   expect(lastAssistant).toBeDefined();
-  expect(lastAssistant!.tool_calls).toBeUndefined(); // Discarded
-  expect(MessageHelper.getText(lastAssistant!)).toBeTruthy(); // Has content
+  expect(lastAssistant!.tool_calls).toBeUndefined(); // discarded
+  expect(MessageHelper.getText(lastAssistant!)).toBeTruthy(); // has content
 });
 ```
 
@@ -753,7 +753,7 @@ test('should discard incomplete tool_calls when cancelled', async () => {
 
 ## 📚 StreamingChunk Type Extension
 
-To support cancellation status notifications, the `StreamingChunk` type needs to be extended:
+To support cancellation status notifications, extend the `StreamingChunk` type:
 
 ```typescript
 // src/main/lib/types/streamingTypes.ts
@@ -761,11 +761,11 @@ To support cancellation status notifications, the `StreamingChunk` type needs to
 export interface StreamingChunk {
   // ... existing fields
   
-  // Complete chunk - message completion flag
+  // Complete chunk - message completion marker
   complete?: {
     messageId: string;
     hasToolCalls: boolean;
-    wasCancelled?: boolean;  // 🔥 New: Whether completed due to cancellation
+    wasCancelled?: boolean;  // 🔥 New: whether completed due to cancellation
   };
 }
 ```
@@ -779,14 +779,14 @@ export interface StreamingChunk {
 1. ✅ **Always save messages on cancellation**: Users can see partial output
 2. ✅ **Clean up tool_calls**: Ensure history message integrity
 3. ✅ **Retain content**: Already-output text is always valuable
-4. ✅ **Unified handling**: Centralized cleanup in the `streamMessage` catch block
+4. ✅ **Centralized handling**: Clean up in the `catch` block of `streamMessage`
 
 ### User Experience
 
 - 🎨 See partial results immediately after cancellation
 - 📝 Can continue the conversation based on partial output
-- 🔄 Clear, complete, and valid history records
-- ⚡ Fast response time (< 500ms)
+- 🔄 History is clear, complete, and valid
+- ⚡ Fast response (< 500ms)
 
 ---
 

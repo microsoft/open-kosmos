@@ -1,7 +1,7 @@
 /**
  * ApplySkillToAgentsDialog Component
  *
- * A unified dialog shown after a skill is added (from device or library).
+ * A unified dialog shown after a skill is added from device.
  * Displays all local agents and lets the user choose which agents to apply the skill to.
  * Agents already using the skill are pre-checked and disabled.
  */
@@ -17,14 +17,23 @@ import {
 } from '../ui/dialog'
 import { useProfileData } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
+import { atom } from '@/atom'
 
-interface ApplySkillToAgentsDialogProps {
+interface DialogState {
   open: boolean
-  onOpenChange: (open: boolean) => void
   skillName: string
 }
 
+const zeroState: DialogState = { open: false, skillName: '' };
+export const ApplySkillDialogAtom = atom(zeroState, (get, set) => {
+  const cancel = () => set(zeroState);
+  const setSkill = (skillName: string) => set({ open: true, skillName });
+  const setOpen = (open: boolean) => set({ ...get(), open });
+  return { cancel, setSkill, setOpen };
+});
+
 interface AgentItem {
+  targetKey: string
   chatId: string
   agentName: string
   emoji: string
@@ -32,146 +41,140 @@ interface AgentItem {
   alreadyApplied: boolean
 }
 
-const ApplySkillToAgentsDialog: React.FC<ApplySkillToAgentsDialogProps> = ({
-  open,
-  onOpenChange,
-  skillName,
-}) => {
-  const { chats, chatOps } = useProfileData()
+const ApplySkillToAgentsDialog: React.FC = () => {
+  const [{ open, skillName }, actions] = ApplySkillDialogAtom.use();
+  const { chats } = useProfileData()
   const { showSuccess, showError } = useToast()
   const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set())
   const [isApplying, setIsApplying] = useState(false)
+  const [prevOpen, setPrevOpen] = useState(false)
 
-  // Extract agents from chats
-  // Skip expensive computation when dialog is closed to avoid unnecessary re-renders
   const agentItems: AgentItem[] = useMemo(() => {
     if (!open) return []
+
     const items: AgentItem[] = []
+
     for (const chat of chats) {
       if (chat.chat_type === 'single_agent' && chat.agent) {
-          items.push({
-            chatId: chat.chat_id,
-            agentName: chat.agent.name,
-            emoji: chat.agent.emoji,
-            avatar: chat.agent.avatar,
-            alreadyApplied: (chat.agent.skills || []).includes(skillName),
-          })
-      } else if (chat.chat_type === 'multi_agent' && chat.agents) {
+        items.push({
+          targetKey: `${chat.chat_id}:${chat.agent.name}`,
+          chatId: chat.chat_id,
+          agentName: chat.agent.name,
+          emoji: chat.agent.emoji,
+          avatar: chat.agent.avatar,
+          alreadyApplied: (chat.agent.skills || []).includes(skillName),
+        })
+      }
+
+      if (chat.chat_type === 'multi_agent' && chat.agents) {
         for (const agent of chat.agents) {
-            items.push({
-              chatId: chat.chat_id,
-              agentName: agent.name,
-              emoji: agent.emoji,
-              avatar: agent.avatar,
-              alreadyApplied: (agent.skills || []).includes(skillName),
-            })
+          items.push({
+            targetKey: `${chat.chat_id}:${agent.name}`,
+            chatId: chat.chat_id,
+            agentName: agent.name,
+            emoji: agent.emoji,
+            avatar: agent.avatar,
+            alreadyApplied: (agent.skills || []).includes(skillName),
+          })
         }
       }
     }
-    console.log('[ApplySkillToAgentsDialog] agentItems recalculated:', items.map(i => ({ chatId: i.chatId, name: i.agentName, alreadyApplied: i.alreadyApplied })))
+
     return items
   }, [chats, skillName, open])
 
-  // Track previous open state to detect open transition
-  const [prevOpen, setPrevOpen] = useState(false)
-
-  // Initialize selectedAgents only when dialog opens (false -> true transition)
   useEffect(() => {
-    console.log('[ApplySkillToAgentsDialog] open effect:', { open, prevOpen, agentItemsCount: agentItems.length })
     if (open && !prevOpen) {
       const initialSelected = new Set<string>()
       for (const item of agentItems) {
         if (item.alreadyApplied) {
-          initialSelected.add(item.chatId)
+          initialSelected.add(item.targetKey)
         }
       }
-      console.log('[ApplySkillToAgentsDialog] Initializing selectedAgents:', Array.from(initialSelected))
       setSelectedAgents(initialSelected)
     }
-    setPrevOpen(open)
-  }, [open])
 
-  const handleToggle = useCallback((chatId: string, alreadyApplied: boolean) => {
-    console.log('[ApplySkillToAgentsDialog] handleToggle called:', { chatId, alreadyApplied })
+    setPrevOpen(open)
+  }, [agentItems, open, prevOpen])
+
+  const handleToggle = useCallback((targetKey: string, alreadyApplied: boolean) => {
     if (alreadyApplied) {
-      console.log('[ApplySkillToAgentsDialog] Toggle ignored - already applied')
       return
     }
+
     setSelectedAgents(prev => {
       const next = new Set(prev)
-      const wasSelected = next.has(chatId)
-      if (wasSelected) {
-        next.delete(chatId)
+      if (next.has(targetKey)) {
+        next.delete(targetKey)
       } else {
-        next.add(chatId)
+        next.add(targetKey)
       }
-      console.log('[ApplySkillToAgentsDialog] selectedAgents updated:', { chatId, wasSelected, nowSelected: !wasSelected, allSelected: Array.from(next) })
       return next
     })
   }, [])
 
+  const selectableAgents = useMemo(() => agentItems.filter(item => !item.alreadyApplied), [agentItems])
+  const isAllSelected = selectableAgents.length > 0 && selectableAgents.every(item => selectedAgents.has(item.targetKey))
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedAgents(prev => {
+      const next = new Set(prev)
+      if (isAllSelected) {
+        for (const item of selectableAgents) {
+          next.delete(item.targetKey)
+        }
+      } else {
+        for (const item of selectableAgents) {
+          next.add(item.targetKey)
+        }
+      }
+      return next
+    })
+  }, [isAllSelected, selectableAgents])
+
   const handleApply = useCallback(async () => {
-    // Find agents that are newly selected (not already applied)
-    const toApply = agentItems.filter(
-      item => !item.alreadyApplied && selectedAgents.has(item.chatId)
-    )
-
-    console.log('[ApplySkillToAgentsDialog] handleApply:', { toApplyCount: toApply.length, toApply: toApply.map(i => i.agentName) })
-
+    const toApply = agentItems.filter(item => !item.alreadyApplied && selectedAgents.has(item.targetKey))
     if (toApply.length === 0) {
-      onOpenChange(false)
+      actions.setOpen(false)
       return
     }
 
     setIsApplying(true)
-    let successCount = 0
-    let failCount = 0
-
-    for (const item of toApply) {
-      // Find the chat to get current skills
-      const chat = chats.find(c => c.chat_id === item.chatId)
-      if (!chat) continue
-
-      const agent = chat.chat_type === 'single_agent' ? chat.agent : chat.agents?.find(a => a.name === item.agentName)
-      if (!agent) continue
-
-      const currentSkills = agent.skills || []
-      const updatedSkills = [...currentSkills, skillName]
-
-      const result = await chatOps.updateChatAgent(item.chatId, { skills: updatedSkills })
-      if (result.success) {
-        successCount++
-      } else {
-        failCount++
-      }
-    }
-
+    const result = await window.electronAPI.skillLibrary.applySkillToAgents(
+      skillName,
+      toApply.map(item => ({ chatId: item.chatId, agentName: item.agentName })),
+    )
     setIsApplying(false)
 
-    if (successCount > 0) {
-      showSuccess(`Skill "${skillName}" applied to ${successCount} agent${successCount > 1 ? 's' : ''}`)
-    }
-    if (failCount > 0) {
-      showError(`Failed to apply skill to ${failCount} agent${failCount > 1 ? 's' : ''}`)
+    if (!result.success && result.appliedCount === 0) {
+      showError(result.message || result.error || `Failed to apply skill "${skillName}"`)
+      return
     }
 
-    onOpenChange(false)
-  }, [agentItems, selectedAgents, chats, chatOps, skillName, onOpenChange, showSuccess, showError])
+    if (result.appliedCount > 0) {
+      showSuccess(`Skill "${skillName}" applied to ${result.appliedCount} agent${result.appliedCount > 1 ? 's' : ''}`)
+    }
+
+    if (result.failedCount > 0) {
+      showError(`Failed to apply skill to ${result.failedCount} agent${result.failedCount > 1 ? 's' : ''}`)
+    }
+
+    actions.setOpen(false)
+  }, [agentItems, selectedAgents, skillName, showSuccess, showError])
 
   const handleSkip = useCallback(() => {
-    onOpenChange(false)
-  }, [onOpenChange])
+    actions.setOpen(false)
+  }, [])
 
   const newlySelectedCount = agentItems.filter(
-    item => !item.alreadyApplied && selectedAgents.has(item.chatId)
+    item => !item.alreadyApplied && selectedAgents.has(item.targetKey),
   ).length
 
-  // Skip rendering entirely when dialog is closed to avoid unnecessary DOM updates
   if (!open) return null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} className="z-[10000]">
-      <DialogContent className="w-[420px] max-w-[420px]">
+    <Dialog open={open} onOpenChange={actions.setOpen} className="z-10000">
+      <DialogContent className="w-[480px] max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Apply to Agents</DialogTitle>
           <DialogDescription>
@@ -179,7 +182,25 @@ const ApplySkillToAgentsDialog: React.FC<ApplySkillToAgentsDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-3 max-h-[320px] overflow-y-auto">
+        {selectableAgents.length > 0 && (
+          <div className="mt-3">
+            <div
+              className="flex items-center gap-3 px-3 py-1 rounded-md cursor-pointer select-none hover:bg-gray-100"
+              onClick={handleSelectAll}
+            >
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                readOnly
+                tabIndex={-1}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+              />
+              <span className="text-sm text-gray-700">{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="py-3 min-h-[244px] max-h-[552px] overflow-y-auto">
           {agentItems.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-4">
               No agents found.
@@ -188,23 +209,20 @@ const ApplySkillToAgentsDialog: React.FC<ApplySkillToAgentsDialogProps> = ({
             <div className="space-y-1">
               {agentItems.map((item) => (
                 <div
-                  key={item.chatId}
+                  key={item.targetKey}
                   role="checkbox"
-                  aria-checked={selectedAgents.has(item.chatId)}
+                  aria-checked={selectedAgents.has(item.targetKey)}
                   tabIndex={0}
                   className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors select-none ${
                     item.alreadyApplied
                       ? 'opacity-60 cursor-default'
                       : 'hover:bg-gray-100'
                   }`}
-                  onClick={() => {
-                    console.log('[ApplySkillToAgentsDialog] row clicked:', { chatId: item.chatId, agentName: item.agentName, alreadyApplied: item.alreadyApplied, currentChecked: selectedAgents.has(item.chatId) })
-                    handleToggle(item.chatId, item.alreadyApplied)
-                  }}
+                  onClick={() => handleToggle(item.targetKey, item.alreadyApplied)}
                 >
                   <input
                     type="checkbox"
-                    checked={selectedAgents.has(item.chatId)}
+                    checked={selectedAgents.has(item.targetKey)}
                     disabled={item.alreadyApplied}
                     readOnly
                     tabIndex={-1}

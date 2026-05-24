@@ -2,16 +2,16 @@
 import { RefreshTokenErrorType, HttpErrorInfo, RefreshTokenErrorAnalysis, RetryStrategy, NetworkErrorPattern } from './types/refreshTokenTypes';
 
 /**
- * Core error analysis engine - Precise HTTP status code error analysis system
- * 
+ * Core error analysis engine - precise HTTP status code error analysis system
+ *
  * This class implements six error type analyses based on HTTP status codes,
- * solving the core problem of the original system being unable to distinguish
- * between actual token failures and network errors.
+ * solving the core problem where the original system could not distinguish
+ * true token invalidation from network errors.
  */
 export class RefreshTokenAnalyzer {
-  
+
   /**
-   * Network error identification patterns
+   * Network error recognition patterns
    */
   private static readonly NETWORK_ERROR_PATTERNS: NetworkErrorPattern[] = [
     { code: 'ECONNREFUSED', description: 'Connection refused' },
@@ -26,13 +26,13 @@ export class RefreshTokenAnalyzer {
 
   /**
    * Precise error determination based on HTTP status codes
-   * 
-   * This is the core of the fix - replacing the original coarse judgment based on retry count
-   * with precise error type identification using HTTP status codes.
+   *
+   * This is the core of the fix - replaces the original coarse judgment based on
+   * retry counts with precise error type identification using HTTP status codes.
    */
   public static analyzeHttpError(error: HttpErrorInfo): RefreshTokenErrorAnalysis {
     const { status, message, code } = error;
-    
+
     // 401: Token expired but may be refreshable
     if (status === 401) {
       return {
@@ -44,7 +44,7 @@ export class RefreshTokenAnalyzer {
         message: 'Token expired but may be refreshable'
       };
     }
-    
+
     // 403: Token invalid or insufficient permissions
     if (status === 403) {
       return {
@@ -56,7 +56,7 @@ export class RefreshTokenAnalyzer {
         message: 'Token is invalid or insufficient permissions'
       };
     }
-    
+
     // 429: Rate limited
     if (status === 429) {
       return {
@@ -68,7 +68,7 @@ export class RefreshTokenAnalyzer {
         message: 'Rate limited, should retry with backoff'
       };
     }
-    
+
     // 5xx: Server error
     if (status >= 500 && status < 600) {
       return {
@@ -80,7 +80,7 @@ export class RefreshTokenAnalyzer {
         message: 'Server error, retry may succeed'
       };
     }
-    
+
     // Network error detection
     if (this.isNetworkError(code, message)) {
       return {
@@ -92,8 +92,8 @@ export class RefreshTokenAnalyzer {
         message: 'Network connectivity issue'
       };
     }
-    
-    // Other unknown errors - handled conservatively
+
+    // Other unknown errors - handle conservatively
     return {
       errorType: RefreshTokenErrorType.UNKNOWN_ERROR,
       isRecoverable: false,
@@ -109,17 +109,17 @@ export class RefreshTokenAnalyzer {
    */
   private static isNetworkError(code?: string | null, message?: string): boolean {
     if (code) {
-      return this.NETWORK_ERROR_PATTERNS.some(pattern => 
+      return this.NETWORK_ERROR_PATTERNS.some(pattern =>
         pattern.code === code
       );
     }
-    
+
     if (message) {
       return this.NETWORK_ERROR_PATTERNS.some(pattern =>
         pattern.messagePattern && pattern.messagePattern.test(message)
       );
     }
-    
+
     return false;
   }
 
@@ -135,7 +135,7 @@ export class RefreshTokenAnalyzer {
           backoffMs: 1000,
           backoffMultiplier: 2.0
         };
-      
+
       case RefreshTokenErrorType.RATE_LIMITED:
         return {
           shouldRetry: true,
@@ -143,7 +143,7 @@ export class RefreshTokenAnalyzer {
           backoffMs: 5000,
           backoffMultiplier: 2.0
         };
-      
+
       case RefreshTokenErrorType.SERVER_ERROR:
         return {
           shouldRetry: true,
@@ -151,7 +151,7 @@ export class RefreshTokenAnalyzer {
           backoffMs: 2000,
           backoffMultiplier: 1.5
         };
-      
+
       case RefreshTokenErrorType.NETWORK_ERROR:
         return {
           shouldRetry: true,
@@ -159,7 +159,7 @@ export class RefreshTokenAnalyzer {
           backoffMs: 1000,
           backoffMultiplier: 1.5
         };
-      
+
       case RefreshTokenErrorType.TOKEN_INVALID:
         return {
           shouldRetry: false,
@@ -167,7 +167,7 @@ export class RefreshTokenAnalyzer {
           backoffMs: 0,
           backoffMultiplier: 1.0
         };
-      
+
       default:
         return {
           shouldRetry: false,
@@ -179,43 +179,43 @@ export class RefreshTokenAnalyzer {
   }
 
   /**
-   * Get user-friendly error message
+   * Get a user-friendly error message
    */
   public static getUserFriendlyMessage(analysis: RefreshTokenErrorAnalysis): string {
     switch (analysis.errorType) {
       case RefreshTokenErrorType.TOKEN_EXPIRED:
-        return 'Authentication expired, attempting to refresh...';
-      
+        return 'Authentication credentials have expired, attempting to refresh...';
+
       case RefreshTokenErrorType.TOKEN_INVALID:
-        return 'Authentication invalid, please log in again';
-      
+        return 'Authentication credentials are invalid, please sign in again';
+
       case RefreshTokenErrorType.RATE_LIMITED:
         return 'Too many requests, please try again later';
-      
+
       case RefreshTokenErrorType.SERVER_ERROR:
         return 'Server temporarily unavailable, retrying...';
-      
+
       case RefreshTokenErrorType.NETWORK_ERROR:
         return 'Network connection error, retrying...';
-      
+
       default:
-        return 'Unknown error occurred during authentication';
+        return 'An unknown error occurred during authentication';
     }
   }
 
   /**
-   * Check if retrying should stop immediately
+   * Check whether retrying should stop immediately
    */
   public static shouldStopRetrying(analysis: RefreshTokenErrorAnalysis, currentRetryCount: number): boolean {
     if (!analysis.retryStrategy.shouldRetry) {
       return true;
     }
-    
+
     return currentRetryCount >= analysis.retryStrategy.maxRetries;
   }
 
   /**
-   * Calculate next retry backoff delay
+   * Calculate the delay for the next retry
    */
   public static calculateBackoffDelay(analysis: RefreshTokenErrorAnalysis, retryCount: number): number {
     const { backoffMs, backoffMultiplier } = analysis.retryStrategy;

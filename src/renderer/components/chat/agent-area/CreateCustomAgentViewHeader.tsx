@@ -25,9 +25,9 @@ interface CreateCustomAgentViewHeaderProps {
 }
 
 /**
- * CreateCustomAgentViewHeader - Header component for Create Custom Agent page
+ * CreateCustomAgentViewHeader - Header component for the Create Custom Agent page
  *
- * Uses unified Header style (unified-header)
+ * Uses the unified header style (unified-header)
  * Layout: [Back button] "Create Custom Agent"
  */
 const CreateCustomAgentViewHeader: React.FC<CreateCustomAgentViewHeaderProps> = ({ onBack }) => {
@@ -35,8 +35,8 @@ const CreateCustomAgentViewHeader: React.FC<CreateCustomAgentViewHeaderProps> = 
     <header className="unified-header">
       <div className="header-title">
         {onBack && (
-          <button 
-            className="btn-action" 
+          <button
+            className="btn-action"
             onClick={onBack}
             type="button"
             aria-label="Back"

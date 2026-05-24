@@ -1,4 +1,4 @@
-// src/main/lib/auth/authManager.ts - Main process auth manager V2.0
+// src/main/lib/auth/authManager.ts - Main process Auth Manager V2.0
 import { BrowserWindow, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,20 +14,26 @@ import {
 } from './types/authTypes';
 import { GhcAuthManager } from './ghcAuth';
 import { RefreshTokenAnalyzer } from './refreshTokenAnalyzer';
+import { resetExternalAgentService } from '../../startup/lazy';
+import { MainTokenMonitor } from "./tokenMonitor";
+import { profileCacheManager } from "../userDataADO";
+import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
+import { agentChatManager } from "../chat/agentChatManager";
 
 const logger = createLogger();
 
 /**
- * Main process auth manager - responsible for unified auth session management
- * Integrates all functionality from the original SigninOps, providing complete auth and user data management
- * 
+ * Main process Auth Manager — responsible for unified authentication session management.
+ * Consolidates all functionality from the original SigninOps, providing complete
+ * authentication and user data management.
+ *
  * Core responsibilities:
- * - Manage current auth session
+ * - Manage the current authentication session
  * - Handle token refresh
- * - Communicate with renderer process
- * - Persist auth state
- * - Profile directory and auth.json management
- * - Post-authentication processing
+ * - Communicate with the renderer process
+ * - Persist authentication state
+ * - Manage profile directories and auth.json
+ * - Handle post-authentication initialization
  */
 export class MainAuthManager implements IAuthManager {
   private static instance: MainAuthManager;
@@ -40,7 +46,7 @@ export class MainAuthManager implements IAuthManager {
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): MainAuthManager {
     if (!MainAuthManager.instance) {
@@ -96,7 +102,7 @@ export class MainAuthManager implements IAuthManager {
       const rawPlan = authData.ghcAuth?.user?.copilotPlan || 'individual';
       const validPlans: Array<'individual' | 'business' | 'enterprise'> = ['individual', 'business', 'enterprise'];
       const copilotPlan = validPlans.includes(rawPlan as any) ? rawPlan as 'individual' | 'business' | 'enterprise' : 'individual';
-      
+
       const cleanUser = {
         id: String(authData.ghcAuth?.user?.id || ''),
         login: String(authData.ghcAuth?.user?.login || ''),
@@ -127,8 +133,9 @@ export class MainAuthManager implements IAuthManager {
         ? authData.ghcAuth.capabilities.filter(cap => typeof cap === 'string')
         : ['chat', 'completion', 'inline_completion'];
 
+      const cleanAlias = String(authData.ghcAuth?.alias || '');
       const cleanGhcAuth = {
-        alias: String(authData.ghcAuth?.alias || ''),
+        alias: cleanAlias,
         user: cleanUser,
         gitHubTokens: cleanGitHubTokens,
         copilotTokens: cleanCopilotTokens,
@@ -143,8 +150,8 @@ export class MainAuthManager implements IAuthManager {
         ghcAuth: cleanGhcAuth
       };
     } catch (error) {
-      logger.error('[MainAuthManager] Auth data sanitization failed, using minimal safe configuration:', error instanceof Error ? error.message : String(error));
-      
+      logger.error(`[MainAuthManager] Auth data sanitization failed, using minimal safe configuration: ${error instanceof Error ? error.message : String(error)}`);
+
       return {
         version: '3.0.0',
         createdAt: new Date().toISOString(),
@@ -185,13 +192,13 @@ export class MainAuthManager implements IAuthManager {
   private async writeAuthJson(profilePath: string, authData: AuthData): Promise<boolean> {
     try {
       const authJsonPath = path.join(profilePath, 'auth.json');
-      
+
       const sanitizedAuthData = this.sanitizeAuthData(authData);
       sanitizedAuthData.updatedAt = new Date().toISOString();
-      
+
       const content = JSON.stringify(sanitizedAuthData, null, 2);
       await fs.promises.writeFile(authJsonPath, content, 'utf-8');
-      
+
       return true;
     } catch (error) {
       logger.error(`[MainAuthManager] Error writing auth.json to ${profilePath}:`, error instanceof Error ? error.message : String(error));
@@ -209,33 +216,33 @@ export class MainAuthManager implements IAuthManager {
       }
 
       const ghcAuth = authData.ghcAuth;
-      
+
       if (!ghcAuth.user) {
         return false;
       }
-      
-      // 🔧 Fix: email is optional, as GitHub users can choose not to make email public
+
+      // 🔧 Fix: email is optional because GitHub users can choose not to make their email public
       const userValid = !!(
         ghcAuth.user.id && typeof ghcAuth.user.id === 'string' && ghcAuth.user.id.trim() !== '' &&
         ghcAuth.user.login && typeof ghcAuth.user.login === 'string' && ghcAuth.user.login.trim() !== '' &&
         ghcAuth.user.name && typeof ghcAuth.user.name === 'string' && ghcAuth.user.name.trim() !== ''
-        // email is optional, no longer required
+        // email is optional and is no longer required
       );
-      
+
       if (!userValid) {
         return false;
       }
-      
+
       // Validate gitHubTokens (new format)
       if (!ghcAuth.gitHubTokens) {
         return false;
       }
-      
+
       const gitHubTokensValid = !!(
         ghcAuth.gitHubTokens.access_token && typeof ghcAuth.gitHubTokens.access_token === 'string' && ghcAuth.gitHubTokens.access_token.trim() !== '' &&
         ghcAuth.gitHubTokens.timestamp && typeof ghcAuth.gitHubTokens.timestamp === 'string'
       );
-      
+
       if (!gitHubTokensValid) {
         return false;
       }
@@ -244,62 +251,66 @@ export class MainAuthManager implements IAuthManager {
       if (!ghcAuth.copilotTokens) {
         return false;
       }
-      
+
       const copilotTokensValid = !!(
         ghcAuth.copilotTokens.token && typeof ghcAuth.copilotTokens.token === 'string' && ghcAuth.copilotTokens.token.trim() !== '' &&
         typeof ghcAuth.copilotTokens.expires_at === 'number' && ghcAuth.copilotTokens.expires_at > 0
       );
-      
+
       if (!copilotTokensValid) {
         return false;
       }
-      
+
       if (ghcAuth.capabilities !== undefined && !Array.isArray(ghcAuth.capabilities)) {
         return false;
       }
-      
+
       return true;
     } catch (error) {
-      logger.error('[MainAuthManager] hasValidGhcAuth: Error during validation:', error instanceof Error ? error.message : String(error));
+      logger.error(`[MainAuthManager] hasValidGhcAuth: Error during validation: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }
 
   /**
    * Get basic valid profiles with auth.json and GitHub token validation (V3 - new token format)
-   * Validity check: githubTokens exist AND getUserInfo HTTP response code is not 401
+   * Validity criteria: gitHubTokens present AND getUserInfo HTTP status is not 401
    */
   private async getBasicValidProfiles(): Promise<AuthData[]> {
     const scanId = `basicScan_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
-    
+
+
     const result: AuthData[] = [];
-    
+
     try {
       const profilesDir = this.getProfilesDirectoryPath();
-      
+
       if (!fs.existsSync(profilesDir)) {
         logger.warn(`[MainAuthManager] Profiles directory does not exist: ${profilesDir}`);
         return result;
       }
 
       const entries = await fs.promises.readdir(profilesDir, { withFileTypes: true });
-      const profileDirectories = entries.filter(entry => entry.isDirectory());
+      const profileDirectories = entries.filter(entry => {
+        // Filter out hidden directories (pattern: .alias)
+        if (entry.name.startsWith('.')) return false;
+        return entry.isDirectory();
+      });
 
       for (const dir of profileDirectories) {
         const alias = dir.name;
         const profilePath = path.join(profilesDir, alias);
-        
+
         try {
           const hasAuthJson = await this.hasValidAuthJson(profilePath);
-          
+
           if (!hasAuthJson) {
             logger.debug(`[MainAuthManager] Scanned profile: ${alias}, hasAuthJson: false`);
             continue;
           }
 
           logger.debug(`[MainAuthManager] 🔍 [${scanId}] Processing profile: ${alias}`);
-          
+
           const authData = await this.readAuthJson(profilePath);
           if (!authData) {
             logger.debug(`[MainAuthManager] ❌ [${scanId}] Profile ${alias} skipped: failed to read auth.json`);
@@ -311,15 +322,15 @@ export class MainAuthManager implements IAuthManager {
             continue;
           }
 
-          // V3.0 new validation logic: validate GitHub token by calling getUserInfo API
+          // V3.0 new validation logic: verify the GitHub token by calling the getUserInfo API
           const githubToken = authData.ghcAuth.gitHubTokens.access_token;
-          
+
           if (!githubToken || githubToken.trim() === '') {
             logger.debug(`[MainAuthManager] ❌ [${scanId}] Profile ${alias} skipped: no GitHub token`);
             continue;
           }
 
-          // Call getUserInfo API to validate if token is valid (check HTTP status code is not 401)
+          // Call the getUserInfo API to verify the token (check that HTTP status is not 401)
           try {
             const userInfoResponse = await fetch('https://api.github.com/user', {
               headers: {
@@ -342,11 +353,11 @@ export class MainAuthManager implements IAuthManager {
 
           } catch (apiError) {
             logger.error(`[MainAuthManager] ⚠️ [${scanId}] Profile ${alias}: getUserInfo API call failed - ${apiError instanceof Error ? apiError.message : String(apiError)}`);
-            // In case of network errors, handle conservatively: skip this profile
+            // On network errors or similar failures, take the conservative approach: skip this profile
             continue;
           }
 
-          // Use AuthData directly, set alias
+          // Use AuthData directly with the alias set
           authData.ghcAuth.alias = alias;
           result.push(authData);
           logger.debug(`[MainAuthManager] ✅ [${scanId}] Profile ${alias} added: GitHub token validation passed`);
@@ -369,70 +380,77 @@ export class MainAuthManager implements IAuthManager {
   // =============================================================================
 
   /**
-   * Set main window reference (for IPC communication)
+   * Set the main window reference (used for IPC communication)
    */
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
   }
 
   /**
-   * Set current auth - integrated with complete user initialization flow
-   * 🚀 Performance optimization: added timing logs
+   * Set the current authentication — integrates the complete user initialization flow.
+   * 🚀 Performance optimization: timing logs added
    */
   async setCurrentAuth(authData: AuthData): Promise<void> {
     console.time('[MainAuthManager] setCurrentAuth');
-    
-    // Defensive check - ensure authData structure is complete
+
+    // Defensive check — ensure the authData structure is complete
     const userLogin = authData?.ghcAuth?.user?.login || 'unknown';
-    
-    // Print incoming authData
-    
-    // Clean and validate authData
+
+    // Sanitize and validate authData
     const sanitizedAuthData = this.sanitizeAuthData(authData);
-    
-    // Print processed sanitizedAuthData
-    
+
     this.currentAuth = sanitizedAuthData;
-    
-    // Execute complete user initialization flow
+
+    // Run the complete user initialization flow
     try {
       console.time('[MainAuthManager] handlePostAuthentication');
-      
-      // Process complete user initialization flow
+
+      // Handle the complete user initialization flow
       const result = await this.handlePostAuthentication(sanitizedAuthData);
-      
+
       console.timeEnd('[MainAuthManager] handlePostAuthentication');
-      
+
       if (result.success) {
       } else {
-        logger.error('[MainAuthManager] ❌ Post-auth initialization failed:', 'MainAuthManager', {
+        logger.error('[MainAuthManager] ❌ Post-authentication initialization failed:', 'MainAuthManager', {
           user: userLogin,
           message: result.message
         });
       }
-      
+
     } catch (error) {
       console.timeEnd('[MainAuthManager] handlePostAuthentication');
-      logger.error('[MainAuthManager] ❌ Post-auth initialization error:', 'MainAuthManager', {
+      logger.error('[MainAuthManager] ❌ Error during post-authentication initialization:', 'MainAuthManager', {
         user: userLogin,
         error: error instanceof Error ? error.message : String(error)
       });
     }
-    
-    // Start Token monitoring - only start after currentAuth is set
+
+    // Start token monitoring — only after currentAuth has been set
     try {
-      const { mainTokenMonitor } = await import('./tokenMonitor');
-      mainTokenMonitor.startMonitoring();
+      MainTokenMonitor.getInstance().startMonitoring();
     } catch (monitorError) {
-      logger.error('[MainAuthManager] ❌ Token monitoring startup failed:', 'MainAuthManager', {
+      logger.error('[MainAuthManager] ❌ Failed to start token monitoring:', 'MainAuthManager', {
         user: userLogin,
         error: monitorError instanceof Error ? monitorError.message : String(monitorError)
       });
     }
-    
-    // Notify renderer process - using sanitized data
+
+    // Notify the renderer process — use the sanitized data
     this.notifyRendererAuthChanged('auth_set', sanitizedAuthData);
-    
+
+    // auth_set must arrive before the first profile:cacheUpdated push.
+    // Otherwise the renderer-side ProfileDataManager may drop the profile update
+    // because userAlias has not been set yet.
+    try {
+      await profileCacheManager.forceNotifyProfileDataManager(sanitizedAuthData.ghcAuth.alias);
+    } catch (profileNotifyError) {
+      logger.warn('[MainAuthManager] Failed to send initial profile sync after auth_set:', 'MainAuthManager', {
+        user: userLogin,
+        error: profileNotifyError instanceof Error ? profileNotifyError.message : String(profileNotifyError),
+      });
+    }
+
     console.timeEnd('[MainAuthManager] setCurrentAuth');
   }
 
@@ -446,12 +464,12 @@ export class MainAuthManager implements IAuthManager {
     message?: string;
   }> {
     const alias = authData.ghcAuth.alias;
-    
+
     try {
       // Create user directory if it doesn't exist
       const profilesDir = this.getProfilesDirectoryPath();
       const userDir = path.join(profilesDir, alias);
-      
+
       try {
         await fs.promises.mkdir(userDir, { recursive: true });
       } catch (error) {
@@ -463,15 +481,15 @@ export class MainAuthManager implements IAuthManager {
           message: `Failed to create directory for user ${alias}`
         };
       }
-      
+
       // Check if user has valid auth.json
       const hasValidAuth = await this.hasValidAuthForProfile(alias);
-      
+
       if (!hasValidAuth) {
         // NEW USER: Create new auth.json and initialize profile
-        
+
         const authCreateSuccess = await this.createAuthJson(alias, authData);
-        
+
         if (!authCreateSuccess) {
           return {
             success: false,
@@ -480,7 +498,7 @@ export class MainAuthManager implements IAuthManager {
             message: `Failed to create auth.json for user: ${alias}`
           };
         }
-        
+
         // Initialize ProfileCacheManager
         const profileResult = await this.initializeProfileManager(alias);
         return {
@@ -489,14 +507,14 @@ export class MainAuthManager implements IAuthManager {
           hasUpdates: false,
           message: profileResult.message
         };
-        
+
       } else {
         // EXISTING USER: Check if auth needs updating
         const existingAuthData = await this.getAuthDataForProfile(alias);
-        
+
         if (existingAuthData && !this.authDataHasUpdates(existingAuthData, authData)) {
           // No updates needed - just load profile
-          
+
           const profileResult = await this.initializeProfileManager(alias);
           return {
             success: profileResult.success,
@@ -504,12 +522,12 @@ export class MainAuthManager implements IAuthManager {
             hasUpdates: false,
             message: profileResult.message
           };
-          
+
         } else {
           // Updates detected - update auth.json and load profile
-          
+
           const authUpdateSuccess = await this.createAuthJson(alias, authData);
-          
+
           if (!authUpdateSuccess) {
             return {
               success: false,
@@ -518,7 +536,7 @@ export class MainAuthManager implements IAuthManager {
               message: `Failed to update auth.json for user: ${alias}`
             };
           }
-          
+
           const profileResult = await this.initializeProfileManager(alias);
           return {
             success: profileResult.success,
@@ -528,7 +546,7 @@ export class MainAuthManager implements IAuthManager {
           };
         }
       }
-      
+
     } catch (error) {
       logger.error(`[MainAuthManager] Error handling post-authentication for user ${alias}:`, error instanceof Error ? error.message : String(error));
       return {
@@ -545,9 +563,8 @@ export class MainAuthManager implements IAuthManager {
    */
   private async initializeProfileManager(alias: string): Promise<{ success: boolean; message: string }> {
     try {
-      const { profileCacheManager } = await import('../userDataADO');
-      const profileLoadSuccess = await profileCacheManager.handleProfile(alias);
-      
+      const profileLoadSuccess = await profileCacheManager.handleProfile(alias, { notifyRenderer: false });
+
       if (profileLoadSuccess) {
         return {
           success: true,
@@ -575,10 +592,10 @@ export class MainAuthManager implements IAuthManager {
    */
   private authDataHasUpdates(existingAuth: AuthData, newAuthData: AuthData): boolean {
     if (!existingAuth.ghcAuth) return true;
-    
+
     const existing = existingAuth.ghcAuth;
     const newAuth = newAuthData.ghcAuth;
-    
+
     // Compare user info
     if (existing.user.id !== newAuth.user.id ||
         existing.user.login !== newAuth.user.login ||
@@ -588,25 +605,25 @@ export class MainAuthManager implements IAuthManager {
         existing.user.copilotPlan !== newAuth.user.copilotPlan) {
       return true;
     }
-    
+
     // Compare GitHub tokens (new format)
     if (existing.gitHubTokens.access_token !== newAuth.gitHubTokens.access_token ||
         existing.gitHubTokens.token_type !== newAuth.gitHubTokens.token_type ||
         existing.gitHubTokens.scope !== newAuth.gitHubTokens.scope) {
       return true;
     }
-    
+
     // Compare Copilot tokens (new format)
     if (existing.copilotTokens.token !== newAuth.copilotTokens.token ||
         existing.copilotTokens.expires_at !== newAuth.copilotTokens.expires_at) {
       return true;
     }
-    
+
     // Compare capabilities
     if (JSON.stringify(existing.capabilities?.sort()) !== JSON.stringify(newAuth.capabilities?.sort())) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -641,31 +658,29 @@ export class MainAuthManager implements IAuthManager {
   // =============================================================================
 
   /**
-   * Get current auth data
+   * Get the current authentication data
    */
   getCurrentAuth(): AuthData | null {
     return this.currentAuth;
   }
 
   /**
-   * Destroy current auth
+   * Destroy the current authentication
    */
   async destroyCurrentAuth(): Promise<void> {
     if (this.currentAuth) {
       const userLogin = this.currentAuth.ghcAuth.user.login;
-      
-      
-      // Stop Token monitoring
+
+      // Stop token monitoring
       try {
-        const { mainTokenMonitor } = await import('./tokenMonitor');
-        mainTokenMonitor.stopMonitoring();
+        MainTokenMonitor.getInstance().stopMonitoring();
       } catch (error) {
-        logger.error('[MainAuthManager] ❌ Failed to stop Token monitoring:', 'MainAuthManager', {
+        logger.error('[MainAuthManager] ❌ Failed to stop token monitoring:', 'MainAuthManager', {
           user: userLogin,
           error: error instanceof Error ? error.message : String(error)
         });
       }
-      
+
       // Clear local tokens
       try {
         await this.clearTokensForUser(userLogin);
@@ -675,24 +690,24 @@ export class MainAuthManager implements IAuthManager {
           error: error instanceof Error ? error.message : String(error)
         });
       }
-      
-      // Clear auth state
+
+      // Clear authentication state
       this.currentAuth = null;
-      
+
       // Notify renderer process
       this.notifyRendererAuthChanged('auth_destroyed', null);
-      
+
     }
   }
 
   /**
-   * Unified user sign-out cleanup method
-   * Coordinates cleanup operations across all related components, ensuring complete resource release
+   * Unified sign-out cleanup method.
+   * Coordinates cleanup across all related components to ensure complete resource release.
    */
   async signOut(): Promise<void> {
     const signOutStart = Date.now();
     const signOutId = `signOut_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
+
     if (!this.currentAuth) {
       return;
     }
@@ -700,45 +715,41 @@ export class MainAuthManager implements IAuthManager {
     const userLogin = this.currentAuth.ghcAuth.user.login;
 
     try {
-      // Phase 1: Clean up auth data and tokens
+      // Phase 1: Clear authentication data and tokens
       await this.destroyCurrentAuth();
-      
-      // Phase 2: Clean up ProfileCacheManager data cache
+
+      // Phase 2: Clear ProfileCacheManager data cache
       try {
-        const { profileCacheManager } = await import('../userDataADO/profileCacheManager');
         profileCacheManager.clearCache(userLogin);
       } catch (error) {
         logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to clear ProfileCacheManager cache:`, error instanceof Error ? error.message : String(error));
       }
 
-      // Phase 3: Clean up MCPClient instances
+      // Phase 3: Clear MCP client instances
       try {
-        const { mcpClientManager } = await import('../mcpRuntime/mcpClientManager');
         await mcpClientManager.resetForSignOut();
       } catch (error) {
         logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to clear MCP client instances:`, error instanceof Error ? error.message : String(error));
       }
 
-      // Phase 3.5: Clean up AgentChatManager instances
+      // Phase 3.5: Destroy AgentChatManager instance
       try {
-        const { agentChatManager } = await import('../chat/agentChatManager');
         agentChatManager.destroy();
         logger.info(`[MainAuthManager] ✅ [${signOutId}] AgentChatManager destroyed`);
       } catch (error) {
         logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to destroy AgentChatManager:`, error instanceof Error ? error.message : String(error));
       }
 
-      // Phase 4: Clean up Mem0 resources
+      // Phase 3.6: Reset ExternalAgentService instance
       try {
-        // Reset Mem0 instance
-        const { resetKosmosMemory } = await import('../mem0/kosmos-adapters');
-        await resetKosmosMemory();
-        
+        await resetExternalAgentService();
+        logger.info(`[MainAuthManager] ✅ [${signOutId}] ExternalAgentService reset`);
       } catch (error) {
-        logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to clear mem0 resources:`, error instanceof Error ? error.message : String(error));
+        logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to reset ExternalAgentService:`, error instanceof Error ? error.message : String(error));
       }
 
-      // Phase 5: Notify renderer process to perform cleanup
+
+      // Phase 5: Notify the renderer process to perform cleanup
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
           this.mainWindow.webContents.send('auth:signOut', {
@@ -752,7 +763,7 @@ export class MainAuthManager implements IAuthManager {
       }
 
       const signOutDuration = Date.now() - signOutStart;
-      
+
     } catch (error) {
       const signOutDuration = Date.now() - signOutStart;
       logger.error(`[MainAuthManager] ❌ [${signOutId}] Sign-out failed for user: ${userLogin} in ${signOutDuration}ms:`, error instanceof Error ? error.message : String(error));
@@ -765,10 +776,10 @@ export class MainAuthManager implements IAuthManager {
    */
   private async clearTokensForUser(alias: string): Promise<boolean> {
     try {
-      
+
       const profilePath = path.join(this.getProfilesDirectoryPath(), alias);
       const existingAuth = await this.readAuthJson(profilePath);
-      
+
       if (!existingAuth) {
         logger.error(`[MainAuthManager] Cannot clear tokens for ${alias}: auth.json not found`);
         return false;
@@ -796,14 +807,14 @@ export class MainAuthManager implements IAuthManager {
           }
         }
       };
-      
+
       const success = await this.writeAuthJson(profilePath, clearedAuthData);
-      
+
       if (success) {
       } else {
         logger.error(`[MainAuthManager] ❌ Failed to clear tokens for user: ${alias}`);
       }
-      
+
       return success;
     } catch (error) {
       logger.error(`[MainAuthManager] Error clearing tokens for ${alias}:`, error instanceof Error ? error.message : String(error));
@@ -818,33 +829,33 @@ export class MainAuthManager implements IAuthManager {
     if (!this.currentAuth) {
       return;
     }
-    
+
     try {
       const alias = this.currentAuth.ghcAuth.alias;
       const profilePath = path.join(this.getProfilesDirectoryPath(), alias);
-      
+
       this.currentAuth.updatedAt = new Date().toISOString();
-      
+
       await this.writeAuthJson(profilePath, this.currentAuth);
     } catch (error) {
-      logger.error('[MainAuthManager] ❌ Failed to update auth data:', error instanceof Error ? error.message : String(error));
+      logger.error(`[MainAuthManager] ❌ Failed to update auth data: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Get local active auth list
+   * Get the list of locally active authentications
    */
   async getLocalActiveAuths(): Promise<AuthData[]> {
     try {
       return await this.getBasicValidProfiles();
     } catch (error) {
-      logger.error('[MainAuthManager] ❌ Failed to get local active auths:', error instanceof Error ? error.message : String(error));
+      logger.error(`[MainAuthManager] ❌ Failed to retrieve local active authentications: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
 
   /**
-   * Notify renderer process of auth changes
+   * Notify the renderer process of authentication changes
    */
   private notifyRendererAuthChanged(eventType: string, authData: AuthData | null): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -853,9 +864,9 @@ export class MainAuthManager implements IAuthManager {
           type: eventType,
           authData: authData
         });
-        logger.debug(`[MainAuthManager] ✅ Notified renderer process: ${eventType}`);
+        logger.debug(`[MainAuthManager] ✅ Renderer process notified: ${eventType}`);
       } catch (error) {
-        logger.error('[MainAuthManager] ❌ Failed to notify renderer process:', error instanceof Error ? error.message : String(error));
+        logger.error(`[MainAuthManager] ❌ Failed to notify renderer process: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
       logger.warn('[MainAuthManager] ⚠️ Main window unavailable, cannot notify renderer process');
@@ -863,14 +874,14 @@ export class MainAuthManager implements IAuthManager {
   }
 
   /**
-   * Get Copilot access token
+   * Get the Copilot access token
    */
   getCopilotAccessToken(): string | null {
     return this.currentAuth?.ghcAuth.copilotTokens.token || null;
   }
 
   /**
-   * Get GitHub access token
+   * Get the GitHub access token
    */
   getGitHubAccessToken(): string | null {
     return this.currentAuth?.ghcAuth.gitHubTokens.access_token || null;
@@ -878,7 +889,7 @@ export class MainAuthManager implements IAuthManager {
 
 
   /**
-   * Refresh Copilot Token - enhanced version with smart error analysis (V3)
+   * Refresh the Copilot Token — enhanced version with intelligent error analysis (V3)
    */
   async refreshCopilotToken(): Promise<TokenRefreshResult> {
     if (!this.currentAuth) {
@@ -894,29 +905,29 @@ export class MainAuthManager implements IAuthManager {
 
       const gitHubToken = this.currentAuth.ghcAuth.gitHubTokens.access_token;
       const refreshResult = await this.ghcAuth.refreshCopilotToken(gitHubToken);
-      
-      // Update current auth data (V3 format - directly use raw data from API response)
+
+      // Update current auth data (V3 format — use raw data returned by the API directly)
       this.currentAuth.ghcAuth.copilotTokens = refreshResult;
       this.currentAuth.updatedAt = new Date().toISOString();
-      
-      // Persist updates
+
+      // Persist the update
       await this.updateAuthDataForCurrentAuth();
-      
-      // Notify renderer process
+
+      // Notify the renderer process
       this.notifyRendererAuthChanged('copilot_token_refreshed', this.currentAuth);
-      
-      
+
+
       return {
         success: true,
         authData: this.currentAuth,
         requiresReauth: false
       };
     } catch (error: any) {
-      // Check error analysis results
+      // Check the error analysis result
       const shouldClearAuth = error.shouldClearSession || false;
       const errorType = error.analysis?.errorType || 'UNKNOWN_ERROR';
       const httpStatus = error.httpStatus || 0;
-      
+
       const userLogin = this.currentAuth.ghcAuth.user.login;
       logger.error('[MainAuthManager] ❌ Copilot Token refresh failed:', 'MainAuthManager', {
         user: userLogin,
@@ -926,12 +937,12 @@ export class MainAuthManager implements IAuthManager {
         shouldClearAuth,
         hasAnalysis: !!error.analysis
       });
-      
-      // Decide whether re-authentication is needed based on error analysis
+
+      // Decide whether re-authentication is required based on the error analysis
       const requiresReauth = shouldClearAuth ||
         errorType === 'TOKEN_INVALID' ||
         (httpStatus === 401 && errorType === 'TOKEN_EXPIRED');
-      
+
       return {
         success: false,
         error: error.message || 'Unknown error during token refresh',
@@ -943,20 +954,20 @@ export class MainAuthManager implements IAuthManager {
   }
 
   /**
-   * Check if auth should be cleared - enhanced version based on error analysis results
+   * Check whether the auth session should be cleared — enhanced version based on error analysis results
    */
   shouldClearAuthSession(refreshResult: TokenRefreshResult): boolean {
-    // If refresh failed and re-auth is required, clear auth
+    // If refresh failed and re-authentication is required, clear the session
     if (!refreshResult.success && refreshResult.requiresReauth === true) {
       return true;
     }
-    
+
     // Check specific error types
     if (refreshResult.errorType === 'TOKEN_INVALID' ||
         (refreshResult.httpStatus === 401 && refreshResult.errorType === 'TOKEN_EXPIRED')) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -965,7 +976,7 @@ export class MainAuthManager implements IAuthManager {
   // =========================================================================
 
   /**
-   * Get valid auths for sign-in (from SigninOps) - V2 dual token structure
+   * Get valid authentications for sign-in (from SigninOps) - V2 dual token structure
    */
   async getValidAuthsForSignin(): Promise<ValidAuthsForSignin> {
     const result: ValidAuthsForSignin = {
@@ -976,7 +987,7 @@ export class MainAuthManager implements IAuthManager {
 
     try {
       const basicValidProfiles = await this.getBasicValidProfiles();
-      
+
       for (const authData of basicValidProfiles) {
         if (!authData || !authData.ghcAuth || !authData.ghcAuth.user ||
             !authData.ghcAuth.gitHubTokens || !authData.ghcAuth.copilotTokens) {
@@ -987,20 +998,20 @@ export class MainAuthManager implements IAuthManager {
           continue;
         }
 
-        // All basic valid profiles are marked as valid (GitHub token valid for >15 minutes)
+        // All basically valid profiles are marked as valid (GitHub token validity > 15 min)
         result.validAuths.push(authData);
       }
 
       return result;
 
     } catch (error) {
-      logger.error('[MainAuthManager] getValidAuthsForSignin failed:', error instanceof Error ? error.message : String(error));
+      logger.error(`[MainAuthManager] getValidAuthsForSignin failed: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
   }
 
   /**
-   * Get profiles with GHC auth (from SigninOps)
+   * Get profiles with GHC authentication (from SigninOps)
    */
   async getProfilesWithAuth(): Promise<ProfileWithAuth[]> {
     try {
@@ -1010,7 +1021,7 @@ export class MainAuthManager implements IAuthManager {
         authData
       }));
     } catch (error) {
-      logger.error('[MainAuthManager] getProfilesWithAuth failed:', error instanceof Error ? error.message : String(error));
+      logger.error(`[MainAuthManager] getProfilesWithAuth failed: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
@@ -1022,9 +1033,9 @@ export class MainAuthManager implements IAuthManager {
     try {
       const profilePath = path.join(this.getProfilesDirectoryPath(), alias);
       const authData = await this.readAuthJson(profilePath);
-      
+
       if (authData && authData.ghcAuth) {
-        // Clear both tokens but keep user info (V3 format)
+        // Clear both tokens while preserving user info (V3 format)
         const now = new Date().toISOString();
         authData.ghcAuth.gitHubTokens = {
           timestamp: now,
@@ -1040,11 +1051,11 @@ export class MainAuthManager implements IAuthManager {
           token: ''
         };
         authData.updatedAt = now;
-        
+
         await this.writeAuthJson(profilePath, authData);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       logger.error(`[MainAuthManager] Failed to clear auth tokens: ${alias}`, error instanceof Error ? error.message : String(error));
@@ -1059,12 +1070,12 @@ export class MainAuthManager implements IAuthManager {
     try {
       const profilePath = path.join(this.getProfilesDirectoryPath(), alias);
       const authJsonPath = path.join(profilePath, 'auth.json');
-      
+
       if (fs.existsSync(authJsonPath)) {
         fs.unlinkSync(authJsonPath);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       logger.error(`[MainAuthManager] Failed to delete auth.json: ${alias}`, error instanceof Error ? error.message : String(error));

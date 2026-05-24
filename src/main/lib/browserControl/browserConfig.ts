@@ -1,6 +1,6 @@
 /**
- * Browser configuration mapping: Chrome / Edge differentiated parameters
- * Shared by main.ts, browserControlMonitor.ts, and browserControlStatus.ts
+ * Browser configuration map: differentiated parameters for Chrome / Edge
+ * Shared by main.ts, browserControlHttpServer.ts, and browserControlStatus.ts
  */
 
 export const BROWSER_CONFIG = {
@@ -20,6 +20,12 @@ export const BROWSER_CONFIG = {
     moveBrowserToDisplayScript: 'move-browser-to-display-chrome.ps1',
     nativeHostRegPath: 'Software\\Google\\Chrome\\NativeMessagingHosts',
     policyRegPath: 'Software\\Policies\\Google\\Chrome\\ExtensionSettings',
+    // macOS
+    macProcessName: 'Google Chrome',
+    macAppName: 'Google Chrome',
+    macBundleId: 'com.google.Chrome',
+    macDownloadUrl: 'https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg',
+    macDmgVolumeName: 'Google Chrome',
   },
   edge: {
     exe: 'msedge.exe',
@@ -37,6 +43,12 @@ export const BROWSER_CONFIG = {
     moveBrowserToDisplayScript: 'move-browser-to-display-edge.ps1',
     nativeHostRegPath: 'Software\\Microsoft\\Edge\\NativeMessagingHosts',
     policyRegPath: 'Software\\Policies\\Microsoft\\Edge\\ExtensionSettings',
+    // macOS
+    macProcessName: 'Microsoft Edge',
+    macAppName: 'Microsoft Edge',
+    macBundleId: 'com.microsoft.edgemac',
+    macDownloadUrl: '',
+    macDmgVolumeName: '',
   }
 } as const;
 
@@ -46,6 +58,9 @@ export const COMBINED_SCRIPTS = {
   unregisterAll: 'unregister-all.ps1',
   registerNativeServerAll: 'register-native-server-all.ps1',
   unregisterNativeServerAll: 'unregister-native-server-all.ps1',
+  // macOS equivalents
+  registerAllMac: 'register-all-mac.sh',
+  unregisterAllMac: 'unregister-all-mac.sh',
 } as const;
 
 export type BrowserType = keyof typeof BROWSER_CONFIG;

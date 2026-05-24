@@ -1,0 +1,8 @@
+{
+    "chatSession_id": "chatSession_20250826132316", // chatSession_YYYYMMDDHHMMSS when the record created.
+    "last_updated": "2025-08-26T13:23:16Z", // last update time
+    "title": "New Chat",   // title of the chat history, summarized by the first 2 turns of messages at most, title.length<=20 tokens. new "new chat" as default title before the title generated.
+    "chat_History": [],
+    "context_History": []
+
+}

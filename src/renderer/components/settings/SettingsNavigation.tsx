@@ -1,10 +1,11 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Camera, Terminal } from 'lucide-react';
+import { Camera, Terminal, Archive } from 'lucide-react';
 import NavItem from '../ui/navigation/NavItem';
 import '../../styles/LeftNavigation.css';
 import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
 import { useFeatureFlag } from '../../lib/featureFlags';
+import { LeftNavSizeAtom } from '@renderer/states/left-nav.atom';
 
 // MCP icon - from McpHeaderView
 const McpIcon = () => (
@@ -25,10 +26,10 @@ const SkillsIcon = () => (
   </svg>
 );
 
-// Memory icon - from MemoryHeaderView
-const MemoryIcon = () => (
+// Plugin icon
+const PluginIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M14.5 2C16.1405 2 17.4964 3.21548 17.7178 4.79492C19.5765 5.08024 21 6.68645 21 8.625C21 9.72785 20.5383 10.7221 19.7988 11.4277C21.1042 12.0863 22 13.4381 22 15V15.25C22 17.2437 20.5412 18.8958 18.6328 19.1992C18.2015 20.8129 16.7319 21.9998 15.0059 22C13.7782 22 12.686 21.4091 12 20.4961C11.314 21.4091 10.2218 22 8.99414 22C7.26809 21.9998 5.79853 20.8129 5.36719 19.1992C3.45883 18.8958 2 17.2437 2 15.25V15C2 13.4384 2.89526 12.0865 4.2002 11.4277C3.46102 10.7221 3 9.7276 3 8.625C3 6.68645 4.42349 5.08024 6.28223 4.79492C6.50358 3.21548 7.85955 2 9.5 2C10.5054 2 11.4038 2.45677 12 3.17383C12.5962 2.45677 13.4946 2 14.5 2ZM9.5 3.5C8.5335 3.5 7.75 4.2835 7.75 5.25V5.5C7.75 5.91421 7.41421 6.25 7 6.25H6.875C5.56332 6.25 4.5 7.31332 4.5 8.625C4.5 9.93668 5.56332 11 6.875 11H7.25C7.66421 11 8 11.3358 8 11.75C8 12.1642 7.66421 12.5 7.25 12.5H6.875C6.84659 12.5 6.8183 12.4977 6.79004 12.4971C6.77675 12.4978 6.76346 12.5 6.75 12.5H6C4.61929 12.5 3.5 13.6193 3.5 15V15.25C3.5 16.6307 4.61929 17.75 6 17.75C6.33862 17.7509 6.62814 17.9771 6.71875 18.292L6.74512 18.4316H6.74707C6.85289 19.5956 7.83586 20.4998 8.99414 20.5C10.2385 20.5 11.25 19.4909 11.25 18.25V5.24121C11.2453 4.27876 10.4636 3.5 9.5 3.5ZM14.5 3.5C13.5364 3.5 12.7547 4.27876 12.75 5.24121V18.25C12.75 19.4909 13.7615 20.5 15.0059 20.5C16.1641 20.4998 17.1471 19.5956 17.2529 18.4316H17.2549L17.2812 18.292C17.3719 17.9771 17.6614 17.7509 18 17.75C19.3807 17.75 20.5 16.6307 20.5 15.25V15C20.5 13.6193 19.3807 12.5 18 12.5H17.25C17.2362 12.5 17.2226 12.4978 17.209 12.4971C17.181 12.4977 17.1531 12.5 17.125 12.5H16.75C16.3358 12.5 16 12.1642 16 11.75C16 11.3358 16.3358 11 16.75 11H17.125C18.4367 11 19.5 9.93668 19.5 8.625C19.5 7.31332 18.4367 6.25 17.125 6.25H17C16.5858 6.25 16.25 5.91421 16.25 5.5V5.25C16.25 4.2835 15.4665 3.5 14.5 3.5Z" fill="currentColor"/>
+    <path d="M13.5 2C13.5 2 14 3 14 4C14 5.10457 13.1046 6 12 6C10.8954 6 10 5.10457 10 4C10 3 10.5 2 10.5 2H7C5.89543 2 5 2.89543 5 4V8.5C5 8.5 6 8 7 8C8.10457 8 9 8.89543 9 10C9 11.1046 8.10457 12 7 12C6 12 5 11.5 5 11.5V16C5 17.1046 5.89543 18 7 18H11.5C11.5 18 11 19 11 20C11 21.1046 11.8954 22 13 22C14.1046 22 15 21.1046 15 20C15 19 14.5 18 14.5 18H18C19.1046 18 20 17.1046 20 16V11.5C20 11.5 19 12 18 12C16.8954 12 16 11.1046 16 10C16 8.89543 16.8954 8 18 8C19 8 20 8.5 20 8.5V4C20 2.89543 19.1046 2 18 2H13.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
   </svg>
 );
 
@@ -57,6 +58,16 @@ const BrowserIcon = () => (
   </svg>
 );
 
+// Sub-Agent icon - users group icon
+const SubAgentIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 interface SettingsNavigationProps {
   onBack?: () => void;
 }
@@ -64,17 +75,25 @@ interface SettingsNavigationProps {
 const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  
-  // Memory controlled by feature flag (Dev environment and non-Windows ARM)
-  const memoryEnabled = useFeatureFlag('kosmosFeatureMemory');
 
   // Chrome Extension / Browser Control entry (controlled by feature flag, Dev + Windows only)
   const browserControlEnabled = useFeatureFlag('browserControl');
 
-  // Voice Input controlled by feature flag
-  const voiceInputEnabled = useFeatureFlag('kosmosFeatureVoiceInput');
+  // Sub-Agent feature controlled by feature flag
+  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
 
-  const screenshotEnabled = useFeatureFlag('kosmosFeatureScreenshot');
+  // Voice Input feature controlled by feature flag
+  const voiceInputEnabled = useFeatureFlag('openkosmosFeatureVoiceInput');
+
+  const screenshotEnabled = useFeatureFlag('openkosmosFeatureScreenshot');
+
+  // Plugin feature controlled by feature flag
+  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
+
+  // Memex Memory feature controlled by feature flag
+  const memexMemoryEnabled = useFeatureFlag('openkosmosFeatureMemexMemory');
+
+  const { width } = LeftNavSizeAtom.useData();
 
   const handleBack = () => {
     if (onBack) {
@@ -90,21 +109,33 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
     if (path.includes('/settings/runtime')) return 'runtime';
     if (path.includes('/settings/mcp')) return 'mcp';
     if (path.includes('/settings/skills')) return 'skills';
+    if (path.includes('/settings/plugins')) return 'plugins';
+    if (path.includes('/settings/sub-agents')) return 'sub-agents';
     if (path.includes('/settings/memory')) return 'memory';
     if (path.includes('/settings/voice-input')) return 'voice-input';
     if (path.includes('/settings/screenshot')) return 'screenshot';
     if (path.includes('/settings/about')) return 'about';
     if (path.includes('/settings/browser-control')) return 'browser-control';
-    return 'mcp'; // Default to mcp
+    if (path.includes('/settings/memex')) return 'memex';
+    if (path.includes('/settings/archived-agents')) return 'archived-agents';
+    return 'mcp'; // Default: show mcp
   };
 
   const activeView = getActiveView();
+
+  const dividerStyle = (position: 'top' | 'bottom'): React.CSSProperties => ({
+    backgroundImage: 'linear-gradient(to right, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.1) 75%, rgba(0, 0, 0, 0) 100%)',
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: '100% 1px',
+    backgroundPosition: position,
+  });
 
   return (
     <nav
       className="left-navigation"
       role="navigation"
       aria-label="Settings navigation"
+      style={{ width }}
     >
       {/* Settings Navigation Content */}
       <div
@@ -127,7 +158,7 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             width: '100%',
             height: '52px',
             paddingBottom: '12px',
-            borderBottom: '1px solid rgba(0, 0, 0, 0.1)',
+            ...dividerStyle('bottom'),
           }}
         >
           <h2
@@ -151,6 +182,10 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             gap: '8px',
             width: '100%',
             flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            scrollbarWidth: 'none',
           }}
         >
           <NavItem
@@ -160,7 +195,7 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             onClick={() => navigate('/settings/mcp')}
             ariaLabel="MCP Servers and Tools"
           />
-          
+
           <NavItem
             icon={<SkillsIcon />}
             label="Skills"
@@ -168,15 +203,24 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             onClick={() => navigate('/settings/skills')}
             ariaLabel="Skills Management"
           />
-          
-          {/* Memory entry only shown in Dev environment */}
-          {memoryEnabled && (
+
+          {pluginsEnabled && (
             <NavItem
-              icon={<MemoryIcon />}
-              label="Memory"
-              isActive={activeView === 'memory'}
-              onClick={() => navigate('/settings/memory')}
-              ariaLabel="Memory Management"
+              icon={<PluginIcon />}
+              label="Plugins"
+              isActive={activeView === 'plugins'}
+              onClick={() => navigate('/settings/plugins')}
+              ariaLabel="Plugin Management"
+            />
+          )}
+
+          {subAgentEnabled && (
+            <NavItem
+              icon={<SubAgentIcon />}
+              label="Sub-Agents"
+              isActive={activeView === 'sub-agents'}
+              onClick={() => navigate('/settings/sub-agents')}
+              ariaLabel="Sub-Agent Management"
             />
           )}
 
@@ -187,7 +231,7 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             onClick={() => navigate('/settings/runtime')}
             ariaLabel="Runtime Environment"
           />
-          
+
           {/* Browser Control entry controlled by feature flag */}
           {browserControlEnabled && (
             <NavItem
@@ -197,6 +241,22 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
               onClick={() => navigate('/settings/browser-control')}
               ariaLabel="Browser Control Settings"
             />
+          )}
+
+          {memexMemoryEnabled && (
+          <NavItem
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="12" cy="12" r="2" fill="currentColor"/>
+              </svg>
+            }
+            label="Memex Memory"
+            isActive={activeView === 'memex'}
+            onClick={() => navigate('/settings/memex')}
+            ariaLabel="Memex Memory Settings"
+          />
           )}
 
           {/* Voice Input entry controlled by feature flag */}
@@ -221,6 +281,14 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
           )}
 
           <NavItem
+            icon={<Archive size={20} />}
+            label="Archived Agents"
+            isActive={activeView === 'archived-agents'}
+            onClick={() => navigate('/settings/archived-agents')}
+            ariaLabel="Archived Agents"
+          />
+
+          <NavItem
             icon={<AboutIcon />}
             label={`About ${BRAND_CONFIG.productName || APP_NAME}`}
             isActive={activeView === 'about'}
@@ -234,7 +302,7 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
           style={{
             width: '100%',
             paddingTop: '16px',
-            borderTop: '1px solid rgba(0, 0, 0, 0.1)',
+            ...dividerStyle('top'),
           }}
         >
           <NavItem

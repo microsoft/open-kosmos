@@ -2,16 +2,16 @@
 
 ## Overview
 
-FRE (First Run Experience) is the first-run experience module of the Kosmos application, responsible for guiding users through runtime environment configuration and Agent selection when they first use the application.
+FRE (First Run Experience) is the first-run experience module for the OpenKosmos app. It guides users through runtime environment configuration and Agent selection the first time they use the app.
 
-## Architecture Design
+## Architecture
 
 ### Component Hierarchy
 
 ```
-FreOverlay (Coordinator)
-├── FreWelcomeView (Welcome View - Kosmos brand only)
-└── FreSettingUpView (Setup View)
+FreOverlay (coordinator)
+├── FreWelcomeView (welcome view - OpenKosmos brand only)
+└── FreSettingUpView (setup view)
 ```
 
 ### File Structure
@@ -20,8 +20,8 @@ FreOverlay (Coordinator)
 src/renderer/components/fre/
 ├── index.ts              # Module exports
 ├── FreOverlay.tsx        # Coordinator component (~126 lines)
-├── FreWelcomeView.tsx    # Welcome View component (~510 lines)
-├── FreSettingUpView.tsx  # Setup View component (~1146 lines)
+├── FreWelcomeView.tsx    # Welcome view component (~510 lines)
+├── FreSettingUpView.tsx  # Setup view component (~1146 lines)
 └── README.md             # This document
 ```
 
@@ -29,7 +29,7 @@ src/renderer/components/fre/
 
 ### 1. FreOverlay (Coordinator)
 
-**Responsibility:** Manages view switching and branding logic
+**Responsibility:** Manages view switching and brand logic
 
 **Core State:**
 ```typescript
@@ -41,25 +41,26 @@ const [selectedAgent, setSelectedAgent] = useState<FrePromotedAgent | null>(null
 const [setupFlowType, setSetupFlowType] = useState<SetupFlowType>(...);
 ```
 
-**Branding Logic:**
-- **Kosmos brand**: Initially shows Welcome View → enters Setup View after user selection
+**Brand Logic:**
+- **OpenKosmos brand**: Initially shows Welcome View → enters Setup View after user selection
+- Other brands may skip Welcome View and go directly to Setup View
 
 **Props:**
 ```typescript
 interface FreOverlayProps {
-  onSkip: () => void;  // Callback for setup completion or skip
+  onSkip: () => void;  // Callback when setup is complete or skipped
 }
 ```
 
 ### 2. FreWelcomeView (Welcome View)
 
-**Responsibility:** Display recommended Agents for user selection
+**Responsibility:** Shows recommended Agents for user selection
 
 **Data Source:**
-- Agent library data (currently not available - CDN removed)
-- Promoted agents shown when available
+- CDN URL: `https://cdn.kosmos-ai.com/[dev/]agent/agent_lib.json`
+- Filter condition: `needs_fre_promotion: true`
 
-**Core Interface:**
+**Core Interfaces:**
 ```typescript
 interface FrePromotedAgent {
   name: string;
@@ -87,10 +88,10 @@ interface FreWelcomeViewProps {
 ```
 
 **UI Features:**
-- Displays personalized user greeting (fetches username from profile)
+- Personalized user greeting (gets username from profile)
 - Agent card grid layout
 - Mouse hover effects
-- Skip button (bottom-right corner)
+- Skip button (bottom right)
 
 ### 3. FreSettingUpView (Setup View)
 
@@ -163,6 +164,18 @@ interface FreSettingUpViewProps {
 * Only executed in agent flow (pm-agent/design-agent)
 ```
 
+### Brand Flow (non-OpenKosmos)
+
+```
+FreOverlay
+    │
+    ▼ (skip Welcome View)
+FreSettingUpView (setupFlowType: 'pm-agent')
+    │
+    ▼
+onSkip() → Agent Page
+```
+
 ## API Calls
 
 ### Runtime Related
@@ -187,19 +200,17 @@ window.electronAPI.runtime.setPinnedPythonVersion('3.10.12')
 ### MCP/Skills/Agent Related
 
 ```typescript
-// Get Agent configuration
-window.electronAPI.builtinTools.execute('get_agent_config_from_lib', { agent_name: 'PM Agent' })
+// Get Agent config
+window.electronAPI.builtinTools.execute('get_agent_template_from_library', { agent_name: 'PM Agent' })
 
 // Add MCP Server
-window.electronAPI.mcpLibrary.fetchAndUpdate()
-window.electronAPI.builtinTools.execute('add_mcp_by_config', { mcp_config: {...} })
+window.electronAPI.builtinTools.execute('create_mcp_server_from_config', { mcp_config: {...} })
 
 // Add Skill
-window.electronAPI.skillLibrary.getLibraryData()
-window.electronAPI.builtinTools.execute('add_skill_from_lib_by_name', { skill_name: '...' })
+window.electronAPI.builtinTools.execute('install_skill_from_library', { skill_name: '...' })
 
 // Add Agent
-window.electronAPI.builtinTools.execute('add_agent_by_config', {...})
+window.electronAPI.builtinTools.execute('create_agent_from_config', {...})
 
 // Set primary Agent
 window.electronAPI.profile.setPrimaryAgent(agentName)
@@ -211,10 +222,10 @@ window.electronAPI.agentChat.startNewChatFor(chatId)
 ### Profile Related
 
 ```typescript
-// Mark FRE as complete
+// Mark FRE as done
 window.electronAPI.profile.updateFreDone(userAlias, true)
 
-// Get user information
+// Get user info
 profileDataManager.getProfile()
 profileDataManager.getCurrentUserAlias()
 ```
@@ -250,19 +261,19 @@ style={{
 
 ### Agent Fetch Failure
 
-- Welcome View displays error state
+- Welcome View shows error state
 - User can click "Retry" to re-fetch
-- Or select "Skip" to bypass Welcome View
+- Or select "Skip" to skip Welcome View
 
 ## State Persistence
 
-FRE completion status is stored in the user Profile:
+FRE completion state is stored in the user Profile:
 
 ```typescript
-// Mark as complete
+// Mark as done
 await window.electronAPI.profile.updateFreDone(userAlias, true);
 
-// Check status (in Agent Page)
+// Check state (in Agent Page)
 const profile = profileDataManager.getProfile();
 const freDone = (profile as any).freDone;
 ```
@@ -271,20 +282,20 @@ const freDone = (profile as any).freDone;
 
 ### Adding a New Setup Flow Type
 
-1. Add a new flow type in `FreSettingUpView.tsx`:
+1. Add new flow type in `FreSettingUpView.tsx`:
    ```typescript
    export type SetupFlowType = 'basic' | 'pm-agent' | 'design-agent' | 'new-agent';
    ```
 
-2. Update the `getSetupSteps()` function to define the steps for the new flow
+2. Update `getSetupSteps()` function to define steps for the new flow
 
 3. Add corresponding installation logic in `startSetup()`
 
-4. Add Agent name matching rules in `handleSelectAgent()` of `FreOverlay.tsx`
+4. Add Agent name matching rules in `handleSelectAgent()` in `FreOverlay.tsx`
 
 ### Adding a New Promoted Agent
 
-1. Add Agent configuration in the CDN's `agent_lib.json`
+1. Add Agent config to `agent_lib.json` on the CDN
 2. Set `needs_fre_promotion: true`
 3. Ensure all dependent MCP and Skills are listed in `requirements`
 
@@ -292,16 +303,15 @@ const freDone = (profile as any).freDone;
 
 ### Log Prefixes
 
-- `[FRE]` - FreOverlay Coordinator logs
-- `[FreWelcomeView]` - Welcome View logs
-- `[FRE][SettingUp]` - Setting Up View logs
+- `[FRE]` - FreOverlay coordinator logs
+- `[FreWelcomeView]` - Welcome view logs
+- `[FRE][SettingUp]` - Setting Up view logs
 
-### Resetting FRE State
+### Reset FRE State
 
 ```typescript
 // Execute in console to reset FRE
 const userAlias = profileDataManager.getCurrentUserAlias();
 await window.electronAPI.profile.updateFreDone(userAlias, false);
-// Refresh the page to see FRE again
+// Refresh page to see FRE again
 ```
-

@@ -1,21 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { Menu, Minus, Square, X, Copy } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Menu, Minus, Square, X, Copy, ZoomIn, ZoomOut, PanelLeft } from 'lucide-react';
 import '../../styles/WindowsTitleBar.css';
-import { APP_NAME, BRAND_NAME } from '@shared/constants/branding';
-
-let appIcon: string;
-try {
-  const iconModule = require(`../../assets/${BRAND_NAME}/app.svg`);
-  appIcon = iconModule.default || iconModule;
-} catch (error) {
-  console.error(`Failed to load app icon for brand ${BRAND_NAME}:`, error);
-  // Fallback to avoid crash if possible, or let it be empty/undefined
-  appIcon = '';
-}
+import { APP_NAME } from '@shared/constants/branding';
+import { useAppZoomLevel } from '../../lib/userData/useAppZoomLevel';
+import { LeftNavCollapsedAtom } from '@renderer/states/left-nav.atom';
+import { appIcon } from '../../lib/brandIcon';
 
 const WindowsTitleBar: React.FC = () => {
+  const location = useLocation();
   const [isWindows, setIsWindows] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const zoomLevel = useAppZoomLevel();
+  const [leftSidebarCollapsed, { toggle: handleSidebarToggle }] = LeftNavCollapsedAtom.use();
+  const showSidebarToggle = location.pathname.startsWith('/agent');
+  const [showPercent, setShowPercent] = useState(false);
+  const percentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomPercent = Math.round(Math.pow(1.2, zoomLevel) * 100);
+
+  // Show percentage briefly when zoom changes
+  const prevZoomRef = useRef(zoomLevel);
+  useEffect(() => {
+    if (prevZoomRef.current !== zoomLevel) {
+      prevZoomRef.current = zoomLevel;
+      setShowPercent(true);
+      if (percentTimerRef.current) clearTimeout(percentTimerRef.current);
+      percentTimerRef.current = setTimeout(() => setShowPercent(false), 1500);
+    }
+    return () => { if (percentTimerRef.current) clearTimeout(percentTimerRef.current); };
+  }, [zoomLevel]);
 
   useEffect(() => {
     const checkPlatform = async () => {
@@ -78,9 +91,34 @@ const WindowsTitleBar: React.FC = () => {
         <img src={appIcon} alt={APP_NAME} className="app-icon" />
         <div className="app-title">{APP_NAME}</div>
       </div>
-      
+
       <div className="title-bar-right-section">
-        <button 
+              {showSidebarToggle && (
+                <button
+                  className={`menu-button sidebar-toggle-button ${leftSidebarCollapsed ? 'active' : ''}`}
+                  onClick={handleSidebarToggle}
+                  aria-label={leftSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                  aria-pressed={leftSidebarCollapsed}
+                  title={leftSidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
+                >
+                  <PanelLeft size={15} />
+                </button>
+              )}
+        {zoomPercent !== 100 && (
+          <button
+            className="menu-button"
+            onClick={() => window.electronAPI?.window?.resetZoom?.()}
+            title={`Zoom: ${zoomPercent}% (Click to reset)`}
+            style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '0 6px' }}
+          >
+            {showPercent ? (
+              <span style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>{zoomPercent}%</span>
+            ) : (
+              zoomPercent > 100 ? <ZoomIn size={14} /> : <ZoomOut size={14} />
+            )}
+          </button>
+        )}
+        <button
           className="menu-button"
           onClick={handleMenuClick}
           title="Menu"

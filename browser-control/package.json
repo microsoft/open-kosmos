@@ -1,0 +1,37 @@
+{
+  "name": "mcp-chrome-bridge-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "author": "hangye",
+  "type": "module",
+  "scripts": {
+    "build:shared": "pnpm --filter chrome-mcp-shared build",
+    "build:native": "pnpm --filter mcp-chrome-bridge build",
+    "build:extension": "pnpm --filter chrome-mcp-server build",
+    "build": "pnpm -r build",
+    "dev:shared": "pnpm --filter chrome-mcp-shared dev",
+    "dev:native": "pnpm --filter mcp-chrome-bridge dev",
+    "dev:extension": "pnpm --filter chrome-mcp-server dev",
+    "dev": "pnpm --filter chrome-mcp-shared build && pnpm -r --parallel dev",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "format": "pnpm -r format",
+    "clean:dist": "pnpm -r exec rm -rf dist .turbo",
+    "clean:modules": "pnpm -r exec rm -rf node_modules && rm -rf node_modules",
+    "clean": "npm run clean:dist && npm run clean:modules",
+    "typecheck": "pnpm -r exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.1",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-vue": "^10.0.0",
+    "globals": "^16.1.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.0",
+    "vue-eslint-parser": "^10.1.3"
+  }
+}

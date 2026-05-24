@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { StartupValidationResult } from '../../types/startupValidationTypes';
 import '../../styles/SignInPage.css';
 import { APP_NAME } from '@shared/constants/branding';
+import { AuthManagerProxy } from "../../lib/auth/authManagerProxy";
 
 interface SignInPageProps {
   // SignInPage can optionally receive pre-scanned startup results
@@ -15,8 +16,8 @@ interface SignInPageProps {
 
 export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   const componentStartTime = Date.now();
-  
-  // 🔥 Optimization: Remove sessionStorage read to avoid blocking render
+
+  // Optimization: remove sessionStorage reads to avoid blocking rendering
   // sessionStorage operations may block due to browser security policies or storage quota checks
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<any | null>(null);
@@ -28,15 +29,15 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [copied, setCopied] = useState(false);
   const [showGeneratingCode, setShowGeneratingCode] = useState(false);
-  
-  
+
+
   // Use ref to prevent state loss on component remount
   const isInitialized = useRef(false);
 
-  // 🔥 New architecture: Receive pre-processed results from StartupPage
+  // New architecture: receive pre-processed results from StartupPage
   useEffect(() => {
     const effectStartTime = Date.now();
-    
+
     if (isInitialized.current) {
       return;
     }
@@ -44,30 +45,30 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
 
     const processStartupResults = async () => {
       setIsScanning(true);
-      
+
       try {
-        
-        // 🔥 New: Debug the entire startupResult object in detail
-        
+
+        // New: detailed debug of the entire startupResult object
+
         // Check if we have startupResult from StartupPage validation
         if (startupResult?.stage2) {
-          
-          // 🔥 Prioritize using AuthManager pre-processed results
+
+          // Prioritize AuthManager pre-processed results
           if (startupResult.stage2.authManagerInitialized && startupResult.stage2.authManagerProfiles?.length > 0) {
-            
+
             const allProfilesWithAuth = startupResult.stage2.authManagerProfiles.map((profile: any) => ({
               ...profile,
               isValid: profile.type === 'valid',
               isExpired: profile.type === 'recoverable',
               isRecoverable: profile.type === 'recoverable'
             }));
-            
+
             setProfilesWithAuth(allProfilesWithAuth);
             setShowProfileSelection(allProfilesWithAuth.length > 0);
-            
+
           } else {
-            
-            // Use results in traditional format
+
+            // Use results in legacy format
             const allProfilesWithAuth = [
               ...(startupResult.stage2.validUsers || []),
               ...(startupResult.stage2.expiredUsers || []).map((expired: any) => ({
@@ -75,11 +76,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 isExpired: true
               }))
             ];
-            
+
             setProfilesWithAuth(allProfilesWithAuth);
             setShowProfileSelection(allProfilesWithAuth.length > 0);
           }
-          
+
         } else {
           setProfilesWithAuth([]);
           setShowProfileSelection(false);
@@ -95,15 +96,15 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
 
     processStartupResults();
   }, [startupResult]);
-  
 
-  // 🔥 Optimization: Remove sessionStorage persistence to avoid blocking from frequent writes
-  // SignInPage is a temporary page, no need to persist state
+
+  // Optimization: sessionStorage persistence removed to avoid frequent write blocking
+  // SignInPage is a temporary page, state persistence is not needed
   // useEffect(() => {
   //   sessionStorage.setItem('signin-isLoading', JSON.stringify(isLoading));
   // }, [isLoading]);
-  
-  // ... other sessionStorage operations removed
+
+  // ... other sessionStorage operations have been removed
 
   // Device code countdown
   useEffect(() => {
@@ -121,48 +122,47 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       return () => clearInterval(timer);
     }
   }, [deviceCode, showGhcDeviceFlow, timeLeft]);
-  
+
   const { showError, showSuccess } = useToast();
   // Auth functionality is now handled through main process
 
-  // 🔥 Directly use AuthData without any mapping or rebuilding
+  // Use AuthData directly, without any mapping or rebuilding
   const handleProfileSelect = async (profile: any) => {
     try {
       setIsLoading(true);
-      
-      
-      const { AuthManagerProxy } = await import('../../lib/auth/authManagerProxy');
+
+
       const authManager = new AuthManagerProxy();
-      
-      // 🔥 Directly use AuthData
+
+      // Use AuthData directly
       const authData = profile.authData;
-      
+
       if (!authData) {
-        throw new Error('Profile missing AuthData');
+        throw new Error('Profile is missing AuthData');
       }
-      
-      // 🔥 Debug authData structure in detail
-      
-      // Validate authData structure completeness
+
+      // Detailed debug of authData structure
+
+      // Validate authData structure integrity
       if (!authData.ghcAuth) {
-        throw new Error('AuthData missing ghcAuth field');
+        throw new Error('AuthData is missing the ghcAuth field');
       }
       if (!authData.ghcAuth.user) {
-        throw new Error('AuthData.ghcAuth missing user field');
+        throw new Error('AuthData.ghcAuth is missing the user field');
       }
       if (!authData.ghcAuth.user.login) {
-        throw new Error('AuthData.ghcAuth.user missing login field');
+        throw new Error('AuthData.ghcAuth.user is missing the login field');
       }
-      
-      
-      // 🔥 Fix: Check if this is a verified Profile (has valid GitHub token)
+
+
+      // Fix: check if this is a validated Profile (has a valid GitHub token)
       if (profile.isValid) {
-        
-        // Use new AuthData API - setCurrentAuth internally calls handlePostAuthentication to complete initialization
+
+        // Use the new AuthData API - setCurrentAuth internally calls handlePostAuthentication to complete initialization
         await authManager.setCurrentAuth(authData);
-        
-          
-        // Trigger auth success event, notify App.tsx for route navigation
+
+
+        // Trigger auth success event to notify App.tsx for route navigation
         const authSuccessEvent = new CustomEvent('ghc:authSuccess', {
           detail: {
             authData: authData,
@@ -170,19 +170,19 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
             source: 'signin_page_valid_profile'
           }
         });
-        
+
         window.dispatchEvent(authSuccessEvent);
-        
-        
+
+
       } else if (profile.isRecoverable) {
-        
-        // Set AuthData first, then refresh Token
+
+        // Set AuthData first, then refresh token
         await authManager.setCurrentAuth(authData);
-        
+
         const refreshResult = await authManager.refreshCopilotToken();
-        
+
         if (refreshResult.success && refreshResult.authData) {
-          
+
           // Trigger auth success event
           const authSuccessEvent = new CustomEvent('ghc:authSuccess', {
             detail: {
@@ -192,26 +192,26 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
               source: 'signin_page_recovered_profile'
             }
           });
-          
+
           window.dispatchEvent(authSuccessEvent);
-          
+
         } else {
           await handleExpiredProfileReauth(profile);
           return;
         }
-        
+
       } else {
         await handleExpiredProfileReauth(profile);
         return;
       }
-      
+
       // Reset loading state, wait for App.tsx to handle navigation
       setTimeout(() => {
         setIsLoading(false);
       }, 100);
-      
+
     } catch (error) {
-      showError('Login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showError('Sign-in failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setIsLoading(false);
     }
   };
@@ -220,8 +220,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   const handleExpiredProfileReauth = async (expiredProfile: any) => {
     try {
       setIsLoading(true);
-      
-      
+
+
       // Clear the expired auth data first
       if ((window as any).electronAPI?.authOps) {
         try {
@@ -229,11 +229,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         } catch (clearError) {
         }
       }
-      
+
       // Start new GitHub OAuth flow
       setShowProfileSelection(false);
       await handleGhcSignIn();
-      
+
     } catch (error) {
       showError('Re-authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setIsLoading(false);
@@ -250,10 +250,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     }
     const deviceCodeData = event.detail;
     setDeviceCode(deviceCodeData);
-    
+
     // Set countdown
     setTimeLeft(deviceCodeData.expires_in);
-    
+
     // Automatically copy device code to clipboard
     if (deviceCodeData.user_code) {
       navigator.clipboard.writeText(deviceCodeData.user_code).then(() => {
@@ -263,13 +263,12 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         // Clipboard copy failed, user can still manually copy
       });
     }
-    
+
     // Automatically open GitHub authorization page (via Microsoft SSO)
     if (deviceCodeData.verification_uri) {
-      const ssoUrl = "https://github.com/enterprises/microsoft/sso?return_to=" + deviceCodeData.verification_uri;
-      window.open(ssoUrl, '_blank');
+      window.open(deviceCodeData.verification_uri, '_blank');
     }
-    
+
     // Directly show device code interface
     setTimeout(() => {
       setShowGeneratingCode(false);
@@ -278,7 +277,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   }, []);
 
   const clearSessionState = () => {
-    // 🔥 Optimization: sessionStorage operations removed, this function kept for compatibility
+    // Optimization: sessionStorage operations removed, keeping this function for backward compatibility
     // sessionStorage.removeItem('signin-isLoading');
     // sessionStorage.removeItem('signin-showGhcDeviceFlow');
     // sessionStorage.removeItem('signin-deviceCode');
@@ -289,48 +288,48 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     const customEvent = event as CustomEvent;
     if (process.env.NODE_ENV === 'development') {
     }
-    
+
     try {
       setShowGhcDeviceFlow(false);
-      
+
       // 🔥 Fix: Check event source to distinguish between existing user and new user authentication
       const authData = customEvent.detail?.authData; // For existing users (from handleProfileSelect)
       const authInfo = customEvent.detail?.authInfo; // For new users (from Device Flow)
       const eventSource = customEvent.detail?.source || 'unknown';
-      
-      
+
+
       // UI cleanup
       setTimeout(async () => {
         setDeviceCode(null);
         setIsLoading(false);
         setShowGeneratingCode(false);
         clearSessionState();
-        
+
         // 🔥 Case 1: Existing user authentication (from handleProfileSelect with authData)
         if (eventSource.includes('profile') || authData) {
           return;
         }
-        
+
         // 🔥 Case 2: New user authentication (from Device Flow with authInfo)
         if (eventSource === 'device_flow' && authInfo) {
-          
+
           // Main process has already called setCurrentAuth and handlePostAuth
           // Just wait for the route navigation handled by App.tsx
           return;
         }
-        
+
         // 🔥 Case 3: Unexpected scenario - no valid auth data
         showError('Authentication completed but no data received');
       }, 100);
-      
+
     } catch (error) {
-      
+
       // Authentication failed, reset state and show error
       setDeviceCode(null);
       setIsLoading(false);
       setShowGeneratingCode(false);
       clearSessionState();
-      
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown authentication error';
       showError(`Authentication failed: ${errorMessage}`);
     }
@@ -351,7 +350,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
     }
-    
+
     // GitHub Copilot is the only auth provider now
 
     window.addEventListener('ghc:deviceCode', handleDeviceCode as EventListener);
@@ -370,28 +369,28 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
   const handleGhcSignIn = async () => {
     if (process.env.NODE_ENV === 'development') {
     }
-    
+
     // Set state (sessionStorage operations removed for performance)
     setIsLoading(true);
     setShowGeneratingCode(true);
-    
+
     try {
-      
+
       // Set up event listeners
       (window as any).electronAPI.auth.onDeviceCodeGenerated((deviceCode: any) => {
-        
+
         // Trigger device code event
         const deviceCodeEvent = new CustomEvent('ghc:deviceCode', {
           detail: deviceCode
         });
         window.dispatchEvent(deviceCodeEvent);
       });
-      
+
       (window as any).electronAPI.auth.onDeviceFlowSuccess((data: any) => {
-        
+
         // Clean up event listeners
         (window as any).electronAPI.auth.removeDeviceFlowListeners();
-        
+
         // Trigger auth success event
         const authSuccessEvent = new CustomEvent('ghc:authSuccess', {
           detail: {
@@ -402,33 +401,33 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         });
         window.dispatchEvent(authSuccessEvent);
       });
-      
+
       (window as any).electronAPI.auth.onDeviceFlowError((data: any) => {
-        
+
         // Clean up event listeners
         (window as any).electronAPI.auth.removeDeviceFlowListeners();
-        
+
         // Trigger auth error event
         const errorEvent = new CustomEvent('ghc:authError', {
           detail: { message: data.error }
         });
         window.dispatchEvent(errorEvent);
       });
-      
-      // Call main process to start the complete Device Flow
+
+      // Call the main process to start the full Device Flow
       const result = await (window as any).electronAPI.auth.startGhcDeviceFlow();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to start device flow');
       }
-      
-      
+
+
     } catch (error) {
       setShowGeneratingCode(false);
       showError('GitHub Copilot login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setIsLoading(false);
       clearSessionState();
-      
+
       // Clean up event listeners
       (window as any).electronAPI.auth.removeDeviceFlowListeners();
     }
@@ -457,8 +456,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
 
   const handleOpenGitHub = () => {
     if (deviceCode?.verification_uri) {
-      const ssoUrl = "https://github.com/enterprises/microsoft/sso?return_to=" + deviceCode.verification_uri;
-      window.open(ssoUrl, '_blank');
+      window.open(deviceCode.verification_uri, '_blank');
     }
   };
 
@@ -592,7 +590,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                     ))}
                   </div>
                 )}
-                
+
                 {/* Separator */}
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -602,7 +600,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                     <span className="px-2 bg-white text-gray-500">or</span>
                   </div>
                 </div>
-                
+
                 {/* GitHub Auth Option */}
                 <Button
                   onClick={handleUseGitHubAuth}
@@ -646,10 +644,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 </div>
                 <h4 className="font-medium text-blue-900 mb-2">GitHub Copilot Authentication</h4>
                 <p className="text-sm text-blue-700 mb-4">
-                  Sign in with your Microsoft Internal GitHub account (alias_microsoft) to access GitHub Copilot AI models
+                  Sign in with your GitHub account to access GitHub Copilot AI models
                 </p>
               </div>
-              
+
               <Button
                 onClick={handleGhcSignIn}
                 className="w-full bg-gray-900 hover:bg-gray-800"
@@ -725,7 +723,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         <div className="signin-card-container">
         <Card className="signin-card">
           <CardHeader className="text-center pb-4">
-            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-linear-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
               <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
               </svg>
@@ -742,7 +740,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
             {/* Step instructions */}
             <div className="space-y-4">
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   ✓
                 </div>
                 <div>
@@ -752,7 +750,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
               </div>
 
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   2
                 </div>
                 <div className="flex-1">
@@ -775,7 +773,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
               </div>
 
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   3
                 </div>
                 <div>
@@ -834,7 +832,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
             {/* Bottom tips */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="flex items-start space-x-2">
-                <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="text-sm text-blue-800">

@@ -7,6 +7,7 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'warning' | 'info' | 'update';
   duration?: number;
   persistent?: boolean; // Whether to display persistently, don't auto-dismiss
+  onDismiss?: () => void;
   actions?: Array<{
     label: string;
     onClick: () => void;
@@ -28,7 +29,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
   useEffect(() => {
     // Enter animation
     const showTimer = setTimeout(() => setIsVisible(true), 10);
-    
+
     // If it's a persistent toast, don't set auto-dismiss
     if (toast.persistent) {
       return () => {
@@ -36,10 +37,10 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
         if (closeRef.current) clearTimeout(closeRef.current);
       };
     }
-    
+
     // All non-persistent toasts auto-dismiss after 2 seconds
     const duration = toast.duration || 2000;
-    
+
     // Auto-dismiss after duration
     const autoCloseTimer = setTimeout(() => {
       handleClose();
@@ -54,10 +55,11 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
 
   const handleClose = () => {
     if (isClosing) return;
-    
+
     setIsClosing(true);
-    
+
     closeRef.current = setTimeout(() => {
+      toast.onDismiss?.();
       onClose(toast.id);
     }, 200); // Wait for exit animation to complete
   };
@@ -121,8 +123,8 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
       className={`
         ${styles.bg} ${styles.border} ${styles.text}
         backdrop-blur-md border rounded-lg shadow-lg
-        min-w-[300px] max-w-[450px] p-4
-        flex flex-col space-y-3
+        p-4
+        flex flex-col gap-3
         relative overflow-hidden
         transform transition-all duration-200 ease-out
         ${isVisible && !isClosing
@@ -132,24 +134,26 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
       `}
       style={{
         marginTop: index * 8, // Stack offset
-        zIndex: 1000 - index // Later ones on top
+        zIndex: 1000 - index, // Later ones on top
+        width: 'min(28rem, calc(100vw - 2rem))',
+        maxHeight: 'min(70vh, calc(100vh - 2rem))'
       }}
     >
 
       {/* Top content area */}
-      <div className="flex items-start space-x-3">
+      <div className="flex items-start gap-3 min-w-0">
         {/* Icon */}
-        <div className={`${styles.iconColor} flex-shrink-0 mt-0.5`}>
+        <div className={`${styles.iconColor} shrink-0 mt-0.5`}>
           <Icon size={18} />
         </div>
 
         {/* Message content */}
-        <div className="flex-1 text-sm font-medium leading-relaxed whitespace-pre-line">
+        <div className="flex-1 min-w-0 max-h-[42vh] overflow-y-auto pr-1 text-sm font-medium leading-relaxed whitespace-pre-line wrap-anywhere">
           {typeof toast.message === 'string' ? toast.message : toast.message}
         </div>
 
         {/* Close button */}
-        <div className="flex items-center flex-shrink-0">
+        <div className="flex items-start shrink-0">
           <button
             onClick={handleClose}
             className={`
@@ -166,7 +170,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
 
       {/* Action buttons area */}
       {toast.actions && toast.actions.length > 0 && (
-        <div className="flex items-center justify-end space-x-2 pt-2 border-t border-current/10">
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-current/10 shrink-0">
           {toast.actions.map((action, actionIndex) => (
             <button
               key={actionIndex}
@@ -200,8 +204,8 @@ interface ToastContainerProps {
 
 export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onClose }) => {
   return (
-    <div className="fixed top-4 right-4 z-[9999] space-y-2 pointer-events-none">
-      <div className="space-y-2 pointer-events-auto">
+    <div className="fixed top-4 right-4 left-4 sm:left-auto z-9999 pointer-events-none flex flex-col items-end max-h-[calc(100vh-2rem)]">
+      <div className="space-y-2 pointer-events-auto overflow-y-auto max-h-[calc(100vh-2rem)] pr-1">
         {toasts.map((toast, index) => (
           <ToastItem
             key={toast.id}

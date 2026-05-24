@@ -1,40 +1,40 @@
-Atom is an elegant state management solution
-* Only depends on React itself
-* Minimal code, yet fully featured
-* Robust type system
-* Core API consists of just 3 functions: `atom` (define state), `WithStore` (root component Provider), and `mutate` (define a set of operations)
+Atom is a lightweight state management solution that:
+* Depends only on React itself
+* Has minimal code yet is fully featured
+* Has a sufficiently robust type system
+* Exposes only 3 core APIs: `atom` (define state), `WithStore` (root component Provider), and `mutate` (define a set of operations)
 
-`<WithStore>...</WithStore>` only needs to wrap the outermost layer of the application, so it won't be elaborated here
+`<WithStore>...</WithStore>` just needs to wrap the outermost layer of the application; no further explanation is needed here.
 
-## Basic Introduction
-First, understand two type definitions
+## Introduction
+First, understand two type definitions:
 ```ts
 type Reduce<T> = (data: T) => T;
 type Change<T> = (ch: Reduce<T> | T) => void;
 ```
-The set function mentioned throughout this document has the type `Change<T>`, and its behavior is consistent with React.useState's setter
+The `set` function mentioned throughout has the type `Change<T>`, and behaves identically to the setter from React's `useState`.
 
-Three types of atoms can be created using the `atom` function
+Using the `atom` function, you can create 3 types of atoms:
 
 ### 1. Value Atom
-Basic usage is as follows, where `set` in the code has the type `Change<T>`
+Basic usage is shown below. The `set` in the code has type `Change<T>`:
 ```tsx
 const priceAtom = atom(100);
 function Component1() {
-  const [price, set] = priceAtom.useData();
+  const [price, set] = priceAtom.use();
   return <div>{price}</div>;
 }
 function Component2() {
-  // When using useChange, changes to priceAtom's value will not cause Component2 to re-render
+  // When using useChange, changes to priceAtom will NOT cause Component2 to re-render
   const set = priceAtom.useChange();
   return <button onClick={() => set(150)}>increase</button>;
 }
 ```
 
 ### 2. Action Atom
-Builds on Value Atom by adding the ability to define a set of predefined operations
+Builds on Value Atom by adding the ability to define a set of pre-defined operations:
 ```tsx
-// Here `get` always retrieves the latest value, and `set` has the type `Change<T>`
+// Here `get` always returns the latest value; `set` has type `Change<T>`
 const priceAtom = atom(100, (get, set) => {
   return {
     increase: (delta: number) => set(get() + delta),
@@ -42,36 +42,36 @@ const priceAtom = atom(100, (get, set) => {
   };
 });
 function Component1() {
-  const [price, actions] = priceAtom.useData();
+  const [price, actions] = priceAtom.use();
   return <div>{price}</div>;
 }
 function Component2() {
-  // When using useChange, changes to priceAtom's value will not cause Component2 to re-render
+  // When using useChange, changes to priceAtom will NOT cause Component2 to re-render
   const actions = priceAtom.useChange();
   return <button onClick={() => actions.increase(1)}>increase</button>;
 }
 ```
-With Action Atom, you can encapsulate complex operations into functions as needed, making them easy to reuse across different components.
-The functions to be encapsulated can be synchronous or asynchronous — for example, you can fetch data from a server and update the atom's value based on the result, which gives us the opportunity to extract common business operations into shared logic
+With Action Atom, you can encapsulate complex operations into functions on demand, making them easy to reuse across different components.
+The functions you encapsulate can be synchronous or asynchronous — for example, you can fetch data from a server and update the atom's value based on the result. This gives us the opportunity to extract common business operations into shared logic.
 
 ### 3. Computed Atom
-This is a read-only atom whose value is derived from other atoms
+A read-only atom whose value is derived by computing from other atoms:
 ```tsx
 const priceAtom = atom(100);
 const taxAtom = atom(0.1);
 const totalAtom = atom((use) => use(priceAtom) * (1 + use(taxAtom)));
 function Component() {
-  // Computed atoms can only use useData to get the value — there is no useChange method, and the data cannot be modified
-  const total = totalAtom.useData();
+  // Computed atoms can only use `use` to retrieve their value; there is no useChange method and the data cannot be mutated
+  const total = totalAtom.use();
   return <div>{total}</div>;
 }
 ```
-When creating an atom, the `use` method can accept any other type of atom (including value atom, action atom, computed atom) and return its value. It also automatically subscribes to their changes, so that when a dependent atom changes, it recalculates its own value.
+When creating an atom, the `use` method can accept any other atom type (including value atom, action atom, and computed atom) and returns its value. It also automatically subscribes to their changes, recomputing its own value whenever a dependency atom changes.
 
 
 ## Advanced Usage
 
-### 1. Action Atoms Can Also Read and Modify Other Atoms
+### 1. Action Atoms can also read and modify other atoms
 ```ts
 const a = atom(1);
 const b = atom(2);
@@ -87,16 +87,16 @@ const c = atom(3, (get, set, use) => {
 });
 ```
 
-As you can see, when creating an action atom, you also get a `use` method that can accept any other type of atom. This method is flexible:
-* When passing a value atom: returns a `[value, set]` tuple
-* When passing an action atom: returns a `[value, actions]` tuple
-* When passing a computed atom: returns only its value
+You can see that when creating an action atom, you also receive a `use` method. This method also accepts any atom type, but behaves flexibly:
+* When passed a value atom: returns a `[value, set]` tuple
+* When passed an action atom: returns a `[value, actions]` tuple
+* When passed a computed atom: returns only its value
 
-This `use` works similarly to React hooks, so it's easy to understand. However, note that `use` always retrieves the latest value of other atoms each time it's called, but it does not establish a subscription — changes in other atoms will not trigger the action function to re-execute
+This `use` works much like React hooks, which makes it intuitive. Note, however: each `use` call fetches the latest value from the other atom but does NOT establish a subscription — changes to other atoms will not trigger the action function to re-execute.
 
 
 ### 2. Async Initialization
-Sometimes we want an atom's initial value to come from a server, but this async process is not suitable for execution within a component. Here's an elegant solution:
+Sometimes we want an atom's initial value to come from a server, but running that async process inside a component is not ideal. Here is an elegant way to handle it:
 ```ts
 type Product = { /* ... */ };
 const productsAtom = atom([] as Product[], (get, set) => {
@@ -112,15 +112,15 @@ const productsAtom = atom([] as Product[], (get, set) => {
 });
 ```
 
-The `initialize` function does not execute immediately — it only runs the first time this productsAtom is used, and it only runs once. Note that "used" here includes 3 scenarios:
-* Being depended on by another computed atom via use
-* Being depended on by another action atom via use
-* Calling productsAtom.useXXX in a component
+The `initialize` function is not executed immediately — it is only called the first time this `productsAtom` is `use`d, and only once. Note that "use" here covers 3 cases:
+* Being `use`d by another computed atom
+* Being `use`d by another action atom
+* A component calling `productsAtom.useXXX`
 
-By extension, this async initialization strategy also applies to other scenarios
+By extension, this async initialization strategy works in other scenarios as well.
 
 ### 3. Using with immer (or mutative, etc.)
-When an atom's value is a complex object, directly modifying it can be cumbersome. Here's an example using immer to simplify the operation:
+When an atom's value is a complex object, mutating it directly can be cumbersome. Here is an example using immer to simplify things:
 
 ```tsx
 import { produce } from 'immer';
@@ -150,8 +150,8 @@ const productsAtom = atom([] as Product[], (get, set) => {
 });
 ```
 
-### 4. Using mutate to Define a Set of Operations
-When we need to perform joint operations on multiple atoms, we can use mutate to define reusable functions
+### 4. Using mutate to define a set of operations
+When you need to perform combined operations on multiple atoms, use `mutate` to define reusable functions:
 ```ts
 const price1Atom = atom(100);
 const price2Atom = atom(200);

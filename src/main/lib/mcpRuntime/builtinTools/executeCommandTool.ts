@@ -1,6 +1,6 @@
 /**
  * ExecuteCommandTool built-in tool - refactored version
- * Uses unified terminal instance manager to provide LLM-initiated shell command execution capability
+ * Uses unified terminal instance manager to provide LLM-invoked shell command execution
  * Note: This is a built-in tool, not an MCP protocol tool
  */
 
@@ -8,52 +8,208 @@ import { BuiltinToolDefinition } from './types';
 import { getTerminalManager } from '../../terminalManager';
 import { TerminalConfig } from '../../terminalManager/types';
 import { getUnifiedLogger, UnifiedLogger } from '../../unifiedLogger';
+import {
+  ExecuteCommandAuthInterruptionReason,
+  ExecuteCommandInteractiveAuthHint,
+  ExecuteCommandToolArgs,
+  ExecuteCommandToolResult,
+  ExecuteCommandBackgroundResult,
+} from '@shared/types/toolCallArgs';
+import { BuiltinToolsManager } from './builtinToolsManager';
+import { CancellationError } from '../../cancellation';
+import { StreamingChunk } from '@shared/types/streamingTypes';
+import { getBackgroundProcessManager } from '../../backgroundProcessManager';
+import { buildCommandLine as buildCommandLineShared } from '../../backgroundProcessManager/commandLineUtils';
 
-export interface ExecuteCommandToolArgs {
-  // Required parameters
-  description: string;                              // A brief one-sentence description of what this tool call does
-  command: string;                                  // The command to execute
-  cwd: string;                                      // Working directory, should be the current workspace root or a subdirectory
-
-  // Optional parameters
-  args?: string[];                                  // Optional argument list, automatically appended to the command
-  timeoutSeconds?: number;                          // Request timeout in seconds, default 60s
-  shell?: 'powershell' | 'cmd' | 'bash' | 'sh' | 'zsh';     // Specify the shell type to use
-}
-
-export interface ExecuteCommandToolResult {
-  stdout: string;               // Standard output content (truncated to safe length)
-  stderr: string;               // Standard error output
-  exitCode: number | null;      // Process exit code, null means not obtained
-  timedOut: boolean;            // Whether timeout termination occurred
-  durationMs: number;           // Execution duration in milliseconds
-  cwd: string;                  // Actual working directory when executing the command
-  shell: string;                // The shell program used
-  truncated?: boolean;          // Whether output was truncated due to length limit
-}
-
-const MAX_OUTPUT_CHARS = 8000;          // Maximum character count for stdout/stderr, truncated if exceeded
-const DEFAULT_TIMEOUT_MS = 60_000;      // Default command execution timeout threshold in milliseconds
-const DANGEROUS_PATTERNS = [            // Dangerous command patterns
+const MAX_OUTPUT_CHARS = 8000;          // Maximum characters allowed for stdout/stderr; truncated beyond this
+const DEFAULT_TIMEOUT_MS = 60_000;      // Default command execution timeout threshold (milliseconds)
+const INTERACTIVE_AUTH_TIMEOUT_MS = 900_000; // Interactive auth commands are allowed 15 minutes by default
+const DANGEROUS_PATTERNS = [            // Dangerous patterns
+  // Filesystem / system destruction
   /rm\s+-rf\s+\/?/i,
   /shutdown/i,
   /poweroff/i,
-  /format\s+/i,
+  /\bformat(?:\.com)?\s+[a-z]:/i,
   /mkfs/i,
-  /del\s+\/?s\s+\/?q\s+[a-z]:/i
+  /del\s+\/?s\s+\/?q\s+[a-z]:/i,
+
+  // Credential / auth destruction — deletes credential/token/cookie/auth cache files
+  /Remove-Item.*(?:credential|token|cookie|auth.*cache)/i,
+  /rm\s+.*(?:credential|token|cookie|auth.*cache)/i,
+  /del\s+.*(?:credential|token|cookie|auth.*cache)/i,
+
+  // OAuth logout/revoke/signout endpoints — accessing these URLs destroys system-level SSO login state
+  /login\.microsoftonline\.com\/.*\/logout/i,
+  /login\.live\.com\/.*logout/i,
+  /accounts\.google\.com\/Logout/i,
+  /\/oauth2?\/(?:logout|revoke|signout)/i,
+
+  // Directly manipulates the system browser profile directory (Windows + macOS)
+  /(?:Microsoft\\\\Edge|Google\\\\Chrome)\\\\User Data/i,
+  /Application Support\/(?:Microsoft Edge|Google\/Chrome)/i,
 ];
 
 export class ExecuteCommandTool {
   private static logger: UnifiedLogger = getUnifiedLogger();
-  
+
+  private static readonly INTERACTIVE_AUTH_COMMAND_PATTERNS: Array<{
+    family: ExecuteCommandInteractiveAuthHint['commandFamily'];
+    pattern: RegExp;
+  }> = [
+    { family: 'gh-auth-login', pattern: /^gh auth login(?:\s|$)/ },
+    { family: 'gh-auth-refresh', pattern: /^gh auth refresh(?:\s|$)/ },
+    { family: 'npm-login', pattern: /^npm login(?:\s|$)/ },
+    { family: 'npm-adduser', pattern: /^npm adduser(?:\s|$)/ },
+    { family: 'pnpm-login', pattern: /^pnpm login(?:\s|$)/ },
+    { family: 'yarn-npm-login', pattern: /^yarn npm login(?:\s|$)/ }
+  ];
+
+  private static isInteractiveAuthCommand(command: string): boolean {
+    const normalized = command.trim().replace(/\s+/g, ' ').toLowerCase();
+    return this.getInteractiveAuthCommandFamily(normalized) !== null;
+  }
+
+  private static getInteractiveAuthCommandFamily(command: string): ExecuteCommandInteractiveAuthHint['commandFamily'] | null {
+    const normalized = command.trim().replace(/\s+/g, ' ').toLowerCase();
+    const match = this.INTERACTIVE_AUTH_COMMAND_PATTERNS.find(({ pattern }) => pattern.test(normalized));
+    return match?.family ?? null;
+  }
+
+  private static extractVerificationUri(output: string): string | undefined {
+    const match = output.match(/https?:\/\/[^\s)]+/i);
+    return match?.[0];
+  }
+
+  private static extractDeviceCode(output: string): string | undefined {
+    const labeledMatch = output.match(/(?:device code|user code|one-time code|code)\D{0,20}([A-Z0-9]{4}(?:-[A-Z0-9]{4})+)/i);
+    if (labeledMatch?.[1]) {
+      return labeledMatch[1].toUpperCase();
+    }
+
+    const genericMatch = output.match(/\b([A-Z0-9]{4}(?:-[A-Z0-9]{4})+)\b/);
+    return genericMatch?.[1]?.toUpperCase();
+  }
+
+  private static buildInteractiveAuthHint(
+    command: string,
+    stdout: string,
+    stderr: string,
+    timeoutMs: number,
+    startedAt: number
+  ): ExecuteCommandInteractiveAuthHint | undefined {
+    const commandFamily = this.getInteractiveAuthCommandFamily(command);
+    if (!commandFamily) {
+      return undefined;
+    }
+
+    const output = `${stdout}\n${stderr}`;
+    const verificationUri = this.extractVerificationUri(output);
+    const deviceCode = this.extractDeviceCode(output);
+
+    return {
+      commandFamily,
+      verificationUri,
+      deviceCode,
+      timeoutMs,
+      startedAt
+    };
+  }
+
+  private static getInteractiveAuthInterruptionMessage(reason: ExecuteCommandAuthInterruptionReason): string {
+    if (reason === 'cancelled') {
+      return 'Authentication was canceled by the user. Start the sign-in flow again to continue.';
+    }
+
+    return 'Authentication timed out before completion. Start the sign-in flow again to continue.';
+  }
+
+  private static finalizeInteractiveAuthResult(
+    result: ExecuteCommandToolResult,
+    reason: ExecuteCommandAuthInterruptionReason | null
+  ): ExecuteCommandToolResult {
+    if (!result.interactiveAuth || reason === null) {
+      return result;
+    }
+
+    return {
+      ...result,
+      stdout: '',
+      stderr: this.getInteractiveAuthInterruptionMessage(reason),
+      truncated: undefined,
+      interactiveAuth: undefined,
+      authInterruptedReason: reason,
+      success: false,
+      exitCode: reason === 'cancelled' ? 130 : result.exitCode,
+      timedOut: reason === 'timed_out',
+    };
+  }
+
+  private static emitPartialResult(
+    executionId: string,
+    args: ExecuteCommandToolArgs,
+    commandLine: string,
+    timeoutMs: number,
+    stdout: string,
+    stderr: string,
+    truncated: boolean,
+    startTime: number
+  ): void {
+    const context = BuiltinToolsManager.getExecutionContext();
+    if (!context?.eventSender || !context.currentToolCallId) {
+      return;
+    }
+
+    const partialResult: ExecuteCommandToolResult = {
+      stdout,
+      stderr,
+      exitCode: null,
+      timedOut: false,
+      durationMs: Date.now() - startTime,
+      cwd: args.cwd,
+      shell: args.shell || 'default',
+      truncated: truncated || undefined,
+      interactiveAuth: this.buildInteractiveAuthHint(commandLine, stdout, stderr, timeoutMs, startTime)
+    };
+
+    const chunk: StreamingChunk = {
+      chunkId: `tool_result_partial_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      messageId: context.currentToolCallId,
+      chatId: context.chatId,
+      chatSessionId: context.chatSessionId,
+      timestamp: Date.now(),
+      type: 'tool_result',
+      toolResult: {
+        tool_call_id: context.currentToolCallId,
+        tool_name: 'execute_command',
+        content: JSON.stringify(partialResult, null, 2),
+        isError: false,
+        isPartial: true
+      }
+    };
+
+    context.eventSender.send('agentChat:streamingChunk', chunk);
+
+    this.logger.debug(
+      'Emitted partial execute_command output',
+      'ExecuteCommandTool',
+      {
+        executionId,
+        toolCallId: context.currentToolCallId,
+        stdoutLength: stdout.length,
+        stderrLength: stderr.length,
+        truncated
+      }
+    );
+  }
+
   /**
    * Execute the command run tool
-   * Static method, supports direct invocation by LLM
+   * Static method, supports direct LLM invocation
    */
-  static async execute(args: ExecuteCommandToolArgs): Promise<ExecuteCommandToolResult> {
+  static async execute(args: ExecuteCommandToolArgs, options?: { signal?: AbortSignal }): Promise<ExecuteCommandToolResult | ExecuteCommandBackgroundResult> {
     const executionId = this.generateExecutionId();
     const startTime = Date.now();
-    
+
     this.logger.info(
       `ExecuteCommandTool execution started`,
       'ExecuteCommandTool',
@@ -61,7 +217,7 @@ export class ExecuteCommandTool {
     );
 
     try {
-      // 1. Argument validation
+      // 1. Parameter validation
       this.logger.debug(`Validating arguments`, 'ExecuteCommandTool', { executionId });
       const validation = this.validateArgs(args);
       if (!validation.isValid) {
@@ -74,7 +230,7 @@ export class ExecuteCommandTool {
       }
       this.logger.debug(`Arguments validation passed`, 'ExecuteCommandTool', { executionId });
 
-      // 2. Parse arguments (command, path, etc.)
+      // 2. Resolve parameters (command, paths, etc.)
       const normalizedCommand = args.command.trim();
       this.logger.debug(
         `Command normalized`,
@@ -82,34 +238,69 @@ export class ExecuteCommandTool {
         { executionId, originalCommand: args.command, normalizedCommand }
       );
 
-      // Safety check
-      const dangerousPattern = DANGEROUS_PATTERNS.find(pattern => pattern.test(normalizedCommand));
+      // Safety check — applied to the final commandLine (including args) to prevent bypassing via args
+      const commandLine = this.buildCommandLine(normalizedCommand, args.args);
+      const dangerousPattern = DANGEROUS_PATTERNS.find(pattern => pattern.test(commandLine));
       if (dangerousPattern) {
+        const reason = this.getDangerousPatternReason(dangerousPattern);
         this.logger.warn(
           `Command blocked by safety policy`,
           'ExecuteCommandTool',
-          { executionId, command: normalizedCommand, matchedPattern: dangerousPattern.toString() }
+          { executionId, command: commandLine, matchedPattern: dangerousPattern.toString(), reason }
         );
-        throw new Error('command blocked by safety policy');
+        throw new Error(
+          `Command blocked by safety policy: ${reason}. ` +
+          `Do NOT retry this command. Choose a safer alternative that does not affect system-wide authentication state or credentials.`
+        );
       }
       this.logger.debug(`Safety check passed`, 'ExecuteCommandTool', { executionId });
 
-      const commandLine = this.buildCommandLine(normalizedCommand, args.args);
-      const timeoutMs = this.normalizeTimeout(args.timeoutSeconds);
-      
+      const timeoutMs = this.normalizeTimeout(args.timeoutSeconds, commandLine);
+
       this.logger.info(
         `Preparing to execute command`,
         'ExecuteCommandTool',
-        { executionId, commandLine, timeoutMs, cwd: args.cwd, shell: args.shell }
+        { executionId, commandLine, timeoutMs, cwd: args.cwd, shell: args.shell, background: args.background }
       );
 
+      // 2.5. Background execution mode
+      if (args.background) {
+        this.logger.info(
+          'Executing command in background mode',
+          'ExecuteCommandTool',
+          { executionId, commandLine, cwd: args.cwd }
+        );
+
+        const bgManager = getBackgroundProcessManager();
+        const spawnResult = await bgManager.spawn(
+          commandLine,
+          {
+            cwd: args.cwd,
+            shell: args.shell
+          }
+        );
+
+        this.logger.info(
+          'Background process spawned',
+          'ExecuteCommandTool',
+          { executionId, sessionId: spawnResult.sessionId, pid: spawnResult.pid }
+        );
+
+        return {
+          sessionId: spawnResult.sessionId,
+          pid: spawnResult.pid,
+          background: true
+        };
+      }
+
       // 3. Execute command using the new terminal manager
-      // Environment variables are managed uniformly by TerminalInstance (adds bin directory based on runtime mode)
+      // Environment variables are managed by TerminalInstance (decides whether to add bin directory based on runtime mode)
       const terminalManager = getTerminalManager();
-      
+      const executionContext = BuiltinToolsManager.getExecutionContext();
+
       const terminalConfig: TerminalConfig = {
         command: commandLine,
-        args: [], // Command already includes arguments
+        args: [], // command already includes arguments
         cwd: args.cwd,
         type: 'command',
         shell: args.shell,
@@ -124,9 +315,72 @@ export class ExecuteCommandTool {
         { executionId, terminalConfig }
       );
 
-      const result = await terminalManager.executeCommand(terminalConfig);
+      const instance = await terminalManager.createInstance({
+        ...terminalConfig,
+        instanceId: `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+      });
+
+      let liveStdout = '';
+      let liveStderr = '';
+      let liveTruncated = false;
+      let cancelledByUser = false;
+
+      const maxOutputLength = terminalConfig.maxOutputLength || MAX_OUTPUT_CHARS;
+      const appendOutput = (current: string, incoming: string): { next: string; truncated: boolean } => {
+        if (!incoming) {
+          return { next: current, truncated: false };
+        }
+
+        if (current.length + incoming.length > maxOutputLength) {
+          const remaining = maxOutputLength - current.length;
+          return {
+            next: current + incoming.slice(0, Math.max(remaining, 0)),
+            truncated: true
+          };
+        }
+
+        return {
+          next: current + incoming,
+          truncated: false
+        };
+      };
+
+      instance.on('stdout', (chunk) => {
+        const update = appendOutput(liveStdout, chunk);
+        liveStdout = update.next;
+        liveTruncated = liveTruncated || update.truncated;
+        this.emitPartialResult(executionId, args, commandLine, timeoutMs, liveStdout, liveStderr, liveTruncated, startTime);
+      });
+
+      instance.on('stderr', (chunk) => {
+        const normalized = chunk.endsWith('\n') ? chunk : `${chunk}\n`;
+        const update = appendOutput(liveStderr, normalized);
+        liveStderr = update.next;
+        liveTruncated = liveTruncated || update.truncated;
+        this.emitPartialResult(executionId, args, commandLine, timeoutMs, liveStdout, liveStderr, liveTruncated, startTime);
+      });
+
+      const cancellationRegistration = executionContext?.registerCancellationHandler?.(async () => {
+        cancelledByUser = true;
+        await terminalManager.stopInstance(instance.id, true);
+      });
+
+      if (executionContext?.cancellationToken.isCancellationRequested) {
+        cancellationRegistration?.dispose();
+        await terminalManager.stopInstance(instance.id, true);
+        throw new CancellationError('Command execution cancelled before completion');
+      }
+
+      let result;
+      try {
+        await instance.start();
+        result = await instance.execute();
+      } finally {
+        cancellationRegistration?.dispose();
+        await terminalManager.stopInstance(instance.id, true);
+      }
       const executionTime = Date.now() - startTime;
-      
+
       this.logger.info(
         `Command execution completed`,
         'ExecuteCommandTool',
@@ -141,34 +395,43 @@ export class ExecuteCommandTool {
           truncated: result.truncated
         }
       );
-      
-      // Convert result to original interface format
+
+      // Convert result to the original interface format
       const finalResult: ExecuteCommandToolResult = {
         stdout: result.stdout,
         stderr: result.stderr,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
         durationMs: result.durationMs,
-        cwd: args.cwd, // Return the requested working directory
-        shell: args.shell || 'default', // Return the requested shell or default value
-        truncated: result.truncated
+        cwd: args.cwd, // return the requested working directory
+        shell: args.shell || 'default', // return the requested shell or default
+        truncated: result.truncated,
+        interactiveAuth: this.buildInteractiveAuthHint(commandLine, result.stdout, result.stderr, timeoutMs, startTime)
       };
-      
-      // Log a warning if there is error output
-      if (result.stderr && result.stderr.trim()) {
+
+      const interruptionReason: ExecuteCommandAuthInterruptionReason | null = cancelledByUser
+        ? 'cancelled'
+        : finalResult.timedOut
+          ? 'timed_out'
+          : null;
+
+      const normalizedFinalResult = this.finalizeInteractiveAuthResult(finalResult, interruptionReason);
+
+      // Log warning if there is stderr output
+      if (normalizedFinalResult.stderr && normalizedFinalResult.stderr.trim()) {
         this.logger.warn(
           `Command produced stderr output`,
           'ExecuteCommandTool',
-          { executionId, stderr: result.stderr.substring(0, 500) }
+          { executionId, stderr: normalizedFinalResult.stderr.substring(0, 500) }
         );
       }
-      
-      return finalResult;
-      
+
+      return normalizedFinalResult;
+
     } catch (error) {
       const executionTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       this.logger.error(
         `Command execution failed`,
         'ExecuteCommandTool',
@@ -184,7 +447,7 @@ export class ExecuteCommandTool {
           }
         }
       );
-      
+
       throw new Error(`command execution failed: ${errorMessage}`);
     }
   }
@@ -197,39 +460,57 @@ export class ExecuteCommandTool {
   }
 
   /**
-   * Normalize timeout parameter, return value in milliseconds
+   * Normalize the timeout parameter and return milliseconds
    */
-  private static normalizeTimeout(timeoutSeconds?: number): number {
+  private static normalizeTimeout(timeoutSeconds: number | undefined, command: string): number {
     this.logger.debug(
       `Normalizing timeout`,
       'ExecuteCommandTool',
-      { inputTimeoutSeconds: timeoutSeconds }
+      { inputTimeoutSeconds: timeoutSeconds, command }
     );
-    
+
+    const interactiveAuthCommand = this.isInteractiveAuthCommand(command);
+
     if (timeoutSeconds === undefined) {
-      this.logger.debug(`Using default timeout`, 'ExecuteCommandTool', { defaultTimeoutMs: DEFAULT_TIMEOUT_MS });
-      return DEFAULT_TIMEOUT_MS;
+      const defaultTimeoutMs = interactiveAuthCommand
+        ? INTERACTIVE_AUTH_TIMEOUT_MS
+        : DEFAULT_TIMEOUT_MS;
+
+      this.logger.debug(`Using default timeout`, 'ExecuteCommandTool', {
+        defaultTimeoutMs,
+        interactiveAuthCommand
+      });
+      return defaultTimeoutMs;
     }
-    
+
     if (!Number.isFinite(timeoutSeconds)) {
       this.logger.error(`Invalid timeout value`, 'ExecuteCommandTool', { timeoutSeconds });
       throw new Error('timeoutSeconds must be a finite number');
     }
-    
+
     const clamped = Math.max(1, Math.min(900, Math.floor(timeoutSeconds)));
-    const result = clamped * 1000;
-    
+    const explicitTimeoutMs = clamped * 1000;
+    const result = interactiveAuthCommand
+      ? Math.max(INTERACTIVE_AUTH_TIMEOUT_MS, explicitTimeoutMs)
+      : explicitTimeoutMs;
+
     this.logger.debug(
       `Timeout normalized`,
       'ExecuteCommandTool',
-      { originalTimeout: timeoutSeconds, clampedTimeout: clamped, resultMs: result }
+      {
+        originalTimeout: timeoutSeconds,
+        clampedTimeout: clamped,
+        explicitTimeoutMs,
+        interactiveAuthCommand,
+        resultMs: result
+      }
     );
-    
+
     return result;
   }
 
   /**
-   * Concatenate command and argument strings to build the full command
+   * Concatenate the command and argument strings to build the full command line
    */
   private static buildCommandLine(cmd: string, args?: string[]): string {
     this.logger.debug(
@@ -237,58 +518,31 @@ export class ExecuteCommandTool {
       'ExecuteCommandTool',
       { command: cmd, argsCount: args?.length || 0 }
     );
-    
-    if (!Array.isArray(args) || args.length === 0) {
-      this.logger.debug(`No arguments provided, returning original command`, 'ExecuteCommandTool');
-      return cmd;
-    }
 
-    const quotedArgs = args.map(entry => this.quoteArg(entry));
-    const commandLine = [cmd, ...quotedArgs].join(' ');
-    
+    const commandLine = buildCommandLineShared(cmd, args);
+
     this.logger.debug(
       `Command line built`,
       'ExecuteCommandTool',
-      { originalArgs: args, quotedArgs, finalCommandLine: commandLine }
+      { originalArgs: args, finalCommandLine: commandLine }
     );
-    
+
     return commandLine;
   }
 
   /**
-   * Apply necessary escaping and quoting to arguments
-   */
-  private static quoteArg(value: string): string {
-    if (!value) {
-      this.logger.debug(`Empty argument, returning quoted empty string`, 'ExecuteCommandTool');
-      return '""';
-    }
-
-    if (!/[\s"']/.test(value)) {
-      this.logger.debug(`Argument doesn't need quoting`, 'ExecuteCommandTool', { value });
-      return value;
-    }
-
-    const escaped = value.replace(/"/g, '\\"');
-    const quoted = `"${escaped}"`;
-    
-    this.logger.debug(
-      `Argument quoted`,
-      'ExecuteCommandTool',
-      { original: value, escaped, quoted }
-    );
-    
-    return quoted;
-  }
-
-  /**
-   * Get tool definition (for registration with BuiltinToolsManager)
+   * Get tool definition (for registration in BuiltinToolsManager)
    */
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'execute_command',
       description:
-        'Execute a shell command in the selected workspace using the unified terminal manager. Output is truncated to 8000 characters, commands timeout after 60 seconds by default, and high-risk patterns are blocked by safety checks.\n\n' +
+        'Execute a shell command in the selected workspace using the unified terminal manager. Output is truncated to 8000 characters, commands timeout after 60 seconds by default, interactive auth commands like gh auth login get a 15-minute minimum timeout, and high-risk patterns are blocked by safety checks.\n\n' +
+        'Interactive auth commands such as gh auth login, gh auth refresh, npm login, npm adduser, pnpm login, and yarn npm login surface verification hints in the message timeline so users can open links, copy device codes, and see the remaining timeout without digging through raw terminal output.\n\n' +
+        'Background Mode:\n' +
+        '- Set background=true to run long-running commands without blocking\n' +
+        '- Returns immediately with sessionId and pid\n' +
+        '- Use manage_process tool to poll status, read logs, or kill the process\n\n' +
         'Working Directory Guidelines:\n' +
         '- The cwd parameter specifies where the command runs\n' +
         '- Always use workspace-relative paths (e.g., "./src/config.json")\n' +
@@ -323,19 +577,41 @@ export class ExecuteCommandTool {
           },
           timeoutSeconds: {
             type: 'number',
-            description: 'Optional timeout in seconds (default 60, minimum 1, maximum 900).'
+            description: 'Optional timeout in seconds (default 60, minimum 1, maximum 900). Ignored when background=true.'
           },
           shell: {
             type: 'string',
             enum: ['powershell', 'cmd', 'bash', 'sh', 'zsh'],
             description: 'Preferred shell profile. Defaults to powershell on Windows and zsh on macOS.'
+          },
+          background: {
+            type: 'boolean',
+            description: 'Run command in background without blocking. Returns sessionId and pid. Use manage_process to monitor.'
           }
         },
         required: ['description', 'command', 'cwd']
       }
     };
   }
-  
+
+  /**
+   * Return a human-readable reason for why a dangerous pattern was blocked
+   */
+  private static getDangerousPatternReason(pattern: RegExp): string {
+    const src = pattern.source;
+    if (/credential|token|cookie|auth.*cache/i.test(src)) {
+      return 'this command would delete credential/token/cookie files, which destroys authentication state for the user and other applications';
+    }
+    if (/login\.microsoftonline|login\.live|accounts\.google|oauth2?.*logout|revoke|signout/i.test(src)) {
+      return 'this command accesses an OAuth logout/revoke endpoint, which would destroy system-wide SSO login state across all services';
+    }
+    if (/Edge|Chrome.*User Data|Application Support/i.test(src)) {
+      return 'this command directly manipulates the system browser profile directory, which can corrupt or destroy browser login state';
+    }
+    // Fallback for original filesystem/system patterns
+    return 'this command matches a destructive system operation pattern';
+  }
+
   /**
    * Validate arguments
    */

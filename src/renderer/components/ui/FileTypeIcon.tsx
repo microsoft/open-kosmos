@@ -9,7 +9,7 @@ export type FileCategory =
   | 'word'       // Word documents
   | 'excel'      // Excel spreadsheets
   | 'ppt'        // PowerPoint presentations
-  | 'archive'    // Archives (ZIP/RAR/7z etc.)
+  | 'archive'    // Archive files (ZIP/RAR/7z etc.)
   | 'executable' // Executable files
   | 'image'      // Image files
   | 'video'      // Video files
@@ -36,7 +36,7 @@ export function getFileCategory(fileName: string): FileCategory {
   // PPT
   if (['ppt', 'pptx', 'odp'].includes(ext)) return 'ppt';
 
-  // Archives
+  // Archive files
   if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'zst', 'lz', 'cab', 'iso', 'dmg'].includes(ext)) return 'archive';
 
   // Executable files
@@ -71,7 +71,7 @@ export function getFileCategory(fileName: string): FileCategory {
 }
 
 interface FileTypeIconProps {
-  /** Filename (with extension) */
+  /** Filename (including extension) */
   fileName: string;
   /** Icon size, default 20 */
   size?: number;
@@ -103,7 +103,7 @@ const FileTypeIcon: React.FC<FileTypeIconProps> = ({ fileName, size = 20, classN
 };
 
 /**
- * Get the color for a file type category
+ * Get the color corresponding to the file type
  */
 function getCategoryColor(category: FileCategory): string {
   switch (category) {
@@ -125,7 +125,7 @@ function getCategoryColor(category: FileCategory): string {
 }
 
 /**
- * Render the SVG icon for a specific file type
+ * Render the SVG icon for the specific file type
  */
 function renderIcon(category: FileCategory, color: string): React.ReactNode {
   switch (category) {
@@ -254,7 +254,7 @@ function renderIcon(category: FileCategory, color: string): React.ReactNode {
           <path d="M8 4C8 2.89543 8.89543 2 10 2H19L26 9V28C26 29.1046 25.1046 30 24 30H10C8.89543 30 8 29.1046 8 28V4Z" fill={color} fillOpacity="0.12" />
           <path d="M19 2L26 9H21C19.8954 9 19 8.10457 19 7V2Z" fill={color} fillOpacity="0.3" />
           <path d="M10 2C8.89543 2 8 2.89543 8 4V28C8 29.1046 8.89543 30 10 30H24C25.1046 30 26 29.1046 26 28V9L19 2H10Z" stroke={color} strokeWidth="1.5" fill="none" />
-          {/* Music note icon */}
+          {/* Musical note icon */}
           <circle cx="14" cy="23" r="2.5" fill={color} fillOpacity="0.5" />
           <line x1="16.5" y1="23" x2="16.5" y2="14" stroke={color} strokeWidth="1.5" />
           <path d="M16.5 14C16.5 14 20 13 21 12V16C21 16 18 17 16.5 17" fill={color} fillOpacity="0.5" />

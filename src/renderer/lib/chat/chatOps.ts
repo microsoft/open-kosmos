@@ -13,6 +13,7 @@
  */
 
 import { ChatConfig, ChatAgent, DEFAULT_CHAT_AGENT } from '../../../main/lib/userDataADO/types/profile';
+import { buildChatId } from '../../../shared/utils/idFormats';
 
 /**
  * Chat operation result interface
@@ -38,20 +39,14 @@ export interface ChatInfo {
 /**
  * Generate unique chat ID
  */
-function generateChatId(): string {
-  const now = new Date();
-  const timestamp = now.getFullYear().toString() +
-    (now.getMonth() + 1).toString().padStart(2, '0') +
-    now.getDate().toString().padStart(2, '0') +
-    now.getHours().toString().padStart(2, '0') +
-    now.getMinutes().toString().padStart(2, '0') +
-    now.getSeconds().toString().padStart(2, '0');
-  return `chat_${timestamp}`;
+async function generateChatId(): Promise<string> {
+  const deviceId = await (window as any).electronAPI?.getInstallationDeviceId?.();
+  return buildChatId(deviceId || 'unknown-device');
 }
 
 /**
  * Chat Operations Manager
- * 
+ *
  * Provides high-level APIs for managing Chat configurations through IPC communication
  * with ProfileCacheManager in the main process.
  */
@@ -120,7 +115,7 @@ export class ChatOpsManager {
 
       // Generate chat ID if not provided
       const finalChatConfig: ChatConfig = {
-        chat_id: chatConfig.chat_id || generateChatId(),
+        chat_id: chatConfig.chat_id || await generateChatId(),
         chat_type: chatConfig.chat_type || 'single_agent',
         ...(chatConfig.agent && { agent: { ...chatConfig.agent, workspace: chatConfig.agent.workspace || '' } }),
         ...(chatConfig.agents && { agents: chatConfig.agents })
@@ -132,7 +127,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.addChatConfig(finalChatConfig);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -174,7 +169,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.updateChatConfig(chatId, updates);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -216,7 +211,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.deleteChatConfig(chatId);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -258,7 +253,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.getChatConfig(chatId);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -293,7 +288,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.getAllChatConfigs();
-      
+
       if (result.success) {
         return {
           success: true,
@@ -335,7 +330,7 @@ export class ChatOpsManager {
       }
 
       const result = await (window as any).electronAPI.profile.updateChatAgent(chatId, agentUpdates);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -406,11 +401,11 @@ export class ChatOpsManager {
    */
   async createDefaultChat(customAgent?: Partial<ChatAgent>): Promise<ChatOperationResult> {
     const defaultChatConfig: ChatConfig = {
-      chat_id: generateChatId(),
+      chat_id: await generateChatId(),
       chat_type: 'single_agent',
       agent: {
         ...DEFAULT_CHAT_AGENT,
-        workspace: '', // 🔄 workspace is now at the agent level, backend will auto-set the default path
+        workspace: '', // 🔄 workspace is now at the agent level; the backend will automatically set the default path
         ...customAgent
       }
     };
@@ -419,31 +414,24 @@ export class ChatOpsManager {
   }
 
   /**
-   * Duplicate an existing chat configuration
+   * Duplicate an existing chat configuration with independent knowledge and scheduled tasks
    */
   async duplicateChatConfig(chatId: string, newName?: string): Promise<ChatOperationResult> {
     try {
-      // Get the original chat config
-      const getResult = await this.getChatConfig(chatId);
-      if (!getResult.success || !getResult.data) {
-        return {
-          success: false,
-          error: 'Failed to get original chat configuration'
-        };
+      this.validateUser();
+
+      if (!this.validateAPI()) {
+        return { success: false, error: 'Chat Config API not available' };
       }
 
-      const originalConfig: ChatConfig = getResult.data;
-      const duplicatedConfig: ChatConfig = {
-        ...originalConfig,
-        chat_id: generateChatId()
-      };
+      const agentName = newName?.trim() || 'Agent Copy';
+      const result = await (window as any).electronAPI.profile.duplicateChatConfig(chatId, agentName);
 
-      // Update name if provided
-      if (newName && duplicatedConfig.agent) {
-        duplicatedConfig.agent.name = newName;
+      if (result.success) {
+        return { success: true, data: { chat_id: result.newChatId, knowledgeCopyFailed: result.knowledgeCopyFailed, scheduleCopyFailed: result.scheduleCopyFailed } };
+      } else {
+        return { success: false, error: result.error || 'Failed to duplicate agent' };
       }
-
-      return await this.addChatConfig(duplicatedConfig);
     } catch (error) {
       return {
         success: false,

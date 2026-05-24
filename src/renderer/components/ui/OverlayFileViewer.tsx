@@ -16,13 +16,20 @@ import {
   Pencil,
   Save,
   LogOut,
+  Monitor,
+  Minimize,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import type * as monaco from 'monaco-editor';
 import { FrontMatter, parseFrontMatter } from '../../lib/utils/yamlFrontMatter';
+import { atom } from '@/atom';
+import { isInstallableSkillArtifact } from '../../lib/skills/installableSkillArtifacts';
+import { useToast } from './ToastProvider';
 import '../../styles/OverlayFileViewer.css';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[OverlayFileViewer]');
 
 // ============================================================
 // Types
@@ -53,12 +60,35 @@ export interface OverlayFileDescriptor {
 }
 
 export interface OverlayFileViewerProps {
-  file: OverlayFileDescriptor | null;
-  isOpen: boolean;
-  onClose: () => void;
-  /** Callback when Install Skill button is clicked for .skill files */
+  /** Callback when Install Skill button is clicked for installable skill artifacts */
   onInstallSkill?: (filePath: string) => void;
 }
+
+// ============================================================
+// Atom – manages open/close and file descriptor
+// ============================================================
+
+interface FileViewerState {
+  isOpen: boolean;
+  file: OverlayFileDescriptor | null;
+}
+
+const zeroFileViewerState: FileViewerState = {
+  isOpen: false,
+  file: null,
+};
+
+export const FileViewerAtom = atom(zeroFileViewerState, (_get, set) => {
+  function open(file: OverlayFileDescriptor) {
+    set({ isOpen: true, file });
+  }
+
+  function close() {
+    set(zeroFileViewerState);
+  }
+
+  return { open, close };
+});
 
 // ============================================================
 // Helpers
@@ -368,11 +398,37 @@ const OverlayFrontMatterTable: React.FC<{ frontMatter: FrontMatter }> = ({ front
 // ============================================================
 
 export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
-  file,
-  isOpen,
-  onClose,
   onInstallSkill,
 }) => {
+  const [{ isOpen, file }, actions] = FileViewerAtom.use();
+  const onClose = actions.close;
+
+  const { showSuccess, showError } = useToast();
+
+  // Listen for fileViewer:open custom events
+  useEffect(() => {
+    const handleOpenFileViewer = (event: CustomEvent) => {
+      if ((window as any).__inlineFilePreviewEnabled) {
+        return;
+      }
+      if ((event as any)._inlineHandled) return;
+      const { file } = event.detail;
+      actions.open(file);
+    };
+
+    window.addEventListener(
+      'fileViewer:open',
+      handleOpenFileViewer as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'fileViewer:open',
+        handleOpenFileViewer as EventListener,
+      );
+    };
+  }, []);
+
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -386,11 +442,13 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const [isEditorLoading, setIsEditorLoading] = useState(false);
   const monacoEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   /** Baseline content for isDirty comparison (last saved value or initial value) */
   const savedContentRef = useRef<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // Track the currently loaded file identifier for synchronous file change detection
   const loadedFileKeyRef = useRef<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // File unique identifier
   const fileKey = file ? `${file.name}|${file.url}` : null;
@@ -410,6 +468,22 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
       if (htmlBlobUrl) URL.revokeObjectURL(htmlBlobUrl);
     };
   }, [htmlBlobUrl]);
+
+  // Sync fullscreen state with browser Fullscreen API
+  useEffect(() => {
+    if (!isOpen) {
+      setIsFullscreen(false);
+      return;
+    }
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === contentRef.current);
+    };
+
+    handleFullscreenChange();
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [isOpen]);
 
   // Determine if file is editable (only local text-based files are editable)
   const isEditable = useMemo(() => {
@@ -474,26 +548,36 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
       setViewMode('render'); // Reset view mode
 
       if (isLocalFile(file.url)) {
-        // Local file: read via electronAPI
+        // Local file: check existence first, then read via electronAPI
         const localPath = getLocalPath(file.url);
-        window.electronAPI?.fs
-          ?.readFile(localPath, 'utf-8')
-          .then((result) => {
+        const doRead = async () => {
+          try {
+            // Check if file exists
+            const statResult = await window.electronAPI?.fs?.stat(localPath);
+            if (!statResult?.success) {
+              if (cancelled) return;
+              setLoadError(`File not found: ${localPath}`);
+              setIsLoading(false);
+              return;
+            }
+            // Read file content
+            const result = await window.electronAPI?.fs?.readFile(localPath, 'utf-8');
             if (cancelled) return;
-            if (result.success && result.content !== undefined) {
+            if (result?.success && result.content !== undefined) {
               setTextContent(result.content);
               loadedFileKeyRef.current = fileKey;
             } else {
-              setLoadError(result.error || 'Failed to load file');
+              setLoadError(result?.error || 'Failed to load file');
             }
             setIsLoading(false);
-          })
-          .catch((err) => {
+          } catch (err) {
             if (cancelled) return;
-            console.error('[OverlayFileViewer] Failed to load local text:', err);
-            setLoadError('Failed to load file');
+            logger.error('[OverlayFileViewer] Failed to load local text:', err);
+            setLoadError(`File not found or cannot be read: ${localPath}`);
             setIsLoading(false);
-          });
+          }
+        };
+        doRead();
       } else {
         // Non-local file (http, https, blob, data, etc.): load via fetch
         fetch(file.url)
@@ -509,7 +593,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
           })
           .catch((err) => {
             if (cancelled) return;
-            console.error('[OverlayFileViewer] Failed to load remote text:', err);
+            logger.error('[OverlayFileViewer] Failed to load remote text:', err);
             setLoadError('Failed to load file');
             setIsLoading(false);
           });
@@ -642,32 +726,57 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
     setSaveError(null);
     try {
       const localPath = getLocalPath(file.url);
-      const result = await window.electronAPI?.fs?.writeFile(localPath, content, 'utf-8');
+      const result = await window.electronAPI?.fs?.writeFile(localPath, content, 'utf-8', {
+        conflictResolution: 'replace',
+      });
       if (result?.success) {
         setTextContent(content);
         savedContentRef.current = content;
         setIsDirty(false);
+        showSuccess(`Saved ${file.name}`);
       } else {
-        setSaveError(result?.error || 'Failed to save file');
+        const errorMessage = result?.error || 'Failed to save file';
+        setSaveError(errorMessage);
+        showError(errorMessage);
       }
     } catch (err) {
-      console.error('[OverlayFileViewer] Failed to save file:', err);
+      logger.error('[OverlayFileViewer] Failed to save file:', err);
+      showError('Failed to save file');
       setSaveError('Failed to save file');
     } finally {
       setIsSaving(false);
     }
-  }, [file, isEditable, isDirty]);
+  }, [file, isEditable, isDirty, showError, showSuccess]);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement === contentRef.current) {
+        await document.exitFullscreen();
+      } else if (contentRef.current?.requestFullscreen) {
+        await contentRef.current.requestFullscreen();
+      }
+    } catch (error) {
+      logger.error('[OverlayFileViewer] Failed to toggle fullscreen:', error);
+    }
+  }, []);
 
   // Keyboard events
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (document.fullscreenElement === contentRef.current) {
+          return;
+        }
         if (isEditing) {
           handleCancelEdit();
         } else {
           onClose();
         }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        void toggleFullscreen();
       }
       // Cmd/Ctrl+S to save in edit mode
       if (isEditing && (e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -677,15 +786,18 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, isEditing, handleCancelEdit, handleSave]);
+  }, [isOpen, onClose, isEditing, handleCancelEdit, handleSave, toggleFullscreen]);
 
   // Close viewer (check for unsaved changes in edit mode)
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     if (isDirty) {
       const discard = window.confirm(
         'You have unsaved changes. Do you want to discard them?'
       );
       if (!discard) return;
+    }
+    if (document.fullscreenElement === contentRef.current) {
+      await document.exitFullscreen();
     }
     onClose();
   }, [isDirty, onClose]);
@@ -720,7 +832,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
         document.body.removeChild(link);
       }
     } catch (error) {
-      console.error('Failed to download file:', error);
+      logger.error('Failed to download file:', error);
     }
   }, [file]);
 
@@ -746,7 +858,18 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const renderBody = () => {
     // Non-text file types (pdf / office / other) don't need text content loading, render directly
     const isNonTextCategory = category === 'pdf' || category === 'office' || category === 'other';
-    
+
+    // Load failed (check before loading state to avoid permanent spinner when file doesn't exist)
+    if (loadError) {
+      return (
+        <div className="file-viewer-error">
+          <AlertTriangle size={48} />
+          <p>{loadError}</p>
+          <button onClick={onClose}>Close</button>
+        </div>
+      );
+    }
+
     // Text-based files: loading / content not ready / file has changed
     if (!isNonTextCategory && (isLoading || !isContentReady || loadedFileKeyRef.current !== fileKey)) {
       return (
@@ -755,16 +878,6 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
             <div className="spinner-circle-large"></div>
           </div>
           <div className="loading-text">Loading...</div>
-        </div>
-      );
-    }
-
-    // Load failed
-    if (loadError) {
-      return (
-        <div className="file-viewer-error">
-          <p>{loadError}</p>
-          <button onClick={onClose}>Close</button>
         </div>
       );
     }
@@ -976,7 +1089,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               >
                 Open with Default App
               </button>
-              {ext === 'skill' && onInstallSkill && isLocalFile(file.url) && (
+              {onInstallSkill && isLocalFile(file.url) && isInstallableSkillArtifact(getLocalPath(file.url)) && (
                 <button
                   className="file-viewer-install-skill-btn"
                   onClick={() => onInstallSkill(getLocalPath(file.url))}
@@ -992,9 +1105,13 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   };
 
   return (
-    <div className="file-viewer-overlay">
+    <div className={`file-viewer-overlay${isFullscreen ? ' file-viewer-overlay-fullscreen' : ''}`}>
       {/* Content panel */}
-      <div className="file-viewer-content" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={contentRef}
+        className={`file-viewer-content${isFullscreen ? ' file-viewer-content-fullscreen' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header info + action buttons */}
         <div className="file-viewer-header">
           <div className="file-viewer-icon">{getFileIcon(category)}</div>
@@ -1044,6 +1161,14 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                     {viewMode === 'render' ? <Code size={24} /> : <Eye size={24} />}
                   </button>
                 )}
+                <button
+                  className={`file-viewer-header-btn${isFullscreen ? ' file-viewer-header-btn-active' : ''}`}
+                  onClick={() => { void toggleFullscreen(); }}
+                  aria-label={isFullscreen ? 'Exit fullscreen presentation' : 'Enter fullscreen presentation'}
+                  title={isFullscreen ? 'Exit Fullscreen (⌘⇧F)' : 'Fullscreen Presentation (⌘⇧F)'}
+                >
+                  {isFullscreen ? <Minimize size={24} /> : <Monitor size={24} />}
+                </button>
                 {isEditable && (
                   <button
                     className="file-viewer-header-btn file-viewer-edit"

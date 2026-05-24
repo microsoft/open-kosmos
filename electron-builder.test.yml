@@ -1,0 +1,27 @@
+# Local test configuration - skip notarization, test signing and packaging only
+# Usage: electron-builder --mac --config electron-builder.test.yml
+
+appId: com.kosmos.app
+productName: KOSMOS
+directories:
+  output: release-test
+  buildResources: build
+
+mac:
+  icon: brands/kosmos/assets/mac/app.icns
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  type: distribution
+  # Skip notarization for local testing (notarization takes time and requires an Apple account)
+  notarize: false
+  target:
+    - target: dir
+      arch:
+        - x64
+        - arm64
+
+# Do not publish to GitHub
+publish: null

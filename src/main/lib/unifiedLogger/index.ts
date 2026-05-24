@@ -32,7 +32,7 @@ import { getDefaultLogDirectory } from './FileOperations';
 
 // Main Logger Interface
 export interface UnifiedLogger {
-  // Log recording methods
+  // Logging methods
   debug(message: string, source?: string, metadata?: any): void;
   info(message: string, source?: string, metadata?: any): void;
   warn(message: string, source?: string, metadata?: any): void;
@@ -40,7 +40,7 @@ export interface UnifiedLogger {
 
   // Manual operations
   flushToDisk(): Promise<void>;        // Manual "logs to disk"
-  handleAppExit(): Promise<void>;      // App shutdown handling
+  handleAppExit(): Promise<void>;      // App shutdown handler
 
   // Status queries
   getStats(): LoggerStats;
@@ -69,7 +69,7 @@ class UnifiedLoggerImpl implements UnifiedLogger {
     // Merge with defaults and environment-based config
     // Environment config should override defaults, user config should override everything
     const envConfig = getEnvironmentBasedConfig();
-    
+
     this.config = {
       ...DEFAULT_UNIFIED_CONFIG,
       ...envConfig,
@@ -84,7 +84,7 @@ class UnifiedLoggerImpl implements UnifiedLogger {
     // Initialize the three singleton managers
     this.logEntryManager = LogEntryManager.getInstance(this.config);
     this.cacheLogManager = CacheLogManager.getInstance(
-      this.config, 
+      this.config,
       this.logEntryManager.getPendingLogQueue()
     );
     this.saveLogManager = SaveLogManager.getInstance(
@@ -99,7 +99,7 @@ class UnifiedLoggerImpl implements UnifiedLogger {
     this.isInitialized = true;
   }
 
-  // Log recording methods
+  // Logging methods
   debug(message: string, source?: string, metadata?: any): void {
     this.logEntryManager.debug(message, source, metadata);
   }
@@ -122,19 +122,19 @@ class UnifiedLoggerImpl implements UnifiedLogger {
 
   // Manual operations
   async flushToDisk(): Promise<void> {
-    // 1. Force process all pending cached logs
+    // 1. Force processing of all pending logs
     this.logEntryManager.forceProcessPendingLogs();
-    // 2. Force flush current cache object (including unfull ones)
-    this.cacheLogManager.forceFlush();
+    // 2. Force flush the current cache object (including non-full ones)
+    this.cacheLogManager.forceFlush(false);
     // 3. Save all pending cache objects
     await this.saveLogManager.manualSave();
   }
 
   async handleAppExit(): Promise<void> {
-    // 1. Force process all pending cached logs
+    // 1. Force processing of all pending logs
     this.logEntryManager.forceProcessPendingLogs();
-    // 2. Force flush current cache object (including unfull ones)
-    this.cacheLogManager.forceFlush();
+    // 2. Force flush the current cache object (including non-full ones)
+    this.cacheLogManager.forceFlush(false);
     // 3. Save all pending cache objects
     await this.saveLogManager.manualSave();
     // 4. Wait for all save operations to complete
@@ -161,7 +161,7 @@ class UnifiedLoggerImpl implements UnifiedLogger {
 
   getQueueStatus(): QueueStatus {
     const cacheStats = this.cacheLogManager.getCurrentCacheObjectInfo();
-    
+
     return {
       pendingLogQueue: {
         size: this.logEntryManager.getStats().pendingQueueSize,
@@ -213,6 +213,9 @@ let globalLogger: UnifiedLogger | null = null;
  */
 export function resetGlobalLogger(): void {
   globalLogger = null;
+  LogEntryManager.resetInstance();
+  CacheLogManager.resetInstance();
+  SaveLogManager.resetInstance();
 }
 
 /**
@@ -222,9 +225,7 @@ export function getGlobalLogger(config?: Partial<UnifiedLoggerConfig>): UnifiedL
   if (!globalLogger) {
     globalLogger = new UnifiedLoggerImpl(config);
   } else if (config) {
-    // If logger exists but new config is provided, recreate the logger
-    // This ensures that important config changes (like cache size) take effect
-    globalLogger = new UnifiedLoggerImpl(config);
+    globalLogger.updateConfig(config);
   }
   return globalLogger;
 }

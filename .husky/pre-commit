@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/check-file-length.js --staged-only

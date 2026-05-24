@@ -8,6 +8,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[UseSpeechRecognition]');
 
 // Web Speech API types (not available in standard TS libs)
 interface SpeechRecognitionEvent extends Event {
@@ -166,7 +168,7 @@ export function useSpeechRecognition(
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      console.log('[SpeechRecognition] Started listening');
+      logger.debug('[SpeechRecognition] Started listening');
       isListeningRef.current = true;
       setStatus('listening');
       setError(null);
@@ -200,7 +202,7 @@ export function useSpeechRecognition(
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('[SpeechRecognition] Error:', event.error);
+      logger.error('[SpeechRecognition] Error:', event.error);
       const speechError: SpeechRecognitionError = {
         code: event.error,
         message: getSpeechErrorMessage(event.error),
@@ -211,7 +213,7 @@ export function useSpeechRecognition(
     };
 
     recognition.onend = () => {
-      console.log('[SpeechRecognition] Ended');
+      logger.debug('[SpeechRecognition] Ended');
       isListeningRef.current = false;
       if (status !== 'error') {
         setStatus('idle');
@@ -220,7 +222,7 @@ export function useSpeechRecognition(
     };
 
     recognition.onspeechend = () => {
-      console.log('[SpeechRecognition] Speech ended');
+      logger.debug('[SpeechRecognition] Speech ended');
       setStatus('processing');
     };
 
@@ -242,7 +244,7 @@ export function useSpeechRecognition(
       setError(null);
       recognitionRef.current.start();
     } catch (err) {
-      console.error('[SpeechRecognition] Failed to start:', err);
+      logger.error('[SpeechRecognition] Failed to start:', err);
       setError({
         code: 'start-error',
         message: 'Failed to start speech recognition',
@@ -257,7 +259,7 @@ export function useSpeechRecognition(
     try {
       recognitionRef.current.stop();
     } catch (err) {
-      console.error('[SpeechRecognition] Failed to stop:', err);
+      logger.error('[SpeechRecognition] Failed to stop:', err);
     }
   }, []);
 

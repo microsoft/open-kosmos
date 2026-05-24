@@ -12,6 +12,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createLogger } from '../utilities/logger';
+const logger = createLogger('[UseStreamingAudioRecorder]');
 
 export interface StreamingAudioRecorderOptions {
   /** Target sample rate (Whisper requires 16000 Hz) */
@@ -121,7 +123,7 @@ export function useStreamingAudioRecorder(
       setState(prev => ({ ...prev, hasPermission: true, error: null }));
       return true;
     } catch (err) {
-      console.error('[StreamingAudioRecorder] Permission denied:', err);
+      logger.error('[StreamingAudioRecorder] Permission denied:', err);
       setState(prev => ({
         ...prev,
         hasPermission: false,
@@ -258,7 +260,7 @@ export function useStreamingAudioRecorder(
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
 
     } catch (err) {
-      console.error('[StreamingAudioRecorder] Failed to start:', err);
+      logger.error('[StreamingAudioRecorder] Failed to start:', err);
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Failed to start recording',

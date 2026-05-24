@@ -2,8 +2,8 @@
 
 /**
  * GitHub Copilot Model Data Table Generator
- * 
- * Reads docs/chat/models.json and generates a readable table
+ *
+ * Reads docs/chat/models.json and generates a human-readable table.
  */
 
 const fs = require('fs');
@@ -16,21 +16,21 @@ const CONFIG = {
 };
 
 /**
- * Load model data
+ * Load model data.
  */
 function loadModelsData() {
   try {
     if (!fs.existsSync(CONFIG.INPUT_FILE)) {
-      throw new Error(`Input file does not exist: ${CONFIG.INPUT_FILE}`);
+      throw new Error(`Input file not found: ${CONFIG.INPUT_FILE}`);
     }
-    
+
     const rawData = fs.readFileSync(CONFIG.INPUT_FILE, 'utf8');
     const data = JSON.parse(rawData);
-    
+
     if (!data.models || !data.models.data) {
-      throw new Error('Model data format is incorrect');
+      throw new Error('Model data format is invalid');
     }
-    
+
     return data;
   } catch (error) {
     throw new Error(`Failed to read model data: ${error.message}`);
@@ -38,7 +38,7 @@ function loadModelsData() {
 }
 
 /**
- * Format boolean value
+ * Format a boolean value.
  */
 function formatBoolean(value) {
   if (value === true) return '✅';
@@ -47,7 +47,7 @@ function formatBoolean(value) {
 }
 
 /**
- * Format number
+ * Format a number.
  */
 function formatNumber(value) {
   if (value === null || value === undefined) return '➖';
@@ -56,7 +56,7 @@ function formatNumber(value) {
 }
 
 /**
- * Format cost multiplier
+ * Format a cost multiplier.
  */
 function formatMultiplier(billing) {
   if (!billing) return '➖';
@@ -67,7 +67,7 @@ function formatMultiplier(billing) {
 }
 
 /**
- * Get supported features list
+ * Get the list of supported features.
  */
 function getSupportedFeatures(capabilities) {
   if (!capabilities || !capabilities.supports) return '➖';
@@ -86,7 +86,7 @@ function getSupportedFeatures(capabilities) {
 }
 
 /**
- * Get limit information
+ * Get limit information.
  */
 function getLimits(capabilities) {
   if (!capabilities || !capabilities.limits) return { input: '➖', output: '➖', context: '➖' };
@@ -100,20 +100,20 @@ function getLimits(capabilities) {
 }
 
 /**
- * Generate Markdown table
+ * Generate a Markdown table.
  */
 function generateMarkdownTable(modelsData) {
   const models = modelsData.models.data;
   const fetchTime = modelsData.metadata.fetchedAt;
-  
+
   let markdown = `# GitHub Copilot Model List\n\n`;
-  markdown += `> Data fetched at: ${new Date(fetchTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n`;
-  markdown += `> Total ${models.length} models\n\n`;
-  
-  // Main information table
+  markdown += `> Data fetched at: ${new Date(fetchTime).toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })}\n`;
+  markdown += `> Total: ${models.length} models\n\n`;
+
+  // Main info table
   markdown += `## Model Overview\n\n`;
   markdown += `| Model ID | Name | Vendor | Type | Default | Visible | Preview | Cost |\n`;
-  markdown += `|---------|------|------|------|------|------|------|------|\n`;
+  markdown += `|---------|------|--------|------|---------|---------|---------|------|\n`;
   
   models.forEach(model => {
     const id = model.id || '➖';
@@ -131,7 +131,7 @@ function generateMarkdownTable(modelsData) {
   // Feature support table
   markdown += `\n## Feature Support\n\n`;
   markdown += `| Model ID | Supported Features | Max Input | Max Output | Context Window |\n`;
-  markdown += `|---------|----------|----------|----------|------------|\n`;
+  markdown += `|----------|--------------------|-----------|------------|----------------|\n`;
   
   models.forEach(model => {
     const id = model.id || '➖';
@@ -141,8 +141,8 @@ function generateMarkdownTable(modelsData) {
     markdown += `| \`${id}\` | ${features} | ${limits.input} | ${limits.output} | ${limits.context} |\n`;
   });
   
-  // Vendor group statistics
-  markdown += `\n## Vendor Statistics\n\n`;
+  // Vendor stats
+  markdown += `\n## Vendor Stats\n\n`;
   const vendorStats = {};
   models.forEach(model => {
     const vendor = model.vendor || 'Unknown';
@@ -154,9 +154,9 @@ function generateMarkdownTable(modelsData) {
     if (model.capabilities?.type === 'chat') vendorStats[vendor].chat++;
     if (model.capabilities?.type === 'embeddings') vendorStats[vendor].embedding++;
   });
-  
-  markdown += `| Vendor | Total | Paid Models | Chat Models | Embedding Models |\n`;
-  markdown += `|------|------|----------|----------|----------|\n`;
+
+  markdown += `| Vendor | Total | Premium | Chat | Embedding |\n`;
+  markdown += `|--------|-------|---------|------|-----------|\n`;
   
   Object.entries(vendorStats)
     .sort(([,a], [,b]) => b.total - a.total)
@@ -164,8 +164,8 @@ function generateMarkdownTable(modelsData) {
       markdown += `| ${vendor} | ${stats.total} | ${stats.premium} | ${stats.chat} | ${stats.embedding} |\n`;
     });
   
-  // Model family grouping
-  markdown += `\n## Model Family Grouping\n\n`;
+  // Model family groups
+  markdown += `\n## Model Family Groups\n\n`;
   const familyStats = {};
   models.forEach(model => {
     const family = model.capabilities?.family || 'Unknown';
@@ -174,9 +174,9 @@ function generateMarkdownTable(modelsData) {
     }
     familyStats[family].push(model.id);
   });
-  
-  markdown += `| Model Family | Model Count | Model List |\n`;
-  markdown += `|--------|----------|----------|\n`;
+
+  markdown += `| Family | Count | Models |\n`;
+  markdown += `|--------|-------|--------|\n`;
   
   Object.entries(familyStats)
     .sort(([,a], [,b]) => b.length - a.length)
@@ -185,8 +185,8 @@ function generateMarkdownTable(modelsData) {
       markdown += `| ${family} | ${modelIds.length} | ${modelList} |\n`;
     });
   
-  // Special feature statistics
-  markdown += `\n## Special Feature Statistics\n\n`;
+  // Special feature stats
+  markdown += `\n## Special Feature Stats\n\n`;
   const featureStats = {
     vision: models.filter(m => m.capabilities?.supports?.vision).length,
     toolCalls: models.filter(m => m.capabilities?.supports?.tool_calls).length,
@@ -196,24 +196,24 @@ function generateMarkdownTable(modelsData) {
     thinking: models.filter(m => m.capabilities?.supports?.thinking).length
   };
   
-  markdown += `| Feature | Supported Models | Percentage |\n`;
-  markdown += `|------|------------|------|\n`;
+  markdown += `| Feature | Supported Models | Ratio |\n`;
+  markdown += `|---------|-----------------|-------|\n`;
   markdown += `| Vision | ${featureStats.vision} | ${(featureStats.vision / models.length * 100).toFixed(1)}% |\n`;
   markdown += `| Tool Calls | ${featureStats.toolCalls} | ${(featureStats.toolCalls / models.length * 100).toFixed(1)}% |\n`;
   markdown += `| Parallel Tools | ${featureStats.parallelTools} | ${(featureStats.parallelTools / models.length * 100).toFixed(1)}% |\n`;
   markdown += `| Streaming | ${featureStats.streaming} | ${(featureStats.streaming / models.length * 100).toFixed(1)}% |\n`;
-  markdown += `| Structured Output | ${featureStats.structuredOutputs} | ${(featureStats.structuredOutputs / models.length * 100).toFixed(1)}% |\n`;
+  markdown += `| Structured Outputs | ${featureStats.structuredOutputs} | ${(featureStats.structuredOutputs / models.length * 100).toFixed(1)}% |\n`;
   markdown += `| Thinking | ${featureStats.thinking} | ${(featureStats.thinking / models.length * 100).toFixed(1)}% |\n`;
   
   return markdown;
 }
 
 /**
- * Save table to file
+ * Save the table to a file.
  */
 function saveTableToFile(markdown) {
   try {
-    // Ensure output directory exists
+    // Ensure the output directory exists
     const outputDir = path.dirname(CONFIG.OUTPUT_FILE);
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -227,27 +227,27 @@ function saveTableToFile(markdown) {
 }
 
 /**
- * Main function
+ * Main function.
  */
 function main() {
-  console.log('🚀 Generating GitHub Copilot Model Table');
+  console.log('🚀 Generating GitHub Copilot model table');
   console.log('═'.repeat(50));
   
   try {
-    // 1. Read model data
-    console.log('📖 Reading model data...');
+    // 1. Load model data
+    console.log('📖 Loading model data...');
     const modelsData = loadModelsData();
-    console.log(`✅ Successfully read ${modelsData.models.data.length} models`);
-    
+    console.log(`✅ Successfully loaded ${modelsData.models.data.length} models`);
+
     // 2. Generate table
     console.log('📊 Generating Markdown table...');
     const markdown = generateMarkdownTable(modelsData);
-    
+
     // 3. Save to file
     console.log('💾 Saving table to file...');
     saveTableToFile(markdown);
-    
-    console.log('\n📈 Statistics:');
+
+    console.log('\n📈 Stats:');
     console.log(`  - Input file: ${CONFIG.INPUT_FILE}`);
     console.log(`  - Output file: ${CONFIG.OUTPUT_FILE}`);
     console.log(`  - Total models: ${modelsData.models.data.length}`);

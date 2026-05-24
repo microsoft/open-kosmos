@@ -1,4 +1,4 @@
-// src/main/lib/auth/index.ts - Main process auth module entry V2.0
+// src/main/lib/auth/index.ts - Main process authentication module entry point V2.0
 export * from './authManager';
 export * from './tokenMonitor';
 export * from './ghcAuth';

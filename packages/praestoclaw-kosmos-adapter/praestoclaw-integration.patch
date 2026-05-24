@@ -1,0 +1,12 @@
+diff --git a/praestoclaw/config/schema.py b/praestoclaw/config/schema.py
+index 09e6885..e350caf 100644
+--- a/praestoclaw/config/schema.py
++++ b/praestoclaw/config/schema.py
+@@ -27,6 +27,7 @@ class ChannelType(StrEnum):
+     CLI = "cli"
+     WEB = "web"
+     CLOUD = "cloud"
++    KOSMOS = "kosmos"
+
+     @classmethod
+     def of(cls, value: str | None, default: ChannelType | None = None) -> ChannelType:

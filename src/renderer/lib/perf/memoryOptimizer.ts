@@ -134,12 +134,12 @@ export class MemoryOptimizer {
   forceCleanup(): void {
     this.cleanupExpiredContent();
     this.evictLowPriorityContent();
-    
+
     // Request browser GC if available
     if ((window as any).gc) {
       (window as any).gc();
     }
-    
+
     this.lastGCTime = Date.now();
   }
 
@@ -155,7 +155,7 @@ export class MemoryOptimizer {
    */
   updateConfig(newConfig: Partial<OptimizationConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    
+
     if (this.config.enableAutoGC && !this.memoryCheckTimer) {
       this.startMemoryMonitoring();
     } else if (!this.config.enableAutoGC && this.memoryCheckTimer) {
@@ -220,7 +220,7 @@ export class MemoryOptimizer {
     if (metrics.isMemoryPressure) {
       // Trigger cleanup
       this.forceCleanup();
-      
+
       // Notify callback
       if (this.onMemoryPressureCallback) {
         this.onMemoryPressureCallback();
@@ -293,7 +293,7 @@ export class AdaptiveStreamingController {
 
   constructor(memoryOptimizer: MemoryOptimizer) {
     this.memoryOptimizer = memoryOptimizer;
-    
+
     // React to memory pressure
     this.memoryOptimizer.onMemoryPressure(() => {
       this.handleMemoryPressure();
@@ -305,7 +305,7 @@ export class AdaptiveStreamingController {
    */
   getAdaptiveDelay(): number {
     const metrics = this.memoryOptimizer.getMemoryMetrics();
-    
+
     if (metrics) {
       // Adjust delay based on memory pressure
       const memoryFactor = Math.max(1, metrics.utilizationPercent / 50);

@@ -1,15 +1,26 @@
 /**
  * VSCode MCP Client - HTTP/SSE Transport Implementation (VSCode Standard Compatible)
- * Fully based on VSCode's McpHTTPHandle implementation in extHostMcp.ts
+ * Fully based on the McpHTTPHandle implementation in VSCode's extHostMcp.ts
  */
 
 import { EventEmitter } from 'events';
+import { McpAuthMetadataService } from '../../auth/McpAuthMetadataService';
+import { McpAuthService } from '../../auth/McpAuthService';
+import type { McpResolvedAuthMetadata } from '../../auth/types';
+import type { McpServerConfig } from '../../../userDataADO/types/profile';
 
 export interface HttpTransportConfig {
+  serverName: string;
   url: string;
   headers?: Record<string, string>;
   timeout?: number;
   method?: string;
+  /**
+   * Original full MCP server configuration, used by the OAuth path to
+   * construct a `OpenKosmosOAuthProvider` that knows the server's `oauth.*`
+   * options (clientId hint, callbackPort override, setup URL, etc).
+   */
+  mcpServerConfig?: McpServerConfig;
 }
 
 export interface ConnectionState {
@@ -43,11 +54,11 @@ class SSEParser {
   private buffer: Uint8Array[] = [];
   private endedOnCR = false;
   private readonly decoder: TextDecoder;
-  
+
   constructor(private onEvent: (event: SSEEvent) => void) {
     this.decoder = new TextDecoder('utf-8');
   }
-  
+
   feed(chunk: Uint8Array): void {
     if (chunk.length === 0) {
       return;
@@ -72,7 +83,7 @@ class SSEParser {
       const indexCR = chunk.indexOf(Chr.CR, offset);
       const indexLF = chunk.indexOf(Chr.LF, offset);
       const index = indexCR === -1 ? indexLF : (indexLF === -1 ? indexCR : Math.min(indexCR, indexLF));
-      
+
       if (index === -1) {
         break;
       }
@@ -189,30 +200,35 @@ interface MinimalRequestInit {
 }
 
 /**
- * VSCode-compatible HTTP/SSE Transport 
- * Fully based on VSCode McpHTTPHandle implementation, removed all custom AbortSignal monitoring
+ * VSCode-compatible HTTP/SSE Transport
+ * Fully based on the VSCode McpHTTPHandle implementation, with all custom AbortSignal monitoring removed
  */
 export class VscodeHttpTransport extends EventEmitter {
   private currentState: ConnectionState = { state: 'stopped' };
   private mode: HttpModeT = { value: HttpMode.Unknown };
   private readonly _abortCtrl = new AbortController();
   private _disposed = false;
-  
+  private authMetadata: McpResolvedAuthMetadata | null = null;
+  /** Set on first 401/403; suppresses the SSE protocol-fallback path for
+   *  later non-auth 4xx — those are semantic failures, not a protocol
+   *  mismatch (the server demonstrably speaks Streamable HTTP). */
+  private _sawAuthChallenge = false;
+
   constructor(private config: HttpTransportConfig) {
     super();
     this.emit('log', 'debug', `VscodeHttpTransport initialized for ${config.url}`);
   }
-  
+
   public get state(): ConnectionState {
     return this.currentState;
   }
-  
+
   /**
    * Start the HTTP/SSE connection
    */
   async start(): Promise<void> {
     this.setState({ state: 'starting' });
-    
+
     try {
       // Start with unknown mode, let the first request determine the transport type
       this.setState({ state: 'running' });
@@ -225,7 +241,7 @@ export class VscodeHttpTransport extends EventEmitter {
       throw error;
     }
   }
-  
+
   /**
    * Send message to the server
    */
@@ -233,7 +249,7 @@ export class VscodeHttpTransport extends EventEmitter {
     if (this.currentState.state !== 'running') {
       throw new Error('Transport is not running');
     }
-    
+
     try {
       if (this.mode.value === HttpMode.Unknown) {
         // First message, use sequencing to determine mode
@@ -247,7 +263,7 @@ export class VscodeHttpTransport extends EventEmitter {
       throw new Error(msg);
     }
   }
-  
+
   private async _send(message: string): Promise<void> {
     if (this.mode.value === HttpMode.SSE) {
       return this._sendLegacySSE(this.mode.endpoint, message);
@@ -255,7 +271,7 @@ export class VscodeHttpTransport extends EventEmitter {
       return this._sendStreamableHttp(message, this.mode.value === HttpMode.Http ? this.mode.sessionId : undefined);
     }
   }
-  
+
   /**
    * Send a StreamableHTTP request (based on VSCode implementation)
    */
@@ -267,62 +283,76 @@ export class VscodeHttpTransport extends EventEmitter {
       'Content-Length': String(asBytes.length),
       'Accept': 'text/event-stream, application/json',
     };
-    
+
     if (sessionId) {
       headers['Mcp-Session-Id'] = sessionId;
     }
-    
-    const response = await this._fetch(this.config.url, {
+
+    const response = await this._fetchWithAuthRetry(this.config.url, {
       method: 'POST',
       headers,
       body: asBytes,
-    });
-    
+    }, headers);
+
     const wasUnknown = this.mode.value === HttpMode.Unknown;
-    
+
     // Check for session ID in response
     const nextSessionId = response.headers.get('Mcp-Session-Id');
     if (nextSessionId) {
       this.mode = { value: HttpMode.Http, sessionId: nextSessionId };
     }
-    
-    // Handle 4xx errors (except auth errors) as SSE fallback signal
+
+    // Pre-auth-challenge 4xx (except 401/403) → switch to SSE. After we've
+    // seen an OAuth challenge the server is known to speak Streamable HTTP,
+    // so a 4xx is a real semantic failure, not a protocol mismatch.
     if (this.mode.value === HttpMode.Unknown &&
         response.status >= 400 && response.status < 500 &&
-        response.status !== 401 && response.status !== 403) {
+        response.status !== 401 && response.status !== 403 &&
+        !this._sawAuthChallenge) {
       this.emit('log', 'info', `${response.status} status, falling back to SSE`);
       await this._sseFallbackWithMessage(message);
       return;
     }
-    
-    // Handle 5xx errors as potential server issues, try SSE fallback
-    if (this.mode.value === HttpMode.Unknown && response.status >= 500) {
+
+    // Same caveat for 5xx pre-auth.
+    if (this.mode.value === HttpMode.Unknown && response.status >= 500 && !this._sawAuthChallenge) {
       this.emit('log', 'info', `${response.status} server error, trying SSE fallback`);
       await this._sseFallbackWithMessage(message);
       return;
     }
-    
+
     if (response.status >= 300) {
       // Handle session retry for 400/404 errors
       const retryWithNewSession = this.mode.value === HttpMode.Http &&
                                  !!this.mode.sessionId &&
                                  (response.status === 400 || response.status === 404);
-      
-      throw new Error(`${response.status} status sending message: ${await this._getErrorText(response)}` +
+
+      const errorBody = await this._getErrorText(response);
+      // OAuth succeeded but server still rejected — typically a feature/tier
+      // gate (e.g. GitLab MCP requires Premium + Beta features enabled).
+      if (this._sawAuthChallenge && headers.Authorization && (response.status === 404 || response.status === 403)) {
+        throw new Error(
+          `${response.status} status from ${this.config.url} after successful sign-in: ${errorBody}. ` +
+          `The endpoint exists but is not available for your account — check that the MCP feature ` +
+          `is enabled, your account tier supports it, and any required beta/experimental flags are turned on.`
+        );
+      }
+
+      throw new Error(`${response.status} status sending message: ${errorBody}` +
                      (retryWithNewSession ? '; will retry with new session ID' : ''));
     }
-    
+
     if (this.mode.value === HttpMode.Unknown) {
       this.mode = { value: HttpMode.Http, sessionId: undefined };
     }
-    
+
     if (wasUnknown) {
       this._attachStreamableBackchannel();
     }
-    
+
     await this._handleSuccessfulStreamableHttp(response, message);
   }
-  
+
   /**
    * Handle successful StreamableHTTP response
    */
@@ -330,9 +360,9 @@ export class VscodeHttpTransport extends EventEmitter {
     if (response.status === 202) {
       return; // No body
     }
-    
+
     const contentType = response.headers.get('Content-Type')?.toLowerCase();
-    
+
     switch (contentType) {
       case 'text/event-stream': {
         const parser = new SSEParser(event => {
@@ -344,7 +374,7 @@ export class VscodeHttpTransport extends EventEmitter {
             this._sseFallbackWithMessage(originalMessage);
           }
         });
-        
+
         await this._doSSE(parser, response);
         break;
       }
@@ -361,57 +391,57 @@ export class VscodeHttpTransport extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * Attach SSE backchannel for async notifications (StreamableHTTP)
    * Improved version: creates an independent AbortController for each retry to avoid listener accumulation
    */
   private async _attachStreamableBackchannel(): Promise<void> {
     let lastEventId: string | undefined;
-    
+
     for (let retry = 0; !this._isDisposed(); retry++) {
       // Don't delay on first attempt
       if (retry > 0) {
         await this._timeout(Math.min(retry * 1000, 30000));
       }
-      
+
       // Create an independent AbortController for each retry
       const retryAbortController = new AbortController();
-      
-      // When the main AbortController is aborted, also abort this retry controller
+
+      // When the main AbortController is aborted, also abort this retry's controller
       const mainAbortListener = () => {
         retryAbortController.abort();
       };
       this._abortCtrl.signal.addEventListener('abort', mainAbortListener);
-      
+
       try {
         const headers: Record<string, string> = {
           ...this.config.headers,
           'Accept': 'text/event-stream',
         };
-        
+
         if (this.mode.value === HttpMode.Http && this.mode.sessionId) {
           headers['Mcp-Session-Id'] = this.mode.sessionId;
         }
-        
+
         if (lastEventId) {
           headers['Last-Event-ID'] = lastEventId;
         }
-        
+
         const response = await this._fetchWithIndependentSignal(this.config.url, {
           method: 'GET',
           headers,
         }, retryAbortController.signal);
-        
+
         if (response.status >= 400) {
           this.emit('log', 'debug', `${response.status} status on backchannel, disabling async notifications`);
           return;
         }
-        
+
         if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
           retry = 0; // Reset on successful connection
         }
-        
+
         const parser = new SSEParser(event => {
           if (event.type === 'message') {
             this.emit('message', event.data);
@@ -420,9 +450,9 @@ export class VscodeHttpTransport extends EventEmitter {
             lastEventId = event.id;
           }
         });
-        
+
         await this._doSSEWithIndependentSignal(parser, response, retryAbortController.signal);
-        
+
       } catch (error) {
         if (this._isDisposed() || retryAbortController.signal.aborted) {
           this.emit('log', 'debug', 'Backchannel aborted, stopping retry loop');
@@ -432,7 +462,7 @@ export class VscodeHttpTransport extends EventEmitter {
       } finally {
         // Clean up listeners to avoid memory leaks
         this._abortCtrl.signal.removeEventListener('abort', mainAbortListener);
-        
+
         // Ensure this retry's AbortController is cleaned up
         if (!retryAbortController.signal.aborted) {
           retryAbortController.abort();
@@ -440,7 +470,7 @@ export class VscodeHttpTransport extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * Fallback to legacy SSE mode
    */
@@ -451,7 +481,7 @@ export class VscodeHttpTransport extends EventEmitter {
       await this._sendLegacySSE(endpoint, message);
     }
   }
-  
+
   /**
    * Establish SSE connection and get POST endpoint
    */
@@ -460,13 +490,13 @@ export class VscodeHttpTransport extends EventEmitter {
       ...this.config.headers,
       'Accept': 'text/event-stream',
     };
-    
+
     try {
-      const response = await this._fetch(this.config.url, {
+      const response = await this._fetchWithAuthRetry(this.config.url, {
         method: 'GET',
         headers,
-      });
-      
+      }, headers);
+
       if (response.status >= 300) {
         this.setState({
           state: 'error',
@@ -474,10 +504,10 @@ export class VscodeHttpTransport extends EventEmitter {
         });
         return;
       }
-      
+
       return new Promise<string | undefined>((resolve, reject) => {
         let endpointFound = false;
-        
+
         const parser = new SSEParser(event => {
           if (event.type === 'message') {
             this.emit('message', event.data);
@@ -486,14 +516,14 @@ export class VscodeHttpTransport extends EventEmitter {
             resolve(new URL(event.data, this.config.url).toString());
           }
         });
-        
+
         this._doSSE(parser, response).catch(error => {
           if (!endpointFound) {
             reject(error);
           }
         });
       });
-      
+
     } catch (error) {
       this.setState({
         state: 'error',
@@ -502,7 +532,7 @@ export class VscodeHttpTransport extends EventEmitter {
       return;
     }
   }
-  
+
   /**
    * Send legacy SSE message
    */
@@ -513,21 +543,21 @@ export class VscodeHttpTransport extends EventEmitter {
       'Content-Type': 'application/json',
       'Content-Length': String(asBytes.length),
     };
-    
-    const response = await this._fetch(url, {
+
+    const response = await this._fetchWithAuthRetry(url, {
       method: 'POST',
       headers,
       body: asBytes,
-    });
-    
+    }, headers);
+
     if (response.status >= 300) {
       this.emit('log', 'warning', `${response.status} status sending SSE message: ${await this._getErrorText(response)}`);
     }
   }
-  
+
   /**
    * Generic handle to pipe a response into an SSE parser
-   * Simplified implementation based on VSCode, directly using AbortController
+   * Simplified implementation based on VSCode, uses AbortController directly
    */
   private async _doSSE(parser: SSEParser, response: Response): Promise<void> {
     return this._doSSEWithIndependentSignal(parser, response, this._abortCtrl.signal);
@@ -541,14 +571,14 @@ export class VscodeHttpTransport extends EventEmitter {
     if (!response.body) {
       return;
     }
-    
+
     const reader = response.body.getReader();
     let chunk: ReadableStreamReadResult<Uint8Array>;
-    
+
     do {
       try {
         chunk = await reader.read();
-        
+
         // Check if we've been disposed or signal aborted during the read
         if (this._disposed || signal.aborted) {
           reader.cancel();
@@ -562,13 +592,13 @@ export class VscodeHttpTransport extends EventEmitter {
           throw err;
         }
       }
-      
+
       if (chunk.value) {
         parser.feed(chunk.value);
       }
     } while (!chunk.done && !signal.aborted);
   }
-  
+
   /**
    * Stop the transport
    */
@@ -576,15 +606,15 @@ export class VscodeHttpTransport extends EventEmitter {
     if (this.currentState.state === 'stopped') {
       return;
     }
-    
+
     // Mark as disposed and abort
     this._disposed = true;
     this._abortCtrl.abort();
-    
+
     this.setState({ state: 'stopped' });
     this.emit('log', 'debug', 'HTTP transport stopped');
   }
-  
+
   /**
    * Enhanced fetch with redirect handling (based on VSCode implementation)
    */
@@ -597,32 +627,32 @@ export class VscodeHttpTransport extends EventEmitter {
    */
   private async _fetchWithIndependentSignal(url: string, init: MinimalRequestInit, signal: AbortSignal): Promise<Response> {
     this.emit('log', 'trace', `Fetching ${url} with method ${init.method}`);
-    
+
     let currentUrl = url;
     let response!: Response;
-    
+
     for (let redirectCount = 0; redirectCount < MAX_FOLLOW_REDIRECTS; redirectCount++) {
       response = await fetch(currentUrl, {
         method: init.method,
         headers: init.headers,
         body: init.body as BodyInit | null,
-        signal: signal, // Use the passed-in independent signal
+        signal: signal, // Use the independent signal passed in
         redirect: 'manual'
       });
-      
+
       if (!REDIRECT_STATUS_CODES.includes(response.status)) {
         break;
       }
-      
+
       const location = response.headers.get('location');
       if (!location) {
         break;
       }
-      
+
       const nextUrl = new URL(location, currentUrl).toString();
       this.emit('log', 'trace', `Redirect (${response.status}) from ${currentUrl} to ${nextUrl}`);
       currentUrl = nextUrl;
-      
+
       // Adjust method for certain redirects
       if (response.status === 303 ||
           ((response.status === 301 || response.status === 302) && init.method === 'POST')) {
@@ -630,17 +660,92 @@ export class VscodeHttpTransport extends EventEmitter {
         delete init.body;
       }
     }
-    
+
     this.emit('log', 'trace', `Response: ${response.status} ${response.statusText}`);
     return response;
   }
-  
+
+  private async _fetchWithAuthRetry(url: string, init: MinimalRequestInit, headers: Record<string, string>): Promise<Response> {
+    await this._addAuthHeader(headers);
+    init.headers = headers;
+
+    let response = await this._fetch(url, init);
+
+    if (this._isAuthStatusCode(response.status)) {
+      this._sawAuthChallenge = true;
+      this.emit('log', 'info', `Received auth challenge for ${this.config.serverName}: status=${response.status}`);
+      if (!this.authMetadata) {
+        this.authMetadata = await McpAuthMetadataService.resolve(url, response.headers);
+        if (this.authMetadata) {
+          this.emit(
+            'log',
+            'info',
+            `Resolved MCP auth metadata for ${this.config.serverName}: `
+            + `provider=${this.authMetadata.providerLabel}, `
+            + `authority=${this.authMetadata.authorizationServerMetadata.issuer || this.authMetadata.authorizationServerUrl}, `
+            + `scopes=${JSON.stringify(this.authMetadata.scopes)}, `
+            + `resourceMetadataSource=${this.authMetadata.telemetry.resourceMetadataSource}, `
+            + `serverMetadataSource=${this.authMetadata.telemetry.serverMetadataSource}`
+          );
+        }
+      } else {
+        this.authMetadata = McpAuthMetadataService.updateFromHeaders(this.authMetadata, response.headers);
+        this.emit('log', 'info', `Updated MCP auth metadata from repeated challenge for ${this.config.serverName}: scopes=${JSON.stringify(this.authMetadata.scopes)}`);
+      }
+
+      if (this.authMetadata) {
+        const token = await this._requestToken(this.authMetadata);
+        if (token) {
+          this.emit('log', 'info', `Retrying ${this.config.serverName} request with Authorization header after auth challenge`);
+          headers.Authorization = `Bearer ${token}`;
+          init.headers = headers;
+          response = await this._fetch(url, init);
+        }
+      }
+    }
+
+    if (headers.Authorization && this._isAuthStatusCode(response.status) && this.authMetadata) {
+      this.emit('log', 'info', `Received ${response.status} with Authorization header for ${this.config.serverName}, retrying with forced refresh`);
+      const token = await this._requestToken(this.authMetadata, { forceRefresh: true });
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+        init.headers = headers;
+        response = await this._fetch(url, init);
+      }
+    }
+
+    return response;
+  }
+
+  private async _addAuthHeader(headers: Record<string, string>): Promise<void> {
+    if (!this.authMetadata) {
+      return;
+    }
+
+    const token = await this._requestToken(this.authMetadata);
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  private async _requestToken(metadata: McpResolvedAuthMetadata, options?: { forceRefresh?: boolean }): Promise<string | undefined> {
+    this.emit('log', 'info', `Requesting token for ${this.config.serverName}: forceRefresh=${options?.forceRefresh ? 'true' : 'false'}, scopes=${JSON.stringify(metadata.scopes)}`);
+    return McpAuthService.getInstance().getTokenForServer(this.config.serverName, metadata, {
+      ...options,
+      cfg: this.config.mcpServerConfig,
+    });
+  }
+
+  private _isAuthStatusCode(status: number): boolean {
+    return status === 401 || status === 403;
+  }
+
   // Utility methods
   private setState(newState: ConnectionState): void {
     this.currentState = newState;
     this.emit('stateChange', newState);
   }
-  
+
   private async _getErrorText(response: Response): Promise<string> {
     try {
       return await response.text();
@@ -648,7 +753,7 @@ export class VscodeHttpTransport extends EventEmitter {
       return response.statusText;
     }
   }
-  
+
   private _isJSON(str: string): boolean {
     try {
       JSON.parse(str);
@@ -657,11 +762,11 @@ export class VscodeHttpTransport extends EventEmitter {
       return false;
     }
   }
-  
+
   private _isDisposed(): boolean {
     return this._disposed;
   }
-  
+
   private _timeout(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }

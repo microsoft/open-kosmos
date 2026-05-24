@@ -3,8 +3,8 @@ import { defineConfig } from '@playwright/test';
 /**
  * Kosmos E2E Test Playwright Configuration
  *
- * Uses Playwright Electron API for end-to-end testing.
- * Test files are in tests/e2e/ directory, named *.e2e.ts.
+ * Uses the Playwright Electron API for end-to-end testing.
+ * Test files are located in tests/e2e/ and follow the *.e2e.ts naming convention.
  *
  * Run commands:
  *   npm run test:e2e          # Run all E2E tests
@@ -17,22 +17,22 @@ export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.e2e.ts',
 
-  /* Global timeout */
+  /* Global timeouts */
   timeout: 60_000, // 60s per test (Electron startup is slow)
   expect: {
-    timeout: 10_000, // 10s assertion timeout
+    timeout: 10_000, // assertion timeout 10s
   },
 
   /* Retry strategy */
-  retries: process.env.CI ? 2 : 0, // Retry 2 times in CI environment
+  retries: process.env.CI ? 2 : 0, // retry 2 times in CI
 
-  /* Parallelism control — Electron tests should run serially to avoid resource contention */
+  /* Parallelism — Electron tests should run serially to avoid resource contention */
   workers: 1,
   fullyParallel: false,
 
-  /* Reporter */
+  /* Reporters */
   reporter: [
-    ['list'], // Console output
+    ['list'], // console output
     [
       'html',
       {
@@ -40,7 +40,7 @@ export default defineConfig({
         open: 'never',
       },
     ],
-    // CI environment additionally outputs JUnit XML (for CI report integration)
+    // In CI, also output JUnit XML (for CI report integration)
     ...(process.env.CI
       ? [
           [

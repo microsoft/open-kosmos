@@ -1,0 +1,118 @@
+diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
+index 25a4daf5..5183cf55 100644
+--- a/agent/prompt_builder.py
++++ b/agent/prompt_builder.py
+@@ -451,6 +451,11 @@ PLATFORM_HINTS = {
+         "image and is the WRONG path. Bare Unicode emoji in text is also not a substitute "
+         "— when a sticker is the right response, use yb_send_sticker."
+     ),
++    "kosmos": (
++        "You are in Kosmos, an Electron desktop AI chat application. "
++        "Markdown formatting is supported. "
++        "Kosmos is a personal desktop app — the user is the app owner."
++    ),
+ }
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/gateway/config.py b/gateway/config.py
+index da9830fc..8555f889 100644
+--- a/gateway/config.py
++++ b/gateway/config.py
+@@ -68,6 +68,7 @@ class Platform(Enum):
+     BLUEBUBBLES = "bluebubbles"
+     QQBOT = "qqbot"
+     YUANBAO = "yuanbao"
++    KOSMOS = "kosmos"
+ 
+ 
+ @dataclass
+@@ -1357,6 +1358,17 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
+         if yuanbao_group_allow_from:
+             extra["group_allow_from"] = yuanbao_group_allow_from
+ 
++    # Kosmos
++    kosmos_url = os.getenv("KOSMOS_URL")
++    kosmos_token = os.getenv("KOSMOS_TOKEN")
++    if kosmos_url and kosmos_token:
++        if Platform.KOSMOS not in config.platforms:
++            config.platforms[Platform.KOSMOS] = PlatformConfig()
++        config.platforms[Platform.KOSMOS].enabled = True
++        extra = config.platforms[Platform.KOSMOS].extra
++        extra["url"] = kosmos_url
++        extra["token"] = kosmos_token
++
+     # Session settings
+     idle_minutes = os.getenv("SESSION_IDLE_MINUTES")
+     if idle_minutes:
+diff --git a/gateway/run.py b/gateway/run.py
+index 827ec01b..78981387 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -2163,6 +2163,7 @@ class GatewayRunner:
+                        "BLUEBUBBLES_ALLOWED_USERS",
+                        "QQ_ALLOWED_USERS",
+                        "YUANBAO_ALLOWED_USERS",
++                       "KOSMOS_ALLOWED_USERS",
+                        "GATEWAY_ALLOWED_USERS")
+         )
+         _allow_all = os.getenv("GATEWAY_ALLOW_ALL_USERS", "").lower() in ("true", "1", "yes") or any(
+@@ -2178,7 +2179,8 @@ class GatewayRunner:
+                        "WEIXIN_ALLOW_ALL_USERS",
+                        "BLUEBUBBLES_ALLOW_ALL_USERS",
+                        "QQ_ALLOW_ALL_USERS",
+-                       "YUANBAO_ALLOW_ALL_USERS")
++                       "YUANBAO_ALLOW_ALL_USERS",
++                       "KOSMOS_ALLOW_ALL_USERS")
+         )
+         if not _any_allowlist and not _allow_all:
+             logger.warning(
+@@ -3175,6 +3177,13 @@ class GatewayRunner:
+                 return None
+             return YuanbaoAdapter(config)
+ 
++        elif platform == Platform.KOSMOS:
++            from gateway.platforms.kosmos import KosmosAdapter, check_kosmos_requirements
++            if not check_kosmos_requirements():
++                logger.warning("Kosmos: websockets not installed. Run: pip install websockets")
++                return None
++            return KosmosAdapter(config)
++
+         return None
+     def _is_user_authorized(self, source: SessionSource) -> bool:
+         """
+@@ -3217,6 +3226,7 @@ class GatewayRunner:
+             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
+             Platform.QQBOT: "QQ_ALLOWED_USERS",
+             Platform.YUANBAO: "YUANBAO_ALLOWED_USERS",
++            Platform.KOSMOS: "KOSMOS_ALLOWED_USERS",
+         }
+         platform_group_env_map = {
+             Platform.TELEGRAM: "TELEGRAM_GROUP_ALLOWED_USERS",
+@@ -3240,6 +3250,7 @@ class GatewayRunner:
+             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOW_ALL_USERS",
+             Platform.QQBOT: "QQ_ALLOW_ALL_USERS",
+             Platform.YUANBAO: "YUANBAO_ALLOW_ALL_USERS",
++            Platform.KOSMOS: "KOSMOS_ALLOW_ALL_USERS",
+         }
+ 
+         # Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
+@@ -3371,6 +3382,7 @@ class GatewayRunner:
+                 Platform.WEIXIN:   "WEIXIN_ALLOWED_USERS",
+                 Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
+                 Platform.QQBOT:    "QQ_ALLOWED_USERS",
++                Platform.KOSMOS:   "KOSMOS_ALLOWED_USERS",
+             }
+             if os.getenv(platform_env_map.get(platform, ""), "").strip():
+                 return "ignore"
+diff --git a/hermes_cli/platforms.py b/hermes_cli/platforms.py
+index bc609277..3af0f4d1 100644
+--- a/hermes_cli/platforms.py
++++ b/hermes_cli/platforms.py
+@@ -37,6 +37,7 @@ PLATFORMS: OrderedDict[str, PlatformInfo] = OrderedDict([
+     ("weixin",         PlatformInfo(label="💬 Weixin",          default_toolset="hermes-weixin")),
+     ("qqbot",          PlatformInfo(label="💬 QQBot",           default_toolset="hermes-qqbot")),
+     ("yuanbao",        PlatformInfo(label="🤖 Yuanbao",         default_toolset="hermes-yuanbao")),
++    ("kosmos",         PlatformInfo(label="🖥️  Kosmos",          default_toolset="hermes-gateway")),
+     ("webhook",        PlatformInfo(label="🔗 Webhook",         default_toolset="hermes-webhook")),
+     ("api_server",     PlatformInfo(label="🌐 API Server",      default_toolset="hermes-api-server")),
+     ("cron",           PlatformInfo(label="⏰ Cron",            default_toolset="hermes-cron")),

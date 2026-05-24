@@ -8,16 +8,24 @@ import { useSkills } from '../../userData/userDataProvider';
 import { useLayout } from '../../layout/LayoutProvider';
 import { isBuiltinSkill } from '../../../../shared/constants/builtinSkills';
 import { isBuiltinAgent } from '../../../lib/userData/types';
+import ListSearchBox from '../../ui/ListSearchBox';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[AgentSkillsTab]');
+
+/** Check if a skill is provided by a plugin (source === 'PLUGIN' or name starts with 'plugin:') */
+function isPluginSkill(skillName: string, skillSource?: string): boolean {
+  return skillSource === 'PLUGIN' || skillName.startsWith('plugin--');
+}
 
 /**
  * AgentSkillsTab - Agent Skills configuration tab
  *
  * Features:
- * - Display global Skills list
- * - Allow users to select/deselect Skills via checkbox
+ * - Displays the global Skills list
+ * - Allows users to select/deselect Skills via checkboxes
  * - Selected skill names are stored in agent.skills: string[]
  *
- * Layout and styling are consistent with AgentMcpServersTab
+ * Layout and styles are kept consistent with AgentMcpServersTab
  */
 const AgentSkillsTab: React.FC<TabComponentProps> = ({
   mode,
@@ -37,7 +45,10 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
 
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initial data for comparing changes
+  // 🆕 Search filter
+  const [agentSkillSearchQuery, setAgentSkillSearchQuery] = useState('');
+
+  // Initial data used to detect modifications
   const [initialSkills, setInitialSkills] = useState<Set<string>>(new Set());
 
   // Load selected skills - reload when agentData or cachedData changes
@@ -51,7 +62,7 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
         });
       }
 
-      // If cached data exists, use cached data first
+      // If cached data exists, prefer it over the base data
       let finalSkills = baseSkills;
       if (cachedData?.skills) {
         finalSkills = new Set(cachedData.skills);
@@ -77,12 +88,12 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
 
   // Notify parent component when data changes - use useRef to track last notified data
   const lastNotifiedDataRef = React.useRef<string | null>(null);
-  
+
   useEffect(() => {
     if (isInitialized && onDataChange) {
       const skills = Array.from(selectedSkills);
       const dataKey = JSON.stringify(skills);
-      
+
       // Only notify parent when data actually changes, to avoid infinite loops
       if (lastNotifiedDataRef.current !== dataKey) {
         lastNotifiedDataRef.current = dataKey;
@@ -93,11 +104,11 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
 
   // Toggle skill selection state
   const handleSkillToggle = useCallback((skillName: string) => {
-    if (readOnly) return; // Toggling not allowed in read-only mode
-    
+    if (readOnly) return; // Toggle not allowed in read-only mode
+
     // Built-in skills cannot be unchecked for builtin agents
     if (isBuiltinSkill(skillName) && isBuiltinAgent(agentData?.name)) return;
-    
+
     setSelectedSkills((prev) => {
       const newSelections = new Set(prev);
 
@@ -113,19 +124,19 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
     });
   }, [readOnly]);
 
-  // 🆕 Refactored: Calculate selected skills count (only count those actually existing in globalSkills)
+  // 🆕 Refactor: count selected skills (only those that actually exist in globalSkills)
   const selectedCount = useMemo(() => {
     if (!globalSkills || globalSkills.length === 0) {
       return 0;
     }
-    // Filter to only actually existing skills
+    // Filter to skills that actually exist
     const availableSelectedSkills = Array.from(selectedSkills).filter(skillName =>
       globalSkills.some(s => s.name === skillName)
     );
     return availableSelectedSkills.length;
   }, [selectedSkills, globalSkills]);
 
-  // Calculate total skills count
+  // Compute total skill count
   const totalCount = useMemo(() => {
     return globalSkills?.length || 0;
   }, [globalSkills]);
@@ -142,19 +153,19 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
     (skillName: string) => {
       // Save current path to sessionStorage
       sessionStorage.setItem('previousPath', location.pathname);
-      
-      // Close the Agent Editor first
+
+      // First close the Agent Editor
       window.dispatchEvent(new CustomEvent('agent:closeEditor'));
 
-      // Delay briefly to ensure editor is closed, then switch view and select skill
+      // Wait briefly to ensure the editor is closed, then switch view and select the skill
       setTimeout(() => {
-        // Dispatch custom event to notify SkillsView to select the skill
+        // Dispatch custom event to notify SkillsView to select this skill
         window.dispatchEvent(
           new CustomEvent('skills:selectSkill', {
             detail: { skillName },
           }),
         );
-        // Switch to the skills view in settings page
+        // Switch to the skills view on the settings page
         navigate('/settings/skills');
       }, 100);
     },
@@ -180,7 +191,7 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
           </button>
         </div>
       </div>
-      
+
       {/* Tab Body */}
       <div className="tab-body">
         {isLoading ? (
@@ -192,22 +203,35 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
           <>
             {/* Skills List */}
             <div className="skill-cards">
+              <ListSearchBox
+                value={agentSkillSearchQuery}
+                onChange={setAgentSkillSearchQuery}
+                placeholder="Search skills..."
+              />
               {[...globalSkills].sort((a, b) => {
                 const aBuiltin = isBuiltinSkill(a.name);
                 const bBuiltin = isBuiltinSkill(b.name);
                 if (aBuiltin && !bBuiltin) return -1;
                 if (!aBuiltin && bBuiltin) return 1;
+                const aPlugin = isPluginSkill(a.name, a.source);
+                const bPlugin = isPluginSkill(b.name, b.source);
+                if (aPlugin && !bPlugin) return 1;
+                if (!aPlugin && bPlugin) return -1;
                 return 0;
-              }).map((skill) => {
+              })
+              .filter(skill => !agentSkillSearchQuery || skill.name.includes(agentSkillSearchQuery))
+              .map((skill) => {
                 const isSelected = selectedSkills.has(skill.name);
-                const isSkillLocked = isBuiltinSkill(skill.name) && isBuiltinAgent(agentData?.name);
+                const isSkillBuiltin = isBuiltinSkill(skill.name);
+                const isSkillFromPlugin = isPluginSkill(skill.name, skill.source);
+                const isSkillLocked = (isSkillBuiltin && isBuiltinAgent(agentData?.name)) || isSkillFromPlugin;
 
                 return (
                   <div
                     key={skill.name}
-                    className={`skill-card ${isSelected ? 'selected' : ''} ${readOnly ? 'readonly' : ''}`}
-                    onClick={() => !readOnly && handleSkillToggle(skill.name)}
-                    style={readOnly ? { cursor: 'default' } : undefined}
+                    className={`skill-card ${isSelected ? 'selected' : ''} ${readOnly ? 'readonly' : ''} ${isSkillFromPlugin ? 'plugin-skill' : ''}`}
+                    onClick={() => !readOnly && !isSkillFromPlugin && handleSkillToggle(skill.name)}
+                    style={readOnly || isSkillFromPlugin ? { cursor: 'default', opacity: 0.75 } : undefined}
                   >
                     <div className="skill-card-header">
                       <div className="skill-info">
@@ -227,7 +251,8 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
                         <div className="skill-card-name-group">
                           <div className="server-title-row">
                             <span className="skill-card-name">{skill.name}</span>
-                            {isBuiltinSkill(skill.name) && <span className="builtin-badge">Built-in</span>}
+                            {isSkillBuiltin && <span className="builtin-badge">Built-in</span>}
+                            {isSkillFromPlugin && <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)', opacity: 0.85 }}>Plugin</span>}
                           </div>
                           <div
                             style={{
@@ -242,20 +267,27 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
                                 v{skill.version}
                               </span>
                             )}
+                            {skill.source && (
+                              <span className="skill-card-version">
+                                {skill.source}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                       <div className="skill-actions">
-                        <button
-                          className="manage-btn always-visible"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleManageSkill(skill.name);
-                          }}
-                          title="Manage Skill"
-                        >
-                          <Settings size={14} />
-                        </button>
+                        {!isSkillFromPlugin && (
+                          <button
+                            className="manage-btn always-visible"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManageSkill(skill.name);
+                            }}
+                            title="Manage Skill"
+                          >
+                            <Settings size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

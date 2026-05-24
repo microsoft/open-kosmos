@@ -1,0 +1,31 @@
+{
+  "name": "@openclaw/kosmos",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for Kosmos desktop app",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "openclaw",
+    "kosmos",
+    "channel",
+    "plugin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "peerDependencies": {
+    "openclaw": ">=0.1.0"
+  }
+}

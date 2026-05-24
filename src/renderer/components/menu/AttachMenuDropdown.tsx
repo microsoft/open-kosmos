@@ -1,34 +1,49 @@
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useRef, createElement } from 'react';
 import { useScreenshotEnabled } from '../../lib/screenshot/useScreenshotEnabled';
 import { useScreenshotHotkey } from '../../lib/screenshot/useScreenshotHotkey';
+import { adjustAnchoredDropdownToViewport, ANCHORED_DROPDOWN_SIZE_PRESETS, AnchoredDropdownPosition, getAnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
+import { atom } from '@/atom';
+import { useClickOut } from '../ui/use-click-out';
 
-interface AttachMenuDropdownProps {
-  attachMenuRef: React.RefObject<HTMLDivElement>;
-  position: { top: number; left: number };
-  onClose: () => void;
+const zeroState: {
+  isOpen: boolean;
+  position: AnchoredDropdownPosition | null;
+} = { isOpen: false, position: null };
+
+export const AttachMenuAtom = atom(zeroState, (get, set) => {
+  function close() {
+    set(zeroState);
+  }
+
+  function toggle(buttonElement: HTMLElement) {
+    if (get().isOpen) {
+      return set(zeroState);
+    }
+    const position = getAnchoredDropdownPosition(
+      buttonElement,
+      ANCHORED_DROPDOWN_SIZE_PRESETS.attachMenu,
+    );
+    set({ isOpen: true, position });
+  }
+
+  return { toggle, close };
+});
+
+interface InnerProps {
+  position: AnchoredDropdownPosition;
 }
 
-const AttachMenuDropdown: React.FC<AttachMenuDropdownProps> = ({
-  attachMenuRef,
-  position,
-  onClose,
-}) => {
+const AttachMenuDropdown: React.FC<InnerProps> = ({ position }) => {
+  const { close: onClose } = AttachMenuAtom.useChange();
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   const enableScreenshot = useScreenshotEnabled();
   const screenshotHotkey = useScreenshotHotkey();
 
-  // Use measured height to adjust menu position: if it overflows the bottom, display above the button
+  useClickOut(attachMenuRef, onClose);
+
   useLayoutEffect(() => {
     if (attachMenuRef.current) {
-      const rect = attachMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      const triggerTop = (position as any).triggerTop;
-
-      if (rect.bottom > windowHeight - padding && triggerTop !== undefined) {
-        // Use the measured menu height (rect.height) to precisely calculate upward position
-        const newTop = triggerTop - rect.height - 4;
-        attachMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-      }
+      adjustAnchoredDropdownToViewport(attachMenuRef.current, position);
     }
   }, [position]);
 
@@ -115,4 +130,8 @@ const AttachMenuDropdown: React.FC<AttachMenuDropdownProps> = ({
   );
 };
 
-export default AttachMenuDropdown;
+export default () => {
+  const [{ isOpen, position }] = AttachMenuAtom.use();
+  if (!isOpen || !position) return null;
+  return createElement(AttachMenuDropdown, { position });
+};

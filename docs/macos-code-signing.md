@@ -1,6 +1,6 @@
 # macOS Code Signing Configuration Guide
 
-This document explains how to configure macOS code signing and notarization for Kosmos.
+This document explains how to configure macOS code signing and notarization for Kosmos.app.
 
 ## Prerequisites
 
@@ -10,21 +10,21 @@ This document explains how to configure macOS code signing and notarization for 
 
 ## GitHub Secrets Configuration
 
-The following environment variables need to be added in your GitHub repository under Settings > Secrets and variables > Actions:
+The following environment variables need to be added in the GitHub repository under Settings > Secrets and variables > Actions:
 
 ### Required Environment Variables
 
-| Variable Name | Description | How to Obtain |
-|---------------|-------------|---------------|
-| `APPLE_CERTIFICATE_P12` | Base64-encoded developer certificate (.p12 file) | Export the certificate from Keychain, then convert to Base64 |
-| `APPLE_CERTIFICATE_PASSWORD` | Certificate password | The password set when exporting the certificate |
-| `APPLE_TEAM_ID` | Apple Developer Team ID | View in the Apple Developer Console |
-| `APPLE_ID` | Apple ID email | The Apple ID used for notarization |
+| Variable | Description | How to Obtain |
+|--------|------|----------|
+| `APPLE_CERTIFICATE_P12` | Base64-encoded developer certificate (.p12 file) | Export certificate from Keychain, then convert to Base64 |
+| `APPLE_CERTIFICATE_PASSWORD` | Certificate password | Password set when exporting the certificate |
+| `APPLE_TEAM_ID` | Apple Developer Team ID | View in Apple Developer Console |
+| `APPLE_ID` | Apple ID email | Apple ID used for notarization |
 | `APPLE_ID_PASSWORD` | App-Specific Password | Generate on the Apple ID management page |
 
 ### Certificate Preparation Steps
 
-1. **Obtain the Developer Certificate**
+1. **Obtain the developer certificate**
 
 ```bash
 # 1. Export the P12 file
@@ -33,11 +33,11 @@ security export -k ~/Library/Keychains/login.keychain-db \
   -f pkcs12 \
   -o dev-id.p12
 
-# 2. Convert to base64 and copy to clipboard
+# 2. Convert to Base64 and copy to clipboard
 base64 < dev-id.p12 | pbcopy
 ```
 
-If successful, the clipboard will contain a long base64 string that can be pasted directly into GitHub Secrets:
+If successful, your clipboard will contain a long Base64 string that can be pasted directly into GitHub Secrets:
 
 ```
 MAC_CERT_BASE64 = <your base64 string>
@@ -45,7 +45,7 @@ MAC_CERT_BASE64 = <your base64 string>
 
 ---
 
-# ❤️ Tip: How to verify the base64 conversion was successful?
+# ❤️ Tip: How to verify if Base64 encoding succeeded
 
 You can run:
 
@@ -59,58 +59,58 @@ You should see:
 MIIK...
 ```
 
-If so, it was successful.
+If so, it worked.
 
 
 
 1. **Generate an App-Specific Password**
    - Visit https://appleid.apple.com/account/manage
    - Sign in with your Apple ID
-   - Generate an "App-Specific Password" under the "Security" section
+   - Generate an "App-Specific Password" in the "Security" section
    - Set the generated password as APPLE_ID_PASSWORD
 
 2. **Obtain the Team ID**
    - Visit https://developer.apple.com/account/
-   - Find the Team ID in the upper right corner
+   - View the Team ID in the upper-right corner
 
 ## Configuration Verification
 
-After setup is complete, push code or manually trigger the GitHub Actions workflow and check whether the code signing step in the build log succeeds.
+After setup, push code or manually trigger the GitHub Actions workflow and check the build log to confirm the code signing step succeeds.
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Certificate Import Failure**
-   - Verify that APPLE_CERTIFICATE_P12 is valid Base64 encoding
-   - Confirm that the APPLE_CERTIFICATE_PASSWORD is correct
+1. **Certificate import failure**
+   - Check that APPLE_CERTIFICATE_P12 is valid Base64-encoded data
+   - Confirm the APPLE_CERTIFICATE_PASSWORD is correct
 
-2. **Notarization Failure**
-   - Verify that APPLE_ID and APPLE_ID_PASSWORD are correct
+2. **Notarization failure**
+   - Verify APPLE_ID and APPLE_ID_PASSWORD are correct
    - Ensure the App-Specific Password has not expired
 
-3. **Build Failure**
-   - Verify that the certificate is of the "Developer ID Application" type
+3. **Build failure**
+   - Check that the certificate is of type "Developer ID Application"
    - Confirm the certificate has not expired
 
-### Debugging Commands
+### Debug Commands
 
 ```bash
-# Check certificates in the keychain
+# Check certificates in Keychain
 security find-identity -v -p codesigning
 
-# Verify signature
+# Verify signing
 codesign -vvv --deep --strict /path/to/app
 
 # Check notarization status
 xcrun notarytool history --apple-id "your@email.com" --password "app-password"
 ```
 
-## Security Considerations
+## Security Notes
 
-- Regularly update App-Specific Passwords
-- Monitor certificate expiration dates and renew in advance
-- Only use certificates in trusted CI/CD environments
+- Rotate App-Specific Passwords regularly
+- Monitor certificate expiration and renew in advance
+- Use certificates only in trusted CI/CD environments
 - Rotate GitHub Secrets periodically
 
 ## Configuration Details
@@ -133,25 +133,25 @@ In the `build.mac` section of `package.json`:
 }
 ```
 
-- `notarize: false` - Disable electron-builder's automatic notarization
-- `afterSign: "scripts/notarize.js"` - Use a custom notarization script
+- `notarize: false` — Disables electron-builder's automatic notarization
+- `afterSign: "scripts/notarize.js"` — Uses a custom notarization script
 
 ### How the Notarization Script Works
 
 `scripts/notarize.js` will:
-1. Check if the build is running on the macOS platform
-2. Verify required environment variables (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
-3. If credentials are complete, execute notarization
-4. If credentials are missing or notarization fails, log the event but do not interrupt the build
+1. Check whether the build is on macOS
+2. Verify the required environment variables (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
+3. If credentials are complete, perform notarization
+4. If credentials are missing or notarization fails, log the issue but do not interrupt the build
 
 This approach allows:
 - Building in a development environment without notarization credentials
 - Automatic notarization when credentials are provided in CI/CD
-- The build process to continue even if notarization fails
+- Notarization failures do not completely block the build process
 
 ## Related Files
 
-- `.github/workflows/release.yml` - CI/CD pipeline configuration
-- `package.json` - electron-builder configuration
-- `build/entitlements.mac.plist` - Application entitlements configuration
-- `scripts/notarize.js` - Custom notarization script
+- `.github/workflows/release.yml` — CI/CD pipeline configuration
+- `package.json` — electron-builder configuration
+- `build/entitlements.mac.plist` — Application entitlements configuration
+- `scripts/notarize.js` — Custom notarization script

@@ -18,8 +18,8 @@ if (fs.existsSync('release')) {
   fs.rmSync('release', { recursive: true });
 }
 
-// Build application
-console.log('🔨 Building application...');
+// Build app
+console.log('🔨 Building app...');
 execSync('npm run build', { stdio: 'inherit' });
 
 // Build installer for each platform
@@ -27,11 +27,11 @@ for (const platform of platforms) {
   console.log(`📦 Building ${platform.name} installer...`);
   try {
     execSync(platform.command, { stdio: 'inherit' });
-    console.log(`✅ ${platform.name} build succeeded`);
+    console.log(`✅ ${platform.name} build successful`);
   } catch (error) {
     console.error(`❌ ${platform.name} build failed:`, error.message);
   }
 }
 
-console.log('🎉 All platform builds completed!');
+console.log('🎉 All platform builds complete!');
 console.log('📁 Output directory: release/');

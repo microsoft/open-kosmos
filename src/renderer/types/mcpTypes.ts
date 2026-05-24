@@ -8,7 +8,7 @@ export interface MCPTool {
 export interface MCPServerState {
   id: string;
   name: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'error' | 'connecting' | 'disconnecting' | 'needs-user-interaction';
   tools: MCPTool[];
   lastUpdated: number;
   error?: string;
@@ -36,7 +36,7 @@ export interface VSCodeConfigFormat {
   // Windows mcp.json format
   servers?: Record<string, VSCodeMCPServerConfig>
   inputs?: any[]
-  
+
   // macOS settings.json format
   mcp?: {
     servers: Record<string, VSCodeMCPServerConfig>
@@ -73,14 +73,14 @@ export interface ImportResult {
 
 // Configuration state interfaces
 export interface ConfigState {
-  availableConfigs: KosmosAppMCPServerConfig[]
+  availableConfigs: OpenKosmosAppMCPServerConfig[]
   selectedConfigs: Set<string>
   conflictingConfigs: Set<string>
-  previewConfig?: KosmosAppMCPServerConfig
+  previewConfig?: OpenKosmosAppMCPServerConfig
 }
 
-// Kosmos internal MCP server configuration format
-export interface KosmosAppMCPServerConfig {
+// OpenKosmos internal MCP server configuration format
+export interface OpenKosmosAppMCPServerConfig {
   name: string
   transport: 'stdio' | 'sse' | 'StreamableHttp'
   command: string
@@ -89,6 +89,7 @@ export interface KosmosAppMCPServerConfig {
   url: string
   in_use: boolean
   version?: string
+  source?: 'ON-DEVICE' | 'PLUGIN'
 }
 
 // Import dialog state
@@ -104,7 +105,7 @@ export interface VscodeImporterState {
 export interface TransportMapping {
   vscodeType?: string
   vscodeUrl?: string
-  kosmosTransport: 'stdio' | 'sse' | 'StreamableHttp'
+  openkosmosTransport: 'stdio' | 'sse' | 'StreamableHttp'
 }
 
 // Conflict resolution strategies

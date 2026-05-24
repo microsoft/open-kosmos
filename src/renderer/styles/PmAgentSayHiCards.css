@@ -1,0 +1,134 @@
+/* ============================================================
+   PmAgentSayHiCards – 4-column grid of PM Agent onboarding cards.
+   Shown each time the PM Agent opens a new chat session.
+   ============================================================ */
+
+.pm-agent-say-hi-cards {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+
+.pm-agent-say-hi-cards::-webkit-scrollbar {
+  height: 6px;
+}
+
+.pm-agent-say-hi-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pm-agent-say-hi-cards::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.pm-agent-say-hi-cards::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* ---- Individual card ---- */
+.pm-agent-say-hi-card {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  min-width: 320px;
+  padding: 12px;
+  border: 1px solid #e8e5e0;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.pm-agent-say-hi-card:hover {
+  border-color: #2563eb;
+  background: #f8faff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+
+.pm-agent-say-hi-card:active {
+  background: #eff6ff;
+}
+
+.pm-agent-say-hi-card:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Featured (first) card – highlighted blue border and background */
+.pm-agent-say-hi-card--featured {
+  border-color: #a8c4e8;
+  background: #f0f5ff;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.pm-agent-say-hi-card--featured:hover {
+  border-color: #7aa5d8;
+  background: #e8f0ff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+}
+
+/* ---- Card header: emoji + title ---- */
+.pm-agent-say-hi-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.streaming-v2-message:has(+ .pm-agent-say-hi-cards) .message-content.markdown-body > p:first-child {
+  font-size: 24px !important;
+  line-height: 32px !important;
+}
+
+.pm-agent-say-hi-card-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pm-agent-say-hi-card h4.pm-agent-say-hi-card-title {
+  align-self: stretch;
+  color: var(--foreground-ctrl-neutral-primary-rest, #272320);
+  font-size: var(--text-ramp-itemHeader-fontSize, 14px);
+  font-style: normal;
+  font-weight: var(--text-style-default-header-weight, 620);
+  line-height: var(--text-ramp-itemHeader-lineHeight, 20px);
+  letter-spacing: var(--text-style-default-header-letterSpacing, 0);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Card description ---- */
+.pm-agent-say-hi-card-description {
+  align-self: stretch;
+  color: #6B6561;
+  font-size: var(--text-ramp-itemBody-fontSize, 14px);
+  font-style: normal;
+  font-weight: var(--text-ctrl-weight-default, 410);
+  line-height: var(--text-ramp-itemBody-lineHeight, 20px);
+  letter-spacing: var(--text-style-default-regular-letterSpacing, 0);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

@@ -1,7 +1,7 @@
 /**
- * File system watcher
- * 
- * Based on VSCode's ParcelWatcher and NodeJS.watcher implementation
+ * File System Watcher
+ *
+ * Implementation based on VSCode's ParcelWatcher and NodeJS.watcher
  * Provides high-performance file system change monitoring
  * Reference: vs/platform/files/node/watcher/parcel/parcelWatcher.ts
  */
@@ -11,7 +11,7 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 
 /**
- * File change type (consistent with frontend)
+ * File change type (kept in sync with the frontend)
  */
 export enum FileChangeType {
   UPDATED = 0,
@@ -37,7 +37,7 @@ export interface WatcherOptions {
   includes?: string[];
   /** Whether to recursively watch subdirectories */
   recursive?: boolean;
-  /** Whether to ignore initial scan */
+  /** Whether to ignore the initial scan */
   ignoreInitial?: boolean;
 }
 
@@ -45,42 +45,42 @@ export interface WatcherOptions {
  * Watcher statistics
  */
 export interface WatcherStats {
-  /** Watched root path */
+  /** The root path being watched */
   watchedPath: string | null;
-  /** Whether currently watching */
+  /** Whether watching is active */
   isWatching: boolean;
-  /** Watch start time */
+  /** Time when watching started */
   startTime: number | null;
   /** Number of detected changes */
   changeCount: number;
-  /** Last change time */
+  /** Time of the last change */
   lastChangeTime: number | null;
-  /** Error count */
+  /** Number of errors */
   errorCount: number;
-  /** Last error */
+  /** Last error message */
   lastError: string | null;
 }
 
 /**
  * File system watcher implementation
- * 
- * Based on Node.js fs.watch implementation, following VSCode's design patterns:
- * 1. Event merging and deduplication
- * 2. Pattern matching (exclude/include)
- * 3. Error handling and retry
- * 4. Performance optimization
+ *
+ * Built on Node.js fs.watch, following VSCode's design patterns:
+ * 1. Event coalescing and deduplication
+ * 2. Pattern matching (excludes/includes)
+ * 3. Error handling and retries
+ * 4. Performance optimizations
  */
 export class FileSystemWatcher extends EventEmitter {
   private watchers = new Map<string, fs.FSWatcher>();
   private watchedPath: string | null = null;
   private options: WatcherOptions = {};
   private stats: WatcherStats;
-  
-  // Event merging related
+
+  // Event coalescing
   private pendingChanges = new Map<string, FileChange>();
   private flushTimer: NodeJS.Timeout | null = null;
-  private readonly flushDelay = 100; // 100ms delayed merging, shorter than frontend
-  
+  private readonly flushDelay = 100; // 100ms coalescing delay, shorter than the frontend
+
   // Pattern matching cache
   private excludeRegexes: RegExp[] = [];
   private includeRegexes: RegExp[] = [];
@@ -99,15 +99,15 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Start watching specified path
+   * Start watching the specified path
    */
   async startWatch(watchPath: string, options: WatcherOptions = {}): Promise<void> {
-    // If already watching the same path, return directly
+    // If already watching the same path, return immediately
     if (this.isWatching() && this.watchedPath === watchPath) {
       return;
     }
 
-    // Stop previous watch
+    // Stop any existing watch
     if (this.isWatching()) {
       await this.stopWatch();
     }
@@ -123,29 +123,29 @@ export class FileSystemWatcher extends EventEmitter {
     }
 
     try {
-      
+
       this.watchedPath = watchPath;
-      this.options = { 
-        recursive: true, 
-        ignoreInitial: true, 
-        ...options 
+      this.options = {
+        recursive: true,
+        ignoreInitial: true,
+        ...options
       };
-      
-      // Compile pattern matching regular expressions
+
+      // Compile pattern-matching regular expressions
       this.compilePatterns();
-      
-      // Start watch
+
+      // Start watching
       await this.setupWatcher(watchPath);
-      
+
       // Update statistics
       this.stats.watchedPath = watchPath;
       this.stats.isWatching = true;
       this.stats.startTime = Date.now();
       this.stats.changeCount = 0;
       this.stats.lastChangeTime = null;
-      
+
       this.emit('ready', { path: watchPath });
-      
+
     } catch (error) {
       this.stats.errorCount++;
       this.stats.lastError = error instanceof Error ? error.message : String(error);
@@ -154,7 +154,7 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Stop watch
+   * Stop watching
    */
   async stopWatch(): Promise<void> {
     if (!this.isWatching()) {
@@ -163,7 +163,7 @@ export class FileSystemWatcher extends EventEmitter {
 
 
     try {
-      // Clear timer
+      // Clear the timer
       if (this.flushTimer) {
         clearTimeout(this.flushTimer);
         this.flushTimer = null;
@@ -187,7 +187,7 @@ export class FileSystemWatcher extends EventEmitter {
       this.pendingChanges.clear();
       this.excludeRegexes = [];
       this.includeRegexes = [];
-      
+
       // Update statistics
       this.stats.watchedPath = null;
       this.stats.isWatching = false;
@@ -203,7 +203,7 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Check if currently watching
+   * Check whether watching is active
    */
   isWatching(): boolean {
     return this.stats.isWatching && this.watchers.size > 0;
@@ -217,11 +217,11 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Set up watcher
+   * Set up the watcher
    */
   private async setupWatcher(watchPath: string): Promise<void> {
     try {
-      // Use fs.watch to watch root directory
+      // Use fs.watch to monitor the root directory
       const watcher = fs.watch(
         watchPath,
         { recursive: this.options.recursive },
@@ -242,11 +242,11 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Handle file system events
+   * Handle a file system event
    */
   private handleFileSystemEvent(
-    eventType: string, 
-    filename: string | null, 
+    eventType: string,
+    filename: string | null,
     watchRoot: string
   ): void {
     if (!filename) {
@@ -254,18 +254,18 @@ export class FileSystemWatcher extends EventEmitter {
     }
 
     const fullPath = path.join(watchRoot, filename);
-    
-    // Check if path matches patterns
+
+    // Check whether the path matches the configured patterns
     if (!this.shouldIncludePath(fullPath)) {
       return;
     }
 
-    // Determine change type
+    // Determine the type of change
     let changeType: FileChangeType;
-    
+
     try {
       const exists = fs.existsSync(fullPath);
-      
+
       if (eventType === 'rename') {
         changeType = exists ? FileChangeType.ADDED : FileChangeType.DELETED;
       } else if (eventType === 'change') {
@@ -275,7 +275,7 @@ export class FileSystemWatcher extends EventEmitter {
         changeType = exists ? FileChangeType.UPDATED : FileChangeType.DELETED;
       }
     } catch (error) {
-      // If file cannot be accessed, assume deletion
+      // If the file cannot be accessed, assume it was deleted
       changeType = FileChangeType.DELETED;
     }
 
@@ -288,22 +288,22 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Handle watcher error
+   * Handle a watcher error
    */
   private handleWatcherError(error: Error, watchPath: string): void {
     this.stats.errorCount++;
     this.stats.lastError = error.message;
-    
+
     this.emit('error', { error, path: watchPath });
   }
 
   /**
-   * Add pending change
+   * Add a pending change
    */
   private addPendingChange(change: FileChange): void {
     const key = this.normalizePathForKey(change.path);
-    
-    // Apply simple merge logic
+
+    // Apply simple coalescing logic
     const existing = this.pendingChanges.get(key);
     if (existing) {
       const merged = this.mergeChanges(existing, change);
@@ -328,17 +328,17 @@ export class FileSystemWatcher extends EventEmitter {
     if (existing.type === FileChangeType.ADDED && incoming.type === FileChangeType.DELETED) {
       return null; // CREATE + DELETE = no-op
     }
-    
+
     if (existing.type === FileChangeType.DELETED && incoming.type === FileChangeType.ADDED) {
       return { type: FileChangeType.UPDATED, path: incoming.path }; // DELETE + CREATE = UPDATE
     }
-    
-    // For other cases, use the latest change
+
+    // For all other cases, use the latest change
     return incoming;
   }
 
   /**
-   * Schedule flush
+   * Schedule a flush
    */
   private scheduleFlush(): void {
     if (this.flushTimer) {
@@ -371,7 +371,7 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Compile pattern matching regular expressions
+   * Compile pattern-matching regular expressions
    */
   private compilePatterns(): void {
     this.excludeRegexes = [];
@@ -401,10 +401,10 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Convert glob pattern to regular expression
+   * Convert a glob pattern to a regular expression
    */
   private globToRegex(pattern: string): RegExp {
-    // Simple glob to regex implementation
+    // Simple glob-to-regex implementation
     let regexPattern = pattern
       .replace(/\./g, '\\.')
       .replace(/\*\*/g, '.*')
@@ -415,11 +415,11 @@ export class FileSystemWatcher extends EventEmitter {
   }
 
   /**
-   * Check if path should be included
+   * Check whether a path should be included
    */
   private shouldIncludePath(filePath: string): boolean {
-    const relativePath = this.watchedPath ? 
-      path.relative(this.watchedPath, filePath).replace(/\\/g, '/') : 
+    const relativePath = this.watchedPath ?
+      path.relative(this.watchedPath, filePath).replace(/\\/g, '/') :
       filePath.replace(/\\/g, '/');
 
     // Check exclude patterns
@@ -429,30 +429,30 @@ export class FileSystemWatcher extends EventEmitter {
       }
     }
 
-    // If include patterns exist, check include patterns
+    // If include patterns are present, check them
     if (this.includeRegexes.length > 0) {
       for (const regex of this.includeRegexes) {
         if (regex.test(relativePath) || regex.test(path.basename(filePath))) {
           return true;
         }
       }
-      return false; // Include patterns exist but no match
+      return false; // Include patterns exist but none matched
     }
 
-    return true; // No include patterns, include by default
+    return true; // No include patterns — include by default
   }
 
   /**
-   * Normalize path for use as key
+   * Normalize a path for use as a map key
    */
   private normalizePathForKey(filePath: string): string {
-    return process.platform === 'win32' ? 
-      filePath.toLowerCase().replace(/\\/g, '/') : 
+    return process.platform === 'win32' ?
+      filePath.toLowerCase().replace(/\\/g, '/') :
       filePath.replace(/\\/g, '/');
   }
 
   /**
-   * Dispose watcher
+   * Dispose the watcher
    */
   async dispose(): Promise<void> {
     await this.stopWatch();

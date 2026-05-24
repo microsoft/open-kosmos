@@ -3,12 +3,12 @@
 
 export class GhcApiError extends Error {
   public statusCode: number;
-  
+
   constructor(message: string, statusCode: number = 500) {
     super(message);
     this.name = 'GhcApiError';
     this.statusCode = statusCode;
-    
+
     // Maintain prototype chain
     Object.setPrototypeOf(this, GhcApiError.prototype);
   }

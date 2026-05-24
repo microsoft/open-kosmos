@@ -108,7 +108,7 @@ function extractConfigFromFormat(parsedConfig: any): any {
       return parsedConfig.mcpServers[serverNames[0]]
     }
   }
-  
+
   // Format 5-6, 9-10: Server fragment (direct object with server name as key)
   const keys = Object.keys(parsedConfig)
   if (keys.length === 1 && typeof parsedConfig[keys[0]] === 'object' && parsedConfig[keys[0]] !== null) {
@@ -118,7 +118,7 @@ function extractConfigFromFormat(parsedConfig: any): any {
       return { serverName: keys[0], ...serverConfig }
     }
   }
-  
+
   // Format 1-2: Direct config
   return parsedConfig
 }
@@ -127,7 +127,7 @@ function extractConfigFromFormat(parsedConfig: any): any {
  * Parse MCP configuration and detect format
  */
 export function parseMcpConfig(
-  input: string, 
+  input: string,
   currentTransportType?: 'stdio' | 'sse' | 'StreamableHttp'
 ): McpConfigParseResult {
   try {
@@ -140,7 +140,7 @@ export function parseMcpConfig(
 
     // Clean invisible characters
     const cleanedInput = cleanInvisibleCharacters(input.trim())
-    
+
     // Try to parse JSON
     let parsedConfig: any
     try {
@@ -155,12 +155,12 @@ export function parseMcpConfig(
     // Extract server name and config based on format
     const extractedServerName = extractServerName(parsedConfig)
     const extractedConfig = extractConfigFromFormat(parsedConfig)
-    
+
     let detectedFormat = ''
     let serverName = extractedServerName
     let transportType: 'stdio' | 'sse' | 'StreamableHttp'
     let config: ParsedMcpConfig['config'] = {}
-    
+
     // Determine format and extract data
     if (parsedConfig.mcpServers) {
       // Formats 3, 4, 7, 8 (mcpServers wrapper)
@@ -198,7 +198,7 @@ export function parseMcpConfig(
           detectedFormat = 'Format 9: StreamableHttp minimal fragment'
         }
       }
-      
+
       // Extract server name from fragment format
       if (!serverName && !extractedConfig.serverName) {
         const keys = Object.keys(parsedConfig)
@@ -262,27 +262,27 @@ export function parseMcpConfig(
  */
 export function formatToStandardJson(parsedConfig: ParsedMcpConfig): string {
   const { transportType, config } = parsedConfig
-  
+
   if (transportType === 'stdio') {
     const stdioConfig: any = {
       command: config.command,
       args: config.args
     }
-    
+
     if (config.env && Object.keys(config.env).length > 0) {
       stdioConfig.env = config.env
     }
-    
+
     return JSON.stringify(stdioConfig, null, 2)
   } else {
     const httpConfig: any = {
       url: config.url
     }
-    
+
     if (config.env && Object.keys(config.env).length > 0) {
       httpConfig.env = config.env
     }
-    
+
     return JSON.stringify(httpConfig, null, 2)
   }
 }
@@ -292,9 +292,9 @@ export function formatToStandardJson(parsedConfig: ParsedMcpConfig): string {
  */
 export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string {
   const { serverName, transportType, config } = parsedConfig
-  
+
   const serverConfig: any = {}
-  
+
   if (transportType === 'stdio') {
     serverConfig.command = config.command
     serverConfig.args = config.args
@@ -303,17 +303,17 @@ export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string
     serverConfig.url = config.url
     serverConfig.type = transportType
   }
-  
+
   if (config.env && Object.keys(config.env).length > 0) {
     serverConfig.env = config.env
   }
-  
+
   const wrapper = {
     mcpServers: {
       [serverName!]: serverConfig
     }
   }
-  
+
   return JSON.stringify(wrapper, null, 2)
 }
 
@@ -346,17 +346,17 @@ export function isExampleConfiguration(input: string): boolean {
 
 // VSCode Import Extensions
 
-import { KosmosAppMCPServerConfig } from '../../types/mcpTypes'
+import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
 
 /**
- * Convert Kosmos server config to VSCode format (settings.json style)
+ * Convert OpenKosmos server config to VSCode format (settings.json style)
  */
-export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]): string {
+export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {}
-  
+
   for (const config of serverConfigs) {
     const vscodeConfig: any = {}
-    
+
     if (config.transport === 'stdio') {
       vscodeConfig.type = 'stdio'
       vscodeConfig.command = config.command
@@ -366,7 +366,7 @@ export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]
     } else {
       // For sse and StreamableHttp, use url
       vscodeConfig.url = config.url
-      
+
       // Set appropriate type
       if (config.transport === 'sse') {
         vscodeConfig.type = 'sse'
@@ -374,33 +374,33 @@ export function formatToVSCodeSettings(serverConfigs: KosmosAppMCPServerConfig[]
         vscodeConfig.type = 'http'
       }
     }
-    
+
     // Add environment variables if they exist
     if (config.env && Object.keys(config.env).length > 0) {
       vscodeConfig.env = config.env
     }
-    
+
     servers[config.name] = vscodeConfig
   }
-  
+
   const settingsFormat = {
     mcp: {
       servers: servers
     }
   }
-  
+
   return JSON.stringify(settingsFormat, null, 2)
 }
 
 /**
- * Convert Kosmos server config to VSCode mcp.json format (Windows style)
+ * Convert OpenKosmos server config to VSCode mcp.json format (Windows style)
  */
-export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[]): string {
+export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {}
-  
+
   for (const config of serverConfigs) {
     const vscodeConfig: any = {}
-    
+
     if (config.transport === 'stdio') {
       vscodeConfig.type = 'stdio'
       vscodeConfig.command = config.command
@@ -410,7 +410,7 @@ export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[])
     } else {
       // For sse and StreamableHttp, use url
       vscodeConfig.url = config.url
-      
+
       // Set appropriate type
       if (config.transport === 'sse') {
         vscodeConfig.type = 'sse'
@@ -418,29 +418,29 @@ export function formatToVSCodeMcpJson(serverConfigs: KosmosAppMCPServerConfig[])
         vscodeConfig.type = 'http'
       }
     }
-    
+
     // Add environment variables if they exist
     if (config.env && Object.keys(config.env).length > 0) {
       vscodeConfig.env = config.env
     }
-    
+
     servers[config.name] = vscodeConfig
   }
-  
+
   const mcpJsonFormat = {
     servers: servers,
     inputs: []
   }
-  
+
   return JSON.stringify(mcpJsonFormat, null, 2)
 }
 
 /**
- * Convert a single Kosmos config to VSCode compatible format
+ * Convert a single OpenKosmos config to VSCode compatible format
  */
-export function convertKosmosToVSCodeConfig(config: KosmosAppMCPServerConfig): any {
+export function convertOpenKosmosToVSCodeConfig(config: OpenKosmosAppMCPServerConfig): any {
   const vscodeConfig: any = {}
-  
+
   if (config.transport === 'stdio') {
     vscodeConfig.type = 'stdio'
     vscodeConfig.command = config.command
@@ -450,7 +450,7 @@ export function convertKosmosToVSCodeConfig(config: KosmosAppMCPServerConfig): a
   } else {
     // For sse and StreamableHttp, use url
     vscodeConfig.url = config.url
-    
+
     // Set appropriate type
     if (config.transport === 'sse') {
       vscodeConfig.type = 'sse'
@@ -458,12 +458,12 @@ export function convertKosmosToVSCodeConfig(config: KosmosAppMCPServerConfig): a
       vscodeConfig.type = 'http'
     }
   }
-  
+
   // Add environment variables if they exist
   if (config.env && Object.keys(config.env).length > 0) {
     vscodeConfig.env = config.env
   }
-  
+
   return vscodeConfig
 }
 
@@ -484,7 +484,7 @@ export function parseVSCodeConfigToInternal(
 
     // Clean invisible characters
     const cleanedInput = cleanInvisibleCharacters(input.trim())
-    
+
     // Try to parse JSON
     let parsedConfig: any
     try {
@@ -498,7 +498,7 @@ export function parseVSCodeConfigToInternal(
 
     // Extract servers based on format
     let servers: Record<string, any> = {}
-    
+
     if (format === 'settings.json' && parsedConfig.mcp?.servers) {
       servers = parsedConfig.mcp.servers
     } else if (format === 'mcp.json' && parsedConfig.servers) {
@@ -524,9 +524,9 @@ export function parseVSCodeConfigToInternal(
 
     // Convert to internal format
     const transportType = convertVSCodeTransportType(firstServerConfig)
-    
+
     const config: ParsedMcpConfig['config'] = {}
-    
+
     if (transportType === 'stdio') {
       config.command = firstServerConfig.command
       config.args = firstServerConfig.args
@@ -609,9 +609,9 @@ export function validateVSCodeConfig(input: string, format: 'settings.json' | 'm
 
   try {
     const parsedConfig = JSON.parse(input)
-    
+
     let servers: Record<string, any> = {}
-    
+
     if (format === 'settings.json') {
       if (!parsedConfig.mcp) {
         errors.push('Missing "mcp" section in settings.json')
@@ -638,11 +638,11 @@ export function validateVSCodeConfig(input: string, format: 'settings.json' | 'm
       }
 
       const config = serverConfig as any
-      
+
       // Check if it has either command/args (stdio) or url (http/sse)
       const hasStdioConfig = config.command || config.args
       const hasHttpConfig = config.url
-      
+
       if (!hasStdioConfig && !hasHttpConfig) {
         errors.push(`Server "${serverName}" missing required configuration (command/args or url)`)
         continue

@@ -74,7 +74,7 @@
         <h1 style="text-align: center; color: #1f2937; margin-bottom: 30px;">
             IndexedDB Database Test
         </h1>
-        
+
         <div class="card">
             <h2>System Status</h2>
             <div id="system-status">
@@ -94,8 +94,8 @@
             </div>
             <div>
                 <input class="input" type="text" id="loginAlias" placeholder="Login alias">
-                <button class="button" onclick="loginUser()">Login</button>
-                <button class="button" onclick="logoutUser()">Logout</button>
+                <button class="button" onclick="loginUser()">Log In</button>
+                <button class="button" onclick="logoutUser()">Log Out</button>
             </div>
             <div id="users-list"></div>
         </div>
@@ -112,7 +112,7 @@
         </div>
 
         <div class="card">
-            <h2>User Configuration</h2>
+            <h2>User Profile</h2>
             <div>
                 <input class="input" type="text" id="apiKey" placeholder="API Key">
                 <input class="input" type="text" id="endpoint" placeholder="API Endpoint">
@@ -189,18 +189,18 @@
         async function initializeSystem() {
             try {
                 log('Initializing system...');
-                
+
                 // Simulate system initialization
                 await new Promise(resolve => setTimeout(resolve, 1000));
-                
+
                 systemInitialized = true;
                 log('System initialized successfully', 'success');
                 updateSystemStatus();
-                
+
                 // Load user list
                 await loadUsers();
                 await loadTemplates();
-                
+
             } catch (error) {
                 log(`System initialization failed: ${error.message}`, 'error');
             }
@@ -214,26 +214,26 @@
 
             try {
                 log('Importing sample data...');
-                
+
                 // Simulate data import
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
+
                 // Add sample users
                 users.push(
                     { alias: 'demo1', display_name: 'Demo User 1', created_at: new Date() },
                     { alias: 'demo2', display_name: 'Demo User 2', created_at: new Date() }
                 );
-                
+
                 // Add sample templates
                 templates.push(
                     { name: 'fetch-template', description: 'Web scraping template', created_at: new Date() },
                     { name: 'filesystem-template', description: 'File system template', created_at: new Date() }
                 );
-                
+
                 log('Sample data imported successfully', 'success');
                 updateUsersList();
                 updateTemplatesList();
-                
+
             } catch (error) {
                 log(`Data import failed: ${error.message}`, 'error');
             }
@@ -242,20 +242,20 @@
         async function resetSystem() {
             try {
                 log('Resetting system...');
-                
+
                 // Simulate system reset
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
+
                 systemInitialized = false;
                 currentUser = null;
                 users = [];
                 templates = [];
-                
+
                 log('System reset complete', 'success');
                 updateSystemStatus();
                 updateUsersList();
                 updateTemplatesList();
-                
+
             } catch (error) {
                 log(`System reset failed: ${error.message}`, 'error');
             }
@@ -269,7 +269,7 @@
 
             const alias = document.getElementById('userAlias').value.trim();
             const displayName = document.getElementById('displayName').value.trim();
-            
+
             if (!alias) {
                 log('Please enter a user alias', 'error');
                 return;
@@ -277,31 +277,31 @@
 
             try {
                 log(`Creating user: ${alias}...`);
-                
+
                 // Check if user already exists
                 if (users.find(u => u.alias === alias)) {
                     log('User already exists', 'error');
                     return;
                 }
-                
+
                 // Simulate user creation
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 const newUser = {
                     alias,
                     display_name: displayName || alias,
                     created_at: new Date()
                 };
-                
+
                 users.push(newUser);
-                
+
                 log(`User ${alias} created successfully`, 'success');
                 updateUsersList();
-                
+
                 // Clear input fields
                 document.getElementById('userAlias').value = '';
                 document.getElementById('displayName').value = '';
-                
+
             } catch (error) {
                 log(`User creation failed: ${error.message}`, 'error');
             }
@@ -314,7 +314,7 @@
             }
 
             const alias = document.getElementById('loginAlias').value.trim();
-            
+
             if (!alias) {
                 log('Please enter a login alias', 'error');
                 return;
@@ -322,27 +322,27 @@
 
             try {
                 log(`Logging in user: ${alias}...`);
-                
+
                 // Find user
                 const user = users.find(u => u.alias === alias);
                 if (!user) {
                     log('User does not exist', 'error');
                     return;
                 }
-                
+
                 // Simulate user login
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 currentUser = user;
-                
+
                 log(`User ${alias} logged in successfully`, 'success');
                 updateSystemStatus();
-                
+
                 // Clear input field
                 document.getElementById('loginAlias').value = '';
-                
+
             } catch (error) {
-                log(`User login failed: ${error.message}`, 'error');
+                log(`Login failed: ${error.message}`, 'error');
             }
         }
 
@@ -354,17 +354,17 @@
 
             try {
                 log(`Logging out user: ${currentUser.alias}...`);
-                
+
                 // Simulate user logout
                 await new Promise(resolve => setTimeout(resolve, 200));
-                
+
                 currentUser = null;
-                
+
                 log('User logged out successfully', 'success');
                 updateSystemStatus();
-                
+
             } catch (error) {
-                log(`User logout failed: ${error.message}`, 'error');
+                log(`Logout failed: ${error.message}`, 'error');
             }
         }
 
@@ -376,21 +376,21 @@
 
             try {
                 log(`Deleting user: ${alias}...`);
-                
+
                 // Simulate user deletion
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 users = users.filter(u => u.alias !== alias);
-                
+
                 // If the deleted user is the current user, log out
                 if (currentUser && currentUser.alias === alias) {
                     currentUser = null;
                     updateSystemStatus();
                 }
-                
+
                 log(`User ${alias} deleted successfully`, 'success');
                 updateUsersList();
-                
+
             } catch (error) {
                 log(`User deletion failed: ${error.message}`, 'error');
             }
@@ -405,7 +405,7 @@
             const name = document.getElementById('templateName').value.trim();
             const command = document.getElementById('templateCommand').value.trim();
             const description = document.getElementById('templateDescription').value.trim();
-            
+
             if (!name) {
                 log('Please enter a template name', 'error');
                 return;
@@ -413,16 +413,16 @@
 
             try {
                 log(`Creating template: ${name}...`);
-                
+
                 // Check if template already exists
                 if (templates.find(t => t.name === name)) {
                     log('Template already exists', 'error');
                     return;
                 }
-                
+
                 // Simulate template creation
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 const newTemplate = {
                     name,
                     server_json: JSON.stringify({ command: command || 'echo', args: ['test'] }),
@@ -430,17 +430,17 @@
                     created_at: new Date(),
                     updated_at: new Date()
                 };
-                
+
                 templates.push(newTemplate);
-                
+
                 log(`Template ${name} created successfully`, 'success');
                 updateTemplatesList();
-                
+
                 // Clear input fields
                 document.getElementById('templateName').value = '';
                 document.getElementById('templateCommand').value = '';
                 document.getElementById('templateDescription').value = '';
-                
+
             } catch (error) {
                 log(`Template creation failed: ${error.message}`, 'error');
             }
@@ -454,15 +454,15 @@
 
             try {
                 log(`Deleting template: ${name}...`);
-                
+
                 // Simulate template deletion
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 templates = templates.filter(t => t.name !== name);
-                
+
                 log(`Template ${name} deleted successfully`, 'success');
                 updateTemplatesList();
-                
+
             } catch (error) {
                 log(`Template deletion failed: ${error.message}`, 'error');
             }
@@ -480,21 +480,21 @@
 
             try {
                 log(`Updating LLM settings for user ${currentUser.alias}...`);
-                
+
                 // Simulate settings update
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 const settings = {
                     apiKey: apiKey || 'test-key',
                     endpoint: endpoint || 'https://api.example.com',
                     model: model || 'gpt-4'
                 };
-                
+
                 log(`LLM settings updated successfully: ${JSON.stringify(settings)}`, 'success');
-                
-                // Update configuration display
+
+                // Update profile display
                 document.getElementById('profile-info').innerHTML = `
-                    <h3>Current User Configuration</h3>
+                    <h3>Current User Profile</h3>
                     <div style="background: #f3f4f6; padding: 10px; border-radius: 4px;">
                         <strong>User:</strong> ${currentUser.alias}<br>
                         <strong>API Key:</strong> ${settings.apiKey}<br>
@@ -502,7 +502,7 @@
                         <strong>Model:</strong> ${settings.model}
                     </div>
                 `;
-                
+
             } catch (error) {
                 log(`LLM settings update failed: ${error.message}`, 'error');
             }
@@ -511,30 +511,30 @@
         async function loadUsers() {
             try {
                 log('Loading user list...');
-                
+
                 // Simulate loading users
                 await new Promise(resolve => setTimeout(resolve, 200));
-                
+
                 updateUsersList();
                 log('User list loaded successfully', 'success');
-                
+
             } catch (error) {
-                log(`User list loading failed: ${error.message}`, 'error');
+                log(`Failed to load user list: ${error.message}`, 'error');
             }
         }
 
         async function loadTemplates() {
             try {
                 log('Loading template list...');
-                
+
                 // Simulate loading templates
                 await new Promise(resolve => setTimeout(resolve, 200));
-                
+
                 updateTemplatesList();
                 log('Template list loaded successfully', 'success');
-                
+
             } catch (error) {
-                log(`Template list loading failed: ${error.message}`, 'error');
+                log(`Failed to load template list: ${error.message}`, 'error');
             }
         }
 

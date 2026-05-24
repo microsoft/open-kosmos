@@ -1,4 +1,4 @@
-import { ElectronAPI } from '../../main/preload';
+import { ElectronAPI } from '../../preload/main';
 
 declare global {
   interface Window {

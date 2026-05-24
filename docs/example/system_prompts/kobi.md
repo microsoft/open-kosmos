@@ -1,8 +1,8 @@
 # Kobi Agent - System Prompt Example
 
-> This document demonstrates the complete System Prompt composition structure of the Kobi Agent.
+> This document shows the complete System Prompt composition structure for the Kobi Agent.
 > Generated: 2026-01-11
-> Agent configuration source: `profile.json` (yanhu_microsoft)
+> Agent config source: `profile.json` (demo-user)
 
 ---
 
@@ -12,13 +12,13 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    Combined System Prompt                    │
 ├─────────────────────────────────────────────────────────────┤
-│  1. Custom System Prompt (Agent Custom)                      │
+│  1. Custom System Prompt (Agent-defined)                     │
 ├─────────────────────────────────────────────────────────────┤
 │  2. Agent-Specific System Prompt                            │
 │     ├─ Workspace Configuration                               │
 │     └─ Skills Instructions                                   │
 ├─────────────────────────────────────────────────────────────┤
-│  3. Global System Prompt (Global Shared Rules)               │
+│  3. Global System Prompt (Globally shared rules)             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -26,7 +26,7 @@
 
 ## Part 1: Custom System Prompt
 
-> Source: `agent.system_prompt` configuration field
+> Source: `agent.system_prompt` config field
 
 ```
 You are a highly capable AI assistant designed to help users with a wide variety of tasks. Your core capabilities include:
@@ -65,7 +65,7 @@ Your goal is to be a reliable, knowledgeable, and adaptable assistant that helps
 
 ## Part 2: Agent-Specific System Prompt
 
-> Dynamically generated, includes Workspace configuration and Skills Instructions
+> Dynamically generated, includes Workspace Configuration and Skills Instructions
 
 ### 2.1 Workspace Configuration
 
@@ -118,17 +118,17 @@ Skills are specialized capabilities that extend your abilities for specific task
 1. **product-decision-maker**
    - Description: Guide end-to-end product decision workflow from feature definition through data collection, decision analysis (Continue/Pivot/Deprecate), to execution planning with intelligent routing.
    - Version: 1.0.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/product-decision-maker/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/product-decision-maker/skill.md`
 
 2. **product-opportunity-analyst**
    - Description: Assist product managers in mining opportunities from competitive data or technology trends and conducting value assessment (V.A.S.T Model).
    - Version: 1.1.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/product-opportunity-analyst/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/product-opportunity-analyst/skill.md`
 
 3. **titan-dynamic-query**
    - Description: Execute and analyze dynamic SQL queries on Titan platform. Triggers on raw SQL input, "run this SQL", or when no template matches.
    - Version: 3.0.2
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/yanhu_microsoft/skills/titan-dynamic-query/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/titan-dynamic-query/skill.md`
 
 **Best Practices:**
 - Load skills only when they're relevant to the current task
@@ -144,7 +144,7 @@ Skills are specialized capabilities that extend your abilities for specific task
 
 ## Part 3: Global System Prompt
 
-> Source: `src/main/lib/chat/globalSystemPrompt.ts`
+> Source: `src/main/lib/chat/globalSystemPrompt.ts:getGlobalSystemPrompt()`
 > System-level rules shared by all Agents
 
 ```
@@ -323,12 +323,12 @@ When referring to files in the workspace in your responses:
    - Configuration files, source code, documentation, etc.
 
 **Examples (macOS/Linux):**
-- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/Kosmos/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/Kosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in /home/user/project/package.json`
 - ✅ Good: `The main entry point is /Users/user/repos/app/src/main/main.ts`
 
 **Examples (Windows):**
-- ✅ Good: `I've analyzed C:/Users/username/repos/Kosmos/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed C:/Users/username/repos/Kosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in D:/projects/myapp/package.json`
 - ❌ Bad: `I've analyzed App.tsx and found...` (missing full path)
 - ❌ Bad: `You can configure this in src/renderer/App.tsx` (relative path instead of absolute)
@@ -506,9 +506,9 @@ Before responding, verify:
 
 ---
 
-## Complete System Prompt Merge Result
+## Complete System Prompt Combined Result
 
-Below is the complete System Prompt sent to the LLM (three parts connected using the `---` separator):
+The following is the complete System Prompt finally sent to the LLM (the three parts joined using `---` separators):
 
 ```
 [Part 1: Custom System Prompt]
@@ -542,9 +542,9 @@ Below is the complete System Prompt sent to the LLM (three parts connected using
 
 ## Related Code Locations
 
-| Function | File Path |
-|----------|-----------|
-| System Prompt Merging | `src/main/lib/chat/agentChat.ts:getCombinedSystemPromptForContext()` |
-| Custom Prompt Retrieval | `src/main/lib/chat/agentChat.ts:getLatestCustomSystemPrompt()` |
+| Feature | File Path |
+|------|----------|
+| System Prompt merging | `src/main/lib/chat/agentChat.ts:getCombinedSystemPromptForContext()` |
+| Custom Prompt retrieval | `src/main/lib/chat/agentChat.ts:getLatestCustomSystemPrompt()` |
 | Agent-Specific Prompt | `src/main/lib/chat/agentChat.ts:getAgentSpecificSystemPrompt()` |
 | Global System Prompt | `src/main/lib/chat/globalSystemPrompt.ts:getGlobalSystemPrompt()` |

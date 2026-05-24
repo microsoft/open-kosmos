@@ -5,8 +5,8 @@ import { getUnifiedLogger } from '../unifiedLogger';
 const logger = getUnifiedLogger();
 
 /**
- * Get boundary information for all system windows, grouped by display.
- * Uses node-screenshots Window.all() to get z-order sorted window list.
+ * Get the bounds of all system windows, grouped by display.
+ * Uses Window.all() from node-screenshots to obtain the z-order-sorted window list.
  */
 export function getWindowFrames(displays: Electron.Display[]): Map<number, WindowFrame[]> {
   const allWindows = ScreenshotWindow.all();
@@ -25,7 +25,7 @@ export function getWindowFrames(displays: Electron.Display[]): Map<number, Windo
     const wx = win.x();
     const wy = win.y();
 
-    // Determine which display the window belongs to based on center point
+    // Determine which display this window belongs to based on its center point
     const centerX = wx + ww / 2;
     const centerY = wy + wh / 2;
     const targetDisplay = displays.find(d => {
@@ -37,7 +37,7 @@ export function getWindowFrames(displays: Electron.Display[]): Map<number, Windo
     const { x: dx, y: dy } = targetDisplay.bounds;
     const sf = targetDisplay.scaleFactor;
 
-    // Convert to display-relative coordinates and multiply by scaleFactor for physical pixels
+    // Convert coordinates to relative coordinates within the display, then multiply by scaleFactor to get physical pixels
     const frame: WindowFrame = {
       x: (wx - dx) * sf,
       y: (wy - dy) * sf,

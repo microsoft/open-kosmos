@@ -12,9 +12,6 @@ import { AgentContextType } from '../../types/agentContextTypes';
 const McpView: React.FC = () => {
   const navigate = useNavigate();
   const {
-    sidepaneWidth: width,
-    setSidepaneWidth: setWidth,
-    isDragging,
     onMcpServerMenuToggle,
     mcpServerMenuState,
     onMcpServerConnect,
@@ -36,8 +33,8 @@ const McpView: React.FC = () => {
 
   const { showError } = useToast();
 
-  // mcpStats already includes builtin-tools server statistics
-  // ProfileDataManager automatically adds the built-in server to mcp_servers
+  // mcpStats already includes statistics for the builtin-tools server
+  // ProfileDataManager automatically adds built-in servers to mcp_servers
   const totalServers = mcpStats.totalServers;
   const connectedServers = mcpStats.connectedServers;
   const totalTools = mcpStats.totalTools;
@@ -88,16 +85,16 @@ const McpView: React.FC = () => {
         }
 
         // Refresh global state and clear operation state after a delay
-        // 🔧 Fix: delay clearing operation state to ensure backend state updates have enough time to propagate to frontend
+        // 🔧 Fix: delay clearing operation state to allow enough time for backend state updates to propagate to the frontend
         setTimeout(() => {
           refreshRuntimeInfo().catch(() => {});
-          // Clear operation state to show real server status
+          // Clear operation state to show the server's actual status
           setOperationStates((prev) => {
             const newStates = { ...prev };
             delete newStates[serverName];
             return newStates;
           });
-        }, 500); // Extended delay to ensure backend state updates have time to propagate
+        }, 500); // Increase delay to ensure backend state update has time to propagate
       } catch (error) {
         // Clear operation state immediately on error
         setOperationStates((prev) => {
@@ -111,7 +108,7 @@ const McpView: React.FC = () => {
     [refreshRuntimeInfo],
   );
 
-  // Server operation handlers - if external handlers are provided, use them; otherwise use local ones
+  // Server operation handlers - use externally passed handlers if available; otherwise use local ones
   const handleConnectServer = useCallback(
     async (serverName: string) => {
       if (onMcpServerConnect) {
@@ -174,15 +171,15 @@ const McpView: React.FC = () => {
 
   const handleDeleteServer = useCallback(
     (serverName: string) => {
-      // If external handler is provided, use it (will show confirmation dialog)
+    // If an external handler is provided, use it (shows a confirmation dialog)
       if (onMcpServerDelete) {
         onMcpServerDelete(serverName);
         return;
       }
 
-      // Local handler (no longer uses window.confirm, deletes directly)
-      // Note: when used in SettingsPage, the onMcpServerDelete callback shows a confirmation dialog
-      // This local handler is only a fallback and won't actually be called
+      // Local handling (no longer uses window.confirm, deletes directly)
+      // Note: when used in SettingsPage, the confirmation dialog is shown via the onMcpServerDelete callback
+      // This local handler is a fallback and in practice will not be called
       (async () => {
         try {
           // Use McpOps API to delete server
@@ -230,7 +227,8 @@ const McpView: React.FC = () => {
   }, [refreshRuntimeInfo]);
 
 
-  // Note: MCP servers can be added via the New Server button or VS Code import
+  // Note: MCP Library is now handled by routing to /settings/mcp/mcp-library
+  // The handleLibraryServerAdded callback has been removed since we use navigation instead
 
   return (
     <div className="mcp-view">

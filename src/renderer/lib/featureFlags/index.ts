@@ -1,22 +1,22 @@
 /**
- * Feature Flags Frontend Module Exports (Read-only Access)
- * 
- * Feature flags are defined by developers in the backend, or passed via command-line arguments:
+ * Feature Flags frontend module exports (read-only access)
+ *
+ * Feature flags are defined by developers in the backend, or passed via CLI arguments:
  * --enable-features=flag1,flag2 --disable-features=flag3
- * 
+ *
  * Usage:
- * 
+ *
  * ```typescript
- * // Outside of components
+ * // Outside a component
  * import { isFeatureEnabled } from '../lib/featureFlags';
- * 
+ *
  * if (isFeatureEnabled('devTools')) {
  *   // ...
  * }
- * 
- * // In React components
+ *
+ * // Inside a React component
  * import { useFeatureFlag } from '../lib/featureFlags';
- * 
+ *
  * function MyComponent() {
  *   const isDevToolsEnabled = useFeatureFlag('devTools');
  *   // ...

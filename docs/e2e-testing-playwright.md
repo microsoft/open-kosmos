@@ -1,7 +1,7 @@
-# OpenKosmos E2E Testing Technical Proposal — Based on Playwright
+# Kosmos E2E Testing Technical Plan — Based on Playwright
 
 > **Version**: 1.0
-> **Last Updated**: 2026-02-24
+> **Updated**: 2026-02-24
 > **Author**: Claude Code
 > **Status**: Technical Feasibility Analysis & Implementation Plan
 
@@ -12,13 +12,13 @@
 1. [Overview](#1-overview)
 2. [Feasibility Analysis](#2-feasibility-analysis)
 3. [Technical Architecture Design](#3-technical-architecture-design)
-4. [Directory Structure Planning](#4-directory-structure-planning)
+4. [Directory Structure Plan](#4-directory-structure-plan)
 5. [Environment Configuration](#5-environment-configuration)
 6. [Core Fixture Design](#6-core-fixture-design)
 7. [Authentication Strategy](#7-authentication-strategy)
-8. [Test Case Planning](#8-test-case-planning)
-9. [CI/CD Integration Plan](#9-cicd-integration-plan)
-10. [Best Practices & Considerations](#10-best-practices--considerations)
+8. [Test Case Plan](#8-test-case-plan)
+9. [CI/CD Integration](#9-cicd-integration)
+10. [Notes and Best Practices](#10-notes-and-best-practices)
 11. [Implementation Roadmap](#11-implementation-roadmap)
 12. [Appendix](#appendix)
 
@@ -28,27 +28,27 @@
 
 ### 1.1 Background
 
-OpenKosmos is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all located in the `__tests__` directory under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iterations accelerate, there is an urgent need to establish an E2E testing framework to ensure the stability of core user flows.
+OpenKosmos AI Studio is an AI assistant desktop application built on Electron + React. The project currently has only **6 unit test files** (all in `__tests__` directories under `src/main/lib/`), with no end-to-end (E2E) tests at all. As feature iteration accelerates, there is an urgent need to establish an E2E testing framework to ensure stability of core user flows.
 
 ### 1.2 Goals
 
 - Establish an E2E testing framework based on the Playwright Electron API
-- Cover core user flows: Startup → Authentication → Chat → Settings → Agent Management
-- Support both local development and CI/CD execution modes
-- Coexist with the existing Jest unit testing framework without interference
+- Cover core user flows: launch → authenticate → chat → settings → Agent management
+- Support both local development and CI/CD run modes
+- Not interfere with the existing Jest unit testing setup
 
 ### 1.3 Why Playwright
 
-| Comparison | Playwright | Spectron (Deprecated) | WebDriverIO | Cypress |
+| Comparison | Playwright | Spectron (deprecated) | WebDriverIO | Cypress |
 |---------|------------|-------------------|-------------|---------|
-| Native Electron Support | ✅ `_electron.launch()` | ❌ Discontinued | ⚠️ Complex configuration required | ❌ No Electron support |
-| Multi-Window Support | ✅ `app.windows()` | ✅ | ⚠️ Limited | ❌ |
-| Main Process Access | ✅ `app.evaluate()` | ✅ | ❌ | ❌ |
-| TypeScript Support | ✅ First-class citizen | ⚠️ | ✅ | ✅ |
-| Community Activity | ⭐⭐⭐⭐⭐ | ❌ Deprecated | ⭐⭐⭐ | ⭐⭐⭐⭐ |
-| Already Installed | ✅ `^1.58.0` | — | — | — |
+| Native Electron support | ✅ `_electron.launch()` | ❌ Maintenance stopped | ⚠️ Complex config | ❌ No Electron |
+| Multi-window support | ✅ `app.windows()` | ✅ | ⚠️ Limited | ❌ |
+| Main process access | ✅ `app.evaluate()` | ✅ | ❌ | ❌ |
+| TypeScript support | ✅ First-class | ⚠️ | ✅ | ✅ |
+| Community activity | ⭐⭐⭐⭐⭐ | ❌ Deprecated | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| Already installed | ✅ `^1.58.0` | — | — | — |
 
-**Conclusion**: Playwright is currently the best choice for Electron E2E testing, and the dependency is already installed in the project.
+**Conclusion**: Playwright is the best choice for Electron E2E testing, and the project already has the dependency installed.
 
 ---
 
@@ -58,18 +58,18 @@ OpenKosmos is an AI assistant desktop application built on Electron + React. The
 
 | Condition | Details |
 |------|------|
-| **Playwright Already Installed** | `"playwright": "^1.58.0"` is already in `devDependencies` |
-| **Webpack Externalized** | `webpack.main.config.js` already treats `playwright` / `playwright-core` as external modules |
-| **electron-builder Excludes Browsers** | `!**/node_modules/playwright*/.local-browsers/**` is already excluded from packaging |
-| **BrowserWindow Sandbox Disabled** | `sandbox: false` — a hard requirement for the Playwright Electron API |
-| **contextIsolation Enabled** | Secure preload bridge pattern, fully compatible with Playwright |
-| **Build Output Available** | `dist/main/main.js` can be used directly as the Electron entry point |
+| **Playwright already installed** | `"playwright": "^1.58.0"` is in `devDependencies` |
+| **Webpack already externalizes** | `webpack.main.config.js` already treats `playwright` / `playwright-core` as external modules |
+| **electron-builder already excludes browsers** | `!**/node_modules/playwright*/.local-browsers/**` already excluded from packaging |
+| **BrowserWindow sandbox disabled** | `sandbox: false` — a hard requirement for Playwright Electron API |
+| **contextIsolation enabled** | Secure preload bridge pattern, fully compatible with Playwright |
+| **Build output available** | `dist/main/main.js` can be used directly as Electron launch entry |
 
-### 2.2 ⚠️ Issues to Address
+### 2.2 ⚠️ Issues to Resolve
 
 #### A. App Readiness Gate
 
-The App component displays a loading page until backend services are ready:
+The App component shows a loading page before backend services are ready:
 
 ```tsx
 // src/renderer/App.tsx
@@ -78,21 +78,21 @@ if (!isAppReady) {
 }
 ```
 
-**Solution**: In E2E tests, use `waitForSelector` to wait for loading to complete before interacting.
+**Solution**: E2E tests need to use `waitForSelector` to wait for loading to complete before interacting.
 
 #### B. GitHub OAuth Device Code Authentication Flow
 
-Authentication uses the GitHub Copilot OAuth Device Flow, which requires user confirmation in a browser:
+Authentication uses the GitHub Copilot OAuth Device Flow, requiring user confirmation in a browser:
 
 ```
-User → App requests device code → GitHub returns device code → User confirms in browser → App obtains Token
+User → App requests device code → GitHub returns device code → User confirms in browser → App gets Token
 ```
 
-**Solution**: Three authentication strategies are provided (see Section 7 for details).
+**Solution**: Provide three authentication strategies (see Section 7).
 
 #### C. HashRouter Routing
 
-All routes use `HashRouter`, with URLs formatted as `/#/path`:
+All routes use `HashRouter`, with URL format `/#/path`:
 
 ```tsx
 <HashRouter>
@@ -100,52 +100,51 @@ All routes use `HashRouter`, with URLs formatted as `/#/path`:
 </HashRouter>
 ```
 
-**Solution**: URL assertions use regex to match the `/#/` prefix.
+**Solution**: URL assertions use regex matching `/#/` prefix.
 
 #### D. Multi-Window Architecture
 
-The application may have multiple windows open simultaneously:
+The app may have multiple windows open simultaneously:
 
 | Window | HTML Entry | Purpose |
 |------|----------|------|
-| Main | `index.html` | Main Application |
-| Screenshot | `screenshot.html` | Screenshot Overlay |
+| Main | `index.html` | Main application |
+| Screenshot | `screenshot.html` | Screenshot overlay |
 
-**Solution**: Use `electronApp.windows()` to get the window list, and filter target windows by URL or title.
+**Solution**: Use `electronApp.windows()` to get window list, filter by URL or title to find target window.
 
 #### E. userData Path Isolation
 
-`bootstrap.ts` sets a brand-specific `userData` path on startup:
+`bootstrap.ts` sets the brand-specific `userData` path on startup:
 
 ```ts
 app.setPath('userData', path.join(app.getPath('appData'), userDataName));
 ```
 
-**Solution**: E2E tests inject an isolated test data directory via environment variables to avoid contaminating real user data.
+**Solution**: E2E tests inject an independent test data directory via environment variable, avoiding contamination of real user data.
 
 #### F. Feature Flag Control
 
-Some pages are restricted by Feature Flags (e.g., Memory, Voice Input, etc. are only available in dev mode):
+Some pages are behind Feature Flags (e.g., Memory, Voice Input only available in dev mode):
 
 | Feature Flag | Default Condition |
 |-------------|---------|
-| `kosmosFeatureMemory` | Dev mode (excluding win32-arm64) |
-| `kosmosFeatureVoiceInput` | Dev mode |
-| `kosmosFeatureTextToSpeech` | Dev mode |
+| `kosmosFeatureMemory` | dev mode (excluding win32-arm64) |
+| `kosmosFeatureVoiceInput` | dev mode |
 | `browserControl` | dev + win32 |
 
-**Solution**: Set `NODE_ENV=development` at E2E startup or use the `--enable-features` CLI argument.
+**Solution**: Set `NODE_ENV=development` on E2E startup or use `--enable-features` CLI argument.
 
 ### 2.3 Feasibility Conclusion
 
 | Dimension | Assessment |
 |------|------|
-| Playwright Compatibility | ✅ Fully compatible |
-| Infrastructure Readiness | ✅ Dependencies installed, build configuration ready |
-| Authentication Complexity | ⚠️ Requires Token pre-seeding or IPC Mock |
-| Multi-Window Handling | ⚠️ Requires window selection logic |
-| Existing Test Infrastructure | ⚠️ `tests/` directory and `tests/setup.ts` missing |
-| **Overall Feasibility** | **✅ Highly feasible, low refactoring cost** |
+| Playwright compatibility | ✅ Fully compatible |
+| Infrastructure readiness | ✅ Dependencies installed, build config ready |
+| Authentication complexity | ⚠️ Requires Token pre-seeding or IPC Mock |
+| Multi-window handling | ⚠️ Needs window selection logic |
+| Existing test infrastructure | ⚠️ `tests/` directory and `tests/setup.ts` missing |
+| **Overall feasibility** | **✅ Highly feasible, low adaptation cost** |
 
 ---
 
@@ -155,16 +154,16 @@ Some pages are restricted by Feature Flags (e.g., Memory, Voice Input, etc. are 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                          E2E Test Layer                             │
+│                          E2E Test Layer                          │
 │                     tests/e2e/*.e2e.ts                           │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────────┐  │
-│  │  Startup   │ │   Auth     │ │   Chat     │ │  Settings   │  │
-│  │  startup   │ │   auth     │ │    chat    │ │  settings    │  │
+│  │  Startup   │ │    Auth    │ │    Chat    │ │  Settings/   │  │
+│  │   Tests    │ │   Tests    │ │   Tests    │ │    MCP       │  │
 │  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └──────┬───────┘  │
 │        └───────────────┴──────────────┴───────────────┘          │
 │                              │                                   │
 │                    ┌─────────┴──────────┐                        │
-│                    │  Test Fixtures     │                        │
+│                    │   Test Fixtures    │                        │
 │                    │  electronApp.ts    │                        │
 │                    │  authHelper.ts     │                        │
 │                    └─────────┬──────────┘                        │
@@ -183,18 +182,18 @@ Some pages are restricted by Feature Flags (e.g., Memory, Voice Input, etc. are 
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 Test Layer Classification
+### 3.2 Test Layer Hierarchy
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│            E2E Tests (Playwright + Electron)         │  ← This proposal
-│         Full user flows, real Electron environment     │
+│            E2E Tests (Playwright + Electron)          │  ← This plan
+│         Complete user flows, real Electron env       │
 ├─────────────────────────────────────────────────────┤
-│          Integration Tests (Jest + jsdom)            │  ← Future expansion
-│         Component interaction tests, Mock IPC          │
+│          Integration Tests (Jest + jsdom)            │  ← Future extension
+│         Component interaction tests, Mock IPC        │
 ├─────────────────────────────────────────────────────┤
-│            Unit Tests (Jest + ts-jest)               │  ← Existing
-│         Pure logic tests, no Electron dependency       │
+│            Unit Tests (Jest + ts-vitest)             │  ← Existing
+│         Pure logic tests, no Electron dependencies   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -202,26 +201,26 @@ Some pages are restricted by Feature Flags (e.g., Memory, Voice Input, etc. are 
 
 | Dimension | Jest Unit Tests | Playwright E2E |
 |------|-------------|----------------|
-| Config File | `jest.config.js` | `playwright.config.ts` |
-| Test Directory | `src/**/__tests__/` | `tests/e2e/` |
-| File Naming | `*.test.ts` | `*.e2e.ts` |
-| Run Command | `npm test` | `npm run test:e2e` |
-| Runtime Environment | Node.js | Electron Application |
-| Parallelism Strategy | Jest Worker Pool | Playwright Worker |
+| Config file | `vitest.config.js` | `playwright.config.ts` |
+| Test directory | `src/**/__tests__/` | `tests/e2e/` |
+| File naming | `*.test.ts` | `*.e2e.ts` |
+| Run command | `npm test` | `npm run test:e2e` |
+| Run environment | Node.js | Electron Application |
+| Parallelism | Jest Worker Pool | Playwright Worker |
 
-The two testing frameworks are fully isolated through separate configuration files and commands.
+The two test systems are completely isolated via different config files and commands.
 
 ---
 
-## 4. Directory Structure Planning
+## 4. Directory Structure Plan
 
 ```
 tests/
-├── setup.ts                        # Jest setup (fixes existing jest.config.js reference)
+├── setup.ts                        # Jest setup (fixes existing vitest.config.js reference)
 ├── e2e/
 │   ├── fixtures/
-│   │   ├── electronApp.ts          # Electron Launch Fixture (core)
-│   │   ├── authHelper.ts           # Authentication helper utilities
+│   │   ├── electronApp.ts          # Electron launch fixture (core)
+│   │   ├── authHelper.ts           # Authentication helper
 │   │   └── testDataManager.ts      # Test data management (create/cleanup)
 │   ├── helpers/
 │   │   ├── selectors.ts            # Common selector constants
@@ -229,7 +228,7 @@ tests/
 │   │   └── navigation.ts           # Navigation helper functions
 │   ├── startup.e2e.ts              # Startup flow tests
 │   ├── auth.e2e.ts                 # Authentication flow tests
-│   ├── chat.e2e.ts                 # Chat functionality tests
+│   ├── chat.e2e.ts                 # Chat feature tests
 │   ├── agent.e2e.ts                # Agent management tests
 │   ├── settings.e2e.ts             # Settings page tests
 │   ├── mcp.e2e.ts                  # MCP server management tests
@@ -243,7 +242,7 @@ tests/
 
 ## 5. Environment Configuration
 
-### 5.1 Playwright Configuration File
+### 5.1 Playwright Config File
 
 ```ts
 // playwright.config.ts (project root)
@@ -260,13 +259,13 @@ export default defineConfig({
   },
 
   /* Retry strategy */
-  retries: process.env.CI ? 2 : 0,    // Retry 2 times in CI environment
+  retries: process.env.CI ? 2 : 0,    // Retry 2 times in CI
 
-  /* Parallel control */
+  /* Parallelism control */
   workers: 1,                // Serial execution recommended for Electron tests to avoid resource contention
   fullyParallel: false,
 
-  /* Reporter */
+  /* Reporters */
   reporter: [
     ['list'],                // Console output
     ['html', {
@@ -278,7 +277,7 @@ export default defineConfig({
     }]] : []),
   ],
 
-  /* Screenshots & Video */
+  /* Screenshots and video */
   use: {
     screenshot: 'only-on-failure',
     video: process.env.CI ? 'retain-on-failure' : 'off',
@@ -289,7 +288,7 @@ export default defineConfig({
   outputDir: 'tests/e2e/test-results',
 
   /* Global Setup/Teardown */
-  globalSetup: undefined,     // Reserved: can add global auth token retrieval later
+  globalSetup: undefined,     // Reserved: can add global auth token acquisition later
   globalTeardown: undefined,  // Reserved: can add cleanup logic later
 });
 ```
@@ -309,7 +308,7 @@ export default defineConfig({
 }
 ```
 
-> **Note**: `pretest:e2e` automatically builds the application using `.env.test` (`NODE_ENV=production`) before each E2E test run, ensuring that `isDev` in the build output is a runtime check rather than hardcoded to `true`.
+> **Note**: `pretest:e2e` automatically builds the app using `.env.test` (`NODE_ENV=production`) before each E2E test run, ensuring the compiled output has `isDev` as a runtime check rather than hardcoded `true`.
 
 ### 5.3 TypeScript Configuration
 
@@ -350,7 +349,7 @@ tests/e2e/test-results/
 
 ### 6.1 Electron App Fixture
 
-This is the core of the entire E2E testing framework, encapsulating Electron application launch and cleanup.
+This is the core of the entire E2E test, encapsulating Electron app launch and cleanup.
 
 ```ts
 // tests/e2e/fixtures/electronApp.ts
@@ -361,7 +360,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 
 /**
- * E2E Test Fixture Type Definitions
+ * E2E Test Fixture type definitions
  */
 type ElectronFixtures = {
   /** Electron application instance */
@@ -376,7 +375,7 @@ type ElectronFixtures = {
  * Create an isolated test userData directory
  */
 function createTestUserDataDir(): string {
-  const dirName = `openkosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `kosmos-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
@@ -422,7 +421,7 @@ export const test = base.extend<ElectronFixtures>({
         ...process.env,
         NODE_ENV: 'test',
         // Use isolated userData directory
-        KOSMOS_E2E_USER_DATA: testUserDataDir,
+        OpenKosmos_E2E_USER_DATA: testUserDataDir,
       },
     });
 
@@ -431,11 +430,11 @@ export const test = base.extend<ElectronFixtures>({
   },
 
   mainWindow: async ({ electronApp }, use) => {
-    // Wait for the first window to appear
+    // Wait for first window to appear
     const window = await electronApp.firstWindow();
 
-    // Wait for the app to be ready (after loading page)
-    // In App.tsx, when isAppReady=false, "Initializing Core Services..." is displayed
+    // Wait for app to be ready (past the loading page)
+    // App.tsx shows "Initializing Core Services..." when isAppReady=false
     await window.waitForFunction(() => {
       // Wait until loading text disappears, indicating isAppReady=true
       const loadingEl = document.querySelector('body');
@@ -457,8 +456,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 /**
- * Pre-seed authentication data into the test userData directory.
- * Used to skip the OAuth Device Flow and directly enter an authenticated state.
+ * Pre-seed authentication data to test userData directory
+ * Used to skip OAuth Device Flow and enter authenticated state directly
  */
 export function seedAuthData(userDataDir: string, options?: {
   alias?: string;
@@ -475,7 +474,7 @@ export function seedAuthData(userDataDir: string, options?: {
     authType: 'github-copilot',
     githubToken: options?.githubToken || process.env.E2E_GITHUB_TOKEN || '',
     copilotToken: options?.copilotToken || process.env.E2E_COPILOT_TOKEN || '',
-    tokenExpiry: Date.now() + 3600_000, // Expires in 1 hour
+    tokenExpiry: Date.now() + 3600_000, // expires in 1 hour
   };
 
   fs.writeFileSync(
@@ -500,14 +499,14 @@ export function seedAuthData(userDataDir: string, options?: {
 }
 
 /**
- * Bypass authentication via IPC Mock.
- * Inject mock handlers into the Electron main process.
+ * Bypass authentication via IPC Mock
+ * Injects mock handler into Electron main process
  */
 export async function mockAuthInMainProcess(
   electronApp: import('@playwright/test').ElectronApplication
 ): Promise<void> {
   await electronApp.evaluate(async ({ ipcMain }) => {
-    // Remove real auth handler, inject mock
+    // Remove real auth handler and inject mock
     const mockUser = {
       success: true,
       data: {
@@ -537,9 +536,9 @@ export async function mockAuthInMainProcess(
 // tests/e2e/helpers/selectors.ts
 
 /**
- * Global page selectors.
- * Note: If a component does not have a data-testid, use CSS/XPath selectors.
- * It is recommended to gradually add data-testid attributes to key components.
+ * Global page selectors
+ * Note: If components don't have data-testid, use CSS/XPath selectors
+ * Recommend progressively adding data-testid to key components
  */
 export const Selectors = {
   // Loading state
@@ -548,7 +547,7 @@ export const Selectors = {
   // Startup page
   STARTUP_PAGE: '[data-testid="startup-page"]',
 
-  // Sign-in page
+  // Login page
   SIGN_IN_PAGE: '[data-testid="sign-in-page"]',
   SIGN_IN_BUTTON: 'button:has-text("Sign In")',
   DEVICE_CODE_INPUT: '[data-testid="device-code"]',
@@ -572,7 +571,7 @@ export const Selectors = {
   MCP_ADD_SERVER: 'button:has-text("Add")',
   MCP_SERVER_LIST: '[data-testid="mcp-server-list"]',
 
-  // Common
+  // General
   TOAST_MESSAGE: '[data-testid="toast"]',
   DIALOG_OVERLAY: '[role="dialog"]',
   DIALOG_CONFIRM: 'button:has-text("Confirm")',
@@ -587,7 +586,7 @@ export const Selectors = {
 import type { Page } from '@playwright/test';
 
 /**
- * Navigate to a specified route (HashRouter)
+ * Navigate to the specified route (HashRouter)
  */
 export async function navigateTo(page: Page, route: string): Promise<void> {
   const currentUrl = page.url();
@@ -598,7 +597,7 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
 }
 
 /**
- * Wait for route change to the target path
+ * Wait for route to change to target path
  */
 export async function waitForRoute(
   page: Page,
@@ -625,7 +624,7 @@ export async function getCurrentRoute(page: Page): Promise<string> {
 import type { Page, ElectronApplication } from '@playwright/test';
 
 /**
- * Wait for the app to fully load (through loading gate)
+ * Wait for app to fully load (past loading gate)
  */
 export async function waitForAppReady(page: Page, timeout = 30_000): Promise<void> {
   await page.waitForFunction(
@@ -635,7 +634,7 @@ export async function waitForAppReady(page: Page, timeout = 30_000): Promise<voi
 }
 
 /**
- * Wait for a specific IPC call to complete (via main process evaluate)
+ * Wait for specific IPC call to complete (via main process evaluate)
  */
 export async function waitForIpcReady(
   electronApp: ElectronApplication,
@@ -652,11 +651,11 @@ export async function waitForIpcReady(
 }
 
 /**
- * Wait for network requests to complete (for CDN resource loading)
+ * Wait for network requests to complete (for waiting on CDN resource loads)
  */
 export async function waitForNetworkIdle(page: Page, timeout = 5_000): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout }).catch(() => {
-    // networkidle may be unstable in Electron, fall back gracefully
+    // networkidle may be unstable in Electron, degrade gracefully
     console.warn('Network idle timeout, continuing...');
   });
 }
@@ -666,35 +665,35 @@ export async function waitForNetworkIdle(page: Page, timeout = 5_000): Promise<v
 
 ## 7. Authentication Strategy
 
-Authentication is the biggest challenge in E2E testing. The GitHub Copilot OAuth Device Flow requires manual confirmation in a browser, making it unsuitable for automated testing. Three strategies are provided below:
+Authentication is the biggest challenge in E2E testing. GitHub Copilot OAuth Device Flow requires manual browser confirmation and is not suitable for automation. Three strategies are provided below:
 
-### Strategy A: Token Pre-Seeding (Recommended for CI)
+### Strategy A: Token Pre-seeding (Recommended for CI)
 
-**Principle**: Pre-write valid authentication tokens into the test userData directory.
+**Principle**: Pre-write valid authentication tokens to the test userData directory.
 
 ```
 ┌──────────────┐     Pre-seed Token      ┌──────────────┐
-│   CI Secret  │ ──────────────────► │  auth.json   │
-│  (GitHub)    │                     │  (test dir)   │
-└──────────────┘                     └──────────────┘
-                                            │
-                                     Read by app on startup
-                                            │
-                                            ▼
-                                     ┌──────────────┐
-                                     │  Auth passed  │
-                                     │  → /loading  │
-                                     │  → /agent    │
-                                     └──────────────┘
+│   CI Secret  │ ──────────────────────► │  auth.json   │
+│  (GitHub)    │                         │  (test dir)  │
+└──────────────┘                         └──────────────┘
+                                                │
+                                         App reads on startup
+                                                │
+                                                ▼
+                                         ┌──────────────┐
+                                         │  Auth passed │
+                                         │  → /loading  │
+                                         │  → /agent    │
+                                         └──────────────┘
 ```
 
-**Pros**: Closest to real-world scenarios, all IPC channels work normally
-**Cons**: Requires maintaining valid tokens, tokens may expire
-**Use Case**: CI/CD environments, using Service Account Tokens
+**Pros**: Closest to real scenario, all IPC channels work normally
+**Cons**: Need to maintain valid tokens, risk of token expiry
+**Use case**: CI/CD environments, using Service Account Token
 
 ### Strategy B: IPC Mock (Recommended for Local Development)
 
-**Principle**: Replace authentication-related IPC handlers in the main process via `electronApp.evaluate()`.
+**Principle**: Replace auth-related IPC handlers in the main process via `electronApp.evaluate()`.
 
 ```
 ┌──────────────┐    evaluate()     ┌──────────────┐
@@ -706,34 +705,35 @@ Authentication is the biggest challenge in E2E testing. The GitHub Copilot OAuth
                                           │
                                           ▼
                                    ┌──────────────┐
-                                   │  Mock Auth    │
-                                   │  Return fake  │
+                                   │  Mock Auth   │
+                                   │  Return fake │
+                                   │  Token       │
                                    └──────────────┘
 ```
 
-**Pros**: No real tokens needed, convenient for local development
-**Cons**: Does not test the real authentication chain
-**Use Case**: Local development, non-authentication feature testing
+**Pros**: No real Token needed, convenient for local development
+**Cons**: Does not test real auth chain
+**Use case**: Local development, testing non-auth features
 
-### Strategy C: Test Only Flows That Do Not Require Authentication
+### Strategy C: Test Only Auth-Free Flows
 
-**Principle**: Only test parts that do not require authentication, such as the startup page, login page UI, and error messages.
+**Principle**: Only test startup page, login page UI, error messages, etc. that don't require authentication.
 
-**Pros**: Simplest approach, no dependencies
+**Pros**: Simplest, no dependencies
 **Cons**: Limited coverage
-**Use Case**: Quick start, initial phase
+**Use case**: Quick start, initial phase
 
 ### Recommended Approach
 
 | Phase | Strategy | Description |
 |------|------|------|
-| Phase 1 | C + B | Cover unauthenticated flows first + local Mock |
+| Phase 1 | C + B | Cover auth-free flows first + local Mock |
 | Phase 2 | A + B | CI uses pre-seeded tokens, local uses Mock |
-| Phase 3 | A | CI uses real tokens exclusively |
+| Phase 3 | A | CI fully uses real tokens |
 
 ---
 
-## 8. Test Case Planning
+## 8. Test Case Plan
 
 ### 8.1 Startup Flow Tests
 
@@ -741,24 +741,24 @@ Authentication is the biggest challenge in E2E testing. The GitHub Copilot OAuth
 // tests/e2e/startup.e2e.ts
 import { test, expect } from '../fixtures/electronApp';
 
-test.describe('Application Startup Flow', () => {
-  test('Application window is created successfully', async ({ electronApp }) => {
+test.describe('App Startup Flow', () => {
+  test('App window created successfully', async ({ electronApp }) => {
     const windows = await electronApp.windows();
     expect(windows.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('Application title contains OpenKosmos', async ({ electronApp }) => {
+  test('App title contains OpenKosmos', async ({ electronApp }) => {
     const window = await electronApp.firstWindow();
     const title = await window.title();
     expect(title).toMatch(/OpenKosmos/i);
   });
 
-  test('Redirects to sign-in page when no account exists', async ({ mainWindow }) => {
-    // Empty userData directory, should navigate to sign-in page
+  test('Redirects to login page without account', async ({ mainWindow }) => {
+    // Empty userData directory, should navigate to login page
     await mainWindow.waitForURL(/#\/(login|$)/, { timeout: 20_000 });
   });
 
-  test('Loading page renders correctly then disappears', async ({ electronApp }) => {
+  test('Loading page displays correctly then disappears', async ({ electronApp }) => {
     const window = await electronApp.firstWindow();
     // Verify loading screen eventually disappears
     await window.waitForFunction(
@@ -775,23 +775,23 @@ test.describe('Application Startup Flow', () => {
 // tests/e2e/auth.e2e.ts
 import { test, expect } from '../fixtures/electronApp';
 
-test.describe('Sign-in Page', () => {
-  test('Sign-in page renders correctly', async ({ mainWindow }) => {
+test.describe('Login Page', () => {
+  test('Login page renders correctly', async ({ mainWindow }) => {
     await mainWindow.waitForURL(/#\/login/, { timeout: 20_000 });
 
-    // Verify sign-in button exists
+    // Verify login button exists
     const signInButton = mainWindow.locator('button').filter({ hasText: /sign\s*in/i });
     await expect(signInButton).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Clicking sign-in triggers GitHub Device Flow', async ({ mainWindow }) => {
+  test('Clicking login triggers GitHub Device Flow', async ({ mainWindow }) => {
     await mainWindow.waitForURL(/#\/login/, { timeout: 20_000 });
 
     const signInButton = mainWindow.locator('button').filter({ hasText: /sign\s*in/i });
     await signInButton.click();
 
-    // Verify device code is displayed (OAuth Device Flow UI feedback)
-    // Specific selectors need to be adjusted based on actual UI
+    // Verify device code is displayed (UI feedback for OAuth Device Flow)
+    // Specific selector needs to be adjusted based on actual UI
     await expect(
       mainWindow.locator('text=/[A-Z0-9]{4}-[A-Z0-9]{4}|device|code/i')
     ).toBeVisible({ timeout: 15_000 });
@@ -807,22 +807,22 @@ import { test, expect } from '../fixtures/electronApp';
 import { mockAuthInMainProcess } from '../fixtures/authHelper';
 import { navigateTo } from '../helpers/navigation';
 
-test.describe('Chat Functionality (Mock Auth)', () => {
+test.describe('Chat Features (Mock Auth)', () => {
   test.beforeEach(async ({ electronApp, mainWindow }) => {
-    // Mock authentication, skip sign-in flow
+    // Mock auth, skip login flow
     await mockAuthInMainProcess(electronApp);
   });
 
   test('Agent page loads correctly', async ({ mainWindow }) => {
     await navigateTo(mainWindow, '/agent');
 
-    // Wait for Agent page core elements to load
+    // Wait for core elements of Agent page to load
     await expect(
       mainWindow.locator('textarea, [contenteditable]').first()
     ).toBeVisible({ timeout: 15_000 });
   });
 
-  test('Can select an Agent for conversation', async ({ mainWindow }) => {
+  test('Can select Agent for chat', async ({ mainWindow }) => {
     await navigateTo(mainWindow, '/agent/chat/creation');
 
     // Verify Agent creation/selection interface
@@ -916,22 +916,23 @@ test.describe('MCP Server Management', () => {
 
 ### 8.6 Test Coverage Matrix
 
-| Test Module | Estimated Count | Completed | Auth Required | Priority |
+| Test Module | Estimated Tests | Actual Completed | Auth Required | Priority |
 |---------|----------------|---------|---------|-------|
-| Startup Flow (startup) | 4-6 | ✅ 10 | None | P0 |
-| Login Page (auth) | 3-5 | ✅ 10 | None | P0 |
-| Mock Auth Flow (device-flow/preseeded/post-auth) | 5-10 | ✅ 9 | Mock | P1 |
-| Chat Feature (chat) | 5-8 | ✅ 4 | Mock | P1 |
-| Settings Page | 6-10 | — | Mock | P1 |
-| MCP Management | 5-8 | — | Mock | P1 |
-| Skills Management | 3-5 | — | Mock | P2 |
-| Agent Create/Edit | 4-6 | — | Mock | P2 |
-| Keyboard Shortcuts | 2-4 | — | Mock | P3 |
-| **Total** | **37-60** | **33** | — | — |
+| Startup flow (startup) | 4-6 | ✅ 10 | None | P0 |
+| Login page (auth) | 3-5 | ✅ 10 | None | P0 |
+| Mock auth flow (device-flow/preseeded/post-auth) | 5-10 | ✅ 9 | Mock | P1 |
+| Chat features (chat) | 5-8 | ✅ 4 | Mock | P1 |
+| Settings page | 6-10 | — | Mock | P1 |
+| MCP management | 5-8 | — | Mock | P1 |
+| Skills management | 3-5 | — | Mock | P2 |
+| Agent create/edit | 4-6 | — | Mock | P2 |
+| Multi-window (Toolbar) | 2-3 | — | Mock | P3 |
+| Keyboard shortcuts | 2-4 | — | Mock | P3 |
+| **Total** | **39-63** | **33** | — | — |
 
 ---
 
-## 9. CI/CD Integration Plan
+## 9. CI/CD Integration
 
 ### 9.1 GitHub Actions Workflow
 
@@ -985,7 +986,7 @@ jobs:
       - name: Run E2E Tests
         run: npm run test:e2e
         env:
-          BRAND: openkosmos
+          BRAND: kosmos
 
       # Upload test report & artifacts (screenshots, video, trace) on failure for debugging
       - name: Upload E2E test report
@@ -999,27 +1000,27 @@ jobs:
           retention-days: 7
 ```
 
-### 9.2 CI Environment Considerations
+### 9.2 CI Environment Notes
 
 | Platform | Notes |
 |------|---------|
-| **Linux** | Requires `xvfb-run` to provide a virtual display |
-| **macOS** | Requires screen recording permissions (for screenshot tests) |
-| **Windows** | May require setting the `--disable-gpu` flag |
+| **Linux** | Requires `xvfb-run` to provide virtual display |
+| **macOS** | May need screen recording permission authorization (for screenshot tests) |
+| **Windows** | May need `--disable-gpu` parameter |
 
 ### 9.3 Performance Optimization Recommendations
 
-- **Build Cache**: Use `actions/cache` to cache `node_modules` and `dist/` directories
-- **Phased Testing**: P0 tests run on PR, P2/P3 tests run after merging to main
-- **Parallel Matrix**: Run in parallel across platforms, serial execution within each platform
+- **Build cache**: Use `actions/cache` to cache `node_modules` and `dist/` directories
+- **Staged testing**: P0 tests run on PR, P2/P3 tests run after merging to main
+- **Parallel matrix**: Run in parallel by platform, serial within a single platform
 
 ---
 
-## 10. Best Practices & Considerations
+## 10. Notes and Best Practices
 
-### 10.1 data-testid Conventions
+### 10.1 data-testid Convention
 
-To support stable E2E selectors, it is recommended to gradually add `data-testid` attributes to key components:
+To support stable E2E selectors, progressively add `data-testid` attributes to key components:
 
 ```tsx
 // Naming convention: {module}-{component}-{element}
@@ -1034,18 +1035,18 @@ To support stable E2E selectors, it is recommended to gradually add `data-testid
 </nav>
 ```
 
-**Naming Rules**:
+**Naming rules**:
 - Use `kebab-case`
 - Format: `{page/area}-{component}-{element}`
 - Examples: `agent-chat-input`, `settings-mcp-list`, `auth-signin-button`
 
 ### 10.2 Test Stability Principles
 
-1. **Avoid Hardcoded Waits**: Use `waitForSelector` / `waitForURL` instead of `waitForTimeout`
-2. **Retry Mechanism**: Configure `retries: 2` in the CI environment
+1. **Avoid hardcoded waits**: Use `waitForSelector` / `waitForURL` instead of `waitForTimeout`
+2. **Retry mechanism**: Configure `retries: 2` in CI environment
 3. **Isolation**: Each test uses an independent userData directory
-4. **Idempotency**: Tests do not depend on the results of other tests
-5. **Cleanup Strategy**: Clean up test data in `afterEach`
+4. **Idempotency**: Tests do not depend on results from other tests
+5. **Cleanup strategy**: Clean up test data in `afterEach`
 
 ### 10.3 Debugging Tips
 
@@ -1059,26 +1060,26 @@ npx playwright test tests/e2e/startup.e2e.ts
 # View HTML report
 npm run test:e2e:report
 
-# Use trace viewer to analyze failures
+# Analyze failures with trace viewer
 npx playwright show-trace tests/e2e/test-results/*/trace.zip
 ```
 
-### 10.4 Performance Considerations
+### 10.4 Performance Notes
 
 | Strategy | Description |
 |------|------|
-| Serial Execution | `workers: 1`, avoid multiple Electron instances competing for system resources |
-| Timeout Configuration | Electron startup is slow, set individual test timeout to 60s |
-| Skip Cold Start | Reuse Electron instances within the same `test.describe` (controlled via Fixture scope) |
-| Minimize I/O | Video recording is only retained on failure |
+| Serial execution | `workers: 1`, avoid multiple Electron instances competing for system resources |
+| Timeout configuration | Electron startup is slow; set single test timeout to 60s |
+| Skip cold start | Reuse Electron instance within same `test.describe` (controlled via Fixture scope) |
+| Minimize I/O | Video recording retained only on failure |
 
-### 10.5 Fixing Existing Jest Configuration
+### 10.5 Fix Existing Jest Configuration
 
-The current `jest.config.js` references non-existent files/directories:
+The current `vitest.config.js` references files/directories that don't exist:
 
 ```js
-roots: ['<rootDir>/src', '<rootDir>/tests'],           // tests/ does not exist
-setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],      // File does not exist
+roots: ['<rootDir>/src', '<rootDir>/tests'],           // tests/ doesn't exist
+setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],      // file doesn't exist
 ```
 
 **Fix**: Create `tests/setup.ts`:
@@ -1086,25 +1087,25 @@ setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],      // File does not exist
 ```ts
 // tests/setup.ts
 // Jest global test setup
-// This file is referenced by setupFilesAfterEnv in jest.config.js
+// This file is referenced by setupFilesAfterEnv in vitest.config.js
 
 // Extend Jest timeout (some tests may be slow)
-jest.setTimeout(30_000);
+vitest.setTimeout(30_000);
 
 // Global mock: prevent accidental Electron API calls in tests
-jest.mock('electron', () => ({
+vitest.mock('electron', () => ({
   app: {
-    getPath: jest.fn(() => '/tmp/test'),
-    setPath: jest.fn(),
-    getName: jest.fn(() => 'openkosmos-test'),
-    getVersion: jest.fn(() => '0.0.0-test'),
+    getPath: vitest.fn(() => '/tmp/test'),
+    setPath: vitest.fn(),
+    getName: vitest.fn(() => 'kosmos-test'),
+    getVersion: vitest.fn(() => '0.0.0-test'),
   },
   ipcMain: {
-    handle: jest.fn(),
-    on: jest.fn(),
-    removeHandler: jest.fn(),
+    handle: vitest.fn(),
+    on: vitest.fn(),
+    removeHandler: vitest.fn(),
   },
-  BrowserWindow: jest.fn(),
+  BrowserWindow: vitest.fn(),
 }), { virtual: true });
 ```
 
@@ -1117,27 +1118,27 @@ jest.mock('electron', () => ({
 ```
 ✅ Completed:
 ├── [x] Create tests/ directory structure
-├── [x] Create tests/setup.ts (fix Jest configuration)
+├── [x] Create tests/setup.ts (fix Jest config)
 ├── [x] Create playwright.config.ts
 ├── [x] Create core Fixture (electronApp.ts)
-├── [x] Create authentication helper (authHelper.ts)
-├── [x] Create helper utilities (selectors.ts, navigation.ts, waitUtils.ts)
+├── [x] Create auth helper (authHelper.ts)
+├── [x] Create helpers (selectors.ts, navigation.ts, waitUtils.ts)
 ├── [x] Update package.json with E2E scripts
 ├── [x] Update .gitignore
 ├── [x] Create tests/e2e/tsconfig.json
 ├── [x] Create .env.test (E2E build-specific env config, NODE_ENV=production)
 ├── [x] Fix webpack.main.config.js — dotenv path supports DOTENV_CONFIG_PATH, argv.mode takes priority over .env.local
-├── [x] Fix webpack.renderer.config.js — same as above + DefinePlugin NODE_ENV no longer polluted by .env.local
+├── [x] Fix webpack.renderer.config.js — same + DefinePlugin NODE_ENV no longer polluted by .env.local
 ├── [x] Write startup.e2e.ts and auth.e2e.ts smoke tests (all passing)
-└── [x] Verify `npm run test:e2e` is executable ✅
+└── [x] Verify `npm run test:e2e` executes ✅
 ```
 
-### Phase 2: Unauthenticated Test Cases (2-3 days) ✅ Completed (2026-02-24)
+### Phase 2: Auth-Free Test Cases (2-3 days) ✅ Completed (2026-02-24)
 
 ```
 ✅ Completed:
-├── [x] startup.e2e.ts — Startup flow tests (10 tests)
-├── [x] auth.e2e.ts — Login page UI tests (10 tests)
+├── [x] startup.e2e.ts — startup flow tests (10 tests)
+├── [x] auth.e2e.ts — login page UI tests (10 tests)
 ├── [x] Verify all P0 tests pass — 20/20 passed
 └── [x] Add first batch of data-testid to key components
 ```
@@ -1148,12 +1149,12 @@ jest.mock('electron', () => ({
 ✅ Completed:
 ├── [x] Implement authHelper.ts Mock strategy (V3 AuthData + IPC mock)
 ├── [x] Create mockedApp.ts — 4 fixture variants (Empty/Authenticated/MultiUser/ChatReady)
-├── [x] mock-auth-device-flow.e2e.ts — Device flow tests (4 tests)
-├── [x] mock-auth-preseeded.e2e.ts — Pre-seeded auth tests (3 tests)
-├── [x] mock-auth-post-auth.e2e.ts — Post-auth navigation tests (2 tests)
-├── [x] chat.e2e.ts — Chat functionality tests (4 tests): UI validation, send message, AI response, Enter key send
-├── [x] Add mockedChatReadyTest fixture (pre-seeded auth + chat-ready environment, mock agentChat IPC)
-├── [x] Update selectors.ts — Add chat-related selectors like chat-textarea/send-button/message
+├── [x] mock-auth-device-flow.e2e.ts — device flow tests (4 tests)
+├── [x] mock-auth-preseeded.e2e.ts — pre-seeded auth tests (3 tests)
+├── [x] mock-auth-post-auth.e2e.ts — post-auth navigation tests (2 tests)
+├── [x] chat.e2e.ts — chat feature tests (4 tests): UI verification, send message, AI response, Enter key send
+├── [x] Add mockedChatReadyTest fixture (pre-seeded auth + chat-ready env, mock agentChat IPC)
+├── [x] Update selectors.ts — add chat-textarea/send-button/message and other chat selectors
 └── [x] Verify all Mock tests pass — 13/13 passed, total 33/33 passed
 ```
 
@@ -1161,20 +1162,21 @@ jest.mock('electron', () => ({
 
 ```
 ✅ Completed:
-├── [x] Create .github/workflows/pr-e2e-test.yml — Auto-run E2E tests on all PRs
+├── [x] Create .github/workflows/pr-e2e-test.yml — auto-run E2E tests for all PRs
 ├── [x] Ubuntu + xvfb headless Electron environment
-├── [x] Concurrency control (auto-cancel previous runs for the same PR)
+├── [x] Concurrency control (auto-cancel previous run for same PR)
 ├── [x] Upload test reports and screenshots/video/trace on failure
-└── [x] Remove smoke.e2e.ts, merge test cases into startup/auth
+└── [x] Delete smoke.e2e.ts, test cases merged into startup/auth
 ```
 
-### Phase 5: Real Authentication + Advanced Tests (Ongoing Iteration)
+### Phase 5: Real Auth + Advanced Tests (Continuous Iteration)
 
 ```
 ✅ Task List:
 ├── Implement Token pre-seeding strategy
-├── Complete chat send/receive flow tests
+├── Full chat send/receive flow tests
 ├── Skills management tests
+├── Multi-window tests (Toolbar)
 ├── Keyboard shortcut tests
 └── Performance benchmark tests
 ```
@@ -1184,8 +1186,8 @@ jest.mock('electron', () => ({
 ```
 Week 1                          Week 2                        Week 3+
 ┌──────────────────┐  ┌──────────────────────┐  ┌──────────────────────────┐
-│  Phase 1: Infra   │  │  Phase 3: Mock Auth  │  │  Phase 5: Advanced Tests       │
-│  Phase 2: NoAuth │  │  Phase 4: CI/CD     │  │  Ongoing iteration          │
+│  Phase 1: Setup  │  │  Phase 3: Mock Auth  │  │  Phase 5: Advanced Tests │
+│  Phase 2: No Auth│  │  Phase 4: CI/CD      │  │  Continuous Iteration    │
 └──────────────────┘  └──────────────────────┘  └──────────────────────────┘
 ```
 
@@ -1198,19 +1200,19 @@ Week 1                          Week 2                        Week 3+
 ```ts
 import { _electron as electron } from '@playwright/test';
 
-// Launch application
+// Launch app
 const app = await electron.launch({ args: ['main.js'] });
 
-// Get window
+// Get windows
 const window = await app.firstWindow();
 const allWindows = await app.windows();
 
-// Execute code in the main process
+// Execute code in main process
 const result = await app.evaluate(async ({ app, BrowserWindow, ipcMain }) => {
   return app.getVersion();
 });
 
-// Execute code in the renderer process
+// Execute code in renderer process
 const domResult = await window.evaluate(() => {
   return document.title;
 });
@@ -1218,11 +1220,11 @@ const domResult = await window.evaluate(() => {
 // Screenshot
 await window.screenshot({ path: 'screenshot.png' });
 
-// Close application
+// Close app
 await app.close();
 ```
 
-### B. HashRouter URL Matching Patterns
+### B. HashRouter URL Match Patterns
 
 ```ts
 // Match root route
@@ -1238,30 +1240,29 @@ await expect(page).toHaveURL(/#\/agent\/chat\/[\w-]+/);
 await expect(page).toHaveURL(/#\/settings\/mcp/);
 ```
 
-### C. Related Reference Resources
+### C. Related Resources
 
 - [Playwright Electron Documentation](https://playwright.dev/docs/api/class-electron)
 - [Playwright Test Configuration](https://playwright.dev/docs/test-configuration)
 - [Electron Testing Best Practices](https://www.electronjs.org/docs/latest/tutorial/automated-testing)
 - [Vercel AI SDK Testing](https://sdk.vercel.ai/docs/guides/testing)
 
-### D. Environment Variable List
+### D. Environment Variables
 
 | Variable | Purpose | Default |
 |--------|------|--------|
-| `E2E_GITHUB_TOKEN` | GitHub Token for CI authentication | — |
-| `E2E_COPILOT_TOKEN` | Copilot Token for CI authentication | — |
-| `KOSMOS_E2E_USER_DATA` | Test userData path | `os.tmpdir()` |
-| `CI` | Whether in CI environment | `false` |
+| `E2E_GITHUB_TOKEN` | GitHub Token for CI auth | — |
+| `E2E_COPILOT_TOKEN` | Copilot Token for CI auth | — |
+| `OpenKosmos_E2E_USER_DATA` | Test userData path | `os.tmpdir()` |
+| `CI` | Whether CI environment | `false` |
 
 ### E. Common Troubleshooting
 
-| Problem | Cause | Solution |
+| Issue | Cause | Solution |
 |------|------|---------|
-| App fails to start | Not built | Run `npm run build` |
-| Window not visible | Headless mode | Use the `--headed` flag |
-| Timeout failure | Slow app startup | Increase timeout, check `waitForSelector` |
+| App fails to launch | Not built | Run `npm run build` |
+| Window not visible | Headless mode | Use `--headed` parameter |
+| Timeout failure | App startup slow | Increase timeout, check `waitForSelector` |
 | Linux CI failure | No display | Use `xvfb-run` |
-| Auth failure | Token expired | Refresh token in CI Secrets |
+| Auth failure | Token expired | Refresh Token in CI Secrets |
 | Selector not found | UI changed | Add `data-testid`, update selectors |
-

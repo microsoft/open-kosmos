@@ -1,0 +1,60 @@
+MCP Onboarding
+This guide covers how to onboard your remote MCP server into Agency so it becomes available as a built-in MCP for all Agency users.
+
+Prerequisites
+Before submitting your MCP for onboarding, ensure:
+
+Your MCP is a remote (HTTPS) server — Agency only onboards remote MCPs, not local executables. Remote MCPs provide centralized auth, lower startup cost, and consistent behavior across local CLI and Azure DevOps pipelines.
+Your MCP uses Entra ID authentication — Agency handles token acquisition automatically via the WWW-Authenticate challenge flow. Your server must return HTTP 401 with a WWW-Authenticate header for unauthenticated requests.
+You have tested your MCP with Agency — Use agency mcp remote to validate authentication, schema compatibility, and tool registration before onboarding. See Testing Your Remote MCP for details.
+Onboarding Process
+Step 1: Test Your MCP
+Follow the Testing Your Remote MCP guide to verify your MCP works with Agency. At a minimum, confirm:
+
+Authentication works (tokens acquired and accepted)
+All tools register successfully (no schema validation failures)
+Tool calls return valid responses
+Step 2: Submit the Onboarding Form
+Fill out the MCP onboarding intake form:
+
+➡️ MCP Onboarding Form
+
+The form requires the following information:
+
+Field	Description
+MCP Name	Lowercase, kebab-case name for your MCP as it will appear in Agency (e.g., icm, kusto, es-chat)
+Remote URL	The full HTTPS URL of your MCP endpoint
+Entra Client ID	The Entra app registration client ID your server pre-authorizes (leave blank to use the default Azure CLI client ID)
+Team Contacts	Email aliases or distribution lists for the owning team
+Support Link	URL to your support channel, documentation, or help alias
+Area Path	Your team's Azure DevOps area path
+ICM Path	The ICM routing path for incidents related to your MCP
+Service Tree ID	Your service's Service Tree identifier
+Step 3: Review and Onboarding
+After form submission, the Agency team will:
+
+Review your MCP for compatibility and security
+Coordinate with your team on any required changes
+Add your MCP to Agency's built-in server list
+Update documentation and release
+What Gets Onboarded
+Once onboarded, your MCP becomes available to all Agency users via:
+
+# As a CLI flag
+agency copilot --mcp <your-mcp-name>
+
+# As a standalone MCP server
+agency mcp <your-mcp-name>
+It also becomes configurable in .vscode/mcp.json, ~/.copilot/mcp-config.json, and custom agent frontmatter. See Agency MCP Servers for full configuration details.
+
+Onboarded Partners
+The following external teams have onboarded their MCP servers into Agency:
+
+MCP Name	Team	Support	ADO Area Path	ICM Path	Service Tree
+athena	leejason, edaurdog, srramakr, gzimmerman, vicoleman, simararora	Athena DRI	MSTeams\Fundamentals\Athena AI Skills	Skype Teams\Athena AI Assistant	Microsoft Teams Athena Assistant
+graph	lucaspol	Support	identitydivision Engineering\Graph\AGSCore	Entra Copilot Platform Components / Triage	Microsoft MCP Server for Enterprise
+service-tree	omsitapara, prakaur, umadev, sophiavjiays	Support	msazure / ServiceTree / ServiceTree\Service Tree AI	Geneva Analytics Orchestration / Service Tree	Service Tree
+Questions?
+Agency Teams Channel
+Support
+FAQ

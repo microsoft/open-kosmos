@@ -7,6 +7,7 @@ import {
   McpAddMenuDropdown,
   SkillsAddMenuDropdown,
   SkillDropdownMenu,
+  SubAgentsAddMenuDropdown,
 } from '../menu';
 import { useProfileData, useChats, useProfileDataRefresh } from '../userData/userDataProvider';
 import { useToast } from '../ui/ToastProvider';
@@ -19,21 +20,28 @@ import {
   DialogFooter,
 } from '../ui/dialog';
 import ApplySkillToAgentsDialog from '../skills/ApplySkillToAgentsDialog';
+import SubAgentDropdownMenu from '../subAgents/SubAgentDropdownMenu';
+import ApplySubAgentToAgentsDialog from '../subAgents/ApplySubAgentToAgentsDialog';
+import {
+  ANCHORED_DROPDOWN_SIZE_PRESETS,
+  AnchoredDropdownPosition,
+  getAnchoredDropdownPosition,
+} from '../../lib/utilities/dropdownPosition';
 import '../../styles/ContentView.css';
 import '../../styles/DropdownMenu.css';
+import ResizableDivider from '../ui/ResizableDivider';
+import { profileDataManager } from "../../lib/userData";
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // Settings page simplified context state
-  const [sidepaneWidth, setSidepaneWidth] = useState(300);
+  const isMac = window.electronAPI?.platform === 'darwin';
 
   // MCP Server dropdown menu state management
   const [mcpServerMenuState, setMcpServerMenuState] = useState<{
     isOpen: boolean;
     serverName: string | null;
-    position: { top: number; left: number } | null;
+    position: AnchoredDropdownPosition | null;
   }>({
     isOpen: false,
     serverName: null,
@@ -44,7 +52,7 @@ const SettingsPage: React.FC = () => {
   // MCP add menu state management
   const [mcpAddMenuState, setMcpAddMenuState] = useState<{
     isOpen: boolean;
-    position: { top: number; left: number } | null;
+    position: AnchoredDropdownPosition | null;
   }>({
     isOpen: false,
     position: null,
@@ -54,7 +62,7 @@ const SettingsPage: React.FC = () => {
   // Skills add menu state management
   const [skillsAddMenuState, setSkillsAddMenuState] = useState<{
     isOpen: boolean;
-    position: { top: number; left: number } | null;
+    position: AnchoredDropdownPosition | null;
   }>({
     isOpen: false,
     position: null,
@@ -65,7 +73,7 @@ const SettingsPage: React.FC = () => {
   const [skillMenuState, setSkillMenuState] = useState<{
     isOpen: boolean;
     skillName: string | null;
-    position: { top: number; left: number } | null;
+    position: AnchoredDropdownPosition | null;
   }>({
     isOpen: false,
     skillName: null,
@@ -93,32 +101,65 @@ const SettingsPage: React.FC = () => {
     serverName: null,
   });
 
-  // Apply skill to agents dialog state
-  const [applySkillDialogState, setApplySkillDialogState] = useState<{
+  // Sub-Agents add menu state management
+  const [subAgentsAddMenuState, setSubAgentsAddMenuState] = useState<{
+    isOpen: boolean;
+    position: AnchoredDropdownPosition | null;
+  }>({
+    isOpen: false,
+    position: null,
+  });
+  const subAgentsAddMenuRef = useRef<HTMLDivElement>(null);
+
+  // Sub-Agent dropdown menu state management
+  const [subAgentMenuState, setSubAgentMenuState] = useState<{
+    isOpen: boolean;
+    subAgentName: string | null;
+    position: AnchoredDropdownPosition | null;
+  }>({
+    isOpen: false,
+    subAgentName: null,
+    position: null,
+  });
+  const subAgentMenuRef = useRef<HTMLDivElement>(null);
+
+  // Delete sub-agent confirmation dialog state
+  const [deleteSubAgentDialog, setDeleteSubAgentDialog] = useState<{
+    isOpen: boolean;
+    subAgentName: string | null;
+    usedByAgents: string[];
+  }>({
+    isOpen: false,
+    subAgentName: null,
+    usedByAgents: [],
+  });
+
+  // Apply sub-agent to agents dialog state
+  const [applySubAgentDialogState, setApplySubAgentDialogState] = useState<{
     open: boolean;
-    skillName: string;
-  }>({ open: false, skillName: '' });
+    subAgentName: string;
+  }>({ open: false, subAgentName: '' });
 
   // Hook dependencies
   const { chats } = useProfileData();
   const { showSuccess, showError } = useToast();
 
-  // Global event listener for skills:applyToAgents - allows SkillsView to trigger the dialog
+  // Global event listener for subAgents:applyToAgents
   useEffect(() => {
-    const handleApplyToAgents = (event: CustomEvent<{ skillName: string }>) => {
-      const { skillName } = event.detail;
-      if (skillName) {
-        setApplySkillDialogState({ open: true, skillName });
+    const handleApplySubAgentToAgents = (event: CustomEvent<{ subAgentName: string }>) => {
+      const { subAgentName } = event.detail;
+      if (subAgentName) {
+        setApplySubAgentDialogState({ open: true, subAgentName });
       }
     };
 
-    window.addEventListener('skills:applyToAgents', handleApplyToAgents as EventListener);
+    window.addEventListener('subAgents:applyToAgents', handleApplySubAgentToAgents as EventListener);
     return () => {
-      window.removeEventListener('skills:applyToAgents', handleApplyToAgents as EventListener);
+      window.removeEventListener('subAgents:applyToAgents', handleApplySubAgentToAgents as EventListener);
     };
   }, []);
 
-  // Close menu on outside click
+  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -149,13 +190,25 @@ const SettingsPage: React.FC = () => {
       ) {
         setSkillMenuState({ isOpen: false, skillName: null, position: null });
       }
+      if (
+        subAgentsAddMenuRef.current &&
+        !subAgentsAddMenuRef.current.contains(event.target as Node)
+      ) {
+        setSubAgentsAddMenuState({ isOpen: false, position: null });
+      }
+      if (
+        subAgentMenuRef.current &&
+        !subAgentMenuRef.current.contains(event.target as Node)
+      ) {
+        setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // MCP Server menu handler
+  // MCP Server menu handler functions
   const handleMcpServerMenuToggle = (
     serverName: string,
     buttonElement: HTMLElement,
@@ -172,12 +225,10 @@ const SettingsPage: React.FC = () => {
       });
     } else {
       // Calculate menu position
-      const rect = buttonElement.getBoundingClientRect();
-      const position = {
-        top: rect.bottom + 4,
-        left: rect.left,
-        triggerTop: rect.top, // Pass trigger top for upward positioning
-      };
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.mcpServerMenu,
+      );
       setMcpServerMenuState({ isOpen: true, serverName, position });
     }
   };
@@ -186,7 +237,7 @@ const SettingsPage: React.FC = () => {
     setMcpServerMenuState({ isOpen: false, serverName: null, position: null });
   };
 
-  // MCP add menu handler
+  // MCP add menu handler functions
   const handleMcpAddMenuToggle = (buttonElement: HTMLElement) => {
     setMcpAddMenuState((prevState) => {
       // If menu is already open, close it
@@ -195,34 +246,19 @@ const SettingsPage: React.FC = () => {
       }
 
       // Otherwise, open menu and calculate best position
-      const rect = buttonElement.getBoundingClientRect();
-      const menuWidth = 200; // Estimated menu width
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-
-      // Calculate horizontal position - prevent exceeding right boundary
-      let left = rect.left;
-      if (left + menuWidth > windowWidth) {
-        left = rect.right - menuWidth; // Right-align to button's right edge
-      }
-
-      // Calculate vertical position - prevent exceeding bottom boundary
-      let top = rect.bottom + 4;
-      const menuHeight = 120; // Estimated menu height (3 items)
-      if (top + menuHeight > windowHeight) {
-        top = rect.top - menuHeight - 4; // Show above the button
-      }
-
-      const position = { top, left, triggerTop: rect.top };
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.mcpAddMenu,
+      );
       return { isOpen: true, position };
     });
   };
 
-  const handleMcpAddMenuClose= () => {
+  const handleMcpAddMenuClose = () => {
     setMcpAddMenuState({ isOpen: false, position: null });
   };
 
-  // Skills add menu handler
+  // Skills add menu handler functions
   const handleSkillsAddMenuToggle = (buttonElement: HTMLElement) => {
     setSkillsAddMenuState((prevState) => {
       // If menu is already open, close it
@@ -231,34 +267,19 @@ const SettingsPage: React.FC = () => {
       }
 
       // Otherwise, open menu and calculate best position
-      const rect = buttonElement.getBoundingClientRect();
-      const menuWidth = 200; // Estimated menu width
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-
-      // Calculate horizontal position - prevent exceeding right boundary
-      let left = rect.left;
-      if (left + menuWidth > windowWidth) {
-        left = rect.right - menuWidth; // Right-align to button's right edge
-      }
-
-      // Calculate vertical position - prevent exceeding bottom boundary
-      let top = rect.bottom + 4;
-      const menuHeight = 80; // Estimated menu height (2 items)
-      if (top + menuHeight > windowHeight) {
-        top = rect.top - menuHeight - 4; // Show above the button
-      }
-
-      const position = { top, left, triggerTop: rect.top };
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.skillsAddMenu,
+      );
       return { isOpen: true, position };
     });
   };
 
-  const handleSkillsAddMenuClose= () => {
+  const handleSkillsAddMenuClose = () => {
     setSkillsAddMenuState({ isOpen: false, position: null });
   };
 
-  // Skill menu handler
+  // Skill menu handler functions
   const handleSkillMenuToggle = (
     skillName: string,
     buttonElement: HTMLElement,
@@ -268,25 +289,10 @@ const SettingsPage: React.FC = () => {
       setSkillMenuState({ isOpen: false, skillName: null, position: null });
     } else {
       // Calculate menu position
-      const rect = buttonElement.getBoundingClientRect();
-      const menuWidth = 200;
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-
-      // Calculate horizontal position - prevent exceeding right boundary
-      let left = rect.left;
-      if (left + menuWidth > windowWidth) {
-        left = rect.right - menuWidth;
-      }
-
-      // Calculate vertical position - prevent exceeding bottom boundary
-      let top = rect.bottom + 4;
-      const menuHeight = 80; // Estimated menu height (2 items)
-      if (top + menuHeight > windowHeight) {
-        top = rect.top - menuHeight - 4;
-      }
-
-      const position = { top, left, triggerTop: rect.top };
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.skillMenu,
+      );
       setSkillMenuState({ isOpen: true, skillName, position });
     }
   };
@@ -294,6 +300,94 @@ const SettingsPage: React.FC = () => {
   const handleSkillMenuClose = () => {
     setSkillMenuState({ isOpen: false, skillName: null, position: null });
   };
+
+  // Sub-Agents add menu handler functions
+  const handleSubAgentsAddMenuToggle = (buttonElement: HTMLElement) => {
+    setSubAgentsAddMenuState((prevState) => {
+      if (prevState.isOpen) {
+        return { isOpen: false, position: null };
+      }
+
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.subAgentsAddMenu,
+      );
+      return { isOpen: true, position };
+    });
+  };
+
+  const handleSubAgentsAddMenuClose = () => {
+    setSubAgentsAddMenuState({ isOpen: false, position: null });
+  };
+
+  // Sub-Agent menu handler functions
+  const handleSubAgentMenuToggle = (
+    subAgentName: string,
+    buttonElement: HTMLElement,
+  ) => {
+    if (subAgentMenuState.isOpen && subAgentMenuState.subAgentName === subAgentName) {
+      setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
+    } else {
+      const position = getAnchoredDropdownPosition(
+        buttonElement,
+        ANCHORED_DROPDOWN_SIZE_PRESETS.subAgentMenu,
+      );
+      setSubAgentMenuState({ isOpen: true, subAgentName, position });
+    }
+  };
+
+  const handleSubAgentMenuClose = () => {
+    setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
+  };
+
+  // Handle sub-agent deletion - open confirmation dialog
+  const handleDeleteSubAgent = useCallback(
+    (subAgentName: string) => {
+      const usedByAgents = chats
+        .filter((chat) => chat.agent?.sub_agents?.includes(subAgentName))
+        .map((chat) => chat.agent?.name || 'Unknown Agent');
+
+      setDeleteSubAgentDialog({
+        isOpen: true,
+        subAgentName,
+        usedByAgents,
+      });
+    },
+    [chats],
+  );
+
+  // Confirm sub-agent deletion
+  const handleConfirmDeleteSubAgent = useCallback(async () => {
+    const { subAgentName } = deleteSubAgentDialog;
+    if (!subAgentName) return;
+
+    try {
+      if (!window.electronAPI?.subAgent?.delete) {
+        showError('Sub-agent deletion API not available');
+        return;
+      }
+
+      const result = await window.electronAPI.subAgent.delete(subAgentName);
+
+      if (result.success) {
+        showSuccess(`Sub-agent "${subAgentName}" deleted successfully`);
+        await profileDataManager.refresh();
+        window.dispatchEvent(new CustomEvent('subAgents:refreshList'));
+      } else {
+        showError(`Failed to delete sub-agent: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'An unknown error occurred';
+      showError(`Failed to delete: ${errorMessage}`);
+    } finally {
+      setDeleteSubAgentDialog({
+        isOpen: false,
+        subAgentName: null,
+        usedByAgents: [],
+      });
+    }
+  }, [deleteSubAgentDialog, showSuccess, showError]);
 
   // Handle skill deletion - open confirmation dialog
   const handleDeleteSkill = useCallback(
@@ -329,7 +423,6 @@ const SettingsPage: React.FC = () => {
       if (result.success) {
         showSuccess(`Skill "${skillName}" deleted successfully`);
         // Refresh profile data
-        const { profileDataManager } = await import('../../lib/userData');
         await profileDataManager.refresh();
       } else {
         showError(
@@ -350,7 +443,7 @@ const SettingsPage: React.FC = () => {
     }
   }, [deleteSkillDialog, showSuccess, showError]);
 
-  // MCP Server operation handler
+  // MCP Server action handler functions
   const handleMcpServerConnect = useCallback(async (serverName: string) => {
     try {
       if (!window.electronAPI?.profile?.connectMcpServer) {
@@ -360,10 +453,9 @@ const SettingsPage: React.FC = () => {
 
       const result = await window.electronAPI.profile.connectMcpServer(serverName);
       if (result.success) {
-        // Connection is async, don't show success message immediately
-        // Actual connection result will be notified via status update, error toast will pop up on failure
+        // Connection is async, don't show success immediately
+        // Actual connection result will be notified via state update, errors will show error toast
         // Refresh data
-        const { profileDataManager } = await import('../../lib/userData');
         await profileDataManager.refresh();
       } else {
         showError(`Failed to connect server: ${result.error || 'Unknown error'}`);
@@ -385,7 +477,6 @@ const SettingsPage: React.FC = () => {
       if (result.success) {
         showSuccess(`Server "${serverName}" disconnected successfully`);
         // Refresh data
-        const { profileDataManager } = await import('../../lib/userData');
         await profileDataManager.refresh();
       } else {
         showError(`Failed to disconnect server: ${result.error || 'Unknown error'}`);
@@ -405,10 +496,9 @@ const SettingsPage: React.FC = () => {
 
       const result = await window.electronAPI.profile.reconnectMcpServer(serverName);
       if (result.success) {
-        // Reconnection is async, don't show success message immediately
-        // Actual connection result will be notified via status update, error toast will pop up on failure
+        // Reconnection is async, don't show success immediately
+        // Actual connection result will be notified via state update, errors will show error toast
         // Refresh data
-        const { profileDataManager } = await import('../../lib/userData');
         await profileDataManager.refresh();
       } else {
         showError(`Failed to reconnect server: ${result.error || 'Unknown error'}`);
@@ -443,7 +533,6 @@ const SettingsPage: React.FC = () => {
       if (result.success) {
         showSuccess(`Server "${serverName}" deleted successfully`);
         // Refresh data
-        const { profileDataManager } = await import('../../lib/userData');
         await profileDataManager.refresh();
       } else {
         showError(`Failed to delete server: ${result.error || 'Unknown error'}`);
@@ -473,11 +562,20 @@ const SettingsPage: React.FC = () => {
       handleDeleteSkill(skillName);
     };
 
+    const handleDeleteSubAgentEvent = (event: CustomEvent) => {
+      const { subAgentName } = event.detail;
+      handleDeleteSubAgent(subAgentName);
+    };
+
     // Only register skill:delete event listener
-    // MCP-related events are handled by respective View components, avoid duplicate listeners
+    // MCP-related events are handled by their respective View components to avoid duplicate listeners
     window.addEventListener(
       'skill:delete',
       handleDeleteSkillEvent as EventListener,
+    );
+    window.addEventListener(
+      'subAgent:delete',
+      handleDeleteSubAgentEvent as EventListener,
     );
 
     return () => {
@@ -485,15 +583,19 @@ const SettingsPage: React.FC = () => {
         'skill:delete',
         handleDeleteSkillEvent as EventListener,
       );
+      window.removeEventListener(
+        'subAgent:delete',
+        handleDeleteSubAgentEvent as EventListener,
+      );
     };
-  }, [handleDeleteSkill]);
+  }, [handleDeleteSkill, handleDeleteSubAgent]);
 
   // Record path before entering settings page
   useEffect(() => {
-    // Only record on first settings page load
+    // Only record on first load of settings page
     const currentPath = location.pathname;
     if (currentPath.startsWith('/settings')) {
-      // Get previously saved path from sessionStorage
+      // Get previously stored path from sessionStorage
       const storedPreviousPath = sessionStorage.getItem('previousPath');
       if (!storedPreviousPath) {
         // If no stored path, use default path
@@ -507,55 +609,35 @@ const SettingsPage: React.FC = () => {
 
 
   const handleMcpServerAdded = () => {
-    // Post server-add handling logic
+    // Post-server-add handler
   };
 
   const handleMcpImportComplete = (importedCount: number) => {
-    // Post import-complete handling logic
+    // Post-import handler
   };
 
   const handleSkillAdded = (count: number) => {
-    // Post skill-add handling logic
+    // Post-skill-add handler
   };
 
   const handleBack = () => {
     // Get returnPath from route state, fall back to sessionStorage
     const returnPath = location.state?.returnPath || sessionStorage.getItem('settingsReturnPath');
-    
+
     if (returnPath && returnPath !== '/settings') {
       // Clear stored return path
       sessionStorage.removeItem('settingsReturnPath');
       // Navigate to return path
       navigate(returnPath);
     } else {
-      // Default return to agent page chat view
+      // Default: navigate back to agent page chat view
       navigate('/agent/chat');
     }
   };
 
   // Create simplified AgentContext for Settings page
   const settingsContext: AgentContextType = {
-    messages: [],
-    allMessages: [],
-    streamingMessageId: undefined,
-    onSendMessage: () => Promise.resolve(),
-    onCancelChat: () => Promise.resolve(),
-    onApprovalResponse: () => Promise.resolve(),
-    pendingApprovalRequest: null,
-    config: {
-      apiKey: '',
-      endpoint: '',
-      deploymentName: '',
-      apiVersion: '2023-05-15',
-    },
-    onSaveConfig: () => Promise.resolve(),
-    
-    // Agent navigation handlers - not needed in settings
-    onNewAgent: undefined,
-    onEditAgent: undefined,
-    onDeleteAgent: undefined,
-    
-    // MCP handlers - using local implementation
+    // MCP handlers - use local implementation
     onMcpServerConnect: handleMcpServerConnect,
     onMcpServerDisconnect: handleMcpServerDisconnect,
     onMcpServerReconnect: handleMcpServerReconnect,
@@ -564,31 +646,29 @@ const SettingsPage: React.FC = () => {
     onMcpServerMenuToggle: handleMcpServerMenuToggle,
     mcpServerMenuState: mcpServerMenuState,
     onMcpAddMenuToggle: handleMcpAddMenuToggle,
-    
-    // Skills handlers - using local implementation
+
+    // Skills handlers - use local implementation
     onSkillsAddMenuToggle: handleSkillsAddMenuToggle,
     onSkillMenuToggle: handleSkillMenuToggle,
-    
-    // UI state
-    sidepaneWidth,
-    setSidepaneWidth,
-    isDragging: false,
-    
-    // Other handlers - not needed in settings
-    onEditAgentMenuToggle: undefined,
-    onFileTreeNodeMenuToggle: undefined,
-    onWorkspaceMenuToggle: undefined,
-    workspaceMenuState: undefined,
+
+    // Sub-Agent handlers - use local implementation
+    onSubAgentsAddMenuToggle: handleSubAgentsAddMenuToggle,
+    onSubAgentMenuToggle: handleSubAgentMenuToggle,
+    subAgentMenuState: subAgentMenuState,
   };
 
   return (
-    <div className="h-full flex">
-      {/* Left Navigation */}
-      <SettingsNavigation onBack={handleBack} />
-      
-      {/* Right Content Container */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Outlet context={settingsContext} />
+    <div className="h-full flex flex-col  bg-[#FFFBF8]">
+      {isMac && <div className="mac-titlebar-region" aria-hidden="true" />}
+
+      <div className="flex-1 flex min-h-0">
+        {/* Left Navigation */}
+        <SettingsNavigation onBack={handleBack} />
+        <ResizableDivider />
+        {/* Right Content Container */}
+        <div className="flex-1 flex flex-col min-w-0 mr-2 mb-2 overflow-hidden rounded-lg border border-black/[0.075] shadow-[0px_2px_6px_rgba(0,0,0,0.05)]">
+          <Outlet context={settingsContext} />
+        </div>
       </div>
 
       {/* Global MCP Server dropdown menu - floating at SettingsPage level */}
@@ -631,6 +711,25 @@ const SettingsPage: React.FC = () => {
           skillName={skillMenuState.skillName}
           position={skillMenuState.position}
           onClose={handleSkillMenuClose}
+        />
+      )}
+
+      {/* Global Sub-Agents add dropdown menu - floating at SettingsPage level */}
+      {subAgentsAddMenuState.isOpen && subAgentsAddMenuState.position && (
+        <SubAgentsAddMenuDropdown
+          subAgentsAddMenuRef={subAgentsAddMenuRef}
+          position={subAgentsAddMenuState.position}
+          onClose={handleSubAgentsAddMenuClose}
+        />
+      )}
+
+      {/* Global Sub-Agent dropdown menu - floating at SettingsPage level */}
+      {subAgentMenuState.isOpen && subAgentMenuState.position && subAgentMenuState.subAgentName && (
+        <SubAgentDropdownMenu
+          subAgentMenuRef={subAgentMenuRef}
+          subAgentName={subAgentMenuState.subAgentName}
+          position={subAgentMenuState.position}
+          onClose={handleSubAgentMenuClose}
         />
       )}
 
@@ -688,11 +787,67 @@ const SettingsPage: React.FC = () => {
       </Dialog>
 
       {/* Apply Skill to Agents Dialog */}
-      <ApplySkillToAgentsDialog
-        open={applySkillDialogState.open}
-        onOpenChange={(open) => setApplySkillDialogState(prev => ({ ...prev, open }))}
-        skillName={applySkillDialogState.skillName}
+      <ApplySkillToAgentsDialog />
+
+      {/* Apply Sub-Agent to Agents Dialog */}
+      <ApplySubAgentToAgentsDialog
+        open={applySubAgentDialogState.open}
+        onOpenChange={(open) => setApplySubAgentDialogState(prev => ({ ...prev, open }))}
+        subAgentName={applySubAgentDialogState.subAgentName}
       />
+
+      {/* Delete Sub-Agent Confirmation Dialog */}
+      <Dialog
+        open={deleteSubAgentDialog.isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteSubAgentDialog({
+              isOpen: false,
+              subAgentName: null,
+              usedByAgents: [],
+            });
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-left">Delete Sub-Agent</DialogTitle>
+            <DialogDescription className="text-left">
+              Are you sure you want to delete {deleteSubAgentDialog.subAgentName}?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {deleteSubAgentDialog.usedByAgents.length > 0 && (
+              <p className="text-sm text-muted-foreground mb-4">
+                This sub-agent is currently being used by {deleteSubAgentDialog.usedByAgents.length} agent(s): {deleteSubAgentDialog.usedByAgents.join(', ')}
+              </p>
+            )}
+            <p className="text-sm text-destructive">
+              This action cannot be undone. After deletion, agents will no longer be able to use this sub-agent.
+            </p>
+          </div>
+          <DialogFooter>
+            <button
+              className="btn-secondary"
+              onClick={() =>
+                setDeleteSubAgentDialog({
+                  isOpen: false,
+                  subAgentName: null,
+                  usedByAgents: [],
+                })
+              }
+            >
+              No
+            </button>
+            <button
+              className="btn-primary bg-destructive hover:bg-destructive/90"
+              onClick={handleConfirmDeleteSubAgent}
+            >
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete MCP Server Confirmation Dialog */}
       <Dialog

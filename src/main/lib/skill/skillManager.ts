@@ -1,6 +1,7 @@
 /**
  * Unified Skill Manager
- * Provides unified functionality for skill validation, version management, metadata parsing, extraction, etc.
+ * Provides unified functionality for skill validation, version management,
+ * metadata parsing, and extraction.
  */
 
 import * as fs from 'fs';
@@ -10,6 +11,7 @@ import { createLogger } from '../unifiedLogger';
 import { profileCacheManager } from '../userDataADO';
 // @ts-ignore - js-yaml types may not be available
 import * as yaml from 'js-yaml';
+import JSZip from 'jszip';
 
 const logger = createLogger();
 
@@ -24,7 +26,7 @@ export interface SkillConfig {
   name: string;
   description: string;
   version: string;
-  source: 'ON-DEVICE';
+  source: 'ON-DEVICE' | 'PLUGIN';
 }
 
 export interface SkillValidationResult {
@@ -53,7 +55,7 @@ export interface SkillOperationResult {
  */
 export class SkillManager {
   private static instance: SkillManager;
-  
+
   public static getInstance(): SkillManager {
     if (!SkillManager.instance) {
       SkillManager.instance = new SkillManager();
@@ -62,26 +64,26 @@ export class SkillManager {
   }
 
   /**
-   * Validate whether skill name conforms to naming conventions
-   * Can only contain digits 0-9, lowercase letters a-z, and hyphens "-"
-   * "-" cannot be at the start or end, no spaces allowed
+   * Validate whether a skill name conforms to naming rules.
+   * Only allows digits 0-9, lowercase letters a-z, and the "-" character.
+   * "-" cannot appear at the start or end, and no spaces are allowed.
    */
   public validateSkillName(name: string): SkillValidationResult {
     if (!name || name.trim() === '') {
       return { valid: false, error: 'Skill name cannot be empty' };
     }
 
-    // Check if starts or ends with "-"
+    // Check whether the name starts or ends with "-"
     if (name.startsWith('-') || name.endsWith('-')) {
       return { valid: false, error: 'Skill name cannot start or end with "-"' };
     }
 
-    // Check if contains spaces
+    // Check whether the name contains spaces
     if (name.includes(' ')) {
       return { valid: false, error: 'Skill name cannot contain spaces' };
     }
 
-    // Check if only contains allowed characters: 0-9, a-z, "-"
+    // Check whether the name contains only allowed characters: 0-9, a-z, "-"
     const validPattern = /^[a-z0-9-]+$/;
     if (!validPattern.test(name)) {
       return { valid: false, error: 'Skill name can only contain lowercase letters (a-z), numbers (0-9), and hyphens (-)' };
@@ -91,74 +93,74 @@ export class SkillManager {
   }
 
   /**
-   * Extract skill name and version from zip/skill filename
-   * Supports the following formats:
+   * Extract the skill name and version number from a zip/skill file name.
+   * Supported formats:
    * 1. {skill-name}.zip
    * 2. {skill-name}-{version}.zip
    * 3. {skill-name}.skill (Claude standard format, essentially zip)
    * 4. {skill-name}-{version}.skill
    */
   public parseSkillFileName(zipFileName: string): VersionParseResult {
-    // Remove .zip or .skill extension
+    // Remove the .zip or .skill extension
     const nameWithoutExt = zipFileName.replace(/\.(zip|skill)$/i, '');
-    
-    // Check if matches version format: {skill-name}-{version}
+
+    // Check whether it matches the versioned format: {skill-name}-{version}
     const versionMatch = nameWithoutExt.match(/^(.+)-(\d+\.\d+\.\d+)$/);
-    
+
     if (versionMatch) {
-      // Format with version
+      // Versioned format
       const skillName = versionMatch[1];
       const version = versionMatch[2];
-      
-      // Validate version format: [digits].[digits].[digits]
+
+      // Validate the version number format: [digits].[digits].[digits]
       const versionParts = version.split('.');
       if (versionParts.length === 3 && versionParts.every(part => /^\d+$/.test(part))) {
         return { skillName, version };
       } else {
-        // Invalid version format, treat as regular filename
+        // Invalid version format — treat as a plain file name
         return { skillName: nameWithoutExt };
       }
     } else {
-      // Format without version
+      // Non-versioned format
       return { skillName: nameWithoutExt };
     }
   }
 
   /**
-   * Determine the final version to use
+   * Determine the final version number to use.
    * Priority:
-   * 1. version field in SKILL.md metadata
-   * 2. Version parsed from filename
-   * 3. If no skill with same name exists, default to 1.0.0
-   * 4. If a skill with same name exists, use the existing skill's version
+   * 1. The version field in the SKILL.md metadata
+   * 2. The version number parsed from the file name
+   * 3. If no skill with the same name exists, default to 1.0.0
+   * 4. If a skill with the same name exists, use its existing version number
    */
   public determineVersion(
     metadataVersion?: string,
     parsedVersion?: string,
     existingSkill?: any
   ): string {
-    // 1. Prefer version from SKILL.md metadata
+    // 1. Prefer the version number from SKILL.md metadata
     if (metadataVersion && metadataVersion.trim()) {
       return metadataVersion.trim();
     }
-    
-    // 2. Then use version parsed from filename
+
+    // 2. Next, use the version number parsed from the file name
     if (parsedVersion) {
       return parsedVersion;
     }
-    
-    // 3. Finally decide based on whether a skill with same name exists
+
+    // 3. Finally, decide based on whether a skill with the same name already exists
     if (existingSkill) {
-      // Same-name skill exists, use existing version
+      // Same-named skill exists — use its current version number
       return existingSkill.version || '1.0.0';
     } else {
-      // No same-name skill, default to 1.0.0
+      // No same-named skill — default to 1.0.0
       return '1.0.0';
     }
   }
 
   /**
-   * Parse SKILL.md file and extract YAML metadata
+   * Parse a SKILL.md file and extract the YAML metadata
    */
   public parseSkillMarkdown(content: string): MetadataParseResult {
     try {
@@ -169,37 +171,37 @@ export class SkillManager {
           error: 'YAML metadata must start from line 1 of SKILL.md (no empty lines or spaces before "---"). Expected format:\n---\nname: skill-name\ndescription: "description"\n---'
         };
       }
-      
+
       // Extract YAML front matter (between --- markers at the start of file)
       const yamlRegex = /^---\s*\n([\s\S]*?)\n---/;
       const match = content.match(yamlRegex);
-      
+
       if (!match) {
         return {
           metadata: null,
           error: 'SKILL.md does not contain valid YAML metadata. Expected format:\n---\nname: skill-name\ndescription: "description"\n---'
         };
       }
-      
+
       const yamlContent = match[1];
       const metadata = yaml.load(yamlContent) as any;
-      
+
       // Validate metadata structure
       if (!metadata || typeof metadata !== 'object') {
         return { metadata: null, error: 'Invalid YAML metadata structure' };
       }
-      
+
       // Validate required fields (lowercase: name and description)
       if (!metadata.name || typeof metadata.name !== 'string' || !metadata.name.trim()) {
         return { metadata: null, error: 'SKILL.md metadata must contain a valid "name" field (lowercase)' };
       }
-      
+
       if (!metadata.description || typeof metadata.description !== 'string' || !metadata.description.trim()) {
         return { metadata: null, error: 'SKILL.md metadata must contain a valid "description" field (lowercase)' };
       }
-      
+
       logger.info(`[SkillManager] Parsed skill metadata - name: "${metadata.name}", description: "${metadata.description}"`);
-      
+
       return { metadata: metadata as SkillMetadata };
     } catch (error) {
       return { metadata: null, error: `Failed to parse YAML metadata: ${error instanceof Error ? error.message : String(error)}` };
@@ -210,39 +212,37 @@ export class SkillManager {
    * Unified extraction logic
    */
   public async extractZip(zipPath: string, destDir: string): Promise<string> {
-    const JSZip = require('jszip');
-    
     try {
-      logger.info('[SkillManager] Reading zip file:', zipPath);
+      logger.info(`[SkillManager] Reading zip file: ${zipPath}`);
       const zipData = fs.readFileSync(zipPath);
       const zip = await JSZip.loadAsync(zipData);
-      
-      // Ensure destination directory exists
+
+      // Ensure the destination directory exists
       if (!fs.existsSync(destDir)) {
         fs.mkdirSync(destDir, { recursive: true });
       }
-      
+
       const fileEntries = Object.keys(zip.files);
-      
-      // Determine zip structure: whether all files are wrapped in a single root directory
-      // If all files are under the same top-level directory, it has a root directory
-      // Otherwise it's a flat structure (files directly at zip root level)
+
+      // Determine zip structure: does a single root directory wrap all files?
+      // If all files share the same top-level directory, treat it as having a root directory;
+      // otherwise treat it as a flat structure (files directly at the zip root level).
       const hasRootDir = this.detectZipRootDirectory(fileEntries);
-      
+
       let rootDirName: string;
-      let extractPrefix: string; // Path prefix when extracting files
-      
+      let extractPrefix: string; // Path prefix used when extracting files
+
       if (hasRootDir) {
-        // Standard structure with root directory wrapping
+        // Standard structure with a wrapping root directory
         rootDirName = hasRootDir;
         extractPrefix = '';
         logger.info(`[SkillManager] Zip has root directory: "${rootDirName}"`);
       } else {
-        // Flat structure: files directly at zip root level, need to create virtual root directory
-        // Use zip filename (without extension) as root directory name
+        // Flat structure: files are directly at the zip root level; create a virtual root directory.
+        // Use the zip file name (without extension) as the root directory name.
         const zipFileName = path.basename(zipPath);
         rootDirName = zipFileName.replace(/\.(zip|skill)$/i, '');
-        // Remove version suffix (e.g., skill-name-1.0.0 -> skill-name)
+        // Strip the version suffix (e.g., skill-name-1.0.0 → skill-name)
         const versionMatch = rootDirName.match(/^(.+)-(\d+\.\d+\.\d+)$/);
         if (versionMatch) {
           rootDirName = versionMatch[1];
@@ -250,8 +250,8 @@ export class SkillManager {
         extractPrefix = rootDirName + '/';
         logger.info(`[SkillManager] Zip has flat structure, creating virtual root directory: "${rootDirName}"`);
       }
-      
-      // Extract all files (skip macOS metadata)
+
+      // Extract all files (skipping macOS metadata)
       const filePromises: Promise<void>[] = [];
       zip.forEach((relativePath: string, file: any) => {
         // Skip macOS resource fork metadata and .DS_Store files
@@ -259,7 +259,7 @@ export class SkillManager {
           return;
         }
         const filePath = path.join(destDir, extractPrefix + relativePath);
-        
+
         if (file.dir) {
           // Create directory
           if (!fs.existsSync(filePath)) {
@@ -268,22 +268,22 @@ export class SkillManager {
         } else {
           // Extract file
           const filePromise = file.async('nodebuffer').then((content: Buffer) => {
-            // Ensure parent directory exists
+            // Ensure the parent directory exists
             const fileDir = path.dirname(filePath);
             if (!fs.existsSync(fileDir)) {
               fs.mkdirSync(fileDir, { recursive: true });
             }
-            // Write file
+            // Write the file
             fs.writeFileSync(filePath, content);
           });
           filePromises.push(filePromise);
         }
       });
-      
+
       // Wait for all files to be extracted
       await Promise.all(filePromises);
-      
-      logger.info('[SkillManager] Extracted zip to:', destDir);
+
+      logger.info(`[SkillManager] Extracted zip to: ${destDir}`);
       return rootDirName;
     } catch (error) {
       throw new Error(`Failed to extract zip: ${error instanceof Error ? error.message : String(error)}`);
@@ -291,96 +291,104 @@ export class SkillManager {
   }
 
   /**
-   * Detect whether the zip file has a single root directory wrapping all files
-   * Returns the root directory name if it exists, otherwise returns null
-   * 
+   * Detect whether a zip file has a single root directory wrapping all files.
+   * Returns the root directory name if found, otherwise null.
+   *
    * Detection logic:
-   * 1. All files/directories must share the same first-level path segment
-   * 2. That first-level path segment must be a directory (not a top-level file)
-   * 3. Must have SKILL.md etc. under that directory (not at zip root level)
+   * 1. The first path segment of every file/directory entry must be the same.
+   * 2. That first path segment must be a directory (not a top-level file).
+   * 3. Files like SKILL.md must be inside that directory, not at the zip root level.
    */
   private detectZipRootDirectory(fileEntries: string[]): string | null {
     if (fileEntries.length === 0) return null;
-    
-    // Collect all top-level path segments (ignore __MACOSX and .DS_Store macOS metadata)
+
+    // Collect all top-level path segments (ignoring macOS metadata like __MACOSX and .DS_Store)
     const topLevelNames = new Set<string>();
     let hasTopLevelFile = false;
-    
+
     for (const entry of fileEntries) {
-      // Skip macOS resource fork metadata directory
+      // Skip macOS resource fork metadata directories
       if (entry.startsWith('__MACOSX/') || entry === '__MACOSX') continue;
-      
+
       const parts = entry.split('/').filter(p => p.length > 0);
       if (parts.length === 0) continue;
-      
+
       // Skip top-level .DS_Store files
       if (parts.length === 1 && parts[0] === '.DS_Store') continue;
-      
+
       topLevelNames.add(parts[0]);
-      
-      // Check if there are files directly at zip root level (not inside any directory)
-      // If path has only one segment and doesn't end with /, it's a top-level file
+
+      // Check whether any file exists directly at the zip root level (not inside any directory).
+      // A single path segment that doesn't end with "/" indicates a top-level file.
       if (parts.length === 1 && !entry.endsWith('/')) {
         hasTopLevelFile = true;
       }
     }
-    
-    // If there are top-level files (e.g., SKILL.md directly at zip root level), it's a flat structure
+
+    // If there are top-level files (e.g., SKILL.md directly at the zip root), it's a flat structure
     if (hasTopLevelFile) {
       return null;
     }
-    
-    // If all entries are under the same top-level directory, that directory is the root
+
+    // If all entries share the same top-level directory, that directory is the root
     if (topLevelNames.size === 1) {
       return topLevelNames.values().next().value || null;
     }
-    
-    // Multiple top-level directories/files indicates a flat structure
+
+    // Multiple top-level directories/files — flat structure
     return null;
   }
 
   /**
-   * Clean up temporary directory
+   * Clean up a temporary directory
    */
   public cleanupTempDirectory(dirPath: string): void {
     try {
       if (fs.existsSync(dirPath)) {
         fs.rmSync(dirPath, { recursive: true, force: true });
-        logger.info('[SkillManager] Cleaned up temporary directory:', dirPath);
+        logger.info(`[SkillManager] Cleaned up temporary directory: ${dirPath}`);
       }
     } catch (error) {
-      logger.error('[SkillManager] Failed to cleanup directory:', error instanceof Error ? error.message : String(error));
+      logger.error(`[SkillManager] Failed to cleanup directory: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Validate skill package integrity and compliance
+   * Validate the integrity and compliance of a skill package
    */
   public validateSkillPackage(extractedDir: string, expectedName?: string): SkillValidationResult {
     try {
-      // 1. Check if SKILL.md file exists
+      // 1. Check for the SKILL.md file
       const skillMdPath = path.join(extractedDir, 'SKILL.md');
       if (!fs.existsSync(skillMdPath)) {
         return { valid: false, error: 'SKILL.md file not found in the skill package' };
       }
-      
-      // 2. Read and validate SKILL.md file
+
+      // 2. Read and validate SKILL.md
       const skillMdContent = fs.readFileSync(skillMdPath, 'utf-8');
       const { metadata, error: parseError } = this.parseSkillMarkdown(skillMdContent);
-      
+
       if (!metadata || parseError) {
         return { valid: false, error: parseError || 'Failed to parse SKILL.md metadata' };
       }
-      
-      // 3. Check if directory name matches skill name (if expectedName is provided)
+
+      // 3. If expectedName is provided, the package metadata must match it exactly
+      if (expectedName && metadata.name !== expectedName) {
+        return {
+          valid: false,
+          error: `Skill package contains skill "${metadata.name}" but expected "${expectedName}"`
+        };
+      }
+
+      // 4. Check that the directory name matches the skill name (if expectedName is provided)
       if (expectedName && path.basename(extractedDir) !== metadata.name) {
         return {
           valid: false,
           error: `Directory name "${path.basename(extractedDir)}" must match skill name "${metadata.name}" from SKILL.md`
         };
       }
-      
-      // 4. Check if skill name conforms to naming conventions
+
+      // 5. Check that the skill name conforms to naming rules
       const nameValidation = this.validateSkillName(metadata.name);
       if (!nameValidation.valid) {
         return {
@@ -388,18 +396,18 @@ export class SkillManager {
           error: nameValidation.error || 'Invalid skill name format'
         };
       }
-      
+
       return { valid: true };
     } catch (error) {
-      return { 
-        valid: false, 
-        error: `Skill package validation failed: ${error instanceof Error ? error.message : String(error)}` 
+      return {
+        valid: false,
+        error: `Skill package validation failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
-   * Get skill metadata
+   * Get the metadata for a skill
    */
   public getSkillMetadata(skillDir: string): MetadataParseResult {
     try {
@@ -407,19 +415,19 @@ export class SkillManager {
       if (!fs.existsSync(skillMdPath)) {
         return { metadata: null, error: 'SKILL.md file not found' };
       }
-      
+
       const skillMdContent = fs.readFileSync(skillMdPath, 'utf-8');
       return this.parseSkillMarkdown(skillMdContent);
     } catch (error) {
-      return { 
-        metadata: null, 
-        error: `Failed to read skill metadata: ${error instanceof Error ? error.message : String(error)}` 
+      return {
+        metadata: null,
+        error: `Failed to read skill metadata: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
-   * Check if a skill already exists
+   * Check whether a skill already exists
    */
   public checkSkillExists(userAlias: string, skillName: string): any | null {
     const profile = profileCacheManager.getCachedProfile(userAlias);
@@ -427,7 +435,7 @@ export class SkillManager {
   }
 
   /**
-   * Install or update a skill to user profile
+   * Install or update a skill into the user profile
    */
   public async installSkill(
     userAlias: string,
@@ -440,49 +448,55 @@ export class SkillManager {
       if (!fs.existsSync(userSkillsDir)) {
         fs.mkdirSync(userSkillsDir, { recursive: true });
       }
-      
+
       const skillRootDir = path.join(userSkillsDir, skillConfig.name);
-      
-      // If updating or same-name skill exists, remove original directory first
+
+      // If updating or a same-named skill already exists, remove the existing directory first
       if (fs.existsSync(skillRootDir)) {
         logger.info(`[SkillManager] Removing existing skill directory: ${skillRootDir}`);
-        fs.rmSync(skillRootDir, { recursive: true, force: true });
+        // Symlink/junction safety: unlinkSync for links, rmSync for real dirs
+        const stat = fs.lstatSync(skillRootDir);
+        if (stat.isSymbolicLink()) {
+          fs.unlinkSync(skillRootDir);
+        } else {
+          fs.rmSync(skillRootDir, { recursive: true, force: true });
+        }
       }
-      
-      // Move or copy skill directory to final location
+
+      // Move or copy the skill directory to its final location
       if (fs.existsSync(sourceDir)) {
         fs.renameSync(sourceDir, skillRootDir);
-        logger.info('[SkillManager] Moved skill to:', skillRootDir);
+        logger.info(`[SkillManager] Moved skill to: ${skillRootDir}`);
       } else {
         return { success: false, error: 'Source skill directory not found' };
       }
-      
-      // Save/update skill config via ProfileCacheManager
+
+      // Save/update skill configuration via ProfileCacheManager
       let success: boolean;
       if (isUpdate) {
         success = await profileCacheManager.updateSkill(userAlias, skillConfig.name, skillConfig);
       } else {
         success = await profileCacheManager.addSkill(userAlias, skillConfig);
       }
-      
+
       if (!success) {
-        // If save failed, clean up moved files
+        // If saving fails, clean up the moved files
         this.cleanupTempDirectory(skillRootDir);
         return { success: false, error: 'Failed to save skill configuration to profile' };
       }
-      
-      logger.info('[SkillManager] Skill installed successfully:', skillConfig.name);
+
+      logger.info(`[SkillManager] Skill installed successfully: ${skillConfig.name}`);
       return { success: true, skillName: skillConfig.name };
-      
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('[SkillManager] Failed to install skill:', errorMessage);
+      logger.error(`[SkillManager] Failed to install skill: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
   }
 
   /**
-   * Create temporary directory
+   * Create a temporary directory
    */
   public createTempDirectory(prefix: string = 'openkosmos-skill'): string {
     const tempDir = path.join(app.getPath('userData'), 'tmp', `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);

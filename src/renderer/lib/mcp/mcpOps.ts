@@ -4,7 +4,7 @@
  */
 
 import { validateMcpServerConfig, ConfigValidationReport } from './configValidator';
-import { KosmosAppMCPServerConfig } from '../../types/mcpTypes';
+import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes';
 
 // Helper function for safe access to electronAPI
 function getElectronAPI() {
@@ -102,11 +102,11 @@ export class McpOps {
    * Add new MCP server - new process
    * Now handled through ProfileCacheManager instead of direct IPC calls
    */
-  static async add(serverConfig: KosmosAppMCPServerConfig): Promise<McpOpsResult<string>> {
+  static async add(serverConfig: OpenKosmosAppMCPServerConfig): Promise<McpOpsResult<string>> {
     try {
       // Validate configuration before adding
       const validation = this.validate(serverConfig.name, serverConfig);
-      
+
       if (!validation.isValid) {
         return {
           success: false,
@@ -128,7 +128,7 @@ export class McpOps {
    * Update existing MCP server configuration - new process
    * Now handled through ProfileCacheManager instead of direct IPC calls
    */
-  static async update(serverName: string, serverConfig: Partial<KosmosAppMCPServerConfig>): Promise<McpOpsResult<string>> {
+  static async update(serverName: string, serverConfig: Partial<OpenKosmosAppMCPServerConfig>): Promise<McpOpsResult<string>> {
     try {
       if (!serverName || !serverName.trim()) {
         return {
@@ -139,8 +139,8 @@ export class McpOps {
 
       // If this is a complete configuration update, validate it
       if (serverConfig.name && serverConfig.transport) {
-        const validation = this.validate(serverConfig.name, serverConfig as KosmosAppMCPServerConfig);
-        
+        const validation = this.validate(serverConfig.name, serverConfig as OpenKosmosAppMCPServerConfig);
+
         if (!validation.isValid) {
           return {
             success: false,
@@ -238,7 +238,7 @@ export class McpOps {
    * Validate server name and configuration (frontend-only method)
    * Migrated from existing validation implementation
    */
-  static validate(serverName: string, serverConfig: KosmosAppMCPServerConfig): McpServerValidationResult {
+  static validate(serverName: string, serverConfig: OpenKosmosAppMCPServerConfig): McpServerValidationResult {
     try {
       // Basic server name validation
       const serverNameErrors: string[] = [];
@@ -253,17 +253,17 @@ export class McpOps {
       }
 
       // Ensure server configuration has matching name field
-      const configToValidate: KosmosAppMCPServerConfig = {
+      const configToValidate: OpenKosmosAppMCPServerConfig = {
         ...serverConfig,
         name: serverName
       };
 
       // Use existing validation function
       const report: ConfigValidationReport = validateMcpServerConfig(configToValidate);
-      
+
       // Merge server name errors and configuration validation errors
       const allErrors = [...serverNameErrors, ...report.errors];
-      
+
       // Generate suggestions based on errors and warnings
       const suggestions = this.generateSuggestions(allErrors, report.warnings);
 
@@ -326,7 +326,7 @@ export class McpOps {
   /**
    * Quick validation for transport-specific requirements
    */
-  static validateTransportConfig(transport: 'stdio' | 'sse' | 'StreamableHttp', config: Partial<KosmosAppMCPServerConfig>): { isValid: boolean; errors: string[] } {
+  static validateTransportConfig(transport: 'stdio' | 'sse' | 'StreamableHttp', config: Partial<OpenKosmosAppMCPServerConfig>): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     switch (transport) {
@@ -335,7 +335,7 @@ export class McpOps {
           errors.push('stdio transport requires command');
         }
         break;
-      
+
       case 'sse':
       case 'StreamableHttp':
         if (!config.url || !config.url.trim()) {
@@ -348,7 +348,7 @@ export class McpOps {
           }
         }
         break;
-      
+
       default:
         errors.push('Invalid transport type');
     }

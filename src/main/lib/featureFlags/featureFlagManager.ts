@@ -1,14 +1,14 @@
 /**
  * Feature Flag Manager (Main Process)
- * 
- * Serves as the single source of truth for Feature Flags
- * 
+ *
+ * Acts as the single source of truth for Feature Flags
+ *
  * Features:
  * - Define default values for feature flags in the backend (supports static values and dynamic logic)
- * - Parse command line arguments to override default values (--enable-features, --disable-features)
- * - Provide read-only API for main process and frontend usage
- * 
- * Command line argument format:
+ * - Parse command-line arguments to override default values (--enable-features, --disable-features)
+ * - Provide a read-only API for use by the main process and the frontend
+ *
+ * Command-line argument format:
  * - Windows: app.exe --enable-features=flag1,flag2 --disable-features=flag3
  * - macOS:   app --enable-features=flag1,flag2 --disable-features=flag3
  */
@@ -25,7 +25,8 @@ import {
   getFeatureFlagConfig,
   resolveDefaultValue,
 } from './featureFlagDefinitions';
-import { BRAND_NAME } from '@shared/constants/branding';
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
 
 class FeatureFlagManager {
   private static instance: FeatureFlagManager;
@@ -35,17 +36,17 @@ class FeatureFlagManager {
 
   private constructor() {
     this.flags = {} as FeatureFlagsMap;
-    // Initialize context (using temporary values, will be updated during initialize)
+    // Initialize context (using temporary values, will be updated in initialize)
     this.context = {
       isDev: false,
-      brandName: BRAND_NAME || 'openkosmos',
+      brandName: 'openkosmos',
       platform: process.platform,
       arch: process.arch,
     };
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   public static getInstance(): FeatureFlagManager {
     if (!FeatureFlagManager.instance) {
@@ -55,34 +56,34 @@ class FeatureFlagManager {
   }
 
   /**
-   * Initialize Feature Flag Manager
-   * Should be called at application startup
+   * Initialize the Feature Flag manager
+   * Should be called at app startup
    */
   public initialize(): void {
     if (this.initialized) {
-      console.log('[FeatureFlags] Already initialized, skipping...');
+      logger.debug('[FeatureFlags] Already initialized, skipping...');
       return;
     }
 
-    console.log('[FeatureFlags] Initializing feature flag manager...');
+    logger.debug('[FeatureFlags] Initializing feature flag manager...');
 
     // Detect development environment
-    this.context.isDev = process.env.NODE_ENV === 'development' || 
+    this.context.isDev = process.env.NODE_ENV === 'development' ||
                          process.argv.includes('--dev');
 
-    // Initialize all flags with default values using context
+    // Initialize default values for all flags using the context
     this.initializeDefaults();
 
-    // Parse command line arguments (will override default values)
+    // Parse command-line arguments (will override defaults)
     this.parseCommandLineArgs();
 
     this.initialized = true;
-    console.log('[FeatureFlags] Initialization complete');
+    logger.debug('[FeatureFlags] Initialization complete');
     this.logCurrentState();
   }
 
   /**
-   * Initialize all flags to default values (computed based on context)
+   * Initialize all flags to their default values (computed based on context)
    */
   private initializeDefaults(): void {
     for (const config of FEATURE_FLAG_DEFINITIONS) {
@@ -96,18 +97,18 @@ class FeatureFlagManager {
   }
 
   /**
-   * Parse command line arguments
+   * Parse command-line arguments
    */
   private parseCommandLineArgs(): void {
     const args = process.argv;
-    console.log('[FeatureFlags] Parsing command line args:', args.join(' '));
+    logger.debug(`[FeatureFlags] Parsing command line args: ${args.join(' ')}`);
 
     for (const arg of args) {
       // Parse --enable-features=flag1,flag2
       if (arg.startsWith('--enable-features=')) {
         const flagsStr = arg.substring('--enable-features='.length);
         const flagNames = flagsStr.split(',').map(s => s.trim()).filter(Boolean);
-        
+
         for (const flagName of flagNames) {
           this.setFlagFromCli(flagName as FeatureFlagName, true);
         }
@@ -117,7 +118,7 @@ class FeatureFlagManager {
       if (arg.startsWith('--disable-features=')) {
         const flagsStr = arg.substring('--disable-features='.length);
         const flagNames = flagsStr.split(',').map(s => s.trim()).filter(Boolean);
-        
+
         for (const flagName of flagNames) {
           this.setFlagFromCli(flagName as FeatureFlagName, false);
         }
@@ -126,13 +127,13 @@ class FeatureFlagManager {
   }
 
   /**
-   * Set flag from command line
+   * Set a flag from the command line
    */
   private setFlagFromCli(name: FeatureFlagName, enabled: boolean): void {
     const config = getFeatureFlagConfig(name);
-    
+
     if (!config) {
-      console.warn(`[FeatureFlags] Unknown feature flag from CLI: ${name}`);
+      logger.warn(`[FeatureFlags] Unknown feature flag from CLI: ${name}`);
       return;
     }
 
@@ -141,16 +142,16 @@ class FeatureFlagManager {
       enabled,
       source: 'cli',
     };
-    console.log(`[FeatureFlags] Set ${name}=${enabled} from CLI`);
+    logger.debug(`[FeatureFlags] Set ${name}=${enabled} from CLI`);
   }
 
   /**
-   * Check if a feature flag is enabled
+   * Check whether a feature flag is enabled
    */
   public isEnabled(name: FeatureFlagName): boolean {
     const flag = this.flags[name];
     if (!flag) {
-      console.warn(`[FeatureFlags] Unknown feature flag: ${name}`);
+      logger.warn(`[FeatureFlags] Unknown feature flag: ${name}`);
       return false;
     }
 
@@ -158,40 +159,40 @@ class FeatureFlagManager {
   }
 
   /**
-   * Get simplified value map of all flags (for frontend sync)
+   * Get a simplified value map of all flags (for frontend synchronization)
    */
   public getAllFlagsValues(): FeatureFlagsValues {
     const values: Record<string, boolean> = {};
-    
+
     for (const [name, state] of Object.entries(this.flags)) {
       values[name] = state.enabled;
     }
-    
+
     return values as FeatureFlagsValues;
   }
 
   /**
-   * Output current state to log
+   * Output current state to the log
    */
   private logCurrentState(): void {
-    console.log('[FeatureFlags] Current state:');
-    console.log(`  Context: isDev=${this.context.isDev}, brandName=${this.context.brandName}, platform=${this.context.platform}`);
+    logger.debug('[FeatureFlags] Current state:');
+    logger.debug(`  Context: isDev=${this.context.isDev}, brandName=${this.context.brandName}, platform=${this.context.platform}`);
     for (const [name, state] of Object.entries(this.flags)) {
       if (state.source !== 'default' || state.enabled) {
-        console.log(`  - ${name}: ${state.enabled} (source: ${state.source})`);
+        logger.debug(`  - ${name}: ${state.enabled} (source: ${state.source})`);
       }
     }
   }
 
   /**
-   * Get whether it is a development environment
+   * Get whether the current environment is development mode
    */
   public get isDevMode(): boolean {
     return this.context.isDev;
   }
 
   /**
-   * Get current context
+   * Get the current context
    */
   public get currentContext(): FeatureFlagContext {
     return { ...this.context };

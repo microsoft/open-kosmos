@@ -1,21 +1,21 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Kosmos Team. All rights reserved.
+ *  Copyright (c) OpenKosmos Team. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Cancellation Token Module
- * 
+ * Cancellation Token module
+ *
  * Provides a standard cancellation mechanism for gracefully terminating long-running operations.
- * 
+ *
  * @module cancellation
- * 
+ *
  * @example
  * ```typescript
  * import { CancellationTokenSource, CancellationError } from './cancellation';
- * 
+ *
  * const source = new CancellationTokenSource();
- * 
+ *
  * async function longOperation(token: CancellationToken) {
  *   for (let i = 0; i < 100; i++) {
  *     if (token.isCancellationRequested) {
@@ -24,13 +24,13 @@
  *     await doWork(i);
  *   }
  * }
- * 
- * // Start operation
+ *
+ * // Start the operation
  * const operation = longOperation(source.token);
- * 
+ *
  * // Cancel after 5 seconds
  * setTimeout(() => source.cancel(), 5000);
- * 
+ *
  * try {
  *   await operation;
  * } catch (error) {
@@ -51,7 +51,7 @@ export {
 } from './CancellationToken';
 export type { CancellationToken, Event } from './CancellationToken';
 
-// Import types for predefined constants
+// Import type for predefined constants
 import type { CancellationToken as ICancellationToken } from './CancellationToken';
 
 /**
@@ -63,7 +63,8 @@ export const CancellationTokenStatic = {
   /**
    * A token that will never be cancelled
    *
-   * Used for operations that don't support cancellation, or scenarios where cancellation is not applicable.
+   * Used for operations that don't support cancellation, or in scenarios
+   * where cancellation is not applicable.
    *
    * @example
    * ```typescript
@@ -78,11 +79,11 @@ export const CancellationTokenStatic = {
     isCancellationRequested: false,
     onCancellationRequested: () => ({ dispose: () => {} })
   } as ICancellationToken,
-  
+
   /**
-   * A token that has already been cancelled
+   * A token that is already cancelled
    *
-   * Used for testing or scenarios where immediate cancellation is needed.
+   * Used for testing or scenarios that require immediate cancellation.
    *
    * @example
    * ```typescript

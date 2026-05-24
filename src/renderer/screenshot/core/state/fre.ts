@@ -17,7 +17,7 @@ export const freAtom = define.view('fre', make, (set, get) => {
     set({ ...get(), visible: false })
   }
 
-  /** Load settings; if shortcut is not enabled and user hasn't rejected FRE, show teaching overlay */
+  /** Load settings; show the teaching overlay if shortcut is not enabled and user has not previously rejected the FRE */
   function useShortcutTeaching() {
     useEffect(() => {
       screenshotApi.getSettings().then((resp) => {

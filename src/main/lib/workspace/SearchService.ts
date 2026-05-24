@@ -10,11 +10,11 @@ export interface IFileSearchQuery {
   folder: string;                      // Search directory (absolute path)
   includePattern?: string;             // Include pattern (glob)
   excludePattern?: string;             // Exclude pattern (glob)
-  maxResults?: number;                 // Max results
-  useGitignore?: boolean;              // Whether to use .gitignore
+  maxResults?: number;                 // Maximum number of results
+  useGitignore?: boolean;              // Whether to respect .gitignore
   fuzzy?: boolean;                     // Whether to use fuzzy matching
   cacheKey?: string;                   // Cache key
-  searchTarget?: SearchTarget;         // Search target: files (files only) | folders (folders only) | both (files + folders, default)
+  searchTarget?: SearchTarget;         // Search target: files (files only) | folders (directories only) | both (files + directories, default)
 }
 
 export interface IFileSearchResult {
@@ -25,11 +25,11 @@ export interface IFileSearchResult {
 
 export interface ISearchComplete {
   results: IFileSearchResult[];
-  limitHit?: boolean;                  // Whether the result count limit was reached
+  limitHit?: boolean;                  // Whether the result limit was reached
   stats?: {
     duration: number;                  // Search duration (milliseconds)
     filesScanned: number;              // Number of files scanned
-    cacheHit: boolean;                 // Whether cache was hit
+    cacheHit: boolean;                 // Whether the cache was hit
   };
 }
 
@@ -47,18 +47,18 @@ export class WorkspaceSearchService {
   private useRipgrep = true; // Prefer Ripgrep
 
   constructor() {
-    // Try to initialize Ripgrep engine
+    // Attempt to initialize the Ripgrep engine
     this.initializeRipgrep();
   }
 
   /**
-   * Initialize Ripgrep search engine
+   * Initialize the Ripgrep search engine
    */
   private async initializeRipgrep(): Promise<void> {
     try {
       const { RipgrepSearchEngine } = await import('./RipgrepSearchEngine');
       this.ripgrepEngine = new RipgrepSearchEngine();
-      
+
       if (this.ripgrepEngine.isAvailable()) {
       } else {
         this.ripgrepEngine = null;
@@ -107,17 +107,17 @@ export class WorkspaceSearchService {
 
   private async getSearchEngine(): Promise<ISearchEngine> {
     // Strategy: prefer Ripgrep, fall back to Node.js fs
-    
+
     // 1. If not yet initialized, wait for initialization to complete
     if (this.useRipgrep && !this.ripgrepEngine) {
       await this.initializeRipgrep();
     }
-    
+
     // 2. Prefer Ripgrep (if available)
     if (this.useRipgrep && this.ripgrepEngine && this.ripgrepEngine.isAvailable()) {
       return this.ripgrepEngine;
     }
-    
+
     // 3. Fall back to Node.js fs search engine
     const { NodeFSSearchEngine } = await import('./NodeFSSearchEngine');
     return new NodeFSSearchEngine();

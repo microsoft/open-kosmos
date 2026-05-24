@@ -1,22 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Badge } from '../ui/badge';
 import { useAgentConfig } from '../userData/userDataProvider';
 import { getModelById } from '../../lib/models/ghcModels';
 import { agentChatIpc } from '../../lib/chat/agentChatIpc';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
-import { TextContentPart } from '../../types/chatTypes';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[ContextBadge]');
 
-// 🔄 New: Define ContextStats interface (consistent with AgentChat interface)
+// 🔄 Added: define ContextStats interface (consistent with the interface in AgentChat)
 interface ContextStats {
   totalMessages: number      // Total message count
-  contextMessages: number    // Compressed message count
+  contextMessages: number    // Message count after compression
   tokenCount: number         // Current token count
   compressionRatio: number   // Compression ratio (0.0-1.0)
-}
-
-interface ContextBadgeProps {
-  // 🔄 Modified: No longer needs agentChat prop, use global agentChatIpc directly
-  agentChat?: any | null; // Kept for backward compatibility, but no longer used
 }
 
 /**
@@ -26,134 +22,165 @@ interface ContextBadgeProps {
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1000) {
     const kValue = tokens / 1000;
-    // Keep one decimal place, but omit if decimal part is 0
+    // Keep one decimal place, but don't show if decimal part is 0
     return kValue % 1 === 0 ? `${kValue.toFixed(0)}k` : `${kValue.toFixed(1)}k`;
   }
   return tokens.toString();
 }
 
-export const ContextBadge: React.FC<ContextBadgeProps> = ({ agentChat }) => {
+export const ContextBadge: React.FC = () => {
   const { currentModel } = useAgentConfig();
   const [contextTokens, setContextTokens] = useState<number>(0);
   const [modelContextWindow, setModelContextWindow] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  
-  // 🔥 Key: Track current chatSessionId
+
+  // 🔥 Key: track current chatSessionId
   const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
 
-  // Get model's context window size
-  useEffect(() => {
+  // 🔥 Track modelCacheManager data update version to ensure recalculation after model data sync
+  const [modelCacheVersion, setModelCacheVersion] = useState<number>(0);
+
+  // 🔥 Fix: extract model context window calculation into a callback for reuse across multiple effects
+  const updateModelContextWindow = useCallback(() => {
     if (currentModel) {
       const model = getModelById(currentModel);
       if (model) {
-        setModelContextWindow(model.capabilities.limits?.max_context_window_tokens || 128000);
+        const limits = model.capabilities.limits;
+        const effectiveInputLimit = limits?.max_prompt_tokens || limits?.max_context_window_tokens || 128000;
+        setModelContextWindow(effectiveInputLimit);
+      } else {
+        // Model data not yet loaded or model ID invalid, use default value
+        logger.warn('[ContextBadge] Model not found in cache, using default context window', { currentModel });
+        setModelContextWindow(128000);
       }
+    } else {
+      setModelContextWindow(0);
     }
   }, [currentModel]);
 
-  // 🔥 Listen for agentChatSessionCacheManager changes to get currentChatSessionId
+  // Get model context window size
+  // Use max_prompt_tokens (API actual input limit) instead of max_context_window_tokens (total window including output)
+  // e.g. claude-sonnet-4.6: max_context_window_tokens=200k, but max_prompt_tokens=128k, API returns 400 at 128k
+  useEffect(() => {
+    updateModelContextWindow();
+  }, [currentModel, modelCacheVersion, updateModelContextWindow]);
+
+  // 🔥 Listen to modelCacheUpdated event, recalculate context window after backend model data sync completes
+  useEffect(() => {
+    const handleModelCacheUpdated = () => {
+      logger.debug('[ContextBadge] 🔄 Model cache updated, refreshing context window size');
+      setModelCacheVersion(v => v + 1);
+    };
+
+    window.addEventListener('modelCacheUpdated', handleModelCacheUpdated);
+    return () => {
+      window.removeEventListener('modelCacheUpdated', handleModelCacheUpdated);
+    };
+  }, []);
+
+  // 🔥 Listen to agentChatSessionCacheManager changes to get currentChatSessionId
   useEffect(() => {
     // Initialize: get current value
     const sessionId = agentChatSessionCacheManager.getCurrentChatSessionId();
     setCurrentChatSessionId(sessionId);
-    
-    console.log('[ContextBadge] Initial chatSessionId', { sessionId });
-    
+
+    logger.debug('[ContextBadge] Initial chatSessionId', { sessionId });
+
     // Subscribe to currentChatSessionId changes
     const unsubscribe = agentChatSessionCacheManager.subscribeToCurrentChatSessionId((newSessionId) => {
-      console.log('[ContextBadge] ChatSessionId changed', {
+      logger.debug('[ContextBadge] ChatSessionId changed', {
         oldSessionId: currentChatSessionId,
         newSessionId,
-        format: 'chatSession_YYYYMMDDHHMMSS'
+        format: 'chatSession_YYYYMMDDHHMMSS_<deviceid>_<random>'
       });
       setCurrentChatSessionId(newSessionId);
     });
-    
+
     return unsubscribe;
   }, []);
 
-  // 🔥 Core logic: Initialize and listen for context changes
+  // 🔥 Core logic: initialize and listen to context changes
   useEffect(() => {
     let notificationReceived = false;
     let isMounted = true;
-    
+
     const handleContextChange = (stats: ContextStats) => {
       if (!isMounted) return;
-      
-      console.log('[ContextBadge] 📊 Context change received', {
+
+      logger.debug('[ContextBadge] 📊 Context change received', {
         tokenCount: stats.tokenCount,
         notificationReceived
       });
-      
+
       notificationReceived = true;
       setContextTokens(stats.tokenCount);
       setLoading(false);
     };
 
-    // 🔥 Critical fix: Proactively fetch initial token data after session switch
+    // 🔥 Key fix: proactively fetch initial Token data after Session switch
     const initializeTokenData = async () => {
       try {
-        console.log('[ContextBadge] 🔄 Initializing token data...');
+        logger.debug('[ContextBadge] 🔄 Initializing token data...');
         setLoading(true);
-        
-        // Proactively pull current session's token usage from backend
+
+        // Proactively pull current Session's token usage from backend
         const tokenUsage = await agentChatIpc.getCurrentContextTokenUsage();
-        
+
         if (isMounted && tokenUsage) {
-          console.log('[ContextBadge] ✅ Initial token data loaded', {
+          logger.debug('[ContextBadge] ✅ Initial token data loaded', {
             tokenCount: tokenUsage.tokenCount
           });
           notificationReceived = true;
           setContextTokens(tokenUsage.tokenCount);
           setLoading(false);
         } else if (isMounted) {
-          console.warn('[ContextBadge] ⚠️ No token usage data available');
+          logger.warn('[ContextBadge] ⚠️ No token usage data available');
           setContextTokens(0);
           setLoading(false);
         }
       } catch (error) {
-        console.error('[ContextBadge] ❌ Failed to initialize token data:', error);
+        logger.error('[ContextBadge] ❌ Failed to initialize token data:', error);
         if (isMounted) {
           setContextTokens(0);
           setLoading(false);
         }
       }
     };
-    
+
     // Register listener (for subsequent dynamic updates)
     agentChatIpc.addContextChangeListener(handleContextChange);
-    
+
     // Proactively pull initial data
     initializeTokenData();
-    
-    // 🔄 Fix: Set timeout mechanism as fallback
+
+    // 🔄 Fix: set timeout mechanism as fallback
     const fallbackTimeout = setTimeout(() => {
       if (!notificationReceived && isMounted) {
-        console.warn('[ContextBadge] ⏱️ Timeout: No context data received');
+        logger.warn('[ContextBadge] ⏱️ Timeout: No context data received');
         setContextTokens(0);
         setLoading(false);
       }
     }, 5000);
-    
+
     // Cleanup function
     return () => {
       isMounted = false;
       clearTimeout(fallbackTimeout);
       agentChatIpc.removeContextChangeListener(handleContextChange);
     };
-  }, [currentChatSessionId]); // 🔥 Key: Depends on currentChatSessionId, re-initialize on session switch
+  }, [currentChatSessionId]); // 🔥 Key: depends on currentChatSessionId, reinitializes when Session switches
 
   // Calculate utilization ratio
   const utilizationRatio = modelContextWindow > 0 ? contextTokens / modelContextWindow : 0;
-  
+
   // Determine badge variant based on utilization ratio
   let variant: "default" | "secondary" | "destructive" | "outline" | "success" | "normal" = "normal";
   if (utilizationRatio > 0.9) {
-    variant = "destructive"; // Red when over 90%
+    variant = "destructive"; // Show red when over 90%
   } else if (utilizationRatio > 0.7) {
-    variant = "outline"; // Warning when over 70%
+    variant = "outline"; // Show warning color when over 70%
   } else if (utilizationRatio > 0) {
-    variant = "normal"; // Normal style when in use
+    variant = "normal"; // Show unified normal style when in use
   }
 
   const contextText = formatTokenCount(contextTokens);

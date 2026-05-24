@@ -1,16 +1,17 @@
 /**
  * NativeModuleManager
  *
- * Manages on-demand downloading and lazy loading of large native modules.
- * These modules (whisper-node-addon) are not distributed with the app installer,
- * but are downloaded from npm CDN and cached to the userData directory when the user first uses the corresponding feature.
+ * Manages on-demand download and lazy-loading of very large native modules.
+ * These modules are not distributed with the application installer; instead they
+ * are downloaded from the npm CDN and cached in the userData directory the first
+ * time the user activates the corresponding feature.
  *
- * Download path: {userData}/native-modules/{packageName}/{version}/package/
+ * Download path:   {userData}/native-modules/{packageName}/{version}/package/
  * Download source: npm CDN  https://registry.npmjs.org/{pkg}/-/{pkg}-{ver}.tgz
  *
  * Supports:
  * - Download progress push (IPC → renderer)
- * - Cancel mid-download
+ * - Cancelling in-progress downloads
  * - Retry mechanism (up to 3 times)
  * - Multi-platform / multi-architecture isolation
  */
@@ -22,11 +23,16 @@ import * as http from 'http';
 import * as os from 'os';
 import { createRequire } from 'module';
 import { app, BrowserWindow } from 'electron';
+import { createLogger } from '../unifiedLogger';
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as tar from "tar";
+const logger = createLogger();
 
 /**
- * Node.js native require, bypassing webpack's module resolution.
- * webpack's require() cannot handle runtime dynamic absolute paths (such as cached modules under userData),
- * so createRequire must be used to obtain the native require function.
+ * Native Node.js require that bypasses webpack's module resolution.
+ * webpack's require() cannot handle runtime dynamic absolute paths (e.g. cached
+ * modules under userData); createRequire must be used to obtain the native require.
  */
 const nativeRequire = createRequire(__filename);
 
@@ -51,7 +57,7 @@ export interface NativeModuleInfo {
   packageName: string;
   version: string;
   status: NativeModuleStatus;
-  /** Local path after download (package/ root directory, can be required directly) */
+  /** Local path after download (package/ root, directly require-able) */
   localPath?: string;
   error?: string;
   downloadProgress?: NativeModuleDownloadProgress;
@@ -65,7 +71,7 @@ export interface NativeModuleDownloadProgress {
 }
 
 // --------------------------------------------------------------------------
-// Registry: Known module metadata (versions determined by package.json optionalDependencies)
+// Registry: metadata for known modules (versions determined by package.json optionalDependencies)
 // --------------------------------------------------------------------------
 
 export const NATIVE_MODULE_REGISTRY: Record<string, NativeModuleSpec> = {
@@ -85,10 +91,10 @@ class NativeModuleManager {
   /** Storage root directory under userData */
   private readonly baseDir: string;
 
-  /** Active download AbortControllers */
+  /** AbortControllers for in-progress downloads */
   private activeDownloads = new Map<string, AbortController>();
 
-  /** Loaded module cache (moduleKey → required module) */
+  /** Cache of loaded modules (moduleKey → required module) */
   private loadedModules = new Map<string, unknown>();
 
   private constructor() {
@@ -108,7 +114,7 @@ class NativeModuleManager {
   // ------------------------------------------------------------------------
 
   /**
-   * Get current module status
+   * Get the current status of a module
    */
   getStatus(moduleKey: string): NativeModuleInfo {
     const spec = NATIVE_MODULE_REGISTRY[moduleKey];
@@ -127,7 +133,7 @@ class NativeModuleManager {
   }
 
   /**
-   * Check if module is downloaded (does not trigger download)
+   * Check whether a module has been downloaded (does not trigger a download)
    */
   isAvailable(moduleKey: string): boolean {
     const spec = NATIVE_MODULE_REGISTRY[moduleKey];
@@ -136,7 +142,7 @@ class NativeModuleManager {
   }
 
   /**
-   * Get module's require path. Returns null if not downloaded.
+   * Get the require path for a module. Returns null if not downloaded.
    */
   getRequirePath(moduleKey: string): string | null {
     const spec = NATIVE_MODULE_REGISTRY[moduleKey];
@@ -146,11 +152,11 @@ class NativeModuleManager {
   }
 
   /**
-   * Ensure module is downloaded, triggers download if not.
-   * Returns a local path usable with require.
+   * Ensure a module is downloaded; triggers download if not already present.
+   * Returns the local path usable by require.
    *
-   * @param moduleKey - Key in NATIVE_MODULE_REGISTRY
-   * @param onProgress - Download progress callback (optional, also pushed via IPC)
+   * @param moduleKey - key in NATIVE_MODULE_REGISTRY
+   * @param onProgress - optional download progress callback (also pushed via IPC)
    */
   async ensureDownloaded(
     moduleKey: string,
@@ -164,7 +170,7 @@ class NativeModuleManager {
     const localPath = this.getLocalPackagePath(spec);
 
     if (this.isDownloaded(spec)) {
-      console.log(`[NativeModuleManager] ${moduleKey} already available at ${localPath}`);
+      logger.debug(`[NativeModuleManager] ${moduleKey} already available at ${localPath}`);
       return localPath;
     }
 
@@ -176,20 +182,20 @@ class NativeModuleManager {
   }
 
   /**
-   * Cancel download for specified module
+   * Cancel an in-progress download for the specified module
    */
   cancelDownload(moduleKey: string): void {
     const controller = this.activeDownloads.get(moduleKey);
     if (controller) {
       controller.abort();
       this.activeDownloads.delete(moduleKey);
-      console.log(`[NativeModuleManager] Cancelled download for ${moduleKey}`);
+      logger.debug(`[NativeModuleManager] Cancelled download for ${moduleKey}`);
       this.notifyRenderer('native-module:downloadCancelled', { packageName: moduleKey });
     }
   }
 
   /**
-   * Delete downloaded module (free disk space)
+   * Delete a downloaded module (frees disk space)
    */
   deleteModule(moduleKey: string): void {
     const spec = NATIVE_MODULE_REGISTRY[moduleKey];
@@ -198,7 +204,7 @@ class NativeModuleManager {
     const versionDir = this.getVersionDir(spec);
     if (fs.existsSync(versionDir)) {
       fs.rmSync(versionDir, { recursive: true, force: true });
-      console.log(`[NativeModuleManager] Deleted ${moduleKey} from ${versionDir}`);
+      logger.debug(`[NativeModuleManager] Deleted ${moduleKey} from ${versionDir}`);
     }
     this.loadedModules.delete(moduleKey);
   }
@@ -216,14 +222,14 @@ class NativeModuleManager {
       throw new NativeModuleNotDownloadedError(moduleKey);
     }
 
-    // Apply platform compatibility fixes (idempotent, only runs when needed)
+    // Apply platform compatibility fixes (idempotent, only when needed)
     this.applyModuleFixes(moduleKey, requirePath);
 
     try {
-      // Use nativeRequire (obtained via createRequire), bypassing webpack module resolution
+      // Use nativeRequire (obtained via createRequire) to bypass webpack module resolution
       const mod = nativeRequire(requirePath);
       this.loadedModules.set(moduleKey, mod);
-      console.log(`[NativeModuleManager] Loaded ${moduleKey} from ${requirePath}`);
+      logger.debug(`[NativeModuleManager] Loaded ${moduleKey} from ${requirePath}`);
       return mod;
     } catch (err) {
       throw new Error(`[NativeModuleManager] Failed to load ${moduleKey}: ${err}`);
@@ -234,13 +240,14 @@ class NativeModuleManager {
    * Apply platform compatibility fixes for specific modules (idempotent).
    *
    * whisper-addon macOS issue 1 — directory name mismatch:
-   *   npm tarball binary directory is mac-{arch}/, but index.js constructs the path
-   *   as darwin-{arch}/ via os.platform(). Fix: create darwin-{arch} → mac-{arch} symlink.
+   *   The npm tarball binary directory is mac-{arch}/, but index.js constructs
+   *   the path as darwin-{arch}/ via os.platform(). Fix: create
+   *   darwin-{arch} → mac-{arch} symlinks.
    *
-   * whisper-addon macOS issue 2 — rpath hardcoded to CI path:
-   *   The prebuilt whisper.node has rpath hardcoded to the CI build machine's absolute path,
-   *   without @loader_path, causing dlopen to fail finding the sibling libwhisper.1.dylib.
-   *   Fix: add @loader_path rpath to the .node file using install_name_tool.
+   * whisper-addon macOS issue 2 — rpath hard-coded to CI machine paths:
+   *   The pre-built whisper.node has rpath pointing to absolute paths on the CI
+   *   build machine, with no @loader_path, causing dlopen to fail to find the
+   *   sibling libwhisper.1.dylib. Fix: append @loader_path via install_name_tool.
    */
   private applyModuleFixes(moduleKey: string, localPath: string): void {
     if (os.platform() !== 'darwin') return;
@@ -253,9 +260,9 @@ class NativeModuleManager {
         if (fs.existsSync(macDir) && !fs.existsSync(darwinDir)) {
           try {
             fs.symlinkSync(macDir, darwinDir, 'dir');
-            console.log(`[NativeModuleManager] Created symlink: ${darwinDir} -> ${macDir}`);
+            logger.debug(`[NativeModuleManager] Created symlink: ${darwinDir} -> ${macDir}`);
           } catch (err) {
-            console.warn(`[NativeModuleManager] Failed to create symlink ${darwinDir}:`, err);
+            logger.warn(`[NativeModuleManager] Failed to create symlink ${darwinDir}: ${err instanceof Error ? err.message : String(err)}`)
           }
         }
       }
@@ -267,7 +274,7 @@ class NativeModuleManager {
   }
 
   /**
-   * Add @loader_path rpath to all .node files under dist/mac-{arch}/ (idempotent).
+   * Append @loader_path rpath to all .node files under dist/mac-{arch}/ (idempotent).
    * Uses install_name_tool, which is available out-of-the-box on macOS (Xcode Command Line Tools).
    */
   private fixMacosRpaths(localPath: string): void {
@@ -284,12 +291,12 @@ class NativeModuleManager {
       const nodePath = path.join(distDir, nodeFile);
       try {
         execFileSync('install_name_tool', ['-add_rpath', '@loader_path', nodePath], { stdio: 'pipe' });
-        console.log(`[NativeModuleManager] Fixed rpath for ${nodePath}`);
+        logger.debug(`[NativeModuleManager] Fixed rpath for ${nodePath}`);
       } catch (err: unknown) {
         // install_name_tool exits non-zero when rpath already exists — that's fine
         const msg = String((err as { stderr?: Buffer })?.stderr ?? err);
         if (!msg.includes('already exists')) {
-          console.warn(`[NativeModuleManager] install_name_tool failed for ${nodePath}:`, msg);
+          logger.warn(`[NativeModuleManager] install_name_tool failed for ${nodePath}: ${msg}`);
         }
       }
     }
@@ -303,7 +310,7 @@ class NativeModuleManager {
   // ------------------------------------------------------------------------
 
   private getVersionDir(spec: NativeModuleSpec): string {
-    // Make scoped package name path-safe: @kutalia/whisper-node-addon → @kutalia+whisper-node-addon
+    // Sanitize scoped package names for use in file paths: @kutalia/whisper-node-addon → @kutalia+whisper-node-addon
     const safeName = spec.packageName.replace('/', '+');
     return path.join(this.baseDir, safeName, spec.version);
   }
@@ -318,8 +325,8 @@ class NativeModuleManager {
   }
 
   /**
-   * Construct npm CDN tarball URL
-   * Scoped packages: @scope/name → @scope%2fname
+   * Build the npm CDN tarball URL.
+   * scoped packages: @scope/name → @scope%2fname
    */
   private getTarballUrl(spec: NativeModuleSpec): string {
     const { packageName, version } = spec;
@@ -346,7 +353,7 @@ class NativeModuleManager {
       fs.mkdirSync(versionDir, { recursive: true });
 
       const url = this.getTarballUrl(spec);
-      console.log(`[NativeModuleManager] Downloading ${moduleKey} from ${url}`);
+      logger.debug(`[NativeModuleManager] Downloading ${moduleKey} from ${url}`);
       this.notifyRenderer('native-module:downloadStarted', { packageName: moduleKey, url });
 
       await this.downloadFile(url, tmpFile, controller.signal, (progress) => {
@@ -358,10 +365,10 @@ class NativeModuleManager {
         this.notifyRenderer('native-module:downloadProgress', p);
       });
 
-      console.log(`[NativeModuleManager] Extracting ${moduleKey}...`);
+      logger.debug(`[NativeModuleManager] Extracting ${moduleKey}...`);
       await this.extractTarball(tmpFile, versionDir);
 
-      // Clean up temp file
+      // Clean up temporary file
       if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
 
       const localPath = this.getLocalPackagePath(spec);
@@ -369,7 +376,7 @@ class NativeModuleManager {
       // Apply platform compatibility fixes
       this.applyModuleFixes(moduleKey, localPath);
 
-      console.log(`[NativeModuleManager] ${moduleKey} installed at ${localPath}`);
+      logger.debug(`[NativeModuleManager] ${moduleKey} installed at ${localPath}`);
       this.notifyRenderer('native-module:downloadComplete', {
         packageName: moduleKey,
         localPath,
@@ -377,7 +384,7 @@ class NativeModuleManager {
 
       return localPath;
     } catch (err: unknown) {
-      // Clean up residual files
+      // Clean up leftover temporary file
       if (fs.existsSync(tmpFile)) {
         try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
       }
@@ -398,7 +405,7 @@ class NativeModuleManager {
   }
 
   /**
-   * Download file to disk, supporting redirects and progress callback
+   * Download a file to disk, supporting redirects and progress callbacks
    */
   private downloadFile(
     url: string,
@@ -457,17 +464,15 @@ class NativeModuleManager {
   }
 
   /**
-   * Extract .tgz to target directory
-   * All files in npm tarball start with the package/ prefix; this structure is preserved after extraction
+   * Extract a .tgz to the target directory.
+   * npm tarballs have all files prefixed with package/; that structure is preserved after extraction.
    */
   private async extractTarball(tgzPath: string, destDir: string): Promise<void> {
-    // Use built-in child_process to call system tar, avoiding API compatibility issues with the npm tar package
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
+    // Use child_process to invoke the system tar, avoiding npm tar package API compatibility issues
     const execFileAsync = promisify(execFile);
 
     if (os.platform() === 'win32') {
-      // Windows: use node built-in tar (electron Node.js >= 16 includes tar)
+      // Windows: use the built-in node tar (Electron Node.js >= 16 includes tar)
       await this.extractTarballWithNodeTar(tgzPath, destDir);
     } else {
       try {
@@ -481,7 +486,6 @@ class NativeModuleManager {
 
   private async extractTarballWithNodeTar(tgzPath: string, destDir: string): Promise<void> {
     // Use the tar package already in dependencies
-    const tar = await import('tar');
     await tar.x({
       file: tgzPath,
       cwd: destDir,
@@ -489,7 +493,7 @@ class NativeModuleManager {
   }
 
   /**
-   * Push events to renderer
+   * Push an event to the renderer process
    */
   private notifyRenderer(channel: string, data: unknown): void {
     const windows = BrowserWindow.getAllWindows();

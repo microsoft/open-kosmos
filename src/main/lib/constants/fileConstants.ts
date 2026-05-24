@@ -1,7 +1,7 @@
 /**
- * File handling constants
+ * File processing constants definition
  * Extracted FILE_ATTACHMENT_LIMITS from src/renderer/types/chatTypes.ts
- * Used for the main process built-in tools system
+ * Used by the main process built-in tools system
  */
 
 // File size limits - aligned with VSCode
@@ -20,7 +20,7 @@ export const FILE_ATTACHMENT_LIMITS = {
     '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
     // Programming languages - C/C++ family
     '.c', '.cc', '.cpp', '.cxx', '.c++', '.h', '.hpp', '.hxx', '.h++',
-    // Programming languages - Others
+    // Programming languages - other
     '.py', '.pyw', '.pyc', '.pyi', '.pyx',
     '.java', '.class', '.jar', '.scala', '.kt', '.kts',
     '.cs', '.vb', '.fs', '.fsx', '.fsi',

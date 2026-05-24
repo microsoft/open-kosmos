@@ -1,25 +1,28 @@
+import { createLogger } from './logger';
+const logger = createLogger('[UserInputParser]');
+
 /**
  * Utility functions for parsing user input variables
  * Supports parsing variables in @USER_INPUT_ format
  *
- * Format: @USER_INPUT_[STRING|INT|DOUBLE|BOOLEAN]_[FOLDER|EMAIL|NORMAL]_[REQUIRED|OPTIONAL]_{KEYNAME}
+ * Format: @USER_INPUT_[STRING|INT|DOUBLE|BOOLEAN]_[FOLDER|FILE|TEXT]_[REQUIRED|OPTIONAL]_{KEYNAME}
  *
  * Format description:
- * - TYPE: STRING | INT | DOUBLE | BOOLEAN - Data type
- * - SUBTYPE: FOLDER | EMAIL | NORMAL - Input type
- *   - FOLDER: Folder selector
- *   - EMAIL: Automatically generates email from current user alias
- *   - NORMAL: Normal text input
- * - REQUIRED | OPTIONAL: Whether the field is required
- * - KEYNAME: Variable name
+ * - TYPE: STRING | INT | DOUBLE | BOOLEAN - data type
+ * - CONTROL: FOLDER | FILE | TEXT - input control
+ *   - FOLDER: folder picker
+ *   - FILE: file picker
+ *   - TEXT: plain text input
+ * - REQUIRED | OPTIONAL: whether the field is mandatory
+ * - KEYNAME: variable name
  *
- * Note: INT, DOUBLE, BOOLEAN types can only be used with NORMAL subtype
+ * Note: INT, DOUBLE, BOOLEAN types can only be used with the TEXT control
  */
 
 export interface UserInputVariable {
   key: string;
   type: 'STRING' | 'INT' | 'DOUBLE' | 'BOOLEAN';
-  inputType: 'FOLDER' | 'EMAIL' | 'NORMAL';
+  control: 'folder' | 'file' | 'text';
   variableName: string;
   originalValue: string;
   isRequired: boolean;
@@ -32,11 +35,11 @@ export interface ParsedUserInputs {
 
 /**
  * Parse @USER_INPUT_ variable format
- * Format: @USER_INPUT_[STRING|INT|DOUBLE|BOOLEAN]_[FOLDER|EMAIL|NORMAL]_[REQUIRED|OPTIONAL]_{KEYNAME}
+ * Format: @USER_INPUT_[STRING|INT|DOUBLE|BOOLEAN]_[FOLDER|FILE|TEXT]_[REQUIRED|OPTIONAL]_{KEYNAME}
  */
 export const parseUserInputVariables = (env: Record<string, string>): ParsedUserInputs => {
   const variables: UserInputVariable[] = [];
-  
+
   if (!env || typeof env !== 'object') {
     return { variables: [], hasUserInputs: false };
   }
@@ -63,50 +66,50 @@ export const parseUserInputVariables = (env: Record<string, string>): ParsedUser
 export const parseUserInputVariable = (key: string, value: string): UserInputVariable | null => {
   // Match format: @USER_INPUT_[TYPE]_[INPUT_TYPE]_[REQUIRED|OPTIONAL]_{VARIABLE_NAME}
   const match = value.match(/^@USER_INPUT_([A-Z]+)_([A-Z]+)_(REQUIRED|OPTIONAL)_(.+)$/);
-  
+
   if (!match) {
-    console.warn(`Invalid user input variable format: ${value}. Expected format: @USER_INPUT_[TYPE]_[SUBTYPE]_[REQUIRED|OPTIONAL]_{KEYNAME}`);
+    logger.warn(`Invalid user input variable format: ${value}. Expected format: @USER_INPUT_[TYPE]_[CONTROL]_[REQUIRED|OPTIONAL]_{KEYNAME}`);
     return null;
   }
-  
-  const [, typeStr, inputTypeStr, requiredStr, variableName] = match;
-  return validateAndCreateVariable(key, value, typeStr, inputTypeStr, variableName, requiredStr === 'REQUIRED');
+
+  const [, typeStr, controlStr, requiredStr, variableName] = match;
+  return validateAndCreateVariable(key, value, typeStr, controlStr, variableName, requiredStr === 'REQUIRED');
 };
 
 /**
- * Validate and create UserInputVariable object
+ * Validate and create a UserInputVariable object
  */
 const validateAndCreateVariable = (
   key: string,
   originalValue: string,
   typeStr: string,
-  inputTypeStr: string,
+  controlStr: string,
   variableName: string,
   isRequired: boolean
 ): UserInputVariable | null => {
   // Validate type
   const validTypes = ['STRING', 'INT', 'DOUBLE', 'BOOLEAN'];
   if (!validTypes.includes(typeStr)) {
-    console.warn(`Invalid type in user input variable: ${typeStr}`);
+    logger.warn(`Invalid type in user input variable: ${typeStr}`);
     return null;
   }
 
-  const validInputTypes = ['FOLDER', 'EMAIL', 'NORMAL'];
-  if (!validInputTypes.includes(inputTypeStr)) {
-    console.warn(`Invalid input type in user input variable: ${inputTypeStr}`);
+  const validControls = ['FOLDER', 'FILE', 'TEXT'];
+  if (!validControls.includes(controlStr)) {
+    logger.warn(`Invalid control in user input variable: ${controlStr}`);
     return null;
   }
 
-  // Validate input type combination: INT, DOUBLE, BOOLEAN can only be NORMAL
-  if ((typeStr === 'INT' || typeStr === 'DOUBLE' || typeStr === 'BOOLEAN') && inputTypeStr !== 'NORMAL') {
-    console.warn(`Type ${typeStr} can only be used with NORMAL input type, got ${inputTypeStr}`);
+  // Validate control combination: INT, DOUBLE, BOOLEAN can only use TEXT
+  if ((typeStr === 'INT' || typeStr === 'DOUBLE' || typeStr === 'BOOLEAN') && controlStr !== 'TEXT') {
+    logger.warn(`Type ${typeStr} can only be used with TEXT control, got ${controlStr}`);
     return null;
   }
 
   return {
     key,
     type: typeStr as 'STRING' | 'INT' | 'DOUBLE' | 'BOOLEAN',
-    inputType: inputTypeStr as 'FOLDER' | 'EMAIL' | 'NORMAL',
+    control: controlStr.toLowerCase() as 'folder' | 'file' | 'text',
     variableName,
     originalValue,
     isRequired
@@ -147,20 +150,6 @@ export const convertUserInputValue = (value: string, type: UserInputVariable['ty
 };
 
 /**
- * Generate user email address (based on alias)
- */
-export const generateUserEmail = (alias: string): string => {
-  // If alias already contains _microsoft suffix, generate email directly
-  if (alias.endsWith('_microsoft')) {
-    const username = alias.replace('_microsoft', '');
-    return `${username}@microsoft.com`;
-  }
-  
-  // Otherwise add suffix then generate email
-  return `${alias}@microsoft.com`;
-};
-
-/**
  * Validate user input value
  */
 export const validateUserInputValue = (value: string, variable: UserInputVariable): { isValid: boolean; error?: string } => {
@@ -177,9 +166,9 @@ export const validateUserInputValue = (value: string, variable: UserInputVariabl
     convertUserInputValue(value, variable.type);
     return { isValid: true };
   } catch (error) {
-    return { 
-      isValid: false, 
-      error: error instanceof Error ? error.message : 'Invalid value' 
+    return {
+      isValid: false,
+      error: error instanceof Error ? error.message : 'Invalid value'
     };
   }
 };
@@ -192,7 +181,7 @@ export const applyUserInputsToEnv = (
   userInputs: Record<string, any>
 ): Record<string, string> => {
   const result = { ...originalEnv };
-  
+
   // 1. Apply user inputs
   for (const [key, value] of Object.entries(userInputs)) {
     if (key in result) {
@@ -200,7 +189,7 @@ export const applyUserInputsToEnv = (
       result[key] = String(value);
     }
   }
-  
+
   // 2. Handle remaining placeholders: Remove optional variables that have no input
   for (const key of Object.keys(result)) {
     const value = result[key];
@@ -208,13 +197,13 @@ export const applyUserInputsToEnv = (
     if (typeof value === 'string' && value.startsWith('@USER_INPUT_')) {
       // Attempt to parse
       const variable = parseUserInputVariable(key, value);
-      
+
       if (variable && !variable.isRequired) {
         // If it's Optional and still a placeholder (meaning no user input overwrote it), remove the env variable
         delete result[key];
       }
     }
   }
-  
+
   return result;
 };

@@ -169,13 +169,13 @@ export class ResourceManager extends EventEmitter {
 
   constructor(config: Partial<ResourceManagerConfig> = {}) {
     super();
-    
+
     this.config = { ...DEFAULT_RESOURCE_CONFIG, ...config };
-    
+
     if (this.config.enableSynchronization) {
       this.startSyncTimer();
     }
-    
+
     this.startCleanupTimer();
   }
 
@@ -194,7 +194,7 @@ export class ResourceManager extends EventEmitter {
     } = {}
   ): string {
     const resourceId = this.generateResourceId(resource.uri, serverId);
-    
+
     // Check if resource already exists
     if (this.resources.has(resourceId)) {
       throw new Error(`Resource ${resource.uri} from server ${serverId} already registered`);
@@ -304,7 +304,7 @@ export class ResourceManager extends EventEmitter {
         } else {
           this.stats.cacheMisses++;
           content = await this.fetchResourceContent(resource);
-          
+
           // Cache the result
           if (this.shouldCache(resource, content)) {
             await this.cacheResource(resourceId, content);
@@ -413,7 +413,7 @@ export class ResourceManager extends EventEmitter {
     }
 
     const size = this.calculateContentSize(content);
-    
+
     // Check size limits
     if (size > this.config.maxResourceSize) {
       return; // Don't cache oversized resources
@@ -459,7 +459,7 @@ export class ResourceManager extends EventEmitter {
    */
   private async ensureCacheCapacity(requiredSize: number): Promise<void> {
     const maxCacheSize = this.config.maxCacheSize;
-    
+
     // Check entry count limit
     while (this.cache.size >= maxCacheSize) {
       const lruEntry = this.findLRUEntry();
@@ -535,7 +535,7 @@ export class ResourceManager extends EventEmitter {
    * Synchronize resources with servers
    */
   async syncResources(resourceIds?: string[]): Promise<void> {
-    const resourcesToSync = resourceIds 
+    const resourcesToSync = resourceIds
       ? resourceIds.map(id => this.resources.get(id)).filter(Boolean) as ResourceMetadata[]
       : Array.from(this.resources.values());
 
@@ -556,7 +556,7 @@ export class ResourceManager extends EventEmitter {
     // In a real implementation, this would check with the server for updates
     // For now, we'll just mark it as synced
     const changes: string[] = [];
-    
+
     // Mock sync logic - would compare versions, checksums, etc.
     const now = Date.now();
     if (now - resource.lastModified > this.config.syncIntervalMs) {
@@ -565,9 +565,9 @@ export class ResourceManager extends EventEmitter {
     }
 
     if (changes.length > 0) {
-      this.emit(ResourceManager.EVENTS.RESOURCE_SYNCED, { 
-        resourceId: resource.id, 
-        changes 
+      this.emit(ResourceManager.EVENTS.RESOURCE_SYNCED, {
+        resourceId: resource.id,
+        changes
       });
 
       // Invalidate cache if resource changed
@@ -590,24 +590,24 @@ export class ResourceManager extends EventEmitter {
     permissions?: string[];
   } = {}): ResourceMetadata[] {
     const resources = Array.from(this.resources.values());
-    
+
     return resources.filter(resource => {
       if (filters.serverId && resource.serverId !== filters.serverId) return false;
       if (filters.mimeType && resource.mimeType !== filters.mimeType) return false;
       if (filters.cached !== undefined && resource.cached !== filters.cached) return false;
-      
+
       if (filters.tags && filters.tags.length > 0) {
         const hasAllTags = filters.tags.every(tag => resource.tags.includes(tag));
         if (!hasAllTags) return false;
       }
-      
+
       if (filters.permissions && filters.permissions.length > 0) {
-        const hasAllPermissions = filters.permissions.every(perm => 
+        const hasAllPermissions = filters.permissions.every(perm =>
           resource.permissions.requiredPermissions.includes(perm)
         );
         if (!hasAllPermissions) return false;
       }
-      
+
       return true;
     });
   }
@@ -617,7 +617,7 @@ export class ResourceManager extends EventEmitter {
    */
   searchResources(query: string): ResourceMetadata[] {
     const lowerQuery = query.toLowerCase();
-    return Array.from(this.resources.values()).filter(resource => 
+    return Array.from(this.resources.values()).filter(resource =>
       resource.name.toLowerCase().includes(lowerQuery) ||
       resource.uri.toLowerCase().includes(lowerQuery) ||
       (resource.description && resource.description.toLowerCase().includes(lowerQuery)) ||
@@ -642,7 +642,7 @@ export class ResourceManager extends EventEmitter {
     }
 
     const permissions = resource.permissions;
-    
+
     if (!permissions.read) {
       return false;
     }
@@ -783,20 +783,20 @@ export class ResourceManager extends EventEmitter {
       failed: number;
     };
   } {
-    const hitRate = this.stats.cacheHits + this.stats.cacheMisses > 0 
+    const hitRate = this.stats.cacheHits + this.stats.cacheMisses > 0
       ? this.stats.cacheHits / (this.stats.cacheHits + this.stats.cacheMisses)
       : 0;
 
-    const averageEntrySize = this.stats.cachedResources > 0 
-      ? this.stats.totalCacheSize / this.stats.cachedResources 
+    const averageEntrySize = this.stats.cachedResources > 0
+      ? this.stats.totalCacheSize / this.stats.cachedResources
       : 0;
 
     const activeOps = Array.from(this.operations.values())
       .filter(op => op.status === 'pending' || op.status === 'in_progress').length;
-    
+
     const completedOps = Array.from(this.operations.values())
       .filter(op => op.status === 'completed').length;
-    
+
     const failedOps = Array.from(this.operations.values())
       .filter(op => op.status === 'failed').length;
 

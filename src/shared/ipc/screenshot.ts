@@ -14,11 +14,11 @@ export interface SelectionRect {
 export interface ScreenshotSettings {
   enabled: boolean;
   shortcut: string;
-  /** Whether shortcut is enabled */
+  /** Whether the shortcut key is enabled */
   shortcutEnabled: boolean;
-  /** Empty string means use system desktop path */
+  /** Empty string means use the system desktop path */
   savePath: string;
-  /** Whether user has rejected the FRE shortcut tutorial prompt */
+  /** Whether the user has already dismissed the FRE shortcut tutorial prompt */
   freRejected: boolean;
 }
 

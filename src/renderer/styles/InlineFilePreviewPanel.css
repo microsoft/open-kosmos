@@ -1,0 +1,472 @@
+/* ===========================
+   InlineFilePreviewPanel — inline file preview panel
+   Acts as a flex sibling of .chat-content in a 50/50 split view
+   =========================== */
+
+.inline-file-preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  overflow: hidden;
+  animation: inlinePreviewSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+@keyframes inlinePreviewSlideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Fullscreen ── */
+.inline-preview-fullscreen:fullscreen {
+  flex: unset;
+  width: 100vw;
+  height: 100vh;
+  border-left: none;
+  animation: none;
+}
+
+/* Ensure the header buttons are clickable in fullscreen on macOS,
+   where the mac-titlebar-region drag area can intercept clicks. */
+.inline-preview-fullscreen:fullscreen .inline-preview-header {
+  -webkit-app-region: no-drag;
+}
+
+/* ── Header ── */
+.inline-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(249, 250, 251, 0.8);
+  flex-shrink: 0;
+  min-height: 40px;
+  gap: 8px;
+}
+
+.inline-preview-file-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.inline-preview-icon {
+  flex-shrink: 0;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+}
+
+.inline-preview-title-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inline-preview-filename {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.inline-preview-mode-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.inline-preview-mode-preview {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.inline-preview-mode-edit {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.inline-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.inline-preview-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inline-preview-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #374151;
+}
+
+.inline-preview-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.inline-preview-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inline-preview-btn-dirty {
+  color: #dc2626;
+  animation: inlinePreviewSavePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes inlinePreviewSavePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.inline-preview-close {
+  margin-left: 4px;
+  position: relative;
+}
+
+.inline-preview-close::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.inline-preview-close:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+/* ── Body ── */
+.inline-preview-body {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.inline-preview-edit-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+}
+
+.inline-preview-save-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* ── Loading ── */
+.inline-preview-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.inline-preview-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid rgba(0, 0, 0, 0.08);
+  border-top-color: #0ea5e9;
+  border-radius: 50%;
+  animation: inlinePreviewSpin 0.8s linear infinite;
+}
+
+@keyframes inlinePreviewSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error ── */
+.inline-preview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: #9ca3af;
+  padding: 24px;
+  text-align: center;
+}
+
+.inline-preview-error svg {
+  color: #f59e0b;
+}
+
+.inline-preview-error p {
+  font-size: 13px;
+  margin: 0;
+  max-width: 300px;
+  word-break: break-word;
+}
+
+/* ── Markdown content ── */
+.inline-preview-markdown {
+  padding: 20px 24px;
+  font-size: 16px;
+  line-height: 1.8;
+  color: #1f2937;
+  overflow-wrap: break-word;
+}
+
+.inline-preview-markdown h1 { font-size: 1.8em; margin: 1em 0 0.5em; font-weight: 700; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 0.3em; }
+.inline-preview-markdown h2 { font-size: 1.5em; margin: 0.9em 0 0.4em; font-weight: 600; }
+.inline-preview-markdown h3 { font-size: 1.25em; margin: 0.8em 0 0.3em; font-weight: 600; }
+.inline-preview-markdown h4,
+.inline-preview-markdown h5,
+.inline-preview-markdown h6 { font-size: 1em; margin: 0.7em 0 0.3em; font-weight: 600; }
+
+.inline-preview-markdown p { margin: 0.6em 0; }
+
+.inline-preview-markdown ul,
+.inline-preview-markdown ol { padding-left: 1.5em; margin: 0.5em 0; }
+
+.inline-preview-markdown ul { list-style-type: disc; }
+.inline-preview-markdown ol { list-style-type: decimal; }
+
+.inline-preview-markdown li { margin: 0.25em 0; }
+
+.inline-preview-markdown code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.92em;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.inline-preview-markdown pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 14px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.inline-preview-markdown pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.inline-preview-markdown blockquote {
+  border-left: 3px solid #0ea5e9;
+  margin: 0.5em 0;
+  padding: 0.3em 1em;
+  color: #4b5563;
+  background: rgba(14, 165, 233, 0.04);
+  border-radius: 0 6px 6px 0;
+}
+
+.inline-preview-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 14px;
+}
+
+.inline-preview-markdown th,
+.inline-preview-markdown td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.inline-preview-markdown th {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.inline-preview-markdown a {
+  color: #0ea5e9;
+  text-decoration: none;
+}
+
+.inline-preview-markdown a:hover {
+  text-decoration: underline;
+}
+
+.inline-preview-markdown img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+
+.inline-preview-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin: 1.2em 0;
+}
+
+/* ── Front-matter table ── */
+.inline-preview-frontmatter {
+  margin-bottom: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.inline-preview-frontmatter table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.inline-preview-frontmatter td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.inline-preview-frontmatter .fm-key {
+  font-weight: 600;
+  color: #6b7280;
+  width: 100px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.inline-preview-frontmatter .fm-val {
+  color: #374151;
+}
+
+/* ── Monaco wrapper ── */
+.inline-preview-monaco-wrapper {
+  height: 100%;
+  position: relative;
+}
+
+.inline-preview-monaco-container {
+  height: 100%;
+  width: 100%;
+}
+
+/* ── iframe (HTML / PDF) ── */
+.inline-preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* ── Fallback (office / unknown) ── */
+.inline-preview-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: #9ca3af;
+  padding: 24px;
+  text-align: center;
+}
+
+.inline-preview-fallback p {
+  font-size: 13px;
+  margin: 0;
+}
+
+.inline-preview-open-btn {
+  padding: 8px 16px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inline-preview-open-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* ── Scrollbar ── */
+.inline-preview-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.inline-preview-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.inline-preview-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+
+.inline-preview-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ── Resizer (drag handle between chat and preview) ── */
+.inline-preview-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s ease;
+}
+
+.inline-preview-resizer:hover,
+.inline-preview-resizer:active {
+  background: rgba(14, 165, 233, 0.3);
+}

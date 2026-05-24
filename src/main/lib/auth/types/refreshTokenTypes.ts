@@ -1,19 +1,19 @@
 // src/main/lib/auth/types/refreshTokenTypes.ts
 
 /**
- * Precise error classification - Six error types based on HTTP status codes
+ * Precise error classification - six error types based on HTTP status codes
  */
 export enum RefreshTokenErrorType {
-  TOKEN_EXPIRED = 'TOKEN_EXPIRED',           // 401 - token expired but refreshable
-  TOKEN_INVALID = 'TOKEN_INVALID',           // 403 - token invalid, cannot refresh
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',           // 401 - token expired but can be refreshed
+  TOKEN_INVALID = 'TOKEN_INVALID',           // 403 - token invalid, cannot be refreshed
   RATE_LIMITED = 'RATE_LIMITED',             // 429 - rate limited
   SERVER_ERROR = 'SERVER_ERROR',             // 5xx - server error
-  NETWORK_ERROR = 'NETWORK_ERROR',           // network connectivity issue
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'            // other unknown errors
+  NETWORK_ERROR = 'NETWORK_ERROR',           // Network connectivity issue
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR'            // Other unknown errors
 }
 
 /**
- * HTTP error info interface
+ * HTTP error information interface
  */
 export interface HttpErrorInfo {
   status: number;
@@ -22,7 +22,7 @@ export interface HttpErrorInfo {
 }
 
 /**
- * Intelligent retry strategy configuration
+ * Smart retry strategy configuration
  */
 export interface RetryStrategy {
   shouldRetry: boolean;
@@ -66,7 +66,7 @@ export interface AuthError {
 }
 
 /**
- * Network error identification rules
+ * Network error recognition rules
  */
 export interface NetworkErrorPattern {
   code?: string;

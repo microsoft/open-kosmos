@@ -1,5 +1,7 @@
 import { createContext, useMemo, useSyncExternalStore, useContext } from 'react';
 import type {  FC, PropsWithChildren } from 'react';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[Context]');
 
 type Reduce<T> = (data: T) => T;
 type Set<T> = (ch: Reduce<T> | T) => void;
@@ -98,13 +100,13 @@ class Model {
   }
 
   public log() {
-    console.log('undo stack:', this.ustack);
-    console.log('redo stack:', this.rstack);
+    logger.debug('undo stack:', this.ustack);
+    logger.debug('redo stack:', this.rstack);
     const snapshots: Record<string, any> = {};
     this.store.forEach((state, name) => {
       snapshots[name] = state.get();
     });
-    console.log('current state:', snapshots);
+    logger.debug('current state:', snapshots);
   }
 
   public undo() {

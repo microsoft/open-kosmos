@@ -1,22 +1,24 @@
 /**
- * Chat Session Operations (Coordination layer refactored version)
+ * Chat Session Operations (coordination layer refactor)
  *
- * Frontend ChatSession operations coordination layer, only interacts with ProfileCacheManager, provides unified operation interface:
- * 1. saveChatSession - Unified save method (automatically determines add/update)
- * 2. deleteChatSession - Unified delete method
- * 3. getChatSessionFile - Get complete data (renamed to align with main process method name)
+ * Frontend ChatSession operation coordination layer; interacts only with ProfileCacheManager
+ * and provides a unified operation interface:
+ * 1. saveChatSession - unified save method (auto-detects add vs. update)
+ * 2. deleteChatSession - unified delete method
+ * 3. getChatSessionFile - get complete data (renamed to align with main-process method name)
  *
  * New architecture notes:
- * - Frontend ChatSessionOpsManager serves as coordination layer: only interacts with ProfileCacheManager
+ * - Frontend ChatSessionOpsManager acts as a coordination layer: only talks to ProfileCacheManager
  * - ProfileCacheManager handles all ChatSession metadata and file management
  * - No longer interacts directly with ChatSessionFileOps
  *
  * Parameter notes:
  * - All methods require alias and chat_id parameters
- * - saveChatSession automatically determines add or update via existChatSession
+ * - saveChatSession auto-determines add vs. update via existChatSession
  */
 
 import { ChatSessionFile } from '../../../main/lib/userDataADO/chatSessionFileOps';
+import { buildChatSessionId, isValidChatSessionIdFormat } from '../../../shared/utils/idFormats';
 
 /**
  * ChatSession operation result interface
@@ -28,7 +30,7 @@ export interface ChatSessionOperationResult {
 }
 
 /**
- * ChatSession list item interface (metadata obtained from ProfileCacheManager)
+ * ChatSession list item interface (metadata from ProfileCacheManager)
  */
 export interface ChatSessionListItem {
   chatSession_id: string;
@@ -37,17 +39,17 @@ export interface ChatSessionListItem {
 }
 
 /**
- * Complete ChatSession data interface (obtained from main process ChatSessionOps)
- * Now directly uses the main process ChatSessionFile type, format is unified
+ * Complete ChatSession data interface (from main-process ChatSessionOps)
+ * Now uses the main-process ChatSessionFile type directly; formats are unified
  */
 export type ChatSessionCompleteData = ChatSessionFile;
 
 /**
  * Frontend ChatSession operations manager
- * 
- * Provides 5 core features using dual backend architecture:
- * - ProfileCacheManager: Metadata management
- * - Main process ChatSessionOps: File operations
+ *
+ * Provides 5 core functions using a dual-backend architecture:
+ * - ProfileCacheManager: metadata management
+ * - Main-process ChatSessionOps: file operations
  */
 export class ChatSessionOpsManager {
   private static instance: ChatSessionOpsManager;
@@ -62,14 +64,12 @@ export class ChatSessionOpsManager {
   }
 
   /**
-   * Validate IPC API availability (changed to only check ProfileCacheManager-related APIs)
+   * Validate IPC API availability
    */
   private validateAPI(): boolean {
     const electronAPI = (window as any).electronAPI;
     return !!(
-      electronAPI?.profile?.existChatSession &&
-      electronAPI?.profile?.addChatSession &&
-      electronAPI?.profile?.updateChatSession &&
+      electronAPI?.profile?.saveChatSession &&
       electronAPI?.profile?.deleteChatSession &&
       electronAPI?.profile?.getChatSessionFile &&
       electronAPI?.profile?.getChatSessions
@@ -77,23 +77,16 @@ export class ChatSessionOpsManager {
   }
 
   /**
-   * Generate ChatSession ID
+   * Generate a ChatSession ID
    */
-  private generateChatSessionId(): string {
-    const now = new Date();
-    const timestamp = now.getFullYear().toString() +
-      (now.getMonth() + 1).toString().padStart(2, '0') +
-      now.getDate().toString().padStart(2, '0') +
-      now.getHours().toString().padStart(2, '0') +
-      now.getMinutes().toString().padStart(2, '0') +
-      now.getSeconds().toString().padStart(2, '0');
-    return `chatSession_${timestamp}`;
+  private async generateChatSessionId(): Promise<string> {
+    const deviceId = await (window as any).electronAPI?.getInstallationDeviceId?.();
+    return buildChatSessionId(deviceId || 'unknown-device');
   }
 
   /**
-   * Unified save ChatSession method (automatically determines add/update)
-   * Only calls ProfileCacheManager methods: existChatSession => addChatSession or updateChatSession
-   * Parameters must include alias, chat_id
+   * Unified ChatSession save method
+   * Calls a single main-process save IPC; the backend store determines whether to create or update
    */
   async saveChatSession(alias: string, chatId: string, chatSession: ChatSessionFile): Promise<ChatSessionOperationResult> {
     try {
@@ -104,65 +97,21 @@ export class ChatSessionOpsManager {
         };
       }
 
-      // Update timestamp
       const updatedChatSession = {
         ...chatSession,
         last_updated: new Date().toISOString()
       };
 
-      // Step 1: Check if ChatSession exists via ProfileCacheManager
-      const existResult = await (window as any).electronAPI.profile.existChatSession(
+      const result = await (window as any).electronAPI.profile.saveChatSession(
         alias,
         chatId,
-        {
-          chatSession_id: updatedChatSession.chatSession_id,
-          last_updated: updatedChatSession.last_updated,
-          title: updatedChatSession.title
-        }
+        updatedChatSession
       );
-
-      if (!existResult.success) {
-        return {
-          success: false,
-          error: `Failed to check session existence: ${existResult.error}`
-        };
-      }
-
-      const isExisting = existResult.data;
-
-      // Step 2: Call the corresponding ProfileCacheManager method based on existence
-      let result;
-      if (isExisting) {
-        // Update existing ChatSession
-        result = await (window as any).electronAPI.profile.updateChatSession(
-          alias,
-          chatId,
-          updatedChatSession.chatSession_id,
-          {
-            chatSession_id: updatedChatSession.chatSession_id,
-            last_updated: updatedChatSession.last_updated,
-            title: updatedChatSession.title
-          },
-          updatedChatSession
-        );
-      } else {
-        // Add new ChatSession
-        result = await (window as any).electronAPI.profile.addChatSession(
-          alias,
-          chatId,
-          {
-            chatSession_id: updatedChatSession.chatSession_id,
-            last_updated: updatedChatSession.last_updated,
-            title: updatedChatSession.title
-          },
-          updatedChatSession
-        );
-      }
 
       if (!result.success) {
         return {
           success: false,
-          error: `Failed to ${isExisting ? 'update' : 'add'} ChatSession: ${result.error}`
+          error: `Failed to save ChatSession: ${result.error}`
         };
       }
 
@@ -180,8 +129,8 @@ export class ChatSessionOpsManager {
   }
 
   /**
-   * Unified delete ChatSession method
-   * Only calls ProfileCacheManager's deleteChatSession, parameters must include alias, chat_id
+   * Unified ChatSession delete method
+   * Calls only ProfileCacheManager's deleteChatSession; parameters must include alias and chat_id
    */
   async deleteChatSession(alias: string, chatId: string, sessionId: string): Promise<ChatSessionOperationResult> {
     try {
@@ -192,7 +141,7 @@ export class ChatSessionOpsManager {
         };
       }
 
-      // Call ProfileCacheManager to delete ChatSession (handles both metadata and file)
+      // Call ProfileCacheManager to delete the ChatSession (handles both metadata and file)
       const result = await (window as any).electronAPI.profile.deleteChatSession(
         alias,
         chatId,
@@ -220,8 +169,8 @@ export class ChatSessionOpsManager {
   }
 
   /**
-   * Get ChatSession list
-   * Calls ProfileCacheManager to get list (session id, last updated, session title)
+   * Get the ChatSession list
+   * Calls ProfileCacheManager to get the list (session id, last updated, session title)
    */
   async getChatSessionList(alias: string, chatId: string): Promise<ChatSessionOperationResult> {
     try {
@@ -232,7 +181,7 @@ export class ChatSessionOpsManager {
         };
       }
 
-      // Call ProfileCacheManager to get session list
+      // Call ProfileCacheManager to get the session list
       const result = await (window as any).electronAPI.profile.getChatSessions(
         alias,
         chatId
@@ -266,9 +215,9 @@ export class ChatSessionOpsManager {
   }
 
   /**
-   * Get complete data for a specified ChatSession (renamed to getChatSessionFile, aligned with main process method name)
-   * 🔥 New architecture: requires chatId parameter to locate ChatSession file
-   * Only calls ProfileCacheManager's getChatSessionFile, parameters must include alias and chatId
+   * Get complete data for the specified ChatSession (renamed to getChatSessionFile to align with main-process method name)
+   * 🔥 New architecture: requires a chatId parameter to locate the ChatSession file
+   * Calls only ProfileCacheManager's getChatSessionFile; parameters must include alias and chatId
    */
   async getChatSessionFile(alias: string, chatId: string, sessionId: string): Promise<ChatSessionOperationResult> {
     try {
@@ -279,7 +228,7 @@ export class ChatSessionOpsManager {
         };
       }
 
-      // Call ProfileCacheManager to get complete ChatSession file data
+      // Call ProfileCacheManager to get the complete ChatSession file data
       const result = await (window as any).electronAPI.profile.getChatSessionFile(
         alias,
         chatId,
@@ -306,13 +255,13 @@ export class ChatSessionOpsManager {
     }
   }
 
-  // ========== Convenience Methods ==========
+  // ========== Convenience methods ==========
 
   /**
    * Create a new ChatSession (convenience method)
    */
   async createNewChatSession(alias: string, chatId: string, title: string = 'New Chat'): Promise<ChatSessionOperationResult> {
-    const sessionId = this.generateChatSessionId();
+    const sessionId = await this.generateChatSessionId();
     const newChatSession: ChatSessionFile = {
       chatSession_id: sessionId,
       last_updated: new Date().toISOString(),
@@ -327,46 +276,46 @@ export class ChatSessionOpsManager {
    * Validate ChatSession ID format
    */
   isValidChatSessionId(sessionId: string): boolean {
-    return /^chatSession_\d{14}$/.test(sessionId);
+    return isValidChatSessionIdFormat(sessionId);
   }
 }
 
 // Export singleton instance
 export const chatSessionOps = ChatSessionOpsManager.getInstance();
 
-// ========== Convenience Functions ==========
+// ========== Convenience functions ==========
 
 /**
- * Save ChatSession (add or update)
+ * Save a ChatSession (add or update)
  */
 export async function saveChatSession(alias: string, chatId: string, chatSession: ChatSessionFile): Promise<ChatSessionOperationResult> {
   return await chatSessionOps.saveChatSession(alias, chatId, chatSession);
 }
 
 /**
- * Delete ChatSession
+ * Delete a ChatSession
  */
 export async function deleteChatSession(alias: string, chatId: string, sessionId: string): Promise<ChatSessionOperationResult> {
   return await chatSessionOps.deleteChatSession(alias, chatId, sessionId);
 }
 
 /**
- * Get ChatSession list
+ * Get the ChatSession list
  */
 export async function getChatSessionList(alias: string, chatId: string): Promise<ChatSessionOperationResult> {
   return await chatSessionOps.getChatSessionList(alias, chatId);
 }
 
 /**
- * Get complete data for a specified ChatSession (renamed to getChatSessionFile)
- * 🔥 New architecture: requires chatId parameter to locate ChatSession file
+ * Get complete data for the specified ChatSession (renamed to getChatSessionFile)
+ * 🔥 New architecture: requires chatId parameter to locate the ChatSession file
  */
 export async function getChatSessionFile(alias: string, chatId: string, sessionId: string): Promise<ChatSessionOperationResult> {
   return await chatSessionOps.getChatSessionFile(alias, chatId, sessionId);
 }
 
 /**
- * Create new ChatSession (convenience function)
+ * Create a new ChatSession (convenience function)
  */
 export async function createNewChatSession(alias: string, chatId: string, title?: string): Promise<ChatSessionOperationResult> {
   return await chatSessionOps.createNewChatSession(alias, chatId, title);

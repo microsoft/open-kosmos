@@ -1,47 +1,47 @@
 /**
- * Configuration Utility Functions
+ * Configuration utility functions
  * VSCode MCP Client configuration adapter utility functions
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { 
-  FileExistsResult, 
-  FileReadableResult, 
-  FileStatsResult, 
+import {
+  FileExistsResult,
+  FileReadableResult,
+  FileStatsResult,
   FileContentResult,
   PlatformInfo,
-  SupportedPlatform 
+  SupportedPlatform
 } from './types';
 
-// ==================== File System Utility Functions ====================
+// ==================== Filesystem utility functions ====================
 
 /**
- * Check if a file exists
+ * Check whether a file exists
  */
 export async function checkFileExists(filePath: string): Promise<FileExistsResult> {
   try {
     await fs.promises.access(filePath, fs.constants.F_OK);
     return { exists: true };
   } catch (error) {
-    return { 
-      exists: false, 
-      error: error instanceof Error ? error.message : 'File does not exist' 
+    return {
+      exists: false,
+      error: error instanceof Error ? error.message : 'File does not exist'
     };
   }
 }
 
 /**
- * Check if a file is readable
+ * Check whether a file is readable
  */
 export async function checkFileReadable(filePath: string): Promise<FileReadableResult> {
   try {
     await fs.promises.access(filePath, fs.constants.R_OK);
     return { readable: true };
   } catch (error) {
-    return { 
-      readable: false, 
+    return {
+      readable: false,
       error: error instanceof Error ? error.message : 'File is not readable'
     };
   }
@@ -87,12 +87,12 @@ export async function readFileContent(filePath: string): Promise<FileContentResu
 }
 
 /**
- * Expand environment variables and user directory in paths
+ * Expand environment variables and user home directory in a path
  */
 export async function expandPath(inputPath: string): Promise<string> {
   let expandedPath = inputPath;
 
-  // Handle ~ user directory
+  // Handle ~ home directory
   if (expandedPath.startsWith('~/')) {
     expandedPath = path.join(os.homedir(), expandedPath.slice(2));
   }
@@ -131,7 +131,7 @@ export async function expandPath(inputPath: string): Promise<string> {
   return path.resolve(expandedPath);
 }
 
-// ==================== Platform Detection Functions ====================
+// ==================== Platform detection functions ====================
 
 /**
  * Get the current platform
@@ -150,11 +150,11 @@ export function getCurrentPlatform(): SupportedPlatform {
 }
 
 /**
- * Check if a platform is supported
+ * Check whether a platform is supported
  */
 export function isPlatformSupported(platform?: SupportedPlatform): boolean {
   const currentPlatform = platform || getCurrentPlatform();
-  // Currently supports macOS and Windows, Linux reserved for future
+  // Currently supports macOS and Windows; Linux is reserved for future use
   return currentPlatform === 'macOS' || currentPlatform === 'Windows';
 }
 
@@ -163,7 +163,7 @@ export function isPlatformSupported(platform?: SupportedPlatform): boolean {
  */
 export function getVSCodeConfigPaths(platform?: SupportedPlatform): string[] {
   const currentPlatform = platform || getCurrentPlatform();
-  
+
   switch (currentPlatform) {
     case 'Windows':
       return [
@@ -202,7 +202,7 @@ export function getVSCodeConfigPaths(platform?: SupportedPlatform): string[] {
 export function getPlatformInfo(platform?: SupportedPlatform): PlatformInfo {
   const currentPlatform = platform || getCurrentPlatform();
   const configPaths = getVSCodeConfigPaths(currentPlatform);
-  
+
   return {
     platform: currentPlatform,
     isSupported: isPlatformSupported(currentPlatform),
@@ -228,23 +228,23 @@ export function getPlatformDisplayName(platform: SupportedPlatform): string {
   }
 }
 
-// ==================== Configuration Format Detection ====================
+// ==================== Configuration format detection ====================
 
 /**
  * Detect configuration file format
  */
 export function detectConfigFormat(filePath: string, content?: string): 'settings.json' | 'mcp.json' | 'unknown' {
   const fileName = path.basename(filePath).toLowerCase();
-  
+
   if (fileName.includes('settings.json')) {
     return 'settings.json';
   }
-  
+
   if (fileName.includes('mcp.json')) {
     return 'mcp.json';
   }
-  
-  // If content is available, try to infer from content structure
+
+  // If content is provided, try to infer format from content structure
   if (content) {
     try {
       const parsed = JSON.parse(content);
@@ -255,10 +255,10 @@ export function detectConfigFormat(filePath: string, content?: string): 'setting
         return 'mcp.json';
       }
     } catch {
-      // Ignore JSON parsing errors
+      // Ignore JSON parse errors
     }
   }
-  
+
   return 'unknown';
 }
 
@@ -277,17 +277,17 @@ export function validateJsonFormat(content: string): { isValid: boolean; error?:
   }
 }
 
-// ==================== Path Utility Functions ====================
+// ==================== Path utility functions ====================
 
 /**
- * Normalize path
+ * Normalize a path
  */
 export function normalizePath(inputPath: string): string {
   return path.normalize(inputPath);
 }
 
 /**
- * Check if a path is absolute
+ * Check whether a path is absolute
  */
 export function isAbsolutePath(inputPath: string): boolean {
   return path.isAbsolute(inputPath);
@@ -312,23 +312,23 @@ export async function ensureDirectoryExists(dirPath: string): Promise<boolean> {
   }
 }
 
-// ==================== Cache Utility Functions ====================
+// ==================== Cache utility functions ====================
 
 /**
- * Generate cache key
+ * Generate a cache key
  */
 export function generateCacheKey(...parts: string[]): string {
   return parts.join(':');
 }
 
 /**
- * Check if cache has expired
+ * Check whether a cache entry has expired
  */
 export function isCacheExpired(timestamp: number, ttl: number): boolean {
   return Date.now() - timestamp > ttl;
 }
 
-// ==================== Debug Utility Functions ====================
+// ==================== Debug utility functions ====================
 
 /**
  * Safe JSON stringify
@@ -357,14 +357,14 @@ export function safeJsonParse<T = any>(str: string): { success: boolean; data?: 
 }
 
 /**
- * Delayed execution
+ * Delay execution
  */
 export function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
- * Create timeout Promise
+ * Create a timeout Promise
  */
 export function createTimeoutPromise<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([

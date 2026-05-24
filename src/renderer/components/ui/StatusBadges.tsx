@@ -1,27 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Badge } from '../ui/badge';
 import { useMCPServers } from '../userData/userDataProvider';
-import { ChatAgent } from '../../lib/userData/types';
 import ContextBadge from './ContextBadge';
 import { profileDataManager } from '../../lib/userData';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { mcpClientCacheManager } from '../../lib/mcp/mcpClientCacheManager';
 
-// Tool conflict detection result interface
-interface ToolConflict {
-  toolName: string;
-  servers: string[];
-}
-
-interface ToolConflictResult {
-  hasConflict: boolean;
-  conflicts: ToolConflict[];
-  message: string;
-}
-
 interface StatusBadgesProps {
-  currentAgent?: ChatAgent | null;
-  agentChat?: any | null; // Generic type since AgentChat is now in main process
   onOpenMcpTools?: () => void;
   onOpenSkills?: () => void;
 }
@@ -34,13 +19,13 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
   onOpenMcpTools
 }) => {
   const { servers } = useMCPServers();
-  
-  // 🔥 New architecture: Get currentChatId from agentChatSessionCacheManager
+
+  // 🔥 New architecture: get currentChatId from agentChatSessionCacheManager
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     agentChatSessionCacheManager.getCurrentChatId()
   );
   const [toolsCount, setToolsCount] = useState(0);
-  
+
   // Subscribe to currentChatId changes
   useEffect(() => {
     const unsubscribe = agentChatSessionCacheManager.subscribeToCurrentChatSessionId(() => {
@@ -49,8 +34,8 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
     });
     return unsubscribe;
   }, []);
-  
-  // 🆕 Refactor: Use mcpClientCacheManager to get available tools
+
+  // 🆕 Refactor: use mcpClientCacheManager to get available tools
   const getAvailableToolsCount = (chatId: string): number => {
     const chat = profileDataManager.getChatConfigs().find(c => c.chat_id === chatId);
     if (!chat || !chat.agent) {
@@ -61,32 +46,32 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
     return tools.length;
   };
 
-  // 🔥 Core logic: Listen for currentChatId and servers changes, use mcpClientCacheManager to calculate tool count
+  // 🔥 Core logic: listen to currentChatId and servers changes, use mcpClientCacheManager to calculate tool count
   useEffect(() => {
     if (!currentChatId) {
       setToolsCount(0);
       return;
     }
-    
+
     const count = getAvailableToolsCount(currentChatId);
     setToolsCount(count);
-  }, [currentChatId, servers]); // Also recalculate when servers change
-  
-  // 🔥 Listen for ProfileDataManager data changes (including agent.mcp_servers config changes)
+  }, [currentChatId, servers]); // Recalculate when servers change
+
+  // 🔥 Listen to ProfileDataManager data changes (includes agent.mcp_servers config changes)
   useEffect(() => {
     const unsubscribe = profileDataManager.subscribe((newData) => {
       if (!currentChatId) {
         return;
       }
-      
+
       // Recalculate tool count
       const count = getAvailableToolsCount(currentChatId);
       setToolsCount(count);
     });
-    
+
     return unsubscribe;
   }, [currentChatId]);
-  
+
   return (
     <Badge
       variant="normal"
@@ -111,7 +96,7 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
     agentChatSessionCacheManager.getCurrentChatId()
   );
   const [skillsCount, setSkillsCount] = useState(0);
-  
+
   // Subscribe to currentChatId changes
   useEffect(() => {
     const unsubscribe = agentChatSessionCacheManager.subscribeToCurrentChatSessionId(() => {
@@ -120,8 +105,8 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
     });
     return unsubscribe;
   }, []);
-  
-  // 🆕 Refactor: Get actual available skills count (similar to mcpClientCacheManager.getAgentSpecificTools logic)
+
+  // 🆕 Refactor: get actual available skills count (similar to mcpClientCacheManager.getAgentSpecificTools logic)
   // Only count skills that actually exist in the global skills list
   const getAvailableSkillsCount = (chatId: string): number => {
     const chat = profileDataManager.getChatConfigs().find(c => c.chat_id === chatId);
@@ -130,39 +115,39 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
     }
     const agentSkillNames = chat.agent.skills || [];
     const globalSkills = profileDataManager.getSkills();
-    
-    // 🔥 Critical fix: Filter out actually existing skills (consistent with getCurrentAgentSkills logic)
+
+    // 🔥 Key fix: filter out actually existing skills (consistent with getCurrentAgentSkills logic)
     const availableSkills = agentSkillNames.filter(skillName =>
       globalSkills.some(s => s.name === skillName)
     );
     return availableSkills.length;
   };
-  
-  // 🔥 Core logic: Listen for currentChatId changes, get current Agent's skills
+
+  // 🔥 Core logic: listen to currentChatId changes, get current Agent's skills
   useEffect(() => {
     if (!currentChatId) {
       setSkillsCount(0);
       return;
     }
-    
+
     // Get actual available skills count
     const count = getAvailableSkillsCount(currentChatId);
     setSkillsCount(count);
   }, [currentChatId]);
-  
-  // 🔥 Listen for ProfileDataManager data changes (including agent.skills config changes and global skills list changes)
+
+  // 🔥 Listen to ProfileDataManager data changes (includes agent.skills config changes and global skills list changes)
   useEffect(() => {
     const unsubscribe = profileDataManager.subscribe((newData) => {
       if (!currentChatId) return;
-      
+
       // Recalculate actual available skills count
       const count = getAvailableSkillsCount(currentChatId);
       setSkillsCount(count);
     });
-    
+
     return unsubscribe;
   }, [currentChatId]);
-  
+
   return (
     <Badge
       variant="normal"
@@ -176,8 +161,6 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
 };
 
 export const StatusBadges: React.FC<StatusBadgesProps> = ({
-  currentAgent,
-  agentChat,
   onOpenMcpTools,
   onOpenSkills
 }) => {
@@ -189,7 +172,7 @@ export const StatusBadges: React.FC<StatusBadgesProps> = ({
       <AvailableToolsBadge
         onOpenMcpTools={onOpenMcpTools}
       />
-      <ContextBadge agentChat={agentChat} />
+      <ContextBadge />
     </div>
   );
 };

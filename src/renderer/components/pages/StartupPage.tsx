@@ -7,16 +7,8 @@ import {
 } from '../../types/startupValidationTypes';
 import { performTwoStageValidation } from '../../lib/startup/startupValidation';
 import '../../styles/StartupPage.css';
-import { APP_NAME, BRAND_NAME } from '@shared/constants/branding';
-
-let appIcon: string;
-try {
-  const iconModule = require(`../../assets/${BRAND_NAME}/app.svg`);
-  appIcon = iconModule.default || iconModule;
-} catch (error) {
-  console.error(`Failed to load app icon for brand ${BRAND_NAME}:`, error);
-  appIcon = '';
-}
+import { APP_NAME } from '@shared/constants/branding';
+import { appIcon } from '../../lib/brandIcon';
 
 interface StartupPageProps {
   onComplete: (result: StartupValidationResult) => void;
@@ -97,32 +89,32 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       ));
       setCurrentStepIndex(0);
       logWithTime('✓ Step state updated to inProgress');
-      
+
       // Add minimum delay to show progress animation
       // Optimized: reduced from 800ms to 400ms
       logWithTime('⏱️ Waiting 400ms for progress animation...');
       await new Promise(resolve => setTimeout(resolve, 400));
       logWithTime('✓ Progress animation delay completed');
-      
+
       // Execute validation
       logWithTime('🔍 Executing performTwoStageValidation()...');
       const validationStartTime = Date.now();
       const result = await performTwoStageValidation();
       const validationDuration = Date.now() - validationStartTime;
       logWithTime(`✓ Validation completed in ${validationDuration}ms`, result);
-      
+
       // Add delay to show validation in progress
       // Optimized: reduced from 600ms to 300ms
       logWithTime('⏱️ Waiting 300ms to show validation in progress...');
       await new Promise(resolve => setTimeout(resolve, 300));
       logWithTime('✓ Validation progress delay completed');
-      
+
       // Update completion status with dynamic label showing found profiles
       const totalProfiles = result.stage2.totalProfiles || 0;
       const finalLabel = totalProfiles > 0
         ? `Scanning local profiles. Found ${totalProfiles} valid profiles`
         : 'Scanning local profiles. No profiles found';
-      
+
       logWithTime('📊 Updating step to completed=true...');
       setSteps(prev => prev.map((step, index) =>
         index === 0 ? {
@@ -135,23 +127,23 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       ));
       logWithTime('✓ Step state updated to completed=true');
       logWithTime('🎯 Progress should now be 100% (1/1 steps completed)');
-      
+
       // Add delay to show completion animation
       // Optimized: reduced from 400ms to 200ms
       logWithTime('⏱️ Waiting 200ms for completion animation...');
       await new Promise(resolve => setTimeout(resolve, 200));
       logWithTime('✓ Completion animation delay completed');
-      
+
       // Save validation result
       logWithTime('💾 Saving validation result...');
       setValidationResult(result);
       logWithTime('✓ Validation result saved');
-      
+
       // All steps completed
       logWithTime('🏁 Setting isCompleted=true...');
       setIsCompleted(true);
       logWithTime('✓ isCompleted flag set to true');
-      
+
       logWithTime('✅ Startup validation completed, recommended action:', result.recommendedAction);
 
       // Add final delay before completion to show final state
@@ -159,17 +151,17 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       logWithTime('⏱️ ⭐ CRITICAL: Waiting 800ms to ensure user sees 100% progress bar...');
       await new Promise(resolve => setTimeout(resolve, 800));
       logWithTime('✓ ⭐ Final display delay completed - user should have seen 100%');
-      
+
       // Complete with proper timing
       logWithTime('🎬 Calling onComplete() to trigger page transition...');
       onComplete(result);
       logWithTime('✓ onComplete() called - page should transition now');
-      
+
     } catch (error) {
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setValidationError(errorMessage);
-      
+
       // Update step to show error
       setSteps(prev => prev.map((step, index) =>
         index === 0 ? {
@@ -179,7 +171,7 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
           error: errorMessage
         } : step
       ));
-      
+
       // Create error result
       const errorResult: StartupValidationResult = {
         stage1: {
@@ -206,10 +198,10 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
         totalDuration: 0,
         completedAt: Date.now()
       };
-      
+
       setValidationResult(errorResult);
       setIsCompleted(true);
-      
+
       // Complete immediately without delay
       onComplete(errorResult);
     }
@@ -217,7 +209,7 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
 
   const completedSteps = steps.filter(step => step.completed).length;
   const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
-  
+
   // Debug: Log progress changes
   React.useEffect(() => {
   }, [progressPercentage, isCompleted]);
@@ -228,11 +220,11 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       <div className="startup-content">
         {/* Logo */}
         <div className="startup-logo-container">
-          <img 
-            src={appIcon} 
-            alt={APP_NAME} 
-            width="128" 
-            height="128" 
+          <img
+            src={appIcon}
+            alt={APP_NAME}
+            width="128"
+            height="128"
           />
         </div>
 

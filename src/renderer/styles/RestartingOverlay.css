@@ -1,0 +1,142 @@
+/* ===========================
+   RestartingOverlay component styles
+   Full-screen restart prompt - similar to OS restart effect
+   =========================== */
+
+.restarting-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+/* ===========================
+   Content container
+   =========================== */
+
+.restarting-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  animation: contentFadeIn 0.5s ease-out 0.2s both;
+}
+
+/* ===========================
+   Icon container
+   =========================== */
+
+.restarting-icon-container {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.restarting-icon {
+  width: 64px;
+  height: 64px;
+  color: #60a5fa;
+  animation: iconSpin 2s linear infinite;
+  filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.5));
+}
+
+/* ===========================
+   Text styles
+   =========================== */
+
+.restarting-text {
+  font-size: 24px;
+  font-weight: 500;
+  color: #e2e8f0;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* ===========================
+   Progress dot animation
+   =========================== */
+
+.restarting-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.restarting-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #60a5fa;
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.restarting-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.restarting-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.restarting-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* ===========================
+   Animation definitions
+   =========================== */
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes iconSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===========================
+   Dark mode adaptation (dark style used by default)
+   =========================== */
+
+/* If adapting to a darker theme is needed */

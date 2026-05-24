@@ -1,6 +1,6 @@
 /**
  * ImportVscodeMcpServerView Component
- * VSCode MCP server import view - vertical layout structure
+ * VSCode MCP server import view - header/content layout
  */
 
 import React from 'react'
@@ -26,11 +26,11 @@ const ImportVscodeMcpServerView: React.FC = () => {
     <div className="content-view">
       {/* Header */}
       <ImportVscodeMcpServerViewHeader onBack={handleBack} />
-      
+
       {/* Content */}
       <div className="content-main">
         <div className="content-container">
-          <ImportVscodeMcpServerViewContent 
+          <ImportVscodeMcpServerViewContent
             onImportComplete={handleImportComplete}
           />
         </div>

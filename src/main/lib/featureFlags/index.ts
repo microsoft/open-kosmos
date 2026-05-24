@@ -1,25 +1,25 @@
 /**
- * Feature Flag Module Export
- * 
+ * Feature Flag Module Exports
+ *
  * Usage (Main Process):
- * 
+ *
  * ```typescript
  * import { featureFlagManager, isFeatureEnabled } from './lib/featureFlags';
- * 
- * // Initialize (call once at application startup)
+ *
+ * // Initialize (call once at app startup)
  * featureFlagManager.initialize();
- * 
- * // Check feature flag
+ *
+ * // Check a feature flag
  * if (isFeatureEnabled('devTools')) {
  *   // Enable developer tools
  * }
  * ```
- * 
- * Define feature flag default values:
+ *
+ * Defining feature flag default values:
  * 1. Static value: defaultValue: false
  * 2. Dynamic logic: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos'
- * 
- * Enable via command line arguments:
+ *
+ * Enable via command-line arguments:
  * --enable-features=flag1,flag2 --disable-features=flag3
  */
 

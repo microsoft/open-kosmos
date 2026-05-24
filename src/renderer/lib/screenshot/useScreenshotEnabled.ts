@@ -3,7 +3,7 @@ import { useFeatureFlag } from '../featureFlags';
 import { appDataManager } from '../userData/appDataManager';
 
 export function useScreenshotEnabled(): boolean {
-  const featureEnabled = useFeatureFlag('kosmosFeatureScreenshot');
+  const featureEnabled = useFeatureFlag('openkosmosFeatureScreenshot');
   const [enabled, setEnabled] = useState<boolean>(
     () => appDataManager.getConfig().screenshotSettings?.enabled ?? false,
   );

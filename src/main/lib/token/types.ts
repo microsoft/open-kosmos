@@ -1,15 +1,15 @@
 /**
- * TokenCounter Type Definitions
- * Defines all types and interfaces used by the token counting system
+ * TokenCounter type definitions
+ * Defines all types and interfaces used by the Token calculation system
  */
 
-import { Message, TextContentPart, ImageContentPart, ToolCall } from '../types/chatTypes';
+import { Message, TextContentPart, ImageContentPart, ToolCall } from '@shared/types/chatTypes';
 
 // Re-export types from chatTypes for convenience
 export type { Message, TextContentPart, ImageContentPart, ToolCall };
 
 /**
- * Token counting configuration
+ * Token counter configuration
  */
 export interface TokenCounterConfig {
   /** TikToken encoder type (defaultEncoding is the common name) */
@@ -96,7 +96,7 @@ export interface ToolsTokenResult {
  * Cache statistics
  */
 export interface CacheStats {
-  /** Current cache entry count */
+  /** Current number of cache entries */
   size: number;
   /** Maximum cache capacity */
   maxSize: number;

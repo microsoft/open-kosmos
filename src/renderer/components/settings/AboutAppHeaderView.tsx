@@ -11,7 +11,7 @@ const AboutIcon = () => (
 
 const AboutAppHeaderView: React.FC = () => {
   const brandDisplayName = BRAND_CONFIG.productName || APP_NAME;
-  
+
   return (
     <div className="unified-header">
       <div className="header-title">

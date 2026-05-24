@@ -1,6 +1,6 @@
 /**
  * Refactored Logger System - Cache Object
- * 
+ *
  * Represents a cache object that holds log entries in memory
  */
 
@@ -21,9 +21,9 @@ export class CacheObject {
   }
 
   /**
-   * Add a log to the cache
-   * @param logEntry - Log entry to add
-   * @returns Whether the addition was successful
+   * Add a log entry to the cache
+   * @param logEntry - The log entry to add
+   * @returns Whether the entry was added successfully
    */
   addLog(logEntry: LogEntry): boolean {
     if (this.isFull()) {
@@ -36,15 +36,15 @@ export class CacheObject {
   }
 
   /**
-   * Check if full
-   * @returns Whether the cache has reached maximum capacity
+   * Check whether the cache is full
+   * @returns Whether the cache has reached its maximum capacity
    */
   isFull(): boolean {
     return this.logs.length >= this.maxCapacity;
   }
 
   /**
-   * Check if empty
+   * Check whether the cache is empty
    * @returns Whether the cache is empty
    */
   isEmpty(): boolean {
@@ -52,8 +52,8 @@ export class CacheObject {
   }
 
   /**
-   * Get current length
-   * @returns Number of log entries currently in the cache
+   * Get the current length
+   * @returns The number of log entries currently in the cache
    */
   getLength(): number {
     return this.logs.length;
@@ -68,8 +68,8 @@ export class CacheObject {
   }
 
   /**
-   * Get detailed cache object information
-   * @returns Cache object statistics
+   * Get detailed information about the cache object
+   * @returns Statistics for the cache object
    */
   getStats(): {
     id: string;
@@ -94,20 +94,20 @@ export class CacheObject {
   }
 
   /**
-   * Get logs within a specified time range from the cache
+   * Get log entries within a specified time range from the cache
    * @param startTime - Start time
    * @param endTime - End time
-   * @returns Array of log entries within the time range
+   * @returns Array of log entries matching the time range
    */
   getLogsByTimeRange(startTime: Date, endTime: Date): LogEntry[] {
-    return this.logs.filter(log => 
+    return this.logs.filter(log =>
       log.timestamp >= startTime && log.timestamp <= endTime
     );
   }
 
   /**
-   * Get logs of specified levels from the cache
-   * @param levels - Array of log levels to filter
+   * Get log entries of specified levels from the cache
+   * @param levels - Array of log levels to filter by
    * @returns Array of log entries matching the specified levels
    */
   getLogsByLevels(levels: string[]): LogEntry[] {
@@ -115,8 +115,8 @@ export class CacheObject {
   }
 
   /**
-   * Clone cache object (deep copy of log data)
-   * @returns New cache object instance
+   * Clone the cache object (deep copy of log data)
+   * @returns A new cache object instance
    */
   clone(): CacheObject {
     const clonedCache = new CacheObject(this.maxCapacity);
@@ -138,7 +138,7 @@ export class CacheObject {
   }
 
   /**
-   * Validate cache object integrity
+   * Validate the integrity of the cache object
    * @returns Validation result
    */
   validateIntegrity(): { isValid: boolean; errors: string[] } {

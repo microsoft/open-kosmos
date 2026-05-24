@@ -1,9 +1,10 @@
 import React, { useLayoutEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { FolderPlus, Plus } from 'lucide-react';
+import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 
 interface SkillsAddMenuDropdownProps {
   skillsAddMenuRef: React.RefObject<HTMLDivElement>;
-  position: { top: number; left: number };
+  position: AnchoredDropdownPosition;
   onClose: () => void;
 }
 
@@ -12,35 +13,24 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
   position,
   onClose
 }) => {
-  const handleAddFromDevice = (e: React.MouseEvent) => {
+  const handleAddFromDeviceArtifact = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    // Trigger add from local device event
-    window.dispatchEvent(new CustomEvent('skills:addFromDevice'));
+    window.dispatchEvent(new CustomEvent('skills:addFromDeviceArtifact'));
+    onClose();
+  };
+
+  const handleAddFromDeviceFolder = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('skills:addFromDeviceFolder'));
     onClose();
   };
 
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
     if (skillsAddMenuRef.current) {
-      const rect = skillsAddMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      // Check if we have triggerTop info (passed via position prop extension)
-      const triggerTop = (position as any).triggerTop;
-      
-      if (rect.bottom > windowHeight - padding) {
-        // If it overflows bottom, try to position above the trigger
-        if (triggerTop !== undefined) {
-           const newTop = triggerTop - rect.height - 4;
-           skillsAddMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        } else {
-           // Fallback to just shifting up if no trigger info
-           const newTop = windowHeight - rect.height - padding;
-           skillsAddMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        }
-      }
+      adjustAnchoredDropdownToViewport(skillsAddMenuRef.current, position);
     }
   }, [position]);
 
@@ -56,11 +46,19 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
     >
       <button
         className="dropdown-menu-item"
-        onClick={handleAddFromDevice}
+        onClick={handleAddFromDeviceArtifact}
         role="menuitem"
       >
         <span className="dropdown-menu-item-icon"><Plus size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">Add from Device</span>
+        <span className="dropdown-menu-item-text">Add from Device (.zip/.skill)</span>
+      </button>
+      <button
+        className="dropdown-menu-item"
+        onClick={handleAddFromDeviceFolder}
+        role="menuitem"
+      >
+        <span className="dropdown-menu-item-icon"><FolderPlus size={16} strokeWidth={1.5} /></span>
+        <span className="dropdown-menu-item-text">Add from Device (folder)</span>
       </button>
     </div>
   );

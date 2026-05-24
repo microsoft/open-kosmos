@@ -1,7 +1,7 @@
 /**
  * Unified Logger System - Save Log Manager (Singleton)
  *
- * Class SaveLog - Responsible for saving cached log objects to disk
+ * Class save-log - Responsible for saving cached log objects to disk
  */
 
 import { UnifiedLoggerConfig, FileOperationResult } from './types';
@@ -37,15 +37,15 @@ export class SaveLogManager {
       totalSaveTime: 0,
       averageSaveTime: 0
     };
-    
-    // Perform initial cleanup asynchronously (only runs once at application startup)
+
+    // Perform initial cleanup asynchronously (only once at app startup)
     this.performInitialCleanup();
   }
 
   /**
-   * Get singleton instance
-   * @param config - Configuration object (only used during first creation)
-   * @param pendingSaveQueue - Pending save queue (only used during first creation)
+   * Get the singleton instance
+   * @param config - Configuration object (only used on first creation)
+   * @param pendingSaveQueue - Pending save queue (only used on first creation)
    * @returns SaveLogManager instance
    */
   public static getInstance(config?: UnifiedLoggerConfig, pendingSaveQueue?: PendingSaveQueue): SaveLogManager {
@@ -59,11 +59,11 @@ export class SaveLogManager {
   }
 
   /**
-   * Receive notification from CacheLog, triggering the save log method
+   * Receive a notification from "cache log" and trigger the save log method
    */
   public notifyPendingSaveAvailable(): void {
     try {
-      // Start async save immediately without waiting for results
+      // Start asynchronous save immediately without waiting for the result
       this.saveLogsToDisk().catch(error => {
       });
     } catch (error) {
@@ -80,9 +80,9 @@ export class SaveLogManager {
     const startTime = Date.now();
 
     try {
-      // While(pending save queue is not empty)
+      // While (pending save queue is not empty)
       while (!this.pendingSaveQueue.isEmpty()) {
-        // Sequentially dequeue cache objects from pending save queue and write to disk log file
+        // Dequeue cache objects from the pending save queue and write them to disk log files
         const cacheObject = this.pendingSaveQueue.dequeue();
         if (cacheObject) {
           await this.writeCacheObjectToDisk(cacheObject);
@@ -98,16 +98,16 @@ export class SaveLogManager {
   }
 
   /**
-   * Manually invoke save log method (for "logs to disk" and app shutdown)
+   * Manually trigger the save log method (used for "logs to disk" and app shutdown)
    */
   public async manualSave(): Promise<void> {
-    // Cleanup operations are only performed during manual saves
+    // Cleanup is only performed on manual save
     await this.cleanupOldLogFiles();
     await this.saveLogsToDisk();
   }
 
   /**
-   * Perform cleanup during initialization (only runs once at application startup)
+   * Perform cleanup on initialization (only executed once at app startup)
    */
   private async performInitialCleanup(): Promise<void> {
     try {
@@ -135,13 +135,13 @@ export class SaveLogManager {
   }
 
   /**
-   * Write cache object to disk
-   * @param cacheObject - Cache object to write
+   * Write a cache object to disk
+   * @param cacheObject - The cache object to write
    */
   private async writeCacheObjectToDisk(cacheObject: CacheObject): Promise<void> {
     try {
       const result = await FileOps.writeCacheObjectToDisk(cacheObject, this.logDirectory);
-      
+
       if (result.success) {
         this.saveStats.totalFilesWritten++;
         this.saveStats.totalBytesWritten += result.bytesWritten || 0;
@@ -173,7 +173,7 @@ export class SaveLogManager {
   }
 
   /**
-   * Get current save status
+   * Get the current save status
    * @returns Current status information
    */
   public getStatus(): {
@@ -196,15 +196,15 @@ export class SaveLogManager {
    */
   public updateConfig(newConfig: Partial<UnifiedLoggerConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    
-    // If log directory changed, update it
+
+    // If the log directory changes, update the directory
     if (newConfig.LOGGER_DIRECTORY) {
       this.logDirectory = newConfig.LOGGER_DIRECTORY;
     }
   }
 
   /**
-   * Get current configuration
+   * Get the current configuration
    * @returns Current configuration object
    */
   public getConfig(): UnifiedLoggerConfig {
@@ -220,7 +220,7 @@ export class SaveLogManager {
   }
 
   /**
-   * Validate log directory
+   * Validate the log directory
    * @returns Validation result
    */
   public async validateLogDirectory(): Promise<ReturnType<typeof FileOps.validateLogDirectory>> {
@@ -236,7 +236,7 @@ export class SaveLogManager {
   }
 
   /**
-   * Get all log file information
+   * Get information about all log files
    * @returns Array of log file information
    */
   public async getAllLogFiles(): Promise<ReturnType<typeof FileOps.getAllLogFiles>> {
@@ -244,8 +244,8 @@ export class SaveLogManager {
   }
 
   /**
-   * Force save a single cache object (for emergency situations)
-   * @param cacheObject - Cache object to save
+   * Force save a single cache object (for emergency use)
+   * @param cacheObject - The cache object to save
    * @returns Save result
    */
   public async forceSaveCacheObject(cacheObject: CacheObject): Promise<FileOperationResult> {
@@ -253,7 +253,7 @@ export class SaveLogManager {
   }
 
   /**
-   * Get detailed information of the pending save queue
+   * Get detailed information about the pending save queue
    * @returns Queue detailed information
    */
   public getPendingSaveQueueInfo(): ReturnType<PendingSaveQueue['getDetailedInfo']> {
@@ -261,7 +261,7 @@ export class SaveLogManager {
   }
 
   /**
-   * Validate SaveLogManager integrity
+   * Validate the integrity of SaveLogManager
    * @returns Validation result
    */
   public validateIntegrity(): { isValid: boolean; errors: string[] } {
@@ -321,16 +321,16 @@ export class SaveLogManager {
 
   /**
    * Wait for the current save operation to complete
-   * @param timeoutMs - Timeout duration (milliseconds)
-   * @returns Whether it completed before timeout
+   * @param timeoutMs - Timeout in milliseconds
+   * @returns Whether it completed before the timeout
    */
   public async waitForSaveComplete(timeoutMs: number = 10000): Promise<boolean> {
     const startTime = Date.now();
-    
+
     while (this.isSaving && (Date.now() - startTime) < timeoutMs) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     return !this.isSaving;
   }
 
@@ -349,14 +349,14 @@ export class SaveLogManager {
   }
 
   /**
-   * Reset singleton instance (primarily for testing)
+   * Reset the singleton instance (primarily for testing)
    */
   public static resetInstance(): void {
     SaveLogManager.instance = undefined as any;
   }
 
   /**
-   * Check if initialized
+   * Check whether the manager has been initialized
    * @returns Whether it is initialized
    */
   public static isInitialized(): boolean {

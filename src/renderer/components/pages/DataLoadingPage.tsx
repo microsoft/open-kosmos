@@ -42,7 +42,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
 
     // When ProfileDataManager first sync is complete, data is ready
     if (isInitialized) {
-      
+
       // Add a small delay to let users see the loading completion status
       setTimeout(() => {
         onDataReady();
@@ -57,7 +57,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
 
   const getLoadingMessage = (): string => {
     const elapsed = Math.floor(elapsedTime / 1000);
-    
+
     if (elapsed < 2) {
       return 'Connecting to server';
     } else if (elapsed < 5) {
@@ -73,7 +73,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
 
   const getProgressPercentage = (): number => {
     const elapsed = Math.floor(elapsedTime / 1000);
-    
+
     if (!isInitialized) {
       // Time-based progress estimation while waiting for first sync
       if (elapsed < 3) return Math.min(elapsed * 20, 60);
@@ -116,7 +116,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
           {/* Loading progress */}
           <div className="data-loading-progress-section">
             <div className="data-loading-progress-bar">
-              <div 
+              <div
                 className="data-loading-progress-fill"
                 style={{ width: `${getProgressPercentage()}%` }}
               ></div>
@@ -139,18 +139,11 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
                 Initialize user configuration {isInitialized ? '✓' : '...'}
               </span>
             </div>
-            
+
             <div className="data-loading-detail-item">
               <div className={`data-loading-detail-indicator ${data?.chats && data.chats.length >= 0 ? 'completed' : 'loading'}`}></div>
               <span className={`data-loading-detail-text ${data?.chats && data.chats.length >= 0 ? 'completed' : 'loading'}`}>
                 Load Chat configurations {data?.chats && data.chats.length >= 0 ? '✓' : '...'}
-              </span>
-            </div>
-            
-            <div className="data-loading-detail-item">
-              <div className={`data-loading-detail-indicator ${data?.mcp_servers && data.mcp_servers.length >= 0 ? 'completed' : 'loading'}`}></div>
-              <span className={`data-loading-detail-text ${data?.mcp_servers && data.mcp_servers.length >= 0 ? 'completed' : 'loading'}`}>
-                Connect MCP servers {data?.mcp_servers && data.mcp_servers.length >= 0 ? '✓' : '...'}
               </span>
             </div>
           </div>

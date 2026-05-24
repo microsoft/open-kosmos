@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: false,
   content: [
     './src/renderer/**/*.{ts,tsx}',
     './src/renderer/index.html',
@@ -16,7 +15,7 @@ module.exports = {
     },
     extend: {
       colors: {
-        // Light Mode color scheme
+        // Brand-new Light Mode color scheme
         glass: {
           white: "rgba(255, 255, 255, 0.8)",
           light: "rgba(255, 255, 255, 0.6)",
@@ -92,7 +91,5 @@ module.exports = {
       },
     },
   },
-  plugins: [
-    require('@tailwindcss/typography'),
-  ],
+  plugins: [],
 }

@@ -1,19 +1,19 @@
-# Local development environment configuration - force building native modules from source
-# Usage: cp .npmrc.local .npmrc
+# 本地开发环境配置 - 强制从源码构建原生模块
+# 使用方法: cp .npmrc.local .npmrc
 
-# Electron Builder Configuration
+# Electron Builder 配置
 electron_mirror=https://npmmirror.com/mirrors/electron/
 electron_builder_binaries_mirror=https://npmmirror.com/mirrors/electron-builder-binaries/
 
-# ⚠️ Local development: force build from source to ensure architecture match
+# ⚠️ 本地开发: 强制从源码构建,确保架构匹配
 build_from_source=true
 
-# better-sqlite3 - build from source
+# better-sqlite3 - 从源码构建
 npm_config_build_from_source=true
 
-# Sharp - allow building from source
+# Sharp - 允许从源码构建
 sharp_binary_host=
 sharp_libvips_binary_host=
 
-# Skip native builds for optional dependencies
+# 跳过可选依赖的原生构建
 node_gyp_force_process_config=0

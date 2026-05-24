@@ -1,5 +1,5 @@
 // src/renderer/components/auth/ReauthProvider.tsx - V2.0
-// Listen for tokenMonitor require_reauth event and display full-screen re-authentication dialog
+// Listens to tokenMonitor's require_reauth event and shows a full-screen re-authentication Dialog
 import React, { useEffect, useState } from 'react';
 import { useAuthContext } from './AuthProvider';
 import { ReauthDialog } from './ReauthDialog';
@@ -16,16 +16,16 @@ export const ReauthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   useEffect(() => {
-    
-    // Only listen for tokenMonitor:require_reauth event
+
+    // Only listen for the tokenMonitor:require_reauth event
     const handleRequireReauth = (event: CustomEvent) => {
-      
+
       const { reason, userMessage } = event.detail;
-      
+
       setReauthState({
         isOpen: true,
         reason: reason || 'token_expired',
-        userMessage: userMessage || 'Authentication has expired. Please sign in again'
+        userMessage: userMessage || 'Authentication credentials have expired, please sign in again'
       });
     };
 
@@ -39,36 +39,36 @@ export const ReauthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { signOut } = useAuthContext();
 
   const handleGitHubCopilotLogin = async () => {
-    
+
     try {
-      
-      // Step 1: Use AuthContext's signOut to clean current auth - main process handles complete cleanup flow
+
+      // Step 1: Use AuthContext's signOut to clean up current auth - main process will handle the full cleanup flow
       const cleanupStart = Date.now();
       await signOut();
       const cleanupDuration = Date.now() - cleanupStart;
-      
-      // Close dialog
+
+      // Close Dialog
       setReauthState({
         isOpen: false
       });
-      
-      // Dispatch sign-out event to let app re-render to sign-in page
+
+      // Dispatch sign-out event to re-render the app to the login page
       window.dispatchEvent(new CustomEvent('auth:signOut', {
         detail: {
           reason: 'reauth_initiated',
           source: 'ReauthProvider',
-          comprehensiveCleanup: true // Flag that comprehensive cleanup has been performed
+          comprehensiveCleanup: true // Flag that full cleanup has been performed
         }
       }));
-      
-      
+
+
     } catch (error) {
-      
-      // Try to clean up state even if an error occurs
+
+      // Try to clean up state even on error
       setReauthState({
         isOpen: false
       });
-      
+
       // Force dispatch sign-out event
       window.dispatchEvent(new CustomEvent('auth:signOut', {
         detail: {

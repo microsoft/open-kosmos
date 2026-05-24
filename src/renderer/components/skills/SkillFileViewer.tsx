@@ -17,9 +17,9 @@ interface SkillFileViewerProps {
 // Front Matter table component
 const FrontMatterTable: React.FC<{ frontMatter: FrontMatter }> = ({ frontMatter }) => {
   const entries = Object.entries(frontMatter)
-  
+
   if (entries.length === 0) return null
-  
+
   return (
     <div className="skill-file-frontmatter">
       <table className="skill-file-frontmatter-table">
@@ -36,7 +36,7 @@ const FrontMatterTable: React.FC<{ frontMatter: FrontMatter }> = ({ frontMatter 
   )
 }
 
-// Code highlighting component (simple implementation)
+// Code highlight component (simple implementation)
 const CodeBlock: React.FC<{ code: string; language: string }> = ({ code, language }) => {
   return (
     <div className="skill-file-code-block">
@@ -106,7 +106,7 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
       return (
         <div className="skill-file-unsupported">
           <FileText size={48} color="#9c9c9c" strokeWidth={1} />
-          <span className="skill-file-unsupported-text">Preview not supported for this format</span>
+          <span className="skill-file-unsupported-text">This format is not supported for preview</span>
           <span className="skill-file-unsupported-hint">
             File type: {fileInfo.extension ? `.${fileInfo.extension}` : 'Unknown'}
           </span>
@@ -123,7 +123,7 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
       )
     }
 
-    // Render content by file type
+    // Render content based on file type
     switch (fileInfo.extension) {
       case 'md':
         // Markdown rendering (supports YAML front matter and GFM tables)
@@ -134,7 +134,7 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownContent}</ReactMarkdown>
           </div>
         )
-      
+
       case 'js':
       case 'jsx':
       case 'ts':
@@ -148,12 +148,12 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
       case 'xml':
         // Code file rendering
         return (
-          <CodeBlock 
-            code={fileInfo.content} 
-            language={getLanguageDisplayName(fileInfo.extension)} 
+          <CodeBlock
+            code={fileInfo.content}
+            language={getLanguageDisplayName(fileInfo.extension)}
           />
         )
-      
+
       default:
         // Plain text rendering
         return (
@@ -166,9 +166,9 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
 
   return (
     <div className="skill-file-viewer">
-      {/* Header: File name and back button */}
+      {/* Header: file name and back button */}
       <div className="skill-file-viewer-header">
-        <button 
+        <button
           className="skill-file-back-btn"
           onClick={onBack}
           title="Back to folder"
@@ -176,10 +176,10 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
           <ChevronLeft size={20} strokeWidth={2} />
         </button>
         <div className="skill-file-info">
-          <FileText 
-            size={18} 
-            color={getFileIconColor(fileInfo.extension)} 
-            strokeWidth={1.5} 
+          <FileText
+            size={18}
+            color={getFileIconColor(fileInfo.extension)}
+            strokeWidth={1.5}
           />
           <span className="skill-file-name">{fileInfo.fileName}</span>
           <span className="skill-file-type">
@@ -188,7 +188,7 @@ const SkillFileViewer: React.FC<SkillFileViewerProps> = ({
         </div>
       </div>
 
-      {/* Content: File content */}
+      {/* Content: file content */}
       <div className="skill-file-viewer-content">
         {renderContent()}
       </div>

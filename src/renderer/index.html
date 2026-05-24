@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="
-        default-src 'self'; 
-        script-src 'self' 'unsafe-inline' 'unsafe-eval'; 
-        style-src 'self' 'unsafe-inline' https:; 
-        img-src 'self' data: https: file:;
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        style-src 'self' 'unsafe-inline' https:;
+        img-src 'self' data: blob: https: file:;
         font-src 'self' data: https:;
-        connect-src 'self' https:;
+        connect-src 'self' https:<%= connectSrcExtra %>;
         media-src 'self' file:;
-        frame-src 'self' file: blob: https://view.officeapps.live.com https://*.microsoft.com https://www.youtube.com https://youtube.com;
+        frame-src 'self' file: blob: https://www.youtube.com https://youtube.com;
     ">
     <title>
         <%= htmlWebpackPlugin.options.title %>
@@ -21,16 +21,16 @@
         console.log('🔥 [HTML] Page script execution started');
         console.log('🔥 [HTML] Current time:', new Date().toLocaleString());
         console.log('🔥 [HTML] User agent:', navigator.userAgent);
-        
+
         // Global polyfill for Electron renderer process
         if (typeof global === 'undefined') {
             var global = globalThis;
         }
         window.global = global;
-        
+
         // Polyfill removed: Webpack 5 has built-in support for require() in dev mode
         // The simplistic polyfill was breaking HMR by returning empty objects
-        
+
         console.log('🔥 [HTML] Global variables setup completed');
     </script>
     <style>
@@ -44,14 +44,14 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
-        
+
         #root {
             width: 100vw;
             height: 100vh;
             display: flex;
             flex-direction: column;
         }
-        
+
         .loading {
             display: flex;
             align-items: center;
@@ -62,7 +62,7 @@
             color: #525252;
             letter-spacing: 0.01em;
         }
-        
+
         .loading::after {
             content: '';
             width: 18px;
@@ -73,7 +73,7 @@
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -85,5 +85,6 @@
         <div class="loading">Starting <%= htmlWebpackPlugin.options.productName %>
         </div>
     </div>
+    <%- entryScript %>
 </body>
 </html>

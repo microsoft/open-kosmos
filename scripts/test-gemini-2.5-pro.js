@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 
 /**
- * GitHub Copilot Gemini 2.5 Pro Model API Test Script
+ * GitHub Copilot Gemini 2.5 Pro model call test script
  * Based on vscode-copilot-chat implementation
  */
 
 const https = require('https');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
-// GitHub Copilot auth info - set environment variables or replace with actual tokens
+// GitHub Copilot authentication info — set environment variables or replace with actual tokens
 const TOKENS = {
     "refresh": process.env.GITHUB_COPILOT_REFRESH_TOKEN || "YOUR_REFRESH_TOKEN_HERE",
     "access": process.env.GITHUB_COPILOT_ACCESS_TOKEN || "YOUR_ACCESS_TOKEN_HERE",
-    "expires": parseInt(process.env.GITHUB_COPILOT_TOKEN_EXPIRES) || Date.now() + 24 * 60 * 60 * 1000 // Defaults to 24 hours from now
+    "expires": parseInt(process.env.GITHUB_COPILOT_TOKEN_EXPIRES) || Date.now() + 24 * 60 * 60 * 1000 // default expires in 24 hours
 };
 
 // Verify tokens are set
 if (TOKENS.refresh === "YOUR_REFRESH_TOKEN_HERE" || TOKENS.access === "YOUR_ACCESS_TOKEN_HERE") {
-    console.error('❌ Please set GitHub Copilot auth info:');
+    console.error('❌ Please set GitHub Copilot authentication info:');
     console.error('   export GITHUB_COPILOT_REFRESH_TOKEN="your_refresh_token"');
     console.error('   export GITHUB_COPILOT_ACCESS_TOKEN="your_access_token"');
     console.error('   export GITHUB_COPILOT_TOKEN_EXPIRES="timestamp"');
     process.exit(1);
 }
 
-// Model ID (based on fetched model list)
+// Model ID (based on retrieved model list)
 const GEMINI_2_5_PRO_MODEL = 'gemini-2.5-pro';
 
 // CAPI endpoint configuration
@@ -61,9 +61,9 @@ function createChatCompletionRequest(messages, modelId = GEMINI_2_5_PRO_MODEL, o
  */
 function sendChatRequest(requestBody) {
     return new Promise((resolve, reject) => {
-        const requestId = uuidv4();
-        const sessionId = uuidv4();
-        const machineId = uuidv4();
+        const requestId = randomUUID();
+        const sessionId = randomUUID();
+        const machineId = randomUUID();
         
         const postData = JSON.stringify(requestBody);
         
@@ -126,24 +126,24 @@ function sendChatRequest(requestBody) {
  * Complex reasoning task test
  */
 async function testComplexReasoning() {
-    console.log('🧠 Testing complex reasoning...\n');
-    
+    console.log('🧠 Testing complex reasoning ability...\n');
+
     const messages = [
         {
             role: "user",
             content: `Please solve this logic puzzle:
 
-A company has 5 employees: Alice, Bob, Carol, David, and Eve. Their job positions are: Manager, Engineer, Designer, Analyst, and Sales.
+A company has 5 employees: Alice, Bob, Carol, David, Eve. Their job roles are: Manager, Engineer, Designer, Analyst, Sales.
 
-Given conditions:
-1. Alice is not the Manager, nor Sales
-2. Bob's position has more letters than Carol's
-3. David is either the Analyst or the Engineer
+Known conditions:
+1. Alice is neither the Manager nor Sales
+2. Bob's role has more letters than Carol's
+3. David is either the Analyst or Engineer
 4. Eve is not the Designer
 5. Carol is not the Manager
-6. The Manager's name has fewer letters than the Engineer's name
+6. The Manager's name has fewer letters than the Engineer's
 
-Please determine each person's specific position and explain your reasoning process in detail.`
+Please deduce each person's specific role and explain the reasoning process in detail.`
         }
     ];
 
@@ -153,16 +153,16 @@ Please determine each person's specific position and explain your reasoning proc
     });
 
     console.log('📤 Sending complex reasoning task...\n');
-    
+
     const response = await sendChatRequest(requestBody);
-    
+
     if (response.choices && response.choices.length > 0) {
         console.log('💬 Reasoning result:');
         console.log('-------------------');
         console.log(response.choices[0].message.content);
         console.log('-------------------');
     }
-    
+
     return response;
 }
 
@@ -170,12 +170,12 @@ Please determine each person's specific position and explain your reasoning proc
  * Code analysis task test
  */
 async function testCodeAnalysis() {
-    console.log('\n💻 Testing code analysis...\n');
+    console.log('\n💻 Testing code analysis ability...\n');
     
     const messages = [
         {
             role: "user",
-            content: `Please analyze the following JavaScript code, find potential issues and provide optimization suggestions:
+            content: `Please analyze the following JavaScript code, identify potential issues and provide optimization suggestions:
 
 \`\`\`javascript
 function processData(data) {
@@ -207,7 +207,7 @@ var output = processData(inputData);
 console.log(output);
 \`\`\`
 
-Please analyze from the following aspects:
+Please analyze from the following perspectives:
 1. Code quality issues
 2. Potential runtime errors
 3. Performance optimization suggestions
@@ -221,16 +221,16 @@ Please analyze from the following aspects:
     });
 
     console.log('📤 Sending code analysis task...\n');
-    
+
     const response = await sendChatRequest(requestBody);
-    
+
     if (response.choices && response.choices.length > 0) {
         console.log('💬 Analysis result:');
         console.log('-------------------');
         console.log(response.choices[0].message.content);
         console.log('-------------------');
     }
-    
+
     return response;
 }
 
@@ -238,51 +238,51 @@ Please analyze from the following aspects:
  * Long text processing test
  */
 async function testLongContextHandling() {
-    console.log('\n📚 Testing long text processing...\n');
-    
-    const longText = `
-Artificial Intelligence (AI) is a branch of computer science that aims to create systems capable of performing tasks that typically require human intelligence. Since the 1950s, artificial intelligence has experienced multiple waves of development and periods of decline.
+    console.log('\n📚 Testing long text processing ability...\n');
 
-Early Development Phase (1950s-1970s):
-During this phase, researchers were highly optimistic, believing that general artificial intelligence could be achieved soon. The 1956 Dartmouth Conference is considered the birthmark of artificial intelligence. Early successes included logic reasoning programs, chess programs, and simple natural language processing systems.
+    const longText = `
+Artificial Intelligence (AI) is a branch of computer science that aims to create systems capable of performing tasks that normally require human intelligence. Since the 1950s, AI has experienced multiple waves of development and stagnation.
+
+Early development phase (1950s-1970s):
+During this phase, researchers were optimistic, believing general AI would soon be achieved. The 1956 Dartmouth Conference is considered the birth of AI. Early successes included logic reasoning programs, chess programs, and simple natural language processing systems.
 
 First AI Winter (1970s-1980s):
-As limitations in computing power and a deeper understanding of problem complexity emerged, AI research faced setbacks. Funding was cut and research stagnated. However, there were also important advances during this period, such as the development of expert systems.
+As computational limitations and the complexity of problems became apparent, AI research hit setbacks. Funding was cut and research stagnated. However, important advances were made during this period, such as the development of expert systems.
 
-Revival and Second Boom (1980s-1990s):
-The commercial success of expert systems brought a new round of investment. Progress was made in machine learning, neural networks, and other fields. But bottlenecks were encountered again in the late 1990s.
+Revival and second boom (1980s-1990s):
+Commercial success of expert systems brought a new wave of investment. Progress was made in machine learning and neural networks. But bottlenecks were encountered again in the late 1990s.
 
-Modern AI Era (2000s to present):
-The widespread adoption of the internet brought massive amounts of data, and improvements in computing power made deep learning possible. The 2012 breakthrough of AlexNet in image recognition marked the beginning of the deep learning era. Subsequently, AI has made significant progress in various fields:
+Modern AI era (2000s to present):
+The proliferation of the internet brought massive amounts of data, and advances in computing power made deep learning possible. AlexNet's breakthrough in image recognition in 2012 marked the beginning of the deep learning era. Since then, AI has made significant advances across many domains:
 
-1. Computer Vision: From image classification to object detection and semantic segmentation
-2. Natural Language Processing: From statistical methods to the Transformer architecture, then to large language models like GPT and BERT
-3. Speech Recognition: Significant improvements in accuracy, enabling real-time speech-to-text
-4. Recommendation Systems: Widely used in e-commerce, social media, and streaming platforms
-5. Autonomous Driving: From ADAS to the exploration of fully autonomous driving
-6. Game AI: From Deep Blue to AlphaGo to AlphaStar
+1. Computer vision: from image classification to object detection and semantic segmentation
+2. Natural language processing: from statistical methods to Transformer architecture, then to large language models like GPT and BERT
+3. Speech recognition: accuracy greatly improved, real-time speech-to-text achieved
+4. Recommendation systems: widely used in e-commerce, social media, and streaming platforms
+5. Self-driving: exploration from ADAS to full autonomy
+6. Game AI: from Deep Blue to AlphaGo to AlphaStar
 
-Current Challenges and Opportunities:
-Technical challenges include model interpretability, fairness, and robustness. Ethical challenges involve privacy protection, employment impact, and algorithmic bias. On the regulatory front, countries are developing relevant policy frameworks.
+Current challenges and opportunities:
+Technical challenges include model interpretability, fairness, and robustness. Ethical challenges involve privacy protection, employment impact, and algorithmic bias. Regulatorily, countries are developing policy frameworks.
 
-Future Outlook:
-AGI (Artificial General Intelligence) remains a long-term goal. In the short term, AI will be deeply applied in more vertical domains, converging with other technologies such as IoT, blockchain, and quantum computing. Human-AI collaboration will become the mainstream paradigm.
+Future outlook:
+AGI (Artificial General Intelligence) remains a long-term goal. In the short term, AI will be deeply applied in more vertical domains and integrated with technologies like IoT, blockchain, and quantum computing. Human-machine collaboration will become mainstream.
     `.trim();
-    
+
     const messages = [
         {
             role: "user",
-            content: `Please carefully read the following text about the history of artificial intelligence development, then answer the questions:
+            content: `Please carefully read the following text about the history of AI development, then answer the questions:
 
 ${longText}
 
 Questions:
 1. Please summarize the main phases of AI development and their characteristics
 2. What are the important technological breakthroughs in the modern AI era?
-3. What are the main challenges facing current AI development?
-4. What is the outlook for the future development of AI?
+3. What are the main challenges facing AI development today?
+4. What is the outlook for future AI development?
 
-Please provide detailed answers based on the text content, and feel free to supplement with your own knowledge where appropriate.`
+Please answer in detail based on the text content, and feel free to supplement with your own knowledge.`
         }
     ];
 
@@ -292,16 +292,16 @@ Please provide detailed answers based on the text content, and feel free to supp
     });
 
     console.log('📤 Sending long text processing task...\n');
-    
+
     const response = await sendChatRequest(requestBody);
-    
+
     if (response.choices && response.choices.length > 0) {
         console.log('💬 Processing result:');
         console.log('-------------------');
         console.log(response.choices[0].message.content);
         console.log('-------------------');
     }
-    
+
     return response;
 }
 
@@ -309,27 +309,27 @@ Please provide detailed answers based on the text content, and feel free to supp
  * Main test function
  */
 async function testGemini25Pro() {
-    console.log('🚀 Starting Gemini 2.5 Pro model API test...\n');
-    
+    console.log('🚀 Starting Gemini 2.5 Pro model call test...\n');
+
     try {
-        // Check token expiration time
+        // Check token expiry
         const now = Date.now();
         if (now >= TOKENS.expires) {
             console.warn('⚠️  Warning: Access token may have expired');
         } else {
             const remaining = Math.floor((TOKENS.expires - now) / 1000 / 60 / 60);
-            console.log(`✅ Token valid for: ${remaining} hours`);
+            console.log(`✅ Token validity remaining: ${remaining} hours`);
         }
 
         // Basic conversation test
         const messages = [
             {
                 role: "user",
-                content: "Hello! Please describe the main improvements and advantages of Google Gemini 2.5 Pro compared to 2.0 Flash. Please answer in detail."
+                content: "Hello! Please introduce the main improvements and advantages of Google Gemini 2.5 Pro compared to 2.0 Flash. Please answer in detail."
             }
         ];
 
-        console.log('📝 Request message:', JSON.stringify(messages, null, 2));
+        console.log('📝 Request messages:', JSON.stringify(messages, null, 2));
         console.log(`🎯 Target model: ${GEMINI_2_5_PRO_MODEL}\n`);
 
         const requestBody = createChatCompletionRequest(messages, GEMINI_2_5_PRO_MODEL, {
@@ -352,9 +352,9 @@ async function testGemini25Pro() {
             console.log('-------------------');
             console.log(assistantMessage.content);
             console.log('-------------------');
-            
+
             if (response.usage) {
-                console.log('\n📊 Token usage stats:');
+                console.log('\n📊 Token usage statistics:');
                 console.log(`   Input tokens: ${response.usage.prompt_tokens}`);
                 console.log(`   Output tokens: ${response.usage.completion_tokens}`);
                 console.log(`   Total tokens: ${response.usage.total_tokens}`);
@@ -374,29 +374,29 @@ if (require.main === module) {
     (async () => {
         try {
             console.log('=' .repeat(70));
-            console.log('🤖 GitHub Copilot Gemini 2.5 Pro Full Test Suite');
+            console.log('🤖 GitHub Copilot Gemini 2.5 Pro Model Full Test Suite');
             console.log('=' .repeat(70));
-            
+
             // Basic conversation test
-            console.log('\n📋 Test 1: Basic conversation');
+            console.log('\n📋 Test 1: Basic conversation ability');
             console.log('-'.repeat(40));
             await testGemini25Pro();
-            
-            console.log('\n\n📋 Test 2: Complex reasoning');
+
+            console.log('\n\n📋 Test 2: Complex reasoning ability');
             console.log('-'.repeat(40));
             await testComplexReasoning();
-            
-            console.log('\n\n📋 Test 3: Code analysis');
+
+            console.log('\n\n📋 Test 3: Code analysis ability');
             console.log('-'.repeat(40));
             await testCodeAnalysis();
-            
-            console.log('\n\n📋 Test 4: Long text processing');
+
+            console.log('\n\n📋 Test 4: Long text processing ability');
             console.log('-'.repeat(40));
             await testLongContextHandling();
-            
+
             console.log('\n' + '='.repeat(70));
-            console.log('🎊 All tests complete! Gemini 2.5 Pro model verification finished');
-            
+            console.log('🎊 All tests complete! Gemini 2.5 Pro model functionality verified');
+
         } catch (error) {
             console.error('\n❌ Program execution failed:', error.message);
             process.exit(1);

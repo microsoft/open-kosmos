@@ -15,26 +15,20 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-// Define Message interface locally to avoid cross-process imports
-interface Message {
-  id?: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content: any[]; // UnifiedContentPart[] - simplified for main process
-  tool_calls?: any[];
-  tool_call_id?: string;
-  name?: string;
-  streamingComplete?: boolean;
-  timestamp?: number;
-}
+import { Message } from '@shared/types/chatTypes';
+import { deserializeMessage } from '@shared/utils/deserialize-message';
+import type { InteractionHistoryEntry } from '@shared/types/interactiveRequestTypes';
+import { isValidChatSessionIdFormat } from '../../../shared/utils/idFormats';
 
 /**
  * ChatSession File Structure
  * Stored in user profile directory under chat_sessions/
  */
 export interface ChatSessionFile {
-  /** ChatSession ID，format: chatSession_YYYYMMDDHHMMSS */
+  /** ChatSession ID，format: chatSession_YYYYMMDDHHMMSS_<deviceid>_<random> */
   chatSession_id: string;
   /** Last update time in ISO format */
   last_updated: string;
@@ -44,6 +38,8 @@ export interface ChatSessionFile {
   chat_history: Message[];
   /** Context history for LLM processing (corresponds to agentChat.ts contextHistory) */
   context_history: Message[];
+  /** Resolved interactive request summaries for timeline rendering and auditability */
+  interaction_history?: InteractionHistoryEntry[];
 }
 
 /**
@@ -53,6 +49,15 @@ export interface ChatSessionFileResult {
   success: boolean;
   error?: string;
   data?: any;
+}
+
+export function deserializeChatFile(raw: any): ChatSessionFile {
+  const { chat_history = [], context_history = [] } = raw;
+  return {
+    ...raw,
+    chat_history: chat_history.map(deserializeMessage),
+    context_history: context_history.map(deserializeMessage),
+  };
 }
 
 /**
@@ -67,16 +72,15 @@ export class ChatSessionFileOps {
     this.userAlias = userAlias;
     // Use user profile directory: {userData}/profiles/{userAlias}/chat_sessions
     let userDataPath: string;
-    
+
     try {
       // In production/main process, use app.getPath
       userDataPath = app.getPath('userData');
     } catch (error) {
       // In test environment, use a local test directory
-      const os = require('os');
       userDataPath = path.join(os.tmpdir(), 'openkosmos-app-test');
     }
-    
+
     this.basePath = path.join(userDataPath, 'profiles', userAlias, 'chat_sessions');
     this.ensureDirectoryExists();
   }
@@ -119,7 +123,7 @@ export class ChatSessionFileOps {
    * Validate ChatSession ID format
    */
   private isValidChatSessionId(chatSessionId: string): boolean {
-    return /^chatSession_\d{14}$/.test(chatSessionId);
+    return isValidChatSessionIdFormat(chatSessionId);
   }
 
   /**
@@ -135,7 +139,7 @@ export class ChatSessionFileOps {
       }
 
       const filePath = this.getFilePath(chatSessionId);
-      
+
       if (!fs.existsSync(filePath)) {
         return {
           success: false,
@@ -144,7 +148,7 @@ export class ChatSessionFileOps {
       }
 
       const fileContent = fs.readFileSync(filePath, 'utf8');
-      const chatSession: ChatSessionFile = JSON.parse(fileContent);
+      const chatSession = deserializeChatFile(JSON.parse(fileContent));
 
       // Validate the loaded data
       if (!this.validateChatSessionStructure(chatSession)) {
@@ -222,7 +226,7 @@ export class ChatSessionFileOps {
       }
 
       const existingSession = readResult.data as ChatSessionFile;
-      
+
       // Apply updates
       const updatedSession: ChatSessionFile = {
         ...existingSession,
@@ -255,7 +259,7 @@ export class ChatSessionFileOps {
       }
 
       const filePath = this.getFilePath(chatSessionId);
-      
+
       if (!fs.existsSync(filePath)) {
         return {
           success: false,
@@ -285,7 +289,7 @@ export class ChatSessionFileOps {
     if (!this.isValidChatSessionId(chatSessionId)) {
       return false;
     }
-    
+
     const filePath = this.getFilePath(chatSessionId);
     return fs.existsSync(filePath);
   }

@@ -1,5 +1,5 @@
 /**
- * Text Token Calculator
+ * Text token calculator
  * Uses TikToken for precise calculation
  */
 
@@ -13,7 +13,7 @@ export class TextTokenCalculator {
   private maxCacheSize: number;
   private cacheHits: number;
   private cacheMisses: number;
-  
+
   constructor(config: {
     encoding?: 'cl100k_base' | 'o200k_base';
     enableCache?: boolean;
@@ -26,7 +26,7 @@ export class TextTokenCalculator {
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
-  
+
   /**
    * Count the number of tokens in text
    */
@@ -35,31 +35,31 @@ export class TextTokenCalculator {
     options: TextTokenOptions = {}
   ): number {
     if (!text) return 0;
-    
-    // Use the specified encoder or default encoder
+
+    // Use the specified encoder or the default encoder
     const encoding = options.encoding || this.encoding;
-    
+
     // Check cache
     const cacheKey = `${text}:${encoding}`;
     if (this.cacheEnabled && this.cache.has(cacheKey)) {
       this.cacheHits++;
       return this.cache.get(cacheKey)!;
     }
-    
+
     // Cache miss
     if (this.cacheEnabled) {
       this.cacheMisses++;
     }
-    
+
     // Get encoder
     const encoder = EncoderCache.getInstance().getEncoder(encoding);
-    
-    // Calculate tokens
+
+    // Count tokens
     const tokenCount = encoder.countTokens(text, options.allowedSpecial);
-    
+
     // Store in cache
     if (this.cacheEnabled) {
-      // LRU policy: delete the oldest when limit is exceeded
+      // LRU strategy: remove the oldest entry when limit is exceeded
       if (this.cache.size >= this.maxCacheSize) {
         const firstKey = this.cache.keys().next().value;
         if (firstKey) {
@@ -68,26 +68,26 @@ export class TextTokenCalculator {
       }
       this.cache.set(cacheKey, tokenCount);
     }
-    
+
     return tokenCount;
   }
-  
+
   /**
-   * Batch calculate tokens for multiple texts
+   * Count tokens for multiple texts in batch
    */
   countTokensBatch(texts: string[]): number[] {
     return texts.map(text => this.countTokens(text));
   }
-  
+
   /**
-   * Clear cache
+   * Clear the cache
    */
   clearCache(): void {
     this.cache.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
-  
+
   /**
    * Get cache statistics
    */
@@ -102,9 +102,9 @@ export class TextTokenCalculator {
         : 0
     };
   }
-  
+
   /**
-   * Get current encoder type
+   * Get the current encoder type
    */
   getEncoding(): 'cl100k_base' | 'o200k_base' {
     return this.encoding;

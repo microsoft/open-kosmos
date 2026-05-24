@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 
 /**
- * Navigate to a specified route (compatible with HashRouter)
+ * Navigate to the specified route (compatible with HashRouter).
  *
  * @param page - Playwright Page object
  * @param route - target route path, e.g. '/agent' or '/settings/mcp'
@@ -11,12 +11,16 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
   const baseUrl = currentUrl.split('#')[0];
   const targetUrl = `${baseUrl}#${route}`;
   await page.goto(targetUrl);
-  // Wait for route change to take effect
-  await page.waitForTimeout(500);
+  // Wait for the route change to take effect in the renderer
+  await page.waitForFunction(
+    (target: string) => window.location.hash.includes(target),
+    route,
+    { timeout: 5_000 },
+  );
 }
 
 /**
- * Wait for route change to target path (regex match)
+ * Wait for a route change to the target path (regex match).
  *
  * @param page - Playwright Page object
  * @param routePattern - route matching regex, e.g. /#\/agent/
@@ -31,7 +35,7 @@ export async function waitForRoute(
 }
 
 /**
- * Get current HashRouter route path
+ * Get the current HashRouter route path.
  *
  * @param page - Playwright Page object
  * @returns current hash route path, e.g. '/agent/chat'
@@ -43,11 +47,11 @@ export async function getCurrentRoute(page: Page): Promise<string> {
 }
 
 /**
- * Click to navigate to a specified route and wait for route change
+ * Click to navigate to the specified route, then wait for the route change.
  *
  * @param page - Playwright Page object
- * @param selector - navigation link selector
- * @param expectedRoute - expected destination route regex
+ * @param selector - selector for the navigation link
+ * @param expectedRoute - regex for the expected destination route
  * @param timeout - timeout in milliseconds
  */
 export async function clickAndWaitForRoute(

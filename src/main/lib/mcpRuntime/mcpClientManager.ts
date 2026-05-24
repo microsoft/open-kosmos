@@ -1,10 +1,14 @@
-// import { MCPClient } from './mcpClient'; // 🚫 Disabled MCPClient (SDK)
+// import { MCPClient } from './mcpClient'; // 🚫 MCPClient (SDK) disabled
 import { VscMcpClient } from './vscMcpClient';
 import { BuiltinMcpClient, BUILTIN_SERVER_NAME } from './builtinMcpClient';
 import { McpServerConfig } from '../userDataADO/types';
 import { createConsoleLogger } from '../unifiedLogger';
+import { McpAuthService } from './auth/McpAuthService';
 import { BrowserWindow, ipcMain } from 'electron';
-import { kosmosPlaceholderManager, containsKosmosPlaceholder } from '../userDataADO/kosmosPlaceholders';
+import { execSync } from 'child_process';
+import { openkosmosPlaceholderManager, containsOpenKosmosPlaceholder } from '../userDataADO/openkosmosPlaceholders';
+import { isPluginMcpServer } from '../plugin/bridges/mcpBridge';
+import { profileCacheManager } from "../userDataADO";
 
 /**
  * Client implementation type
@@ -17,7 +21,7 @@ type ClientImplementation = 'sdk' | 'vscodeMcpClient';
 interface IUnifiedMcpClient {
   connectToServer(): Promise<string | Error>;
   getTools(): Promise<{ name: string; description?: string; inputSchema: any }[]>;
-  executeTool({ toolName, toolArgs }: { toolName: string; toolArgs: { [key: string]: unknown } }): Promise<string>;
+  executeTool({ toolName, toolArgs, signal }: { toolName: string; toolArgs: { [key: string]: unknown }; signal?: AbortSignal }): Promise<string>;
   cleanup(): Promise<void>;
 }
 
@@ -30,11 +34,11 @@ let advancedLogger: any;
 /**
  * MCP Server status enumeration
  */
-export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting';
+export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting' | 'needs-user-interaction';
 
 /**
  * Runtime state for MCP servers (memory-only, not persisted)
- * 🆕 Refactor: Managed directly by mcpClientManager, no longer delegated through profileCacheManager
+ * 🆕 Refactored: Directly managed by mcpClientManager, no longer delegated through profileCacheManager
  */
 export interface MCPServerRuntimeState {
   serverName: string;
@@ -65,7 +69,7 @@ interface ConnectionProcess {
 
 /**
  * Enhanced MCP client manager with ALL vscMcpClient approach (Singleton)
- * 🆕 Refactor: Directly manages MCP server runtime state, notifies frontend mcpClientCacheManager
+ * 🆕 Refactored: Directly manages MCP server runtime state, notifies frontend mcpClientCacheManager
  *
  * Responsibilities:
  * - Manage MCP client runtime instances (Map<mcp name, unified client>)
@@ -97,15 +101,20 @@ export class MCPClientManager {
   private instanceId: string = Math.random().toString(36).substr(2, 9);
   private currentUserAlias: string | null = null;
   private defaultImplementation: ClientImplementation = 'vscodeMcpClient'; // Default to vscMcpClient for all transports
-  
-  // 🆕 Refactor: Runtime state managed directly by mcpClientManager
+
+  // 🆕 Refactored: Runtime state directly managed by mcpClientManager
   private runtimeStates: Map<string, MCPServerRuntimeState> = new Map(); // serverName -> runtimeState
-  
-  // Batch notification mechanism
+
+  // Batched notification mechanism
   private notificationTimeout: NodeJS.Timeout | null = null;
   private pendingNotification = false;
 
   private constructor() {
+    McpAuthService.onInteraction(({ serverName, phase }) => {
+      if (phase === 'consent-requested') {
+        this._updateServerStatus(serverName, 'needs-user-interaction');
+      }
+    });
   }
 
   // ==================== 🆕 Runtime State Management Methods ====================
@@ -153,7 +162,7 @@ export class MCPClientManager {
   /**
    * 🆕 Update MCP server error
    * @param serverName - Server name
-   * @param error - Error information
+   * @param error - Error message
    */
   private _updateServerError(serverName: string, error: Error | null): void {
     let state = this.runtimeStates.get(serverName);
@@ -170,9 +179,13 @@ export class MCPClientManager {
     this._scheduleNotification();
   }
 
+  private _resolveStatusForError(error: Error): MCPServerStatus {
+    return 'error';
+  }
+
   /**
    * 🆕 Clear MCP server runtime state
-   * 🆕 Refactor: Changed from private to public, allowing profileCacheManager to call it
+   * 🆕 Refactored: Changed from private to public to allow profileCacheManager to call
    * @param serverName - Server name
    */
   _clearServerRuntimeState(serverName: string): void {
@@ -182,10 +195,15 @@ export class MCPClientManager {
 
   /**
    * 🆕 Get all MCP server runtime states
-   * @returns Array of runtime states
+   * @returns Runtime state array
    */
   getAllMcpServerRuntimeStates(): MCPServerRuntimeState[] {
     return Array.from(this.runtimeStates.values());
+  }
+
+  /** Currently-bound profile alias, or null before initialize(). */
+  getCurrentUserAlias(): string | null {
+    return this.currentUserAlias;
   }
 
   /**
@@ -202,18 +220,18 @@ export class MCPClientManager {
    */
   private _scheduleNotification(): void {
     this.pendingNotification = true;
-    
+
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout);
     }
-    
+
     this.notificationTimeout = setTimeout(() => {
       if (this.pendingNotification) {
         this._notifyFrontend();
         this.pendingNotification = false;
       }
       this.notificationTimeout = null;
-    }, 50); // 50ms debounce for fast response
+    }, 50); // 50ms debounce, fast response
   }
 
   /**
@@ -221,7 +239,7 @@ export class MCPClientManager {
    */
   private _notifyFrontend(): void {
     const states = this.getAllMcpServerRuntimeStates();
-    
+
     // Serialize error objects for IPC transport
     const serializedStates = states.map(state => ({
       serverName: state.serverName,
@@ -229,7 +247,7 @@ export class MCPClientManager {
       tools: state.tools,
       lastError: state.lastError ? state.lastError.message : null
     }));
-    
+
     // Notify all renderer process windows
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
@@ -251,7 +269,7 @@ export class MCPClientManager {
 
   /**
    * Initialize manager with user alias
-   * 🔧 Core improvement: Ensure runtime state is fully synced with ProfileCacheManager baseline data
+   * 🔧 Core improvement: Ensures runtime state is fully synced with ProfileCacheManager baseline data
    *
    * @param user_alias - User alias
    */
@@ -259,17 +277,16 @@ export class MCPClientManager {
     this.currentUserAlias = user_alias;
 
     try {
-      // 🔧 Step 1: Clean existing runtime state, ensure starting from a clean state
+      // 🔧 Step 1: Clear existing runtime state, ensure starting from a clean state
       await this._syncWithProfileCacheManagerBaseline(user_alias);
 
-      // 🆕 Step 1.5: Initialize and register builtin server
+      // 🆕 Step 1.5: Initialize and register built-in server
       await this._initializeBuiltinServer();
 
-      // Step 2: Get baseline configuration from ProfileCacheManager
+      // Step 2: Get ProfileCacheManager baseline configuration
       // 🆕 Use dynamic import to avoid circular dependency
-      const { profileCacheManager } = await import('../userDataADO');
       const serverInfos = profileCacheManager.getAllMcpServerInfo(user_alias);
-      
+
       // Step 3: Start connections based on baseline data
       let inUseCount = 0;
       for (const serverInfo of serverInfos) {
@@ -285,25 +302,24 @@ export class MCPClientManager {
   }
 
   /**
-   * 🔧 Refactor: Sync with ProfileCacheManager baseline configuration
-   * Clean up clients and runtime states not in baseline configuration
+   * 🔧 Refactored: Sync with ProfileCacheManager baseline configuration
+   * Clean up clients and runtime states not in the baseline configuration
    */
   private async _syncWithProfileCacheManagerBaseline(user_alias: string): Promise<void> {
     const syncStart = Date.now();
     const syncId = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
-    
+
+
     try {
       // Phase 1: Get current runtime state
       const currentRuntimeClients = Array.from(this.mcpClients.keys());
       const currentRuntimeStates = this.getAllMcpServerRuntimeStates();
       // 🆕 Use dynamic import to avoid circular dependency
-      const { profileCacheManager } = await import('../userDataADO');
       const baselineConfigs = profileCacheManager.getAllMcpServerInfo(user_alias);
-      
-      
+
+
       // Phase 2: Identify "ghost" runtime states not in baseline configuration
-      // 🆕 Builtin server is not in baseline config, but is not a ghost server
+      // 🆕 Built-in server is not in baseline config but is not a ghost server
       const baselineServerNames = new Set(baselineConfigs.map(info => info.config.name));
       const ghostRuntimeClients = currentRuntimeClients.filter(name =>
         !baselineServerNames.has(name) && name !== BUILTIN_SERVER_NAME
@@ -311,11 +327,11 @@ export class MCPClientManager {
       const ghostRuntimeStates = currentRuntimeStates.filter(state =>
         !baselineServerNames.has(state.serverName) && state.serverName !== BUILTIN_SERVER_NAME
       );
-      
-      
+
+
       // Phase 3: Clean up "ghost" runtime clients
       if (ghostRuntimeClients.length > 0) {
-        
+
         for (const ghostClientName of ghostRuntimeClients) {
           try {
             const ghostClient = this.mcpClients.get(ghostClientName);
@@ -328,10 +344,10 @@ export class MCPClientManager {
           }
         }
       }
-      
+
       // Phase 4: Clean up "ghost" runtime states (using internal methods)
       if (ghostRuntimeStates.length > 0) {
-        
+
         for (const ghostState of ghostRuntimeStates) {
           try {
             this._clearServerRuntimeState(ghostState.serverName);
@@ -339,19 +355,19 @@ export class MCPClientManager {
           }
         }
       }
-      
+
       // Phase 5: Verify sync results
       const finalRuntimeClients = Array.from(this.mcpClients.keys());
       const finalRuntimeStates = this.getAllMcpServerRuntimeStates();
-      
+
       const syncDuration = Date.now() - syncStart;
-      
+
       // Ensure runtime state is fully consistent with baseline data
       const isFullySynced = finalRuntimeStates.every(state => baselineServerNames.has(state.serverName));
       if (isFullySynced) {
       } else {
       }
-      
+
     } catch (error) {
       const syncDuration = Date.now() - syncStart;
       throw error;
@@ -482,18 +498,18 @@ export class MCPClientManager {
 
   /**
    * Get all available tools
-   * 🆕 Refactor: Retrieved from internal runtimeStates, no longer through profileCacheManager
+   * 🆕 Refactored: Get from internal runtimeStates, no longer through profileCacheManager
    */
-  async getAllTools(): Promise<{ name: string; description?: string; inputSchema: any; serverName: string }[]> {
-    const allTools: { name: string; description?: string; inputSchema: any; serverName: string }[] = [];
-    
+  async getAllTools(): Promise<{ name: string; description?: string; inputSchema: any; serverName: string; annotations?: any; alwaysLoad?: boolean; searchHint?: string }[]> {
+    const allTools: { name: string; description?: string; inputSchema: any; serverName: string; annotations?: any; alwaysLoad?: boolean; searchHint?: string }[] = [];
+
     if (!this.currentUserAlias) {
       return allTools;
     }
 
-    // 🆕 Retrieve from internal runtimeStates
+    // 🆕 Get from internal runtimeStates
     const runtimeStates = this.getAllMcpServerRuntimeStates();
-    
+
     for (const runtimeState of runtimeStates) {
       if (runtimeState.status === 'connected') {
         for (const tool of runtimeState.tools) {
@@ -504,29 +520,148 @@ export class MCPClientManager {
         }
       }
     }
-    
+
     return allTools;
   }
 
   /**
+   * 🔥 New: Get tool list visible to sub-agents
+   * Filter based on SubAgentConfig's mcp_servers and builtin_tools
+   * Remove spawn_subagent / spawn_subagents to prevent recursion
+   */
+  async getToolsForSubAgent(
+    mcpServers: { name: string; tools: string[] }[],
+    builtinTools?: string[],
+    disallowBuiltinTools?: string[],
+    allowedToolNames?: Set<string>,
+  ): Promise<{ name: string; description?: string; inputSchema: any; serverName: string }[]> {
+    const allTools = await this.getAllTools();
+    const result: { name: string; description?: string; inputSchema: any; serverName: string }[] = [];
+
+    // Recursion prevention: exclude sub-agent spawn/control tools
+    // 'sub_agent' is the current unified tool; legacy names kept for safety
+    const BLOCKED_TOOLS = new Set([
+      'sub_agent',
+      'spawn_subagent', 'spawn_subagents',
+      'spawn_adhoc_subagent', 'spawn_adhoc_subagents',
+      'send_to_subagent',
+    ]);
+
+    // 1. Allowed external MCP server tools
+    const allowedServerMap = new Map<string, Set<string>>();
+    for (const srv of mcpServers) {
+      const toolSet = srv.tools && srv.tools.length > 0
+        ? new Set(srv.tools)
+        : null; // null means all tools of this server are available
+      allowedServerMap.set(srv.name, toolSet!);
+    }
+
+    for (const tool of allTools) {
+      if (BLOCKED_TOOLS.has(tool.name)) continue;
+
+      if (tool.serverName === BUILTIN_SERVER_NAME) {
+        // Built-in tools handled separately
+        continue;
+      }
+
+      if (!allowedServerMap.has(tool.serverName)) continue;
+      const allowedTools = allowedServerMap.get(tool.serverName);
+      if (allowedTools === null || allowedTools === undefined || allowedTools.has(tool.name)) {
+        result.push(tool);
+      }
+    }
+
+    // 2. Allowed built-in tools
+    const builtinToolsFromAll = allTools.filter(t => {
+      // BUILTIN_SERVER_NAME already imported above, reuse here
+      return !BLOCKED_TOOLS.has(t.name);
+    });
+    // Get built-in server tools from allTools
+    const builtinAll = allTools.filter(t => t.serverName === BUILTIN_SERVER_NAME && !BLOCKED_TOOLS.has(t.name));
+
+    if (builtinTools && builtinTools.length > 0) {
+      // Only allow whitelisted built-in tools
+      const builtinSet = new Set(builtinTools);
+      for (const tool of builtinAll) {
+        if (builtinSet.has(tool.name)) {
+          result.push(tool);
+        }
+      }
+    } else {
+      // Empty array = no restriction, add all built-in tools (spawn already excluded)
+      result.push(...builtinAll);
+    }
+
+    // 3. Apply disallow_builtin_tools blacklist filter
+    if (disallowBuiltinTools && disallowBuiltinTools.length > 0) {
+      const disallowSet = new Set(disallowBuiltinTools);
+      const filtered = result.filter(t => !disallowSet.has(t.name));
+      // 4. Apply ad-hoc tool name whitelist (subset of parent's tools)
+      if (allowedToolNames && allowedToolNames.size > 0) {
+        return filtered.filter(t => allowedToolNames.has(t.name));
+      }
+      return filtered;
+    }
+
+    // 4. Apply ad-hoc tool name whitelist (subset of parent's tools)
+    if (allowedToolNames && allowedToolNames.size > 0) {
+      return result.filter(t => allowedToolNames.has(t.name));
+    }
+
+    return result;
+  }
+
+  /**
    * Execute tool
-   * 
+   *
    * @param toolName - Tool name
    * @param toolArgs - Tool arguments
+   * @param signal - Abort signal
+   * @param agentMcpServerNames - Optional list of MCP server names bound to the calling agent.
+   *   When multiple servers expose the same tool name, this is used to pick the correct one.
    */
-  async executeTool({ toolName, toolArgs }: { toolName: string; toolArgs: { [key: string]: unknown } }): Promise<string> {
-    const client = this.getClientByToolName(toolName);
-    
+  async executeTool({ toolName, toolArgs, signal, agentMcpServerNames }: { toolName: string; toolArgs: { [key: string]: unknown }; signal?: AbortSignal; agentMcpServerNames?: string[] }): Promise<string> {
+    let client: IUnifiedMcpClient | undefined;
+
+    // When the caller provides the agent's server list, prefer a server that is both
+    // (a) in the agent's binding and (b) currently exposes this tool.
+    if (agentMcpServerNames && agentMcpServerNames.length > 0) {
+      const agentSet = new Set(agentMcpServerNames);
+      for (const [srvName, srvClient] of this.mcpClients.entries()) {
+        if (!agentSet.has(srvName)) continue;
+        const runtimeState = this.getAllMcpServerRuntimeStates().find(s => s.serverName === srvName);
+        if (runtimeState?.tools?.some(t => t.name === toolName)) {
+          client = srvClient;
+          break;
+        }
+      }
+    }
+
+    // Fallback to global toolToServerMap (original behaviour).
+    // When agent scope is active, skip fallback results that come from a server
+    // in the agent's own binding list — that server should have handled it above
+    // but its tools are not yet reported (disconnected / still loading).
+    // This prevents cross-agent routing for identically named tools.
+    if (!client) {
+      const globalServerName = this.toolToServerMap.get(toolName);
+      const agentSet = agentMcpServerNames && agentMcpServerNames.length > 0
+        ? new Set(agentMcpServerNames)
+        : undefined;
+      if (!agentSet || !globalServerName || !agentSet.has(globalServerName)) {
+        client = this.getClientByToolName(toolName);
+      }
+    }
+
     if (!client) {
       throw new Error(`No client found for tool: ${toolName}`);
     }
-    
-    return client.executeTool({ toolName, toolArgs });
+
+    return client.executeTool({ toolName, toolArgs, signal });
   }
 
   /**
    * Add new MCP server
-   * 🆕 Refactor: Config saved immediately, connection runs asynchronously in background, non-blocking for UI
+   * 🆕 Refactored: Config saved immediately, connection runs asynchronously in background, non-blocking UI
    *
    * @param serverName - Server name
    * @param newConfig - New server configuration
@@ -552,8 +687,7 @@ export class MCPClientManager {
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
-    const { profileCacheManager } = await import('../userDataADO');
-    
+
     // Check if server already exists
     const existingServerInfo = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
     if (existingServerInfo.config) {
@@ -572,16 +706,16 @@ export class MCPClientManager {
       throw new Error(`Failed to add server configuration for "${serverName}"`);
     }
 
-    // 🆕 Refactor: Use internal methods to initialize runtime state to connecting
+    // 🆕 Refactored: Use internal methods to initialize runtime state as connecting
     this._updateServerStatus(serverName, 'connecting');
     this._updateServerTools(serverName, []);
     this._updateServerError(serverName, null);
 
-    // 🆕 Config saved, return to frontend immediately, connection runs asynchronously in background
-    // Use setImmediate to ensure execution after current event loop ends
+    // 🆕 Config saved, return immediately to frontend; connection runs asynchronously in background
+    // Use setImmediate to ensure execution after current event loop completes
     setImmediate(() => {
       this._performConnect(serverName).catch(error => {
-        // Error already handled and status updated inside _performConnect
+        // Error already handled inside _performConnect and state updated
         advancedLogger?.error('[MCPClientManager] Background connect failed for add', 'add', {
           serverName,
           error: error instanceof Error ? error.message : String(error)
@@ -592,7 +726,7 @@ export class MCPClientManager {
 
   /**
    * Update existing MCP server configuration
-   * 🆕 Refactor: Config saved immediately, reconnection runs asynchronously in background, non-blocking for UI
+   * 🆕 Refactored: Config saved immediately, reconnection runs asynchronously in background, non-blocking UI
    *
    * @param serverName - Server name
    * @param newConfig - Updated server configuration
@@ -608,6 +742,11 @@ export class MCPClientManager {
       throw new Error(`Builtin server "${BUILTIN_SERVER_NAME}" cannot be updated`);
     }
 
+    // 🔌 Protect plugin server: plugin-managed servers cannot be user-updated
+    if (isPluginMcpServer(serverName)) {
+      throw new Error(`Plugin server "${serverName}" cannot be updated directly. Manage it through the plugin system.`);
+    }
+
     // Validate input
     if (!serverName || !newConfig) {
       throw new Error('Server name and configuration are required');
@@ -618,15 +757,14 @@ export class MCPClientManager {
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
-    const { profileCacheManager } = await import('../userDataADO');
-    
+
     // Check if server exists
     const existingServerInfo = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
     if (!existingServerInfo.config) {
       throw new Error(`Server "${serverName}" not found`);
     }
 
-    // 🆕 Get current status for async background processing
+    // 🆕 Get current status for background async processing
     const currentStatus = existingServerInfo.runtime?.status || 'disconnected';
 
     // Update config with status=disconnected, in_use=true
@@ -641,24 +779,24 @@ export class MCPClientManager {
       throw new Error(`Failed to update server configuration for "${serverName}"`);
     }
 
-    // 🆕 Refactor: Use internal methods to update runtime state to connecting
+    // 🆕 Refactored: Use internal methods to update runtime state to connecting
     this._updateServerStatus(serverName, 'connecting');
     this._updateServerTools(serverName, []);
     this._updateServerError(serverName, null);
 
-    // 🆕 Config saved, return to frontend immediately, disconnect + reconnect handled asynchronously in background
-    // Use setImmediate to ensure execution after current event loop ends
+    // 🆕 Config saved, return immediately to frontend; background async disconnect + reconnect
+    // Use setImmediate to ensure execution after current event loop completes
     setImmediate(async () => {
       try {
         // If server was connected, disconnect first
         if (currentStatus !== 'disconnected') {
           await this._performDisconnect(serverName);
         }
-        
+
         // Connect to the server with new config
         await this._performConnect(serverName);
       } catch (error) {
-        // Error already handled and status updated inside _performConnect/_performDisconnect
+        // Error already handled inside _performConnect/_performDisconnect and state updated
         advancedLogger?.error('[MCPClientManager] Background update failed', 'update', {
           serverName,
           error: error instanceof Error ? error.message : String(error)
@@ -671,8 +809,9 @@ export class MCPClientManager {
    * Delete MCP server
    *
    * @param serverName - Server name
+   * @param options - Optional flags; `pluginBypass` allows plugin system to remove its own servers
    */
-  async delete(serverName: string): Promise<void> {
+  async delete(serverName: string, options?: { pluginBypass?: boolean }): Promise<void> {
 
     if (!this.currentUserAlias) {
       throw new Error('Manager not initialized with user alias');
@@ -683,19 +822,28 @@ export class MCPClientManager {
       throw new Error(`Builtin server "${BUILTIN_SERVER_NAME}" cannot be deleted`);
     }
 
+    // 🔌 Protect plugin server: only the plugin system itself may delete plugin servers
+    if (!options?.pluginBypass && isPluginMcpServer(serverName)) {
+      throw new Error(`Plugin server "${serverName}" cannot be deleted directly. Uninstall the plugin instead.`);
+    }
+
     // Validate input
     if (!serverName) {
       throw new Error('Server name is required');
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
-    const { profileCacheManager } = await import('../userDataADO');
-    
+
     // Check if server exists
     const existingServerInfo = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
     if (!existingServerInfo.config) {
       throw new Error(`Server "${serverName}" not found`);
     }
+
+    // Snapshot cfg before any mutation: the OAuth slot key depends on
+    // url/headers/oauth.* fields which are gone once the config is deleted.
+    const cfgSnapshot = existingServerInfo.config;
+    let configDeleted = false;
 
     try {
       // If server is connected, disconnect first
@@ -709,13 +857,27 @@ export class MCPClientManager {
       if (!success) {
         throw new Error(`Failed to delete server configuration for "${serverName}"`);
       }
+      configDeleted = true;
 
-      // 🆕 Refactor: Use internal methods to clear runtime state
+      // 🆕 Refactored: Use internal methods to clear runtime state
       this._clearServerRuntimeState(serverName);
 
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Failed to delete MCP server');
       throw err;
+    } finally {
+      // Wipe persisted OAuth credentials so re-adding the same server
+      // later starts a clean flow. Runs in finally so a sync throw
+      // between `deleteMcpServerConfig` and any later step doesn't leave
+      // an orphan slot. Skip on stdio (no remote auth) and skip if the
+      // config wasn't actually deleted (user can retry).
+      if (configDeleted && cfgSnapshot && cfgSnapshot.transport !== 'stdio') {
+        try {
+          await McpAuthService.getInstance().clearOAuthForServer(serverName, cfgSnapshot, 'all');
+        } catch (e) {
+          advancedLogger?.warn(`[MCPClientManager] Failed to clear OAuth credentials for "${serverName}" during delete: ${e instanceof Error ? e.message : String(e)}`, 'delete', { serverName });
+        }
+      }
     }
   }
 
@@ -725,8 +887,8 @@ export class MCPClientManager {
   async cleanup(): Promise<void> {
     const cleanupStart = Date.now();
     const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
-    
+
+
     // Phase 1: Inventory current resources
     const resourceInventory = {
       mcpClientCount: this.mcpClients.size,
@@ -737,16 +899,16 @@ export class MCPClientManager {
       instanceId: this.instanceId,
       hasBuiltinServer: this.mcpClients.has(BUILTIN_SERVER_NAME)
     };
-    
-    
+
+
     if (resourceInventory.mcpClientCount === 0) {
     } else {
       // Phase 2: Cleanup individual MCP clients with timeout and force termination
-      
+
       const cleanupPromises = Array.from(this.mcpClients.entries()).map(async ([serverName, client], index) => {
         const clientCleanupStart = Date.now();
         try {
-          
+
           // Set timeout for individual client cleanup to prevent hanging
           await Promise.race([
             client.cleanup(),
@@ -754,14 +916,14 @@ export class MCPClientManager {
               setTimeout(() => reject(new Error('Client cleanup timeout')), 10000) // 10 second timeout
             )
           ]);
-          
+
           const clientCleanupDuration = Date.now() - clientCleanupStart;
-          
+
           return { serverName, success: true, duration: clientCleanupDuration, error: null };
         } catch (error) {
           const clientCleanupDuration = Date.now() - clientCleanupStart;
           const errorMessage = error instanceof Error ? error.message : String(error);
-          
+
           if (errorMessage.includes('timeout')) {
           } else {
           }
@@ -779,9 +941,9 @@ export class MCPClientManager {
         ]);
       } catch (overallTimeoutError) {
       }
-      
+
       const cleanupResults = await Promise.allSettled(cleanupPromises);
-      
+
       // Analyze cleanup results
       const successfulCleanups = cleanupResults.filter(result =>
         result.status === 'fulfilled' && result.value.success
@@ -793,55 +955,55 @@ export class MCPClientManager {
       const totalClientCleanupTime = cleanupResults
         .filter(result => result.status === 'fulfilled')
         .reduce((sum, result) => sum + (result.value as any).duration, 0);
-      
-      
+
+
       if (failedCleanups > 0 || timeoutCleanups > 0) {
       }
-      
+
       // Phase 2.5: Additional system-level child process cleanup if there were timeouts
       if (timeoutCleanups > 0) {
         await this.performSystemLevelCleanup(cleanupId);
       }
     }
-    
+
     // Phase 3: Clear all internal data structures
-    
+
     const structureClearStart = Date.now();
-    
+
     // Clear maps and references
     const previousMcpClientSize = this.mcpClients.size;
     const previousToolMapSize = this.toolToServerMap.size;
     const previousOperationLockSize = this.operationLocks.size;
     const previousUserAlias = this.currentUserAlias;
-    
+
     this.mcpClients.clear();
     this.operationLocks.clear();
     this.toolToServerMap.clear();
-    this.runtimeStates.clear();  // 🆕 Clean up runtime states
+    this.runtimeStates.clear();  // 🆕 Clear runtime state
     this.currentUserAlias = null;
-    
+
     // 🆕 Clean up notification timer
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout);
       this.notificationTimeout = null;
     }
     this.pendingNotification = false;
-    
+
     const structureClearDuration = Date.now() - structureClearStart;
-    
-    
+
+
     // Phase 4: Final verification
-    
+
     const verificationPassed =
       this.mcpClients.size === 0 &&
       this.toolToServerMap.size === 0 &&
       this.operationLocks.size === 0 &&
       this.currentUserAlias === null;
-    
+
     if (verificationPassed) {
     } else {
     }
-    
+
     // Phase 5: Summary
     const totalCleanupDuration = Date.now() - cleanupStart;
   }
@@ -851,19 +1013,18 @@ export class MCPClientManager {
    */
   private async performSystemLevelCleanup(cleanupId: string): Promise<void> {
     try {
-      
+
       // On macOS/Linux, try to find and kill any hanging npm/uvx/python processes that might be children of this app
       if (process.platform !== 'win32') {
-        const { execSync } = require('child_process');
         const appPid = process.pid;
-        
+
         try {
           // Find child processes of the current app that might be hanging
           const psCommand = `ps -eo pid,ppid,comm | grep -E "(npm|uvx|python|pip|uv)" | grep -v grep`;
           const psResult = execSync(psCommand, { encoding: 'utf8', timeout: 5000 });
-          
+
           if (psResult.trim()) {
-            
+
             // Parse and kill processes that are children of our app
             const lines = psResult.trim().split('\n');
             for (const line of lines) {
@@ -871,7 +1032,7 @@ export class MCPClientManager {
               if (ppid && parseInt(ppid) === appPid) {
                 try {
                   process.kill(parseInt(pid), 'SIGTERM');
-                  
+
                   // Wait a bit, then force kill if still running
                   setTimeout(() => {
                     try {
@@ -901,8 +1062,8 @@ export class MCPClientManager {
   async resetForSignOut(): Promise<void> {
     const resetStart = Date.now();
     const resetId = `reset_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
-    
+
+
     // Phase 1: Gather current state for logging
     const initialState = {
       instanceId: this.instanceId,
@@ -913,10 +1074,10 @@ export class MCPClientManager {
       clientNames: Array.from(this.mcpClients.keys()),
       toolNames: Array.from(this.toolToServerMap.keys())
     };
-    
-    
+
+
     // Phase 2: Perform complete cleanup
-    
+
     const cleanupStart = Date.now();
     try {
       await this.cleanup();
@@ -925,34 +1086,34 @@ export class MCPClientManager {
       const cleanupDuration = Date.now() - cleanupStart;
       // Continue with reset even if cleanup partially failed
     }
-    
+
     // Phase 3: Verify cleanup completion
-    
+
     const postCleanupState = {
       mcpClientCount: this.mcpClients.size,
       toolMappingCount: this.toolToServerMap.size,
       operationLockCount: this.operationLocks.size,
       currentUserCleared: this.currentUserAlias === null
     };
-    
-    
+
+
     if (postCleanupState.mcpClientCount > 0 || postCleanupState.toolMappingCount > 0) {
-      
+
       // Force cleanup if needed
       this.mcpClients.clear();
       this.toolToServerMap.clear();
       this.operationLocks.clear();
-      this.runtimeStates.clear();  // 🆕 Clean up runtime states
+      this.runtimeStates.clear();  // 🆕 Clear runtime state
       this.currentUserAlias = null;
-      
+
     }
-    
+
     // Phase 4: Reset singleton instance
-    
+
     const previousInstance = MCPClientManager.instance;
     MCPClientManager.instance = null;
-    
-    
+
+
     // Phase 5: Final summary
     const totalDuration = Date.now() - resetStart;
   }
@@ -960,8 +1121,8 @@ export class MCPClientManager {
   // ==================== Private Methods ====================
 
   /**
-   * 🆕 Initialize builtin server
-   * Automatically connect builtin tool server during manager initialization
+   * 🆕 Initialize built-in server
+   * Automatically connect the built-in tools server during manager initialization
    */
   private async _initializeBuiltinServer(): Promise<void> {
     const initId = `builtin_init_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -971,35 +1132,35 @@ export class MCPClientManager {
     }
 
     try {
-      // Create builtin client instance
+      // Create built-in client instance
       const builtinClient = new BuiltinMcpClient();
-      
-      // Connect to builtin server (always succeeds)
+
+      // Connect to built-in server (always succeeds)
       const result = await builtinClient.connectToServer();
-      
+
       if (result === 'connected') {
         // Get tool list
         const tools = await builtinClient.getTools();
-        
-        
-        // Register to client mappings
+
+
+        // Register to client map
         this.mcpClients.set(BUILTIN_SERVER_NAME, builtinClient);
         this.clientImplementations.set(BUILTIN_SERVER_NAME, 'vscodeMcpClient'); // Mark as vscMcpClient type for consistency
-        
+
         // Update tool mappings
         this._updateToolMappings(BUILTIN_SERVER_NAME, tools);
-        
-        // 🆕 Refactor: Use internal methods to register builtin server state
+
+        // 🆕 Refactored: Use internal methods to register built-in server state
         this._updateServerStatus(BUILTIN_SERVER_NAME, 'connected');
         this._updateServerTools(BUILTIN_SERVER_NAME, tools);
         this._updateServerError(BUILTIN_SERVER_NAME, null);
-        
+
       } else {
         const error = result instanceof Error ? result : new Error('Failed to connect to builtin server');
         throw error;
       }
     } catch (error) {
-      // Don't throw error, allow system to continue running (builtin server is optional)
+      // Don't throw error, allow system to continue running (built-in server is optional)
     }
   }
 
@@ -1035,7 +1196,7 @@ export class MCPClientManager {
 
     // Create abort controller for cancellation
     const abortController = new AbortController();
-    
+
     const lockPromise = action();
     const lock: OperationLock = {
       operation,
@@ -1073,13 +1234,13 @@ export class MCPClientManager {
       const connectionProcess = this.activeConnections.get(serverName);
       if (connectionProcess) {
         connectionProcess.abortController.abort();
-        
+
         // Try to cleanup the client
         try {
           await connectionProcess.client.cleanup();
         } catch (error) {
         }
-        
+
         this.activeConnections.delete(serverName);
       }
 
@@ -1090,7 +1251,7 @@ export class MCPClientManager {
           await client.cleanup();
         } catch (error) {
         }
-        
+
         this.mcpClients.delete(serverName);
         this.clientImplementations.delete(serverName);
         this._removeToolMappings(serverName);
@@ -1106,14 +1267,13 @@ export class MCPClientManager {
    */
   private async _performConnect(serverName: string): Promise<void> {
     const connectId = `connect_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
+
     if (!this.currentUserAlias) {
       throw new Error('Manager not initialized with user alias');
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
-    const { profileCacheManager } = await import('../userDataADO');
-    
+
     // Get server config from ProfileCacheManager
     const serverInfo = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
     if (!serverInfo.config) {
@@ -1130,35 +1290,36 @@ export class MCPClientManager {
       env: serverInfo.config.env,
       in_use: serverInfo.config.in_use,
       version: serverInfo.config.version,
-      source: serverInfo.config.source as 'ON-DEVICE' | undefined
+      source: serverInfo.config.source as 'ON-DEVICE' | 'PLUGIN' | undefined,
+      headers: serverInfo.config.headers,
     };
 
-    // 🔥 Handle KOSMOS placeholders: replace placeholders in url and env
+    // 🔥 Handle OpenKosmos placeholders: replace placeholders in url and env
     if (this.currentUserAlias) {
       // Replace placeholders in url
-      if (serverConfig.url && typeof serverConfig.url === 'string' && containsKosmosPlaceholder(serverConfig.url)) {
-        serverConfig.url = kosmosPlaceholderManager.replacePlaceholders(serverConfig.url, { alias: this.currentUserAlias });
-        advancedLogger?.info('[MCPClientManager] Replaced KOSMOS placeholders in url', '_performConnect', { serverName });
+      if (serverConfig.url && typeof serverConfig.url === 'string' && containsOpenKosmosPlaceholder(serverConfig.url)) {
+        serverConfig.url = openkosmosPlaceholderManager.replacePlaceholders(serverConfig.url, { alias: this.currentUserAlias });
+        advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in url', '_performConnect', { serverName });
       }
-      
+
       // Replace placeholders in env
       if (serverConfig.env && typeof serverConfig.env === 'object') {
         const envEntries = Object.entries(serverConfig.env);
         let hasPlaceholder = false;
         for (const [, value] of envEntries) {
-          if (typeof value === 'string' && containsKosmosPlaceholder(value)) {
+          if (typeof value === 'string' && containsOpenKosmosPlaceholder(value)) {
             hasPlaceholder = true;
             break;
           }
         }
         if (hasPlaceholder) {
-          serverConfig.env = kosmosPlaceholderManager.replacePlaceholdersInObject(serverConfig.env, { alias: this.currentUserAlias });
-          advancedLogger?.info('[MCPClientManager] Replaced KOSMOS placeholders in env', '_performConnect', { serverName });
+          serverConfig.env = openkosmosPlaceholderManager.replacePlaceholdersInObject(serverConfig.env, { alias: this.currentUserAlias });
+          advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in env', '_performConnect', { serverName });
         }
       }
     }
 
-    // 🆕 Refactor: Use internal methods to update state
+    // 🆕 Refactored: Use internal methods to update state
     this._updateServerStatus(serverName, 'connecting');
 
     // Create abort controller for this connection
@@ -1169,7 +1330,7 @@ export class MCPClientManager {
       // Create new client - use hybrid mode based on transport type
       const implementation = this._determineImplementation(serverConfig);
       client = this._createClient(serverConfig, implementation);
-      
+
       // Track this connection process
       const connectionProcess: ConnectionProcess = {
         serverName,
@@ -1178,7 +1339,7 @@ export class MCPClientManager {
         startTime: Date.now()
       };
       this.activeConnections.set(serverName, connectionProcess);
-      
+
 
       // Check if connection was cancelled before proceeding
       if (abortController.signal.aborted) {
@@ -1187,86 +1348,86 @@ export class MCPClientManager {
 
       // Attempt connection with cancellation support
       const result = await this._connectWithCancellation(client, abortController.signal);
-      
+
       if (abortController.signal.aborted) {
         return;
       }
-      
+
       if (result === 'connected') {
         // Get tools list
         const tools = await client.getTools();
-        
+
         if (!tools || tools.length === 0) {
           // No tools available - set error state
           const error = new Error('Connection successful but no tools available');
-          // 🆕 Refactor: Use internal methods to update runtime state
+          // 🆕 Refactored: Use internal methods to update runtime state
           this._updateServerError(serverName, error);
           this._updateServerTools(serverName, []); // Clear tools list for error state
           this._updateServerStatus(serverName, 'error');
-          
+
           // Still update in_use to true (user wants to use this server)
           await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: true });
-          
+
           return; // Don't throw error - connection operation completed, just in error state
         }
-        
+
         // Success - update runtime state
         this.mcpClients.set(serverName, client);
         this.clientImplementations.set(serverName, implementation);
-        
+
         // 🔧 Important: Update toolToServerMap first, then set status='connected'
-        // This ensures toolToServerMap is ready when external polling detects connected status
+        // This way when external polling detects connected, toolToServerMap is already ready
         this._updateToolMappings(serverName, tools);
-        
-        // 🆕 Refactor: Use internal methods to update runtime state
+
+        // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerTools(serverName, tools);
         this._updateServerError(serverName, null);
         this._updateServerStatus(serverName, 'connected');
-        
+
         // Update config in_use to true
         await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: true });
-        
+
       } else {
         // Connection failed
         const error = result instanceof Error ? result : new Error('Connection failed');
-        // 🆕 Refactor: Use internal methods to update runtime state
+        // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerError(serverName, error);
         this._updateServerTools(serverName, []); // Clear tools list for error state
-        this._updateServerStatus(serverName, 'error');
-        
+        this._updateServerStatus(serverName, this._resolveStatusForError(error));
+
         // Still update in_use to true (user wants to use this server)
         await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: true });
-        
+
         return; // Don't throw error - connection operation completed, just in error state
       }
     } catch (error) {
       // Check if this was a cancellation
       if (abortController.signal.aborted) {
         // Don't update status to error for cancelled connections
-        // 🆕 Refactor: Use internal methods to update runtime state
+        // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerStatus(serverName, 'disconnected');
         return;
       }
 
       // Exception handling
       const err = error instanceof Error ? error : new Error('Connection failed');
-      // 🆕 Refactor: Use internal methods to update runtime state
+      // 🆕 Refactored: Use internal methods to update runtime state
       this._updateServerError(serverName, err);
       this._updateServerTools(serverName, []); // Clear tools list for error state
-      this._updateServerStatus(serverName, 'error');
-      
+      this._updateServerStatus(serverName, this._resolveStatusForError(err));
+
       // Still update in_use to true
       try {
         await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: true });
       } catch (profileError) {
       }
-      
+
       // Don't throw error - connection operation completed, just in error state
       return; // Explicitly return to prevent any further execution
     } finally {
       // Clean up connection tracking
       this.activeConnections.delete(serverName);
-      
+
       // If connection failed and client was created, clean it up
       if (client && !this.mcpClients.has(serverName)) {
         try {
@@ -1324,20 +1485,20 @@ export class MCPClientManager {
       // Step 1: Force cancel any ongoing connection process first
       await this._forceCancelConnection(serverName);
 
-      // Step 2: 🆕 Refactor: Use internal methods to update state
+      // Step 2: 🆕 Refactored: Use internal methods to update state
       this._updateServerStatus(serverName, 'disconnecting');
 
       // Step 3: Clean up any remaining resources
       const client = this.mcpClients.get(serverName);
-      
+
       if (client) {
         this._removeToolMappings(serverName);
-        
+
         await client.cleanup();
-        
+
         this.mcpClients.delete(serverName);
         this.clientImplementations.delete(serverName);
-        
+
       } else {
       }
     } catch (error) {
@@ -1347,7 +1508,6 @@ export class MCPClientManager {
 
     try {
       // 🆕 Use dynamic import to avoid circular dependency
-      const { profileCacheManager } = await import('../userDataADO');
       // Update config in_use to false
       await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: false });
     } catch (error) {
@@ -1360,11 +1520,11 @@ export class MCPClientManager {
 
     // Always set final state to disconnected, regardless of cleanup errors
     // The goal of disconnect is to reach disconnected state
-    // 🆕 Refactor: Use internal methods to update runtime state
+    // 🆕 Refactored: Use internal methods to update runtime state
     this._updateServerTools(serverName, []);
     this._updateServerError(serverName, disconnectError);
     this._updateServerStatus(serverName, 'disconnected');
-    
+
     if (disconnectError) {
     } else {
     }
@@ -1385,68 +1545,69 @@ export class MCPClientManager {
 
     // Check if client exists
     const client = this.mcpClients.get(serverName);
-    
+
     if (!client) {
-      // 🆕 No existing client instance, perform a full connect operation to recreate the instance and connect
-      // This solves the issue where reconnect fails due to no client instance in error state
+      // 🆕 When no existing client instance, perform full connect to recreate and connect
+      // This fixes the issue where reconnect fails in error state due to missing client instance
       await this._performConnect(serverName);
       return;
     }
 
-    // 🔧 Existing client instance found, attempt reconnection directly
-    // 🆕 Refactor: Use internal methods to update state
+    // 🔧 When existing client instance exists, attempt reconnect directly
+    // 🆕 Refactored: Use internal methods to update state
     this._updateServerStatus(serverName, 'connecting');
 
     try {
       // Reuse existing client, call connectToServer() to reconnect
       const result = await client.connectToServer();
-      
+
       if (result === 'connected') {
         // Get tools
         const tools = await client.getTools();
-        
+
         if (tools && tools.length > 0) {
           // Success
           // 🔧 Important: Update toolToServerMap first, then set status='connected'
           this._updateToolMappings(serverName, tools);
-          
-          // 🆕 Refactor: Use internal methods to update runtime state
+
+          // 🆕 Refactored: Use internal methods to update runtime state
           this._updateServerTools(serverName, tools);
           this._updateServerError(serverName, null);
           this._updateServerStatus(serverName, 'connected');
-          
+
         } else {
           // No tools
           this._removeToolMappings(serverName);
           const error = new Error('Reconnection successful but no tools returned from server');
-          // 🆕 Refactor: Use internal methods to update runtime state
+          // 🆕 Refactored: Use internal methods to update runtime state
           this._updateServerError(serverName, error);
           this._updateServerStatus(serverName, 'error');
           this._updateServerTools(serverName, []); // Clear tools list for error state
-          
-          // Don't throw error - reconnect operation completed, just in error state          return;
+
+          // Don't throw error - reconnect completed, just in error state
+          return;
         }
       } else {
         // Connection failed
         const error = result instanceof Error ? result : new Error('Reconnection failed');
-        // 🆕 Refactor: Use internal methods to update runtime state
+        // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerError(serverName, error);
         this._updateServerTools(serverName, []); // Clear tools list for error state
-        this._updateServerStatus(serverName, 'error');
-        
-        // Don't throw error - reconnect operation completed, just in error state
+        this._updateServerStatus(serverName, this._resolveStatusForError(error));
+
+        // Don't throw error - reconnect completed, just in error state
         return;
       }
     } catch (error) {
       // Exception occurred
       this._removeToolMappings(serverName);
       const err = error instanceof Error ? error : new Error('Reconnect failed');
-      // 🆕 Refactor: Use internal methods to update runtime state
+      // 🆕 Refactored: Use internal methods to update runtime state
       this._updateServerError(serverName, err);
       this._updateServerTools(serverName, []); // Clear tools list for error state
-      this._updateServerStatus(serverName, 'error');
-      
-      // Don't throw error - reconnect operation completed, just in error state
+      this._updateServerStatus(serverName, this._resolveStatusForError(err));
+
+      // Don't throw error - reconnect completed, just in error state
       return;
     }
   }
@@ -1457,7 +1618,7 @@ export class MCPClientManager {
   private _updateToolMappings(serverName: string, tools: { name: string }[]): void {
     // Remove old mappings first
     this._removeToolMappings(serverName);
-    
+
     // Add new mappings
     for (const tool of tools) {
       this.toolToServerMap.set(tool.name, serverName);
@@ -1485,10 +1646,10 @@ export class MCPClientManager {
    * @param implementation - Client implementation type (always forced to vscodeMcpClient)
    */
   private _createClient(serverConfig: McpServerConfig, implementation: ClientImplementation): IUnifiedMcpClient {
-    // 🚫 MCPClient completely disabled, VscMcpClient used for all cases
+    // 🚫 MCPClient completely disabled, all cases use VscMcpClient
     if (implementation !== 'vscodeMcpClient') {
     }
-    
+
     return new VscMcpClient(serverConfig);
   }
 
@@ -1506,7 +1667,7 @@ export class MCPClientManager {
 
   /**
    * Force client implementation for specific server
-   * 🆕 Modified: Now only allows vscodeMcpClient, forcing sdk is not allowed
+   * 🆕 Modified: Now only vscodeMcpClient is allowed, forcing sdk is not permitted
    *
    * @param serverName - Server name
    * @param implementation - Client implementation type
@@ -1517,7 +1678,6 @@ export class MCPClientManager {
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
-    const { profileCacheManager } = await import('../userDataADO');
     const serverInfo = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
     if (!serverInfo.config) {
       throw new Error(`Server "${serverName}" not found`);
@@ -1537,7 +1697,7 @@ export class MCPClientManager {
    */
   getImplementationStats(): { sdk: number; vscodeMcpClient: number; total: number } {
     const stats = { sdk: 0, vscodeMcpClient: 0, total: 0 };
-    
+
     // Count actual implementations - should be ALL vscMcpClient now
     this.clientImplementations.forEach((implementation) => {
       if (implementation === 'sdk') {
@@ -1547,23 +1707,23 @@ export class MCPClientManager {
         stats.vscodeMcpClient++;
       }
     });
-    
+
     stats.total = this.clientImplementations.size;
     return stats;
   }
 
   /**
-   * 🆕 Check if this is a builtin server
+   * 🆕 Check if this is a built-in server
    * @param serverName - Server name
-   * @returns Whether it is a builtin server
+   * @returns Whether it is a built-in server
    */
   isBuiltinServer(serverName: string): boolean {
     return serverName === BUILTIN_SERVER_NAME;
   }
 
   /**
-   * 🆕 Get builtin server name
-   * @returns Builtin server name
+   * 🆕 Get the built-in server name
+   * @returns Built-in server name
    */
   getBuiltinServerName(): string {
     return BUILTIN_SERVER_NAME;

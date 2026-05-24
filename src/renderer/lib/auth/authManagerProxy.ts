@@ -1,8 +1,8 @@
-// src/renderer/lib/auth/authManagerProxy.ts - Renderer Process Auth Proxy V2.0
+// src/renderer/lib/auth/authManagerProxy.ts - Renderer process auth proxy V2.0
 import { AuthData, TokenRefreshResult } from '../../types/authTypes';
 
 /**
- * Renderer Process Auth Manager Proxy V2.0 - Communicates with main process via IPC
+ * Renderer process auth manager proxy V2.0 - communicates with main process via IPC
  *
  * 100% uses AuthData, no compatibility layer
  */
@@ -14,140 +14,140 @@ export class AuthManagerProxy {
   }
 
   // =========================================================================
-  // New API - Using AuthData
+  // New API - uses AuthData
   // =========================================================================
 
   /**
-   * Set current auth data (New API)
+   * Set current auth data (new API)
    */
   async setCurrentAuth(authData: AuthData): Promise<void> {
     // Defensive check - ensure authData structure is complete
     const userLogin = authData?.ghcAuth?.user?.login || 'unknown';
-    
+
     if (!(window as any).electronAPI?.auth?.setCurrentAuth) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.setCurrentAuth(authData);
     if (!result.success) {
       throw new Error(result.error || 'Failed to set current auth');
     }
-    
+
     this.cachedCurrentAuth = authData;
   }
 
   /**
-   * Get current auth data (New API - synchronous)
+   * Get current auth data (new API - synchronous)
    */
   getCurrentAuth(): AuthData | null {
     return this.cachedCurrentAuth;
   }
 
   /**
-   * Get current auth data (New API - asynchronous)
+   * Get current auth data (new API - asynchronous)
    */
   async getCurrentAuthAsync(): Promise<AuthData | null> {
     if (!(window as any).electronAPI?.auth?.getCurrentAuth) {
       return null;
     }
-    
+
     const result = await (window as any).electronAPI.auth.getCurrentAuth();
     if (result.success && result.data) {
       this.cachedCurrentAuth = result.data;
       return result.data;
     }
-    
+
     return null;
   }
 
   /**
-   * Destroy current auth (New API)
+   * Destroy current auth (new API)
    */
   async destroyCurrentAuth(): Promise<void> {
-    
+
     if (!(window as any).electronAPI?.auth?.destroyCurrentAuth) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.destroyCurrentAuth();
     if (!result.success) {
       throw new Error(result.error || 'Failed to destroy current auth');
     }
-    
+
     this.cachedCurrentAuth = null;
   }
 
   /**
-   * Unified signOut method - calls the unified signOut interface in the main process
+   * Unified signOut method - calls the main process unified signOut interface
    */
   async signOut(): Promise<void> {
-    
+
     if (!(window as any).electronAPI?.auth?.signOut) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.signOut();
     if (!result.success) {
       throw new Error(result.error || 'signOut failed');
     }
-    
+
     this.cachedCurrentAuth = null;
   }
 
   /**
-   * Get Copilot Token (New API)
+   * Get Copilot Token (new API)
    */
   async getCopilotAccessToken(): Promise<string | null> {
     if (!(window as any).electronAPI?.auth?.getCopilotToken) {
       return null;
     }
-    
+
     const result = await (window as any).electronAPI.auth.getCopilotToken();
     if (result.success) {
       return result.data;
     }
-    
+
     return null;
   }
 
   /**
-   * Get GitHub Token (New API)
+   * Get GitHub Token (new API)
    */
   async getGitHubAccessToken(): Promise<string | null> {
     if (!(window as any).electronAPI?.auth?.getGitHubToken) {
       return null;
     }
-    
+
     const result = await (window as any).electronAPI.auth.getGitHubToken();
     if (result.success) {
       return result.data;
     }
-    
+
     return null;
   }
 
   /**
-   * Get local active auth list (New API)
+   * Get local active auth list (new API)
    */
   async getLocalActiveAuths(): Promise<AuthData[]> {
-    
+
     if (!(window as any).electronAPI?.auth?.getLocalActiveAuths) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.getLocalActiveAuths();
     if (!result.success) {
       throw new Error(result.error || 'Failed to get local active auths');
     }
-    
+
     return result.data || [];
   }
 
   /**
-   * Refresh Copilot Token (New API)
+   * Refresh Copilot Token (new API)
    */
   async refreshCopilotToken(): Promise<TokenRefreshResult> {
-    
+
     if (!(window as any).electronAPI?.auth?.refreshCopilotToken) {
       return {
         success: false,
@@ -155,7 +155,7 @@ export class AuthManagerProxy {
         requiresReauth: true
       };
     }
-    
+
     const result = await (window as any).electronAPI.auth.refreshCopilotToken();
     if (result.success) {
       // Update cache
@@ -164,99 +164,99 @@ export class AuthManagerProxy {
       }
       return result.data;
     }
-    
+
     return {
       success: false,
-      error: result.error || 'Failed to refresh Token',
+      error: result.error || 'Failed to refresh token',
       requiresReauth: true
     };
   }
 
   /**
-   * Listen for auth change events (New API)
+   * Listen for auth change events (new API)
    */
   onAuthChanged(callback: (data: { type: string; authData: AuthData | null }) => void): () => void {
     if (!(window as any).electronAPI?.auth?.onAuthChanged) {
       return () => {};
     }
-    
+
     return (window as any).electronAPI.auth.onAuthChanged((data: any) => {
-      
+
       // Update cache
       if (data.type === 'auth_set' || data.type === 'copilot_token_refreshed') {
         this.cachedCurrentAuth = data.authData;
       } else if (data.type === 'auth_destroyed') {
         this.cachedCurrentAuth = null;
       }
-      
+
       callback(data);
     });
   }
 
   // =========================================================================
-  // Token Monitoring
+  // Token monitoring
   // =========================================================================
 
-  // Note: startTokenMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth()
+  // Note: startTokenMonitoring has been removed - token monitoring is now started automatically by setCurrentAuth()
 
   /**
-   * Stop Token monitoring
+   * Stop token monitoring
    */
   async stopTokenMonitoring(): Promise<void> {
-    
+
     if (!(window as any).electronAPI?.auth?.stopTokenMonitoring) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.stopTokenMonitoring();
     if (!result.success) {
-      throw new Error(result.error || 'Failed to stop Token monitoring');
+      throw new Error(result.error || 'Failed to stop token monitoring');
     }
-    
+
   }
 
   /**
-   * Manually trigger Token check
+   * Manually trigger a token check
    */
   async manualTokenCheck(): Promise<void> {
-    
+
     if (!(window as any).electronAPI?.auth?.manualTokenCheck) {
       throw new Error('Auth API not available');
     }
-    
+
     const result = await (window as any).electronAPI.auth.manualTokenCheck();
     if (!result.success) {
-      throw new Error(result.error || 'Failed to perform manual Token check');
+      throw new Error(result.error || 'Manual token check failed');
     }
-    
+
   }
 
   /**
-   * Listen for Token monitoring events
+   * Listen for token monitor events
    */
   onTokenMonitor(callback: (data: any) => void): () => void {
     if (!(window as any).electronAPI?.auth?.onTokenMonitor) {
       return () => {};
     }
-    
+
     return (window as any).electronAPI.auth.onTokenMonitor((data: any) => {
       callback(data);
     });
   }
 
   // =========================================================================
-  // Initialization and Singleton
+  // Initialization and singleton
   // =========================================================================
 
   /**
-   * Initialize proxy (sync cached auth state)
+   * Initialize the proxy (sync cached auth state)
    */
   async initialize(): Promise<void> {
-    
+
     try {
       // Sync current auth state
       await this.getCurrentAuthAsync();
-      
+
     } catch (error) {
     }
   }

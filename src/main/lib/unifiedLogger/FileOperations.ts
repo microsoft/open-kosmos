@@ -1,14 +1,20 @@
 /**
  * Refactored Logger System - File Operations
- * 
+ *
  * Utility functions for file operations including writing logs and cleanup
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { app } from 'electron';
 import { LogEntry, FileOperationResult } from './types';
 import { CacheObject } from './CacheObject';
+
+const PRODUCTION_LOG_FILE_RE = /^openkosmos-\d{4}-\d{2}-\d{2}\.log$/;
+const DEV_LOG_FILE_RE = /^openkosmos-dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.log$/;
+
+let devStartupLogFileName: string | null = null;
 
 /**
  * Get the default log directory
@@ -16,13 +22,10 @@ import { CacheObject } from './CacheObject';
  */
 export function getDefaultLogDirectory(): string {
   // Use electron's app.getPath('userData') if available, otherwise fallback
-  if (typeof require !== 'undefined') {
-    try {
-      const { app } = require('electron');
-      return path.join(app.getPath('userData'), 'logs');
-    } catch (error) {
-      // Fallback for non-electron environments
-    }
+  try {
+    return path.join(app.getPath('userData'), 'logs');
+  } catch (error) {
+    // Fallback for non-electron environments
   }
   const userProfile = os.homedir();
   // Try to get app name from environment or default to 'openkosmos-app'
@@ -45,7 +48,7 @@ export function getDefaultLogDirectory(): string {
 /**
  * Ensure the log directory exists
  * @param logDirectory - Log directory path
- * @returns Whether the directory was successfully created or confirmed to exist
+ * @returns Whether the directory was successfully created or already exists
  */
 export async function ensureLogDirectoryExists(logDirectory: string): Promise<boolean> {
   try {
@@ -56,16 +59,54 @@ export async function ensureLogDirectoryExists(logDirectory: string): Promise<bo
   }
 }
 
+function formatDatePart(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatLocalTimestampForFileName(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${formatDatePart(date)}-${hours}-${minutes}-${seconds}`;
+}
+
+export function isDevelopmentLogEnvironment(): boolean {
+  return process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+}
+
 /**
- * Get today's log file name
- * @returns Today's log file name
+ * Get the production log file name for today
+ * @returns Production log file name for today
  */
-export function getTodayLogFileName(): string {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `openkosmos-${year}-${month}-${day}.log`;
+export function getTodayLogFileName(date: Date = new Date()): string {
+  return `openkosmos-${formatDatePart(date)}.log`;
+}
+
+export function getDevLogFileName(date: Date = new Date()): string {
+  return `openkosmos-dev-${formatLocalTimestampForFileName(date)}.log`;
+}
+
+export function getDevStartupLogFileName(date: Date = new Date()): string {
+  if (!devStartupLogFileName) {
+    devStartupLogFileName = getDevLogFileName(date);
+  }
+  return devStartupLogFileName;
+}
+
+export function resetDevStartupLogFileNameForTest(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('resetDevStartupLogFileNameForTest can only be used in tests');
+  }
+  devStartupLogFileName = null;
+}
+
+export function getCurrentLogFileName(): string {
+  return isDevelopmentLogEnvironment()
+    ? getDevStartupLogFileName()
+    : getTodayLogFileName();
 }
 
 /**
@@ -75,7 +116,7 @@ export function getTodayLogFileName(): string {
  * @returns Full file path
  */
 export function getLogFilePath(logDirectory: string, fileName?: string): string {
-  const actualFileName = fileName || getTodayLogFileName();
+  const actualFileName = fileName || getCurrentLogFileName();
   return path.join(logDirectory, actualFileName);
 }
 
@@ -89,7 +130,7 @@ export function formatLogEntryForFile(logEntry: LogEntry): string {
   const level = logEntry.level.padEnd(5);
   const source = logEntry.source ? `[${logEntry.source}]` : '';
   const metadata = logEntry.metadata ? ` ${JSON.stringify(logEntry.metadata)}` : '';
-  
+
   return `${timestamp} ${level} ${source} ${logEntry.message}${metadata}`;
 }
 
@@ -111,7 +152,7 @@ export function formatCacheObjectForFile(cacheObject: CacheObject): string {
  * @returns File operation result
  */
 export async function writeCacheObjectToDisk(
-  cacheObject: CacheObject, 
+  cacheObject: CacheObject,
   logDirectory: string
 ): Promise<FileOperationResult> {
   const startTime = Date.now();
@@ -169,15 +210,15 @@ export async function getAllLogFiles(logDirectory: string): Promise<Array<{
   try {
     // Check if directory exists
     await fs.access(logDirectory);
-    
+
     const files = await fs.readdir(logDirectory);
     const logFiles = files.filter(file => file.endsWith('.log'));
-    
+
     const fileInfos = await Promise.all(
       logFiles.map(async (fileName) => {
         const filePath = path.join(logDirectory, fileName);
         const stats = await fs.stat(filePath);
-        
+
         return {
           name: fileName,
           path: filePath,
@@ -207,11 +248,16 @@ export async function cleanupOldLogFiles(logDirectory: string): Promise<{
 }> {
   try {
     const allFiles = await getAllLogFiles(logDirectory);
-    const todayFileName = getTodayLogFileName();
-    
-    // Find files to delete (not today's file)
-    const filesToDelete = allFiles.filter(file => file.name !== todayFileName);
-    
+    const currentFileName = getCurrentLogFileName();
+    const isDevelopment = isDevelopmentLogEnvironment();
+
+    const filesToDelete = allFiles.filter(file => {
+      if (isDevelopment) {
+        return DEV_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+      }
+      return PRODUCTION_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+    });
+
     if (filesToDelete.length === 0) {
       return {
         success: true,
@@ -249,17 +295,22 @@ export async function cleanupOldLogFiles(logDirectory: string): Promise<{
 }
 
 /**
- * Check if log files need cleanup
+ * Check whether log files need cleanup
  * @param logDirectory - Log directory
  * @returns Whether cleanup is needed
  */
 export async function needsCleanup(logDirectory: string): Promise<boolean> {
   try {
     const allFiles = await getAllLogFiles(logDirectory);
-    const todayFileName = getTodayLogFileName();
-    
-    // If there are files not from today, cleanup is needed
-    return allFiles.some(file => file.name !== todayFileName);
+    const currentFileName = getCurrentLogFileName();
+    const isDevelopment = isDevelopmentLogEnvironment();
+
+    return allFiles.some(file => {
+      if (isDevelopment) {
+        return DEV_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+      }
+      return PRODUCTION_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+    });
   } catch (error) {
     return false;
   }
@@ -280,11 +331,17 @@ export async function getLogDirectoryStats(logDirectory: string): Promise<{
 }> {
   try {
     const allFiles = await getAllLogFiles(logDirectory);
-    const todayFileName = getTodayLogFileName();
-    
-    const todayFile = allFiles.find(file => file.name === todayFileName);
-    const oldFiles = allFiles.filter(file => file.name !== todayFileName);
-    
+    const currentFileName = getCurrentLogFileName();
+    const isDevelopment = isDevelopmentLogEnvironment();
+
+    const todayFile = allFiles.find(file => file.name === currentFileName);
+    const oldFiles = allFiles.filter(file => {
+      if (isDevelopment) {
+        return DEV_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+      }
+      return PRODUCTION_LOG_FILE_RE.test(file.name) && file.name !== currentFileName;
+    });
+
     const totalSize = allFiles.reduce((sum, file) => sum + file.size, 0);
     const oldFilesSize = oldFiles.reduce((sum, file) => sum + file.size, 0);
 
@@ -309,7 +366,7 @@ export async function getLogDirectoryStats(logDirectory: string): Promise<{
 }
 
 /**
- * Validate log directory accessibility
+ * Validate the accessibility of the log directory
  * @param logDirectory - Log directory
  * @returns Validation result
  */
@@ -322,13 +379,13 @@ export async function validateLogDirectory(logDirectory: string): Promise<{
   try {
     // Check if directory exists
     await fs.access(logDirectory, fs.constants.F_OK);
-    
+
     // Check if readable
     await fs.access(logDirectory, fs.constants.R_OK);
-    
+
     // Check if writable
     await fs.access(logDirectory, fs.constants.W_OK);
-    
+
     return {
       exists: true,
       writable: true,

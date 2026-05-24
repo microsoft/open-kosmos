@@ -17,6 +17,8 @@ import { useStreamingAudioRecorder } from '../../lib/audio';
 import type { VoiceInputSettings } from '../../types/profileTypes';
 import { ExperimentTag } from '../ui/ExperimentTag';
 import './VoiceInputButton.css';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[VoiceInputButton]');
 
 export interface VoiceInputButtonProps {
   /** Callback when transcript is received */
@@ -80,7 +82,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
             pcmData
           );
         } catch (err) {
-          console.error('[VoiceInput] Failed to process chunk:', err);
+          logger.error('[VoiceInput] Failed to process chunk:', err);
         }
       }
     }, []),
@@ -104,7 +106,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         return;
       }
 
-      console.log('[VoiceInput] Streaming update:', update.type, update.text?.substring(0, 50));
+      logger.debug('[VoiceInput] Streaming update:', update.type, update.text?.substring(0, 50));
 
       switch (update.type) {
         case 'interim':
@@ -124,7 +126,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
           break;
 
         case 'error':
-          console.error('[VoiceInput] Streaming error:', update.error);
+          logger.error('[VoiceInput] Streaming error:', update.error);
           setErrorMessage(update.error || 'Transcription error');
           setStatus('error');
           setTimeout(() => {
@@ -162,7 +164,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         setSettings(response.data);
       }
     } catch (err) {
-      console.error('[VoiceInput] Failed to load settings:', err);
+      logger.error('[VoiceInput] Failed to load settings:', err);
     }
   };
 
@@ -173,7 +175,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         setIsModelDownloaded(response.data.downloaded);
       }
     } catch (err) {
-      console.error('[VoiceInput] Failed to check model status:', err);
+      logger.error('[VoiceInput] Failed to check model status:', err);
       setIsModelDownloaded(false);
     }
   };
@@ -219,7 +221,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         }, 300);
 
       } catch (err) {
-        console.error('[VoiceInput] Failed to stop streaming:', err);
+        logger.error('[VoiceInput] Failed to stop streaming:', err);
         setErrorMessage(err instanceof Error ? err.message : 'Failed to stop');
         setStatus('error');
         setTimeout(() => {
@@ -251,7 +253,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         }
 
         streamingSessionRef.current = response.data.sessionId;
-        console.log('[VoiceInput] Streaming session started:', response.data.sessionId);
+        logger.debug('[VoiceInput] Streaming session started:', response.data.sessionId);
 
         // Start audio recording
         await startRecording();
@@ -259,7 +261,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         onListeningStart?.();
 
       } catch (err) {
-        console.error('[VoiceInput] Failed to start streaming:', err);
+        logger.error('[VoiceInput] Failed to start streaming:', err);
         setErrorMessage(err instanceof Error ? err.message : 'Failed to start recording');
         setStatus('error');
 

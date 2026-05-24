@@ -1,0 +1,81 @@
+{
+  "description": "Enforces max line count on source files. Legacy files in 'allowlist' are exempt. Files matching 'exempt_patterns' are skipped entirely.",
+  "rules": {
+    "default": 1000,
+    "allowlisted_max_net_growth_lines": 50
+  },
+  "overrides": [
+    {
+      "pattern": "src/renderer/**/*.tsx",
+      "max_lines": 600,
+      "allowlist": [
+        "src/renderer/components/chat/agent-area/AgentList.tsx",
+        "src/renderer/components/chat/agent-area/AddFromAgentLibraryViewContent.tsx",
+        "src/renderer/components/chat/message/Message.tsx",
+        "src/renderer/components/mcp/AddFromMcpLibraryViewContent.tsx",
+        "src/renderer/components/fre/FreSettingUpView.tsx",
+        "src/renderer/components/chat/agent-editor/AgentKnowledgeBaseTab.tsx",
+        "src/renderer/components/ui/OverlayFileViewer.tsx",
+        "src/renderer/components/chat/pm-project-agent-creation/SharePointDocumentSearchOverlay.tsx",
+        "src/renderer/components/chat/agent-editor/AddScheduleOverlay.tsx",
+        "src/renderer/components/chat/agent-area/AgentChatEditingView.tsx",
+        "src/renderer/components/chat/ChatInput.tsx",
+        "src/renderer/components/chat/agent-editor/AgentMcpServersTab.tsx",
+        "src/renderer/components/mcp/AddNewMcpServerViewContent.tsx",
+        "src/renderer/components/pages/SettingsPage.tsx",
+        "src/renderer/components/pages/SignInPage.tsx",
+        "src/renderer/components/chat/InteractiveRequestCard.tsx",
+        "src/renderer/components/chat/InlineFilePreviewPanel.tsx",
+        "src/renderer/components/settings/BrowserControlView.tsx",
+        "src/renderer/components/settings/SchedulesContentView.tsx",
+        "src/renderer/components/chat/SchedulesSidepane.tsx",
+        "src/renderer/components/streaming/StreamingV2Message.tsx",
+        "src/renderer/components/chat/workspace/FileExplorerSection.tsx",
+        "src/renderer/components/mcp/ImportVscodeMcpServerViewContent.tsx",
+        "src/renderer/components/settings/SyncSettingsContentView.tsx"
+      ]
+    }
+  ],
+  "exempt_patterns": [
+    "**/*.css",
+    "**/*.scss",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**",
+    "tests/e2e/**",
+    "browser-control/**"
+  ],
+  "allowlist": [
+    "src/main/lib/chat/agentChat.ts",
+    "src/main/lib/userDataADO/profileCacheManager.ts",
+    "src/preload/main.ts",
+    "src/main/lib/chat/agentChatManager.ts",
+    "src/renderer/lib/chat/agentChatSessionCacheManager.ts",
+    "src/main/main.ts",
+    "src/main/lib/microsoftGraph/BrowserAuthProvider.ts",
+    "src/main/lib/mcpRuntime/mcpClientManager.ts",
+    "src/main/lib/autoUpdate/updateManager.ts",
+    "src/main/lib/userDataADO/types/profile.ts",
+    "src/main/lib/runtime/RuntimeManager.ts",
+    "src/main/lib/chat/agentChatUtilities.ts",
+    "src/main/lib/browserControl/BrowserControlManager.ts",
+    "src/main/lib/auth/authManager.ts",
+    "src/main/lib/mcpRuntime/builtinTools/builtinToolsManager.ts",
+    "src/main/lib/startupUpdate/startupUpdateService.ts",
+    "src/renderer/lib/userData/profileDataManager.ts",
+    "src/main/lib/microsoftGraph/NativeOfficeExtractor.ts",
+    "src/main/lib/scheduler/SchedulerManager.ts",
+    "src/main/lib/userDataADO/chatSessionManager.ts",
+    "tests/e2e/fixtures/mockedApp.ts",
+    "src/renderer/components/chat/agent-area/AgentList.tsx",
+    "src/renderer/components/chat/agent-area/AddFromAgentLibraryViewContent.tsx",
+    "src/renderer/components/chat/message/Message.tsx",
+    "src/renderer/components/mcp/AddFromMcpLibraryViewContent.tsx",
+    "src/renderer/components/fre/FreSettingUpView.tsx",
+    "src/renderer/components/chat/agent-editor/AgentKnowledgeBaseTab.tsx",
+    "src/renderer/components/ui/OverlayFileViewer.tsx",
+    "src/renderer/components/chat/pm-project-agent-creation/SharePointDocumentSearchOverlay.tsx"
+  ]
+}

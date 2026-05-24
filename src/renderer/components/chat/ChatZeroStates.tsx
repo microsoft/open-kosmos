@@ -1,27 +1,29 @@
 /**
  * ChatZeroStates Component
- * Chat initial experience component - displays greeting and quick start cards
+ * Initial chat experience component - displays a greeting and quick-start cards
  */
 
 import React, { useState, useEffect } from 'react';
 import { ZeroStates, QuickStartItem } from '../../lib/userData/types';
 import '../../styles/ChatZeroStates.css';
+import { createLogger } from '../../lib/utilities/logger';
+const logger = createLogger('[ChatZeroStates]');
 
 interface ChatZeroStatesProps {
   /** Zero States configuration */
   zeroStates: ZeroStates;
   /** Agent name, used for image caching */
   agentName: string;
-  /** Callback when a quick start card is clicked */
+  /** Callback when a quick-start card is clicked */
   onQuickStartClick: (prompt: string) => void;
 }
 
-/** Default quick start card image (placeholder) */
-const DEFAULT_QUICK_START_IMAGE = '';
+/** Default quick-start card image */
+const DEFAULT_QUICK_START_IMAGE = 'https://cdn.kosmos-ai.com/images/kosmos/openkosmos-quick-start-default-image.png';
 
 /**
- * Quick start card component
- * Supports local image caching, preferring cache with fallback to remote URL
+ * Quick-start card component.
+ * Supports local image caching: prefers cached version, falls back to remote URL on failure.
  */
 const QuickStartCard: React.FC<{
   item: QuickStartItem;
@@ -30,38 +32,38 @@ const QuickStartCard: React.FC<{
 }> = ({ item, agentName, onClick }) => {
   const [imageUrl, setImageUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // If image is empty, use the default image
   const rawImageUrl = item.image && item.image.trim() ? item.image : DEFAULT_QUICK_START_IMAGE;
 
   useEffect(() => {
     let isMounted = true;
-    
+
     const loadImage = async () => {
       setIsLoading(true);
-      
+
       try {
-        // Try to get cached local path (will auto-cache if not exists)
+        // Try to get the cached local path (auto-caches if not present)
         const result = await window.electronAPI.quickStartImageCache?.getOrCache(
-          agentName, 
+          agentName,
           rawImageUrl
         );
-        
+
         if (isMounted) {
           if (result?.success && result.cachedUrl) {
-            // Use cached local file path
+            // Use the cached local file path
             setImageUrl(result.cachedUrl);
           } else {
-            // Fall back to remote URL (add timestamp to avoid browser caching issues)
+            // Fall back to the remote URL (add timestamp to avoid browser cache issues)
             const timestamp = Date.now();
             const separator = rawImageUrl.includes('?') ? '&' : '?';
             setImageUrl(`${rawImageUrl}${separator}t=${timestamp}`);
           }
         }
       } catch (error) {
-        console.error('[QuickStartCard] Failed to load cached image:', error);
+        logger.error('[QuickStartCard] Failed to load cached image:', error);
         if (isMounted) {
-          // Fall back to remote URL on error
+          // Fall back to the remote URL on error
           const timestamp = Date.now();
           const separator = rawImageUrl.includes('?') ? '&' : '?';
           setImageUrl(`${rawImageUrl}${separator}t=${timestamp}`);
@@ -81,7 +83,7 @@ const QuickStartCard: React.FC<{
   }, [agentName, rawImageUrl]);
 
   return (
-    <div 
+    <div
       className="quick-start-card"
       onClick={onClick}
       role="button"
@@ -93,7 +95,7 @@ const QuickStartCard: React.FC<{
         }
       }}
     >
-      <div 
+      <div
         className={`quick-start-card-image ${isLoading ? 'loading' : ''}`}
         style={{ backgroundImage: imageUrl ? `url(${imageUrl})` : undefined }}
       />
@@ -104,8 +106,8 @@ const QuickStartCard: React.FC<{
 };
 
 /**
- * ChatZeroStates main component
- * Displayed in the chat content area, above ChatInput
+ * ChatZeroStates main component.
+ * Displayed in the chat content area, above ChatInput.
  */
 const ChatZeroStates: React.FC<ChatZeroStatesProps> = ({
   zeroStates,
@@ -113,11 +115,11 @@ const ChatZeroStates: React.FC<ChatZeroStatesProps> = ({
   onQuickStartClick
 }) => {
   const { greeting, quick_starts } = zeroStates;
-  
+
   // If both greeting and quick_starts are empty, don't render
   const hasGreeting = greeting && greeting.trim().length > 0;
   const hasQuickStarts = quick_starts && quick_starts.length > 0;
-  
+
   if (!hasGreeting && !hasQuickStarts) {
     return null;
   }
@@ -130,8 +132,8 @@ const ChatZeroStates: React.FC<ChatZeroStatesProps> = ({
           {greeting}
         </div>
       )}
-      
-      {/* Quick Start List - horizontally scrollable showing all cards */}
+
+      {/* Quick Start List - horizontally scrollable list of cards */}
       {hasQuickStarts && (
         <div className="quick-start-list">
           {quick_starts!.map((item, index) => (

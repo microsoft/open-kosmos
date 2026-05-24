@@ -22,7 +22,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { createConsoleLogger } from '../unifiedLogger';
 import {
   AppConfig,
@@ -44,14 +44,23 @@ const logger = createConsoleLogger();
 
 const APP_CONFIG_FILENAME = 'app.json';
 const LEGACY_RUNTIME_CONFIG_FILENAME = 'runtimeConfig.json';
+const DEFAULT_ZOOM_LEVEL = 0;
+const ZOOM_MIN = -3;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.5;
+
+function sanitizeZoomLevel(value: unknown, fallback: number = DEFAULT_ZOOM_LEVEL): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+
+  const clamped = Math.min(Math.max(value, ZOOM_MIN), ZOOM_MAX);
+  return Math.round(clamped / ZOOM_STEP) * ZOOM_STEP;
+}
 
 function getElectronApp(): Electron.App {
   try {
     if ((global as any).electron?.app) {
       return (global as any).electron.app;
     }
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { app } = require('electron');
     return app;
   } catch {
     throw new Error('[AppCacheManager] Electron app not available');
@@ -98,7 +107,7 @@ export class AppCacheManager {
 
   public setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
-    // Push the current config immediately after setting the window reference to ensure frontend AppDataManager initialization
+    // Push the current config immediately after the window reference is set, to ensure the frontend AppDataManager is initialized
     this.sendConfigToFrontend();
   }
 
@@ -233,6 +242,24 @@ export class AppCacheManager {
       result.screenshotSettings = { ...DEFAULT_SCREENSHOT_SETTINGS, ...result.screenshotSettings };
     }
 
+    if (typeof result.leftSidebarCollapsed !== 'boolean') {
+      result.leftSidebarCollapsed = DEFAULT_APP_CONFIG.leftSidebarCollapsed;
+    }
+
+    // leftSidebarWidth: clamp to [288, 400], default 288
+    if (typeof result.leftSidebarWidth !== 'number' || !Number.isFinite(result.leftSidebarWidth)) {
+      result.leftSidebarWidth = DEFAULT_APP_CONFIG.leftSidebarWidth;
+    } else {
+      result.leftSidebarWidth = Math.round(Math.min(400, Math.max(288, result.leftSidebarWidth)));
+    }
+
+    // zoomLevel: fill with default if missing and normalize persisted values
+    result.zoomLevel = sanitizeZoomLevel(result.zoomLevel, DEFAULT_ZOOM_LEVEL);
+
+    if (typeof result.mainWindowMaximized !== 'boolean') {
+      result.mainWindowMaximized = DEFAULT_APP_CONFIG.mainWindowMaximized;
+    }
+
     return result;
   }
 
@@ -246,7 +273,11 @@ export class AppCacheManager {
       if (!fs.existsSync(profilesDir)) return null;
 
       const entries = fs.readdirSync(profilesDir, { withFileTypes: true });
-      const firstProfileDir = entries.find((e) => e.isDirectory());
+      // Filter out hidden directories
+      const firstProfileDir = entries.find((e) => {
+        if (e.name.startsWith('.')) return false;
+        return e.isDirectory();
+      });
       if (!firstProfileDir) return null;
 
       const profileJsonPath = path.join(profilesDir, firstProfileDir.name, 'profile.json');
@@ -362,6 +393,21 @@ export class AppCacheManager {
       };
     }
 
+    if (typeof config.leftSidebarCollapsed === 'boolean') {
+      sanitized.leftSidebarCollapsed = config.leftSidebarCollapsed;
+    }
+
+    // leftSidebarWidth: number, clamp to [288, 400]
+    if (typeof config.leftSidebarWidth === 'number' && Number.isFinite(config.leftSidebarWidth)) {
+      sanitized.leftSidebarWidth = Math.round(Math.min(400, Math.max(288, config.leftSidebarWidth)));
+    }
+
+    sanitized.zoomLevel = sanitizeZoomLevel(config.zoomLevel, DEFAULT_ZOOM_LEVEL);
+
+    if (typeof config.mainWindowMaximized === 'boolean') {
+      sanitized.mainWindowMaximized = config.mainWindowMaximized;
+    }
+
     return sanitized;
   }
 
@@ -426,6 +472,12 @@ export class AppCacheManager {
               ...(updates.screenshotSettings ?? {}),
             }
           : undefined,
+      // zoomLevel: simple scalar, no deep-merge needed
+      zoomLevel: updates.zoomLevel !== undefined ? updates.zoomLevel : this.cache.zoomLevel,
+      mainWindowMaximized:
+        updates.mainWindowMaximized !== undefined
+          ? updates.mainWindowMaximized
+          : this.cache.mainWindowMaximized,
     };
 
     const sanitized = this.appConfigSanitize(merged);

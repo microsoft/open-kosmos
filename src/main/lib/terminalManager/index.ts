@@ -1,5 +1,5 @@
 /**
- * Unified Terminal Instance Manager Module Exports
+ * Unified Terminal Instance Manager — module exports.
  */
 
 // Main interfaces and types
@@ -11,7 +11,7 @@ export { PlatformConfigManager } from './PlatformConfigManager';
 // Terminal instance implementation
 export { TerminalInstance } from './TerminalInstance';
 
-// Terminal manager (recommended main interface)
+// Terminal manager (recommended primary interface)
 export { TerminalManager, getTerminalManager } from './TerminalManager';
 
 // Convenience functions

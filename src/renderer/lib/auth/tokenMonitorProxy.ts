@@ -1,9 +1,9 @@
-// src/renderer/lib/auth/tokenMonitorProxy.ts - Renderer Process Token Monitor Proxy
+// src/renderer/lib/auth/tokenMonitorProxy.ts - Renderer process token monitor proxy
 
 /**
- * Renderer Process Token Monitor Proxy - Communicates with main process via IPC
- * 
- * This class replaces the original renderer process TokenMonitor, delegating all functionality to the main process
+ * Renderer process token monitor proxy - communicates with main process via IPC
+ *
+ * This class replaces the original renderer-process TokenMonitor; all functionality is delegated to the main process
  */
 export class TokenMonitorProxy {
   private static instance: TokenMonitorProxy;
@@ -12,21 +12,21 @@ export class TokenMonitorProxy {
   constructor() {
   }
 
-  // Note: startMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth() in the main process
-  // The renderer process no longer needs to manually start monitoring
+  // Note: startMonitoring has been removed - token monitoring is now started automatically by setCurrentAuth() in the main process
+  // The renderer no longer needs to start monitoring manually
 
   /**
-   * Stop Token monitoring
+   * Stop token monitoring
    */
   async stopMonitoring(): Promise<void> {
-    
+
     // Clean up event listeners
     this.cleanupEventListeners();
-    
+
     if (!(window as any).electronAPI?.auth?.stopTokenMonitoring) {
       return;
     }
-    
+
     try {
       const result = await (window as any).electronAPI.auth.stopTokenMonitoring();
       if (result.success) {
@@ -37,14 +37,14 @@ export class TokenMonitorProxy {
   }
 
   /**
-   * Manually trigger Token check
+   * Manually trigger a token check
    */
   async manualCheck(): Promise<void> {
-    
+
     if (!(window as any).electronAPI?.auth?.manualTokenCheck) {
       return;
     }
-    
+
     try {
       const result = await (window as any).electronAPI.auth.manualTokenCheck();
       if (result.success) {
@@ -55,7 +55,7 @@ export class TokenMonitorProxy {
   }
 
   /**
-   * Trigger immediate check (for scenarios like wake from sleep)
+   * Trigger an immediate check (e.g. after system sleep resume)
    */
   triggerImmediateCheck(): void {
     // Use setTimeout to ensure async execution
@@ -75,7 +75,7 @@ export class TokenMonitorProxy {
         refreshThreshold: 300000
       };
     }
-    
+
     try {
       const result = await (window as any).electronAPI.auth.getMonitoringStatus();
       if (result.success) {
@@ -83,7 +83,7 @@ export class TokenMonitorProxy {
       }
     } catch (error) {
     }
-    
+
     return {
       isRunning: false,
       checkInterval: 60000,
@@ -92,7 +92,7 @@ export class TokenMonitorProxy {
   }
 
   /**
-   * Check if running
+   * Check if currently running
    */
   async isRunning(): Promise<boolean> {
     const status = await this.getMonitoringStatus();
@@ -106,12 +106,12 @@ export class TokenMonitorProxy {
     if (!(window as any).electronAPI?.auth?.onTokenMonitor) {
       return;
     }
-    
-    // Listen for Token monitoring events
+
+    // Listen for token monitor events
     const cleanup = (window as any).electronAPI.auth.onTokenMonitor((data: any) => {
       this.handleTokenMonitorEvent(data);
     });
-    
+
     this.eventListeners.push(cleanup);
   }
 
@@ -124,44 +124,44 @@ export class TokenMonitorProxy {
   }
 
   /**
-   * Handle Token monitoring events
+   * Handle token monitor events
    */
   private handleTokenMonitorEvent(data: any): void {
-    
+
     switch (data.event) {
       case 'monitor_started':
         this.emitAuthEvent('monitor_started', data.data);
         break;
-        
+
       case 'monitor_stopped':
         this.emitAuthEvent('monitor_stopped', data.data);
         break;
-        
+
       case 'refresh_success':
         this.emitAuthEvent('refresh_success', data.data);
         break;
-        
+
       case 'refresh_failed':
         this.emitAuthEvent('refresh_failed', data.data);
         break;
-        
+
       case 'require_reauth':
         this.emitAuthEvent('require_reauth', data.data);
         break;
-        
+
       case 'monitor_error':
         this.emitAuthEvent('monitor_error', data.data);
         break;
-        
+
       default:
     }
   }
 
   /**
-   * Dispatch auth events to the window (using unified tokenMonitor: prefix)
+   * Dispatch auth events to the window (uniformly using the tokenMonitor: prefix)
    */
   private emitAuthEvent(type: string, data: any): void {
-    // Dispatch events in unified tokenMonitor: format
+    // Uniformly dispatch events in tokenMonitor: format
     window.dispatchEvent(new CustomEvent(`tokenMonitor:${type}`, {
       detail: {
         reason: data?.reason,

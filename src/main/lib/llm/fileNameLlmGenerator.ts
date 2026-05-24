@@ -1,4 +1,6 @@
 import { ghcModelApi } from './ghcModelApi';
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
 
 /**
  * File Name Generator response interface
@@ -87,7 +89,7 @@ If the content is too short or meaningless:
   "fullFileName": "untitled.txt"
 }
 
-**Important**: 
+**Important**:
 - File name must be maximum 10 words connected with hyphens
 - Always determine the most appropriate extension based on content format
 - Return valid JSON only`;
@@ -107,7 +109,7 @@ CONTENT:
     suggestion?: string;
   } {
     const trimmedContent = content.trim();
-    
+
     // Check if content is too short
     if (trimmedContent.length < 3) {
       return {
@@ -136,22 +138,22 @@ CONTENT:
     try {
       // Try to extract JSON from the response
       let jsonStr = response.trim();
-      
+
       // Remove markdown code blocks if present
       if (jsonStr.startsWith('```json')) {
         jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
       } else if (jsonStr.startsWith('```')) {
         jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '');
       }
-      
+
       // Try to find JSON object in the response
       const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         jsonStr = jsonMatch[0];
       }
-      
+
       const parsed = JSON.parse(jsonStr);
-      
+
       // Validate and clean the file name
       let fileName = parsed.fileName || 'untitled';
       fileName = fileName
@@ -160,16 +162,16 @@ CONTENT:
         .replace(/[^a-z0-9\u4e00-\u9fa5-]/g, '') // Remove special chars except hyphens and Chinese
         .replace(/-+/g, '-')            // Replace multiple hyphens with single
         .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
-      
+
       // Limit to ~10 words (by hyphens)
       const words = fileName.split('-');
       if (words.length > 10) {
         fileName = words.slice(0, 10).join('-');
       }
-      
+
       const extension = parsed.extension || 'txt';
       const fullFileName = `${fileName}.${extension}`;
-      
+
       return {
         success: true,
         fileName,
@@ -178,8 +180,8 @@ CONTENT:
         rawResponse: response
       };
     } catch (error) {
-      console.error('[FileNameLlmGenerator] Failed to parse response:', error);
-      
+      logger.error(`[FileNameLlmGenerator] Failed to parse response: ${error instanceof Error ? error.message : String(error)}`)
+
       // Fallback: generate simple file name from timestamp
       const timestamp = Date.now();
       return {
@@ -214,14 +216,14 @@ CONTENT:
       }
 
       // Truncate content if too long (use first 2000 chars for analysis)
-      const truncatedContent = content.length > 2000 
+      const truncatedContent = content.length > 2000
         ? content.slice(0, 2000) + '\n...[content truncated]...'
         : content;
 
       // Build the prompt
       const userPrompt = `${this.GENERATION_PROMPT}${truncatedContent}`;
 
-      // Call LLM API - use claude-haiku-4.5 model (faster and lower cost)
+      // Call LLM API - using claude-haiku-4.5 model (faster and lower cost)
       const response = await ghcModelApi.callModel(
         'claude-haiku-4.5',
         userPrompt,
@@ -233,8 +235,8 @@ CONTENT:
       // Parse and return the response
       return this.parseResponse(response);
     } catch (error) {
-      console.error('[FileNameLlmGenerator] Error generating file name:', error);
-      
+      logger.error(`[FileNameLlmGenerator] Error generating file name: ${error instanceof Error ? error.message : String(error)}`)
+
       // Fallback to timestamp-based name
       const timestamp = Date.now();
       return {

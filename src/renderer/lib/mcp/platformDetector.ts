@@ -19,19 +19,19 @@ export interface PlatformInfo {
 const WINDOWS_VSCODE_PATHS = [
   // 1. Standard version (highest priority)
   '%APPDATA%\\Code\\User\\mcp.json',
-  
+
   // 2. Insiders version
   '%APPDATA%\\Code - Insiders\\User\\mcp.json',
-  
+
   // 3. OSS open source version
   '%APPDATA%\\Code - OSS\\User\\mcp.json',
-  
+
   // 4. Portable version (relative to VS Code installation directory)
   '.\\data\\user-data\\User\\mcp.json',
-  
+
   // 5. Custom data directory
   '%VSCODE_APPDATA%\\User\\mcp.json',
-  
+
   // 6. System-level installation
   '%PROGRAMDATA%\\Code\\User\\mcp.json'
 ]
@@ -40,15 +40,15 @@ const MACOS_VSCODE_PATHS = [
   // 1. Standard installation - mcp.json priority
   '~/Library/Application Support/Code/User/mcp.json',
   '~/Library/Application Support/Code/User/settings.json',
-  
+
   // 2. Insiders version
   '~/Library/Application Support/Code - Insiders/User/mcp.json',
   '~/Library/Application Support/Code - Insiders/User/settings.json',
-  
+
   // 3. OSS version
   '~/Library/Application Support/Code - OSS/User/mcp.json',
   '~/Library/Application Support/Code - OSS/User/settings.json',
-  
+
   // 4. Homebrew installation path
   '/usr/local/var/vscode/User/mcp.json',
   '/usr/local/var/vscode/User/settings.json'
@@ -84,22 +84,22 @@ const PLATFORM_DISPLAY_NAMES = {
 export function getCurrentPlatform(): SupportedPlatform {
   const userAgent = navigator.userAgent.toLowerCase()
   const platform = navigator.platform.toLowerCase()
-  
+
   // Check for macOS
   if (platform.includes('mac') || userAgent.includes('mac os')) {
     return 'macOS'
   }
-  
+
   // Check for Windows
   if (platform.includes('win') || userAgent.includes('windows')) {
     return 'Windows'
   }
-  
+
   // Check for Linux
   if (platform.includes('linux') || userAgent.includes('linux')) {
     return 'Linux'
   }
-  
+
   // Default to macOS if unable to detect (since we're primarily targeting macOS/Windows)
   return 'macOS'
 }
@@ -109,7 +109,7 @@ export function getCurrentPlatform(): SupportedPlatform {
  */
 export function getVSCodeConfigPaths(platform?: SupportedPlatform): string[] {
   const currentPlatform = platform || getCurrentPlatform()
-  
+
   switch (currentPlatform) {
     case 'Windows':
       return WINDOWS_VSCODE_PATHS
@@ -136,7 +136,7 @@ export function getVSCodeConfigPath(platform?: SupportedPlatform): string {
 export function getExpandedVSCodeConfigPath(platform?: SupportedPlatform): string {
   const currentPlatform = platform || getCurrentPlatform()
   const configPath = VSCODE_CONFIG_PATHS[currentPlatform]
-  
+
   // For renderer process, we can't directly access environment variables
   // The actual path expansion will be handled by the main process
   // Here we return the template path for display purposes
@@ -157,7 +157,7 @@ export function isPlatformSupported(platform?: SupportedPlatform): boolean {
  */
 export function getPlatformInfo(platform?: SupportedPlatform): PlatformInfo {
   const currentPlatform = platform || getCurrentPlatform()
-  
+
   return {
     platform: currentPlatform,
     isSupported: isPlatformSupported(currentPlatform),
@@ -179,7 +179,7 @@ export function getAllSupportedPlatforms(): PlatformInfo[] {
  */
 export function getPlatformFilePatterns(platform?: SupportedPlatform): { name: string; extensions: string[] }[] {
   const currentPlatform = platform || getCurrentPlatform()
-  
+
   switch (currentPlatform) {
     case 'macOS':
       return [

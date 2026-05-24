@@ -2,7 +2,7 @@
 echo 🧹 Cleaning output directory...
 if exist release rmdir /s /q release
 
-echo 🔨 Building application...
+echo 🔨 Building app...
 call npm run build
 if %errorlevel% neq 0 exit /b %errorlevel%
 
@@ -14,6 +14,6 @@ echo 📦 Building Windows ARM64 installer...
 call npm run dist:win:arm64
 if %errorlevel% neq 0 echo ❌ Windows ARM64 build failed
 
-echo 🎉 Windows platform build completed!
+echo 🎉 Windows platform build complete!
 echo 📁 Output directory: release\
 pause

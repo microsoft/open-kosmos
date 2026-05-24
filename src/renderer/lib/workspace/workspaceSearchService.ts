@@ -1,6 +1,7 @@
+import { profileDataManager } from "../userData";
 /**
  * Workspace Search Service - Renderer side
- * Calls main process file search functionality via IPC
+ * Calls the main process file search functionality via IPC
  */
 
 export type SearchTarget = 'files' | 'folders' | 'both';
@@ -10,13 +11,13 @@ export interface FileSearchQuery {
   pattern?: string;
   maxResults?: number;
   fuzzy?: boolean;
-  searchTarget?: SearchTarget;  // Search target: files (files only) | folders (folders only) | both (files + folders, default)
+  searchTarget?: SearchTarget;  // Search target: files (files only) | folders (folders only) | both (files+folders, default)
 }
 
 export interface FileSearchResult {
   path: string;
   score?: number;
-  isDirectory?: boolean;  // Whether this is a directory
+  isDirectory?: boolean;  // Whether it is a directory
 }
 
 export interface SearchComplete {
@@ -50,13 +51,13 @@ export async function searchWorkspaceFiles(
 
     return result.data;
   } catch (error) {
-    // Return empty results instead of throwing an error to avoid disrupting the UI
+    // Return empty results instead of throwing, to avoid interrupting the UI
     return { results: [], limitHit: false };
   }
 }
 
 /**
- * Search files matching a specified pattern
+ * Search files by pattern
  * @param pattern Search pattern (filename or path fragment)
  * @param options Search options
  * @returns Search results
@@ -75,7 +76,7 @@ export async function searchFilesByPattern(
     folder: options?.folder,
     maxResults: options?.maxResults || 50,
     fuzzy: options?.fuzzy !== false, // Enable fuzzy search by default
-    searchTarget: options?.searchTarget || 'both' // Search files + folders by default
+    searchTarget: options?.searchTarget || 'both' // Search files+folders by default
   });
 
   return result.results;
@@ -97,26 +98,25 @@ export async function quickSearchFiles(
   }
 
   try {
-    // 🔍 Get the current chat's workspace path from ProfileDataManager
+    // 🔍 Get the workspace path for the current Chat from ProfileDataManager
     let workspacePath: string | undefined;
     try {
-      const { profileDataManager } = await import('../userData');
       const currentChatConfig: any = profileDataManager.getCurrentChat?.();
       workspacePath = currentChatConfig?.agent?.workspace;
-      
+
     } catch (error) {
     }
-    
-    // If no workspace is available, return empty results
+
+    // If no workspace is set, return empty results
     if (!workspacePath || typeof workspacePath !== 'string' || workspacePath.trim().length === 0) {
       return [];
     }
-    
+
     return await searchFilesByPattern(pattern, {
-      folder: workspacePath, // 🔥 Key fix: pass in workspace path
+      folder: workspacePath, // 🔥 Key fix: pass the workspace path
       maxResults,
       fuzzy: true,
-      searchTarget // Pass search target parameter
+      searchTarget // pass the search target parameter
     });
   } catch (error) {
     return [];

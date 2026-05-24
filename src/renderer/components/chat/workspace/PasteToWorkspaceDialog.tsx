@@ -1,20 +1,22 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Clipboard, Loader2, FileText, Sparkles } from 'lucide-react';
 import '../../../styles/PasteToWorkspaceDialog.css';
+import { createLogger } from '../../../lib/utilities/logger';
+const logger = createLogger('[PasteToWorkspaceDialog]');
 
 export interface PasteToWorkspaceDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (content: string, fileName: string) => Promise<void>;
+  onSave: (content: string, fileName: string) => Promise<{ status: 'saved' | 'skipped' | 'canceled' }>;
   workspacePath: string;
 }
 
 /**
- * PasteToWorkspaceDialog - Dialog for pasting text to Workspace
- * 
+ * PasteToWorkspaceDialog - Dialog for pasting text into the Workspace
+ *
  * Features:
- * 1. Provides a text input for users to paste content
- * 2. Automatically calls LLM to generate file name and extension
+ * 1. Provides a text input area for users to paste content
+ * 2. Automatically calls LLM to generate a file name and extension
  * 3. Allows users to edit the file name
  * 4. Saves the file to the current workspace directory
  */
@@ -30,7 +32,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
   const [isGeneratingName, setIsGeneratingName] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const generateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,8 +61,8 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
     if (isOpen && textareaRef.current) {
       textareaRef.current.focus();
     }
-    
-    // Clean up old state
+
+    // Clear old state
     if (isOpen) {
       resetState();
     }
@@ -77,7 +79,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
 
     try {
       const result = await window.electronAPI?.llm?.generateFileName?.(contentToAnalyze);
-      
+
       if (result?.success && result.data?.fullFileName) {
         setFileName(result.data.fullFileName);
       } else if (result?.data?.fullFileName) {
@@ -89,7 +91,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
         setFileName(`pasted-content-${timestamp}.txt`);
       }
     } catch (err) {
-      console.error('[PasteToWorkspaceDialog] Error generating file name:', err);
+      logger.error('[PasteToWorkspaceDialog] Error generating file name:', err);
       // Fallback
       const timestamp = Date.now();
       setFileName(`pasted-content-${timestamp}.txt`);
@@ -98,7 +100,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
     }
   }, []);
 
-  // Trigger file name generation on content change (with debounce)
+  // Trigger file name generation when content changes (with debounce)
   const handleContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     setContent(newContent);
@@ -127,7 +129,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
   // Handle file name input
   const handleFileNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
-    // Clean file name: remove illegal characters
+    // Sanitize file name: remove illegal characters
     const cleanedName = newName.replace(/[<>:"/\\|?*]/g, '');
     setFileName(cleanedName);
   }, []);
@@ -148,10 +150,12 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
     setError(null);
 
     try {
-      await onSave(content, fileName);
-      handleClose();
+      const result = await onSave(content, fileName);
+      if (result.status !== 'canceled') {
+        handleClose();
+      }
     } catch (err) {
-      console.error('[PasteToWorkspaceDialog] Error saving file:', err);
+      logger.error('[PasteToWorkspaceDialog] Error saving file:', err);
       setError(err instanceof Error ? err.message : 'Failed to save file.');
     } finally {
       setIsSaving(false);
@@ -172,15 +176,15 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
     }
   }, [handleSave, handleClose, isSaving, content, fileName]);
 
-  // Don't render if not open
+  // Do not render if not open
   if (!isOpen) {
     return null;
   }
 
   return (
     <div className="paste-to-workspace-overlay" onClick={handleClose}>
-      <div 
-        className="paste-to-workspace-dialog" 
+      <div
+        className="paste-to-workspace-dialog"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
@@ -190,7 +194,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
             <Clipboard size={20} />
             <span>Paste to Knowledge Base</span>
           </div>
-          <button 
+          <button
             className="paste-dialog-close-btn"
             onClick={handleClose}
             title="Close (Esc)"

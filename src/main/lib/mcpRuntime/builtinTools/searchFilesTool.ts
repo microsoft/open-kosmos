@@ -1,35 +1,37 @@
 /**
- * SearchFilesTool - Built-in filename and path search tool
- * Core functionality: Search filenames, file paths, directory names, directory paths (does not search file content)
+ * SearchFilesTool - Built-in file name and path search tool
+ * Core functionality: Search file names, file paths, directory names, and directory paths (does NOT search file contents)
  *
  * Key features:
  *  - Uses ripgrep for high-performance file/directory search
- *  - Pattern support: simple string matching, glob patterns (*.ts, **\/*.tsx)
- *  - Supports fuzzy matching (fuzzy=true, character order matching) and exact matching
+ *  - Pattern supports: simple string matching, glob patterns (*.ts, **\/*.tsx)
+ *  - Supports fuzzy matching (fuzzy=true, character-order matching) and exact matching
  *  - Supports searching files, directories, or both
- *  - Automatically uses VSCode-style Fuzzy Scoring for sorting
- *  - workspaceRoot (required) specifies the search root directory - search scope is entirely controlled by this parameter
- *  - Search scope: only searches within the specified workspaceRoot, does not automatically associate with chatId's workspace
+ *  - Automatically sorts using VSCode-style fuzzy scoring
+ *  - workspaceRoot (required) specifies the search root directory - search scope is fully controlled by this parameter
+ *  - Search scope: only within the specified workspaceRoot, does NOT automatically use chatId's workspace
  *  - Resource limits: maxResults (default 50), timeout=10s
  * Note: This is a built-in tool, not an MCP protocol tool
  */
 
+import * as path from 'path';
+import * as fs from 'fs';
 import { BuiltinToolDefinition } from './types';
 import { getWorkspaceWatcher } from '../../workspace/WorkspaceWatcher';
 import type { IFileSearchQuery } from '../../workspace/SearchService';
 
 // Limit constants
-const DEFAULT_MAX_RESULTS = 50;     // Default maximum results
-const MAX_RESULTS_LIMIT = 200;      // Maximum results upper limit
+const DEFAULT_MAX_RESULTS = 50;     // Default maximum number of results
+const MAX_RESULTS_LIMIT = 200;      // Upper limit for maximum results
 const SEARCH_TIMEOUT_MS = 10000;    // Search timeout (10 seconds)
 
 export interface SearchFilesToolArgs {
   pattern: string;              // Required: search pattern (filename/path fragment, supports glob: *.ts, **/*.tsx)
-  workspaceRoot: string;        // Required: workspace root directory (absolute path), search scope controlled by this parameter
+  workspaceRoot: string;        // Required: workspace root directory (absolute path), search scope is controlled by this parameter
   description?: string;         // Optional: Operation description for UI display
   searchTarget?: 'files' | 'folders' | 'both';  // Optional: search target (default 'both')
-  maxResults?: number;          // Optional: maximum results (default 50, upper limit 200)
-  fuzzy?: boolean;              // Optional: whether to enable fuzzy matching (default true)
+  maxResults?: number;          // Optional: maximum number of results (default 50, max 200)
+  fuzzy?: boolean;              // Optional: enable fuzzy matching (default true)
   includePattern?: string;      // Optional: include pattern (comma-separated)
   excludePattern?: string;      // Optional: exclude pattern (comma-separated)
 }
@@ -50,21 +52,21 @@ export interface SearchFilesToolResult {
   stats?: {
     duration: number;           // Search duration (milliseconds)
     filesScanned: number;       // Number of files scanned
-    cacheHit: boolean;          // Whether cache was hit
+    cacheHit: boolean;          // Whether the cache was hit
   };
-  errors?: string[];            // Non-fatal warnings/info messages
+  errors?: string[];            // Non-fatal warnings/informational messages
   timestamp: string;            // Execution completion time (ISO string)
 }
 
 export class SearchFilesTool {
-  
-  /**
-   * Execute file/directory search tool
-   * Static method, supports direct invocation by LLM
-   */
-  static async execute(args: SearchFilesToolArgs): Promise<SearchFilesToolResult> {
 
-    // 1. Argument validation
+  /**
+   * Execute the file/directory search tool
+   * Static method, supports direct LLM invocation
+   */
+  static async execute(args: SearchFilesToolArgs, options?: { signal?: AbortSignal }): Promise<SearchFilesToolResult> {
+
+    // 1. Validate arguments
     const validation = this.validateArgs(args);
     if (!validation.isValid) {
       throw new Error(validation.error || 'Invalid arguments provided');
@@ -73,21 +75,21 @@ export class SearchFilesTool {
     const errors: string[] = [];
     const start = Date.now();
 
-    // 2. Normalize parameters
+    // 2. Normalize arguments
     const pattern = args.pattern.trim();
     const workspaceRoot = args.workspaceRoot.trim();
     const searchTarget = args.searchTarget || 'both';
-    const fuzzy = args.fuzzy !== false; // Enable fuzzy matching by default
+    const fuzzy = args.fuzzy !== false; // enable fuzzy matching by default
     let maxResults = args.maxResults || DEFAULT_MAX_RESULTS;
 
-    // Limit maximum results
+    // Cap max results
     if (maxResults > MAX_RESULTS_LIMIT) {
       errors.push(`maxResults capped to ${MAX_RESULTS_LIMIT}`);
       maxResults = MAX_RESULTS_LIMIT;
     }
 
     try {
-      // 3. Build search query
+      // 3. Build the search query
       const query: IFileSearchQuery = {
         folder: workspaceRoot,
         pattern,
@@ -98,16 +100,20 @@ export class SearchFilesTool {
         excludePattern: args.excludePattern
       };
 
-      // 4. Execute search (using WorkspaceWatcher)
+      // 4. Execute the search (using WorkspaceWatcher)
       const watcher = getWorkspaceWatcher();
-      
+
       // Set timeout
       const searchPromise = watcher.searchFiles(query);
+      let timeoutId: NodeJS.Timeout | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Search timeout')), SEARCH_TIMEOUT_MS);
+        timeoutId = setTimeout(() => reject(new Error('Search timeout')), SEARCH_TIMEOUT_MS);
       });
 
       const searchResult = await Promise.race([searchPromise, timeoutPromise]);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       // 5. Process search results
       const results: SearchFilesFileResult[] = searchResult.results.map(result => ({
@@ -146,7 +152,7 @@ export class SearchFilesTool {
   }
 
   /**
-   * Get tool definition (for registration with BuiltinToolsManager)
+   * Get tool definition (for registering with BuiltinToolsManager)
    */
   static getDefinition(): BuiltinToolDefinition {
     return {
@@ -200,29 +206,27 @@ export class SearchFilesTool {
    * Argument validation and normalization
    */
   private static validateArgs(args: SearchFilesToolArgs): { isValid: boolean; error?: string } {
-    // Defensive check: ensure the arguments object exists
+    // Defensive check: ensure the argument object exists
     if (!args || typeof args !== 'object') {
       return { isValid: false, error: 'Arguments object required' };
     }
 
-    // pattern is a required non-empty string
+    // pattern must be a non-empty string
     if (typeof args.pattern !== 'string' || !args.pattern.trim()) {
       return { isValid: false, error: 'pattern is required and must be a non-empty string' };
     }
 
-    // workspaceRoot is a required non-empty string
+    // workspaceRoot must be a non-empty string
     if (typeof args.workspaceRoot !== 'string' || !args.workspaceRoot.trim()) {
       return { isValid: false, error: 'workspaceRoot is required and must be a non-empty string' };
     }
 
-    // Verify workspaceRoot is an absolute path
-    const path = require('path');
+    // Validate that workspaceRoot is an absolute path
     if (!path.isAbsolute(args.workspaceRoot)) {
       return { isValid: false, error: 'workspaceRoot must be an absolute path' };
     }
 
-    // Verify workspaceRoot exists
-    const fs = require('fs');
+    // Validate that workspaceRoot exists
     if (!fs.existsSync(args.workspaceRoot)) {
       return { isValid: false, error: 'workspaceRoot does not exist' };
     }

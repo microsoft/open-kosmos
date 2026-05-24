@@ -1,13 +1,13 @@
-// src/renderer/types/authTypes.ts - V3.0 adapted for new auth.json format
-// Renderer process auth type definitions, consistent with main process
+// src/renderer/types/authTypes.ts - V3.0 adapted to the new auth.json format
+// Renderer-process authentication type definitions, kept in sync with the main process
 
 /**
- * Unique authentication data structure - AuthData
- * Fully consistent with main process, used throughout the authentication flow
+ * The single authentication data structure - AuthData
+ * Identical to the main process, used throughout the entire authentication flow
  *
- * V3.0 New token structure (no backward compatibility):
- * - gitHubTokens: obtained from GitHub OAuth, contains full token info (no expires field, validity checked via getUserInfo)
- * - copilotTokens: obtained from Copilot API, expires_at is a seconds-level timestamp
+ * V3.0 new Token structure (no backward compatibility):
+ * - gitHubTokens: obtained from GitHub OAuth, contains full token info (no expires field; validity checked via getUserInfo)
+ * - copilotTokens: obtained from Copilot API, expires_at is a Unix timestamp in seconds
  */
 export interface AuthData {
   version: string;
@@ -34,7 +34,7 @@ export interface AuthData {
     copilotTokens: {
       timestamp: string;
       api_url: string;
-      expires_at: number; // Seconds-level timestamp
+      expires_at: number; // Unix timestamp in seconds
       token: string;
     };
     capabilities: string[];
@@ -77,7 +77,7 @@ export interface AuthRecoveryResult {
 }
 
 /**
- * Profile scan result type
+ * Profile scan result types
  */
 export interface ProfileWithExpiredAuth {
   alias: string;

@@ -198,7 +198,7 @@ export {
   validateVSCodeConfig,
   getValidationSummary,
   suggestConfigFixes,
-  convertToKosmosFormat,
+  convertToOpenKosmosFormat,
   isValidTransportType,
   isValidServerConfig
 } from './config/validator';
@@ -220,7 +220,7 @@ export type {
   ConfigMigrationResult,
   ConfigDetectionState,
   ConfigAdapterEvents,
-  KosmosAppMCPServerConfig,
+  OpenKosmosAppMCPServerConfig,
   VSCodeMCPServerConfig,
   SupportedConfigFormat,
   SupportedTransportType as ConfigSupportedTransportType
@@ -228,6 +228,8 @@ export type {
 
 // Legacy compatibility export
 export { VscodeMcpClient as MCPClient } from './VscodeMcpClient';
+import { quickConfigDetection, createDefaultConfigAdapter } from "./config";
+import { VscodeMcpClient } from "./VscodeMcpClient";
 
 // ==================== Enhanced Factory Functions ====================
 
@@ -235,16 +237,14 @@ export { VscodeMcpClient as MCPClient } from './VscodeMcpClient';
  * Create a VSCode MCP Client with automatic configuration detection
  */
 export async function createAutoConfiguredMcpClient() {
-  const { quickConfigDetection, createDefaultConfigAdapter } = await import('./config');
-  const { VscodeMcpClient } = await import('./VscodeMcpClient');
-  
+
   // Try to auto-detect configuration
   const detection = await quickConfigDetection();
-  
+
   if (detection.success && detection.parsedConfig) {
-    
+
     const configAdapter = createDefaultConfigAdapter();
-    
+
     return {
       client: new VscodeMcpClient({
         name: 'auto-detected-server',
@@ -292,7 +292,7 @@ export const MODULE_INFO = {
     mcpVersion: '1.0.0'
   },
   configSupport: {
-    formats: ['settings.json', 'mcp.json', 'kosmos.json'],
+    formats: ['settings.json', 'mcp.json', 'openkosmos.json'],
     platforms: ['macOS', 'Windows', 'Linux'],
     autoDetection: true,
     migration: true

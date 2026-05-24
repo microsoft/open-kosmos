@@ -1,0 +1,35 @@
+# Build output directories
+dist
+.output
+.wxt
+
+# Dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Cache
+.cache
+.temp
+
+# Editor config
+.vscode
+!.vscode/extensions.json
+.idea
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Bundled files
+*.zip
+*.tar.gz
+
+# Stats files
+stats.html
+stats-*.json
+
+# Lock files
+pnpm-lock.yaml

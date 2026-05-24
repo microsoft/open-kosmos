@@ -1,20 +1,55 @@
-import React, { useLayoutEffect } from 'react';
-import { FolderOpen, File, FolderPlus, Clipboard } from 'lucide-react';
+import React, { useLayoutEffect, useRef, createElement } from 'react';
+import { FolderOpen, File, FolderPlus, Clipboard, Copy } from 'lucide-react';
 import { WorkspaceMenuActions } from '../chat/workspace/WorkspaceExplorerSidepane';
+import { adjustAnchoredDropdownToViewport, ANCHORED_DROPDOWN_SIZE_PRESETS, AnchoredDropdownPosition, getAnchoredDropdownPosition } from '@/lib/utilities/dropdownPosition';
+import { atom } from '@/atom';
+import { useClickOut } from '../ui/use-click-out';
 
-interface WorkspaceMenuDropdownProps {
-  workspaceMenuRef: React.RefObject<HTMLDivElement>;
-  position: { top: number; left: number };
+const zeroMenuState: {
+  isOpen: boolean;
+  position: AnchoredDropdownPosition | null;
+  actions: WorkspaceMenuActions | null;
+} = { isOpen: false, position: null, actions: null };
+
+export const WorkspaceMenuAtom = atom(zeroMenuState, (get, set) => {
+  function close() {
+    set(zeroMenuState);
+  }
+
+  function toggle(buttonElement: HTMLElement, actions: WorkspaceMenuActions) {
+    const prevState = get();
+    // If the menu is already open, close it
+    if (prevState.isOpen) {
+      return set(zeroMenuState);
+    }
+    // Otherwise, open the menu
+    const position = getAnchoredDropdownPosition(
+      buttonElement,
+      ANCHORED_DROPDOWN_SIZE_PRESETS.workspaceMenu,
+    );
+    set({ isOpen: true, position, actions });
+  }
+
+  return { toggle, close };
+});
+
+interface InnerProps {
+  position: AnchoredDropdownPosition;
   actions: WorkspaceMenuActions;
-  onClose: () => void;
 }
 
-const WorkspaceMenuDropdown: React.FC<WorkspaceMenuDropdownProps> = ({
-  workspaceMenuRef,
-  position,
-  actions,
-  onClose
-}) => {
+const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
+  const { close: onClose } = WorkspaceMenuAtom.useChange();
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
+
+  useClickOut(workspaceMenuRef, onClose);
+
+  useLayoutEffect(() => {
+    if (workspaceMenuRef.current) {
+      adjustAnchoredDropdownToViewport(workspaceMenuRef.current, position);
+    }
+  }, [position]);
+
   // Get platform info
   const platform = window.electronAPI?.platform || 'darwin';
   const isMac = platform === 'darwin';
@@ -59,30 +94,6 @@ const WorkspaceMenuDropdown: React.FC<WorkspaceMenuDropdownProps> = ({
     onClose();
   };
 
-  // 🔧 Fix: Adjust menu position if it overflows window bottom
-  useLayoutEffect(() => {
-    if (workspaceMenuRef.current) {
-      const rect = workspaceMenuRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const padding = 10;
-      
-      // Check if we have triggerTop info (passed via position prop extension)
-      const triggerTop = (position as any).triggerTop;
-      
-      if (rect.bottom > windowHeight - padding) {
-        // If it overflows bottom, try to position above the trigger
-        if (triggerTop !== undefined) {
-           const newTop = triggerTop - rect.height - 4;
-           workspaceMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        } else {
-           // Fallback to just shifting up if no trigger info
-           const newTop = windowHeight - rect.height - padding;
-           workspaceMenuRef.current.style.top = `${Math.max(padding, newTop)}px`;
-        }
-      }
-    }
-  }, [position]);
-
   return (
     <div
       ref={workspaceMenuRef}
@@ -123,13 +134,12 @@ const WorkspaceMenuDropdown: React.FC<WorkspaceMenuDropdownProps> = ({
           <span className="dropdown-menu-item-text">Paste Text</span>
         </button>
       )}
-      
       {/* Divider - only show if there are items above and below */}
-      {(actions.canAddFiles || actions.canAddFolder || actions.canPasteToWorkspace) && 
+      {(actions.canAddFiles || actions.canAddFolder || actions.canPasteToWorkspace) &&
        actions.canOpenInExplorer && (
         <div className="dropdown-menu-divider" />
       )}
-      
+
       {actions.canOpenInExplorer && (
         <button
           className="dropdown-menu-item"
@@ -141,8 +151,29 @@ const WorkspaceMenuDropdown: React.FC<WorkspaceMenuDropdownProps> = ({
         </button>
       )}
 
+      {/* Copy Folder Path */}
+      {actions.workspacePath && (
+        <button
+          className="dropdown-menu-item"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            navigator.clipboard.writeText(actions.workspacePath);
+            onClose();
+          }}
+          role="menuitem"
+        >
+          <span className="dropdown-menu-item-icon"><Copy size={16} strokeWidth={1.5} /></span>
+          <span className="dropdown-menu-item-text">Copy Path</span>
+        </button>
+      )}
+
     </div>
   );
 };
 
-export default WorkspaceMenuDropdown;
+export default () => {
+  const [{ isOpen, position, actions }] = WorkspaceMenuAtom.use();
+  if (!isOpen || !position || !actions) return null;
+  return createElement(WorkspaceMenuDropdown, { position, actions });
+};

@@ -59,14 +59,14 @@ const EMOJI_CATEGORIES: Record<string, string[]> = {
 
 const CATEGORY_NAMES = Object.keys(EMOJI_CATEGORIES)
 
-// Find the category an emoji belongs to
+// Find the category that a given emoji belongs to
 const findEmojiCategory = (emoji: string): string => {
   for (const [category, emojis] of Object.entries(EMOJI_CATEGORIES)) {
     if (emojis.includes(emoji)) {
       return category
     }
   }
-  return CATEGORY_NAMES[0] // Default to the first category
+  return CATEGORY_NAMES[0] // Default to first category
 }
 
 const EmojiPicker: React.FC<EmojiPickerProps> = ({
@@ -78,7 +78,7 @@ const EmojiPicker: React.FC<EmojiPickerProps> = ({
   const [selectedEmoji, setSelectedEmoji] = useState(currentEmoji || '🤖')
   const [activeCategory, setActiveCategory] = useState(CATEGORY_NAMES[0])
 
-  // When currentEmoji prop changes, sync update selectedEmoji and activeCategory state
+  // Sync selectedEmoji and activeCategory state when currentEmoji prop changes
   useEffect(() => {
     const emoji = currentEmoji || '🤖'
     setSelectedEmoji(emoji)

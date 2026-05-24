@@ -1,6 +1,6 @@
 /**
  * WorkspaceWatcher - Workspace search, file tree service, and file system monitoring
- * Uses ripgrep for high-performance file search and file tree building
+ * Uses ripgrep to provide high-performance file search and file tree construction
  * Integrates FileSystemWatcher for real-time file system monitoring
  */
 
@@ -11,16 +11,18 @@ import type { FileTreeQuery, FileTreeResult } from './FileTreeService';
 import { FileSystemWatcher } from './FileSystemWatcher';
 import type { FileChange, WatcherOptions, WatcherStats } from './FileSystemWatcher';
 import { EventEmitter } from 'events';
+import * as path from 'path';
+import * as fs from 'fs';
 
 /**
- * WorkspaceWatcher - Provides workspace file search, file tree, and file system monitoring capabilities
+ * WorkspaceWatcher - Provides workspace file search, file tree, and file system monitoring
  *
  * Features:
  * 1. High-performance file search using ripgrep
  * 2. Supports file and directory search
- * 3. Supports fuzzy matching and regex
- * 4. Automatic search result caching
- * 5. High-performance file tree building based on ripgrep --files
+ * 3. Supports fuzzy matching and regular expressions
+ * 4. Automatically caches search results
+ * 5. High-performance file tree construction based on ripgrep --files
  * 6. Real-time file system monitoring and change notifications
  * 7. VSCode-style file change event handling
  */
@@ -29,7 +31,7 @@ export class WorkspaceWatcher extends EventEmitter {
    * File search service
    */
   private searchService: WorkspaceSearchService;
-  
+
   /**
    * File tree service
    */
@@ -39,7 +41,7 @@ export class WorkspaceWatcher extends EventEmitter {
    * File system watcher
    */
   private fileSystemWatcher: FileSystemWatcher;
-  
+
   constructor() {
     super();
     this.searchService = new WorkspaceSearchService();
@@ -49,7 +51,7 @@ export class WorkspaceWatcher extends EventEmitter {
     // Set up file system watcher event forwarding
     this.setupFileSystemWatcherEvents();
   }
-  
+
   /**
    * Search workspace files
    * @param query Search query
@@ -60,47 +62,47 @@ export class WorkspaceWatcher extends EventEmitter {
     query: IFileSearchQuery,
     onProgress?: (result: any) => void
   ): Promise<ISearchComplete> {
-    
-    // Use ripgrep search service
+
+    // Use the ripgrep search service
     return await this.searchService.fileSearch(query, onProgress);
   }
-  
+
   /**
-   * Get file tree
+   * Get the file tree
    * @param query File tree query options
    * @returns File tree result
    */
   async getFileTree(query: FileTreeQuery): Promise<FileTreeResult> {
     return await this.fileTreeService.getFileTree(query);
   }
-  
+
   /**
-   * Quickly get file list (without building tree structure)
+   * Quickly get a flat file list (without building a tree structure)
    * @param query File tree query options
    * @returns Array of file paths
    */
   async getFileList(query: FileTreeQuery): Promise<string[]> {
     return await this.fileTreeService.getFileList(query);
   }
-  
+
   /**
-   * Clear file tree cache
+   * Clear the file tree cache
    * @param folder Optional folder path; if provided, only clears the cache for that folder
    */
   clearFileTreeCache(folder?: string): void {
     this.fileTreeService.clearCache(folder);
   }
-  
-  // ========== File system monitoring features ==========
+
+  // ========== File system monitoring ==========
 
   /**
-   * Start monitoring workspace file changes (smart monitoring with path validation)
-   * @param watchPath Watch path
-   * @param options Watch options
+   * Start watching workspace file changes (smart monitoring with path validation)
+   * @param watchPath Path to watch
+   * @param options Watcher options
    */
   async startFileWatch(watchPath: string, options: WatcherOptions = {}): Promise<void> {
-    
-    // Validate watch path safety
+
+    // Validate the safety of the watch path
     if (!this.isValidWatchPath(watchPath)) {
       throw new Error(`Invalid watch path: ${watchPath}. Path must be an absolute path to an existing directory.`);
     }
@@ -128,8 +130,8 @@ export class WorkspaceWatcher extends EventEmitter {
     const watchOptions: WatcherOptions = {
       excludes: [...defaultExcludes, ...(options.excludes || [])],
       includes: options.includes,
-      recursive: options.recursive !== false, // Recursive by default
-      ignoreInitial: options.ignoreInitial !== false, // Ignore initial scan by default
+      recursive: options.recursive !== false, // recursive by default
+      ignoreInitial: options.ignoreInitial !== false, // ignore initial scan by default
       ...options
     };
 
@@ -138,24 +140,22 @@ export class WorkspaceWatcher extends EventEmitter {
   }
 
   /**
-   * Validate whether the watch path is valid and safe
-   * @param watchPath Path to validate
+   * Validate whether a watch path is valid and safe
+   * @param watchPath The path to validate
    */
   private isValidWatchPath(watchPath: string): boolean {
     try {
-      // Check if the path is a string
+      // Check if path is a string
       if (typeof watchPath !== 'string' || !watchPath.trim()) {
         return false;
       }
 
-      // Check if the path is absolute
-      const path = require('path');
+      // Check if path is absolute
       if (!path.isAbsolute(watchPath)) {
         return false;
       }
 
-      // Check if the path exists
-      const fs = require('fs');
+      // Check if path exists
       if (!fs.existsSync(watchPath)) {
         return false;
       }
@@ -166,7 +166,7 @@ export class WorkspaceWatcher extends EventEmitter {
         return false;
       }
 
-      // Safety check: avoid watching sensitive system directories
+      // Safety check: avoid monitoring sensitive system directories
       const dangerousPaths = [
         '/System',
         '/Windows',
@@ -191,14 +191,14 @@ export class WorkspaceWatcher extends EventEmitter {
   }
 
   /**
-   * Stop monitoring workspace file changes
+   * Stop watching workspace file changes
    */
   async stopFileWatch(): Promise<void> {
     await this.fileSystemWatcher.stopWatch();
   }
 
   /**
-   * Check if file changes are being monitored
+   * Check whether file changes are currently being watched
    */
   isWatchingFiles(): boolean {
     return this.fileSystemWatcher.isWatching();
@@ -237,19 +237,19 @@ export class WorkspaceWatcher extends EventEmitter {
   }
 
   /**
-   * Clean up resources
+   * Release resources
    */
   async dispose(): Promise<void> {
-    
-    // Stop file system monitoring
+
+    // Stop the file system watcher
     await this.fileSystemWatcher.dispose();
-    
-    // Clear search cache
+
+    // Clear the search cache
     this.searchService.clearCache();
-    
-    // Clear file tree cache
+
+    // Clear the file tree cache
     this.fileTreeService.clearCache();
-    
+
     // Remove all listeners
     this.removeAllListeners();
   }
@@ -261,7 +261,7 @@ export class WorkspaceWatcher extends EventEmitter {
 let globalWatcher: WorkspaceWatcher | null = null;
 
 /**
- * Get global WorkspaceWatcher instance
+ * Get the global WorkspaceWatcher instance
  */
 export function getWorkspaceWatcher(): WorkspaceWatcher {
   if (!globalWatcher) {
@@ -271,7 +271,7 @@ export function getWorkspaceWatcher(): WorkspaceWatcher {
 }
 
 /**
- * Dispose global WorkspaceWatcher instance
+ * Destroy the global WorkspaceWatcher instance
  */
 export async function disposeWorkspaceWatcher(): Promise<void> {
   if (globalWatcher) {

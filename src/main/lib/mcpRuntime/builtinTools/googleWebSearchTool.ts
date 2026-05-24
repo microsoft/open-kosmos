@@ -1,16 +1,22 @@
 /**
- * GoogleWebSearchTool built-in tool - implemented following bingWebSearchTool pattern
- * Provides LLM-invokable Google web search capability with parallel search and result merging
+ * GoogleWebSearchTool built-in tool - modeled after bingWebSearchTool
+ * Provides LLM-driven Google web search capability, supporting parallel search and result merging
+ * @deprecated Deprecated and unregistered from BuiltinToolsManager; retained for legacy reference only.
  * Note: This is a built-in tool, not an MCP protocol tool
  */
 
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
-import { chromium, Browser, Page, BrowserContext, devices, BrowserContextOptions } from 'playwright';
+import { Browser, Page, BrowserContext, devices, BrowserContextOptions } from 'playwright-core';
 import { getUnifiedLogger } from '../../unifiedLogger';
-import { ensureBrowserInstalled } from './playwrightBrowserHelper';
+import { PlaywrightManager } from '../../playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { WebSearchResultItem, WebSearchToolArgs, WebSearchToolResult } from '@shared/types/toolCallArgs';
+
+export type GoogleSearchResult = WebSearchResultItem;
+export type GoogleWebSearchToolArgs = WebSearchToolArgs;
+export type GoogleWebSearchToolResult = WebSearchToolResult;
 
 const logger = getUnifiedLogger();
 
@@ -48,45 +54,20 @@ interface HtmlResponse {
   originalHtmlLength?: number;
 }
 
-export interface GoogleSearchResult {
-  index: number;
-  title: string;
-  url: string;
-  caption: string;
-  site: string;
-  query?: string; // Source query identifier
-}
-
-export interface GoogleWebSearchToolArgs {
-  description: string; // Brief description of what this search is for
-  queries: string[]; // Array of search queries, supports multiple keywords
-  maxResults?: number; // Maximum results per query, default 5
-  timeout?: number; // Request timeout in ms, default 300000
-}
-
-export interface GoogleWebSearchToolResult {
-  success: boolean;
-  totalQueries: number;
-  totalResults: number;
-  results: GoogleSearchResult[];
-  errors?: string[];
-  timestamp: string;
-}
-
 export class GoogleWebSearchTool {
 
   /**
    * Get the actual configuration of the host machine
    */
   private static getHostMachineConfig(userLocale?: string): FingerprintConfig {
-    // Get system locale settings
+    // Get system locale
     const systemLocale = userLocale || process.env.LANG || "zh-CN";
 
     // Get system timezone
     const timezoneOffset = new Date().getTimezoneOffset();
     let timezoneId = "Asia/Shanghai"; // Default to Shanghai timezone
 
-    // Roughly infer timezone based on timezone offset
+    // Roughly infer timezone from UTC offset
     if (timezoneOffset <= -480 && timezoneOffset > -600) {
       timezoneId = "Asia/Shanghai";
     } else if (timezoneOffset <= -540) {
@@ -135,36 +116,36 @@ export class GoogleWebSearchTool {
   }
 
   /**
-   * Get a random delay time
+   * Get a random delay in milliseconds
    */
   private static getRandomDelay(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   /**
-   * Check if the page is stable (URL no longer changing)
-   * Used to avoid race condition errors caused by calling page.content() during page navigation
+   * Check whether the page is stable (URL is no longer changing)
+   * Used to avoid race condition errors when calling page.content() during page navigation
    */
   private static async isPageStable(page: Page, checks: number = 1, delayMs: number = 500): Promise<boolean> {
     try {
       let previousUrl = page.url();
-      
+
       for (let i = 0; i < checks; i++) {
         await page.waitForTimeout(delayMs);
         const currentUrl = page.url();
-        
+
         if (currentUrl !== previousUrl) {
           logger.debug(`[GoogleWebSearchTool] Page URL changed: ${previousUrl} → ${currentUrl}`);
           return false;
         }
-        
+
         previousUrl = currentUrl;
       }
-      
-      logger.debug(`[GoogleWebSearchTool] Page stability verification passed: ${previousUrl}`);
+
+      logger.debug(`[GoogleWebSearchTool] Page stability check passed: ${previousUrl}`);
       return true;
     } catch (error) {
-      logger.warn('[GoogleWebSearchTool] Page stability check failed:', String(error));
+      logger.warn(`[GoogleWebSearchTool] Page stability check failed: ${String(error)}`);
       return false;
     }
   }
@@ -174,7 +155,7 @@ export class GoogleWebSearchTool {
    */
   private static cleanTextContent(html: string): string {
     if (!html) return '';
-    
+
     return html
       .replace(/<[^>]*>/g, '') // Remove HTML tags
       .replace(/&lt;/g, '<')
@@ -192,19 +173,19 @@ export class GoogleWebSearchTool {
    */
   private static cleanUrl(url: string): string {
     if (!url) return '';
-    
+
     // Handle Google redirect URLs
     if (url.includes('google.com/url?')) {
       const urlParams = new URLSearchParams(url.split('?')[1]);
       const realUrl = urlParams.get('url');
       if (realUrl) return realUrl;
     }
-    
+
     return url;
   }
 
   /**
-   * Extract domain name from URL
+   * Extract domain name from HTML
    */
   private static extractDomainFromUrl(url: string): string {
     try {
@@ -220,54 +201,54 @@ export class GoogleWebSearchTool {
    */
   private static parseGoogleSearchResults(html: string, query: string, maxResults: number = 5): GoogleSearchResult[] {
     const results: GoogleSearchResult[] = [];
-    
+
     try {
       // 1. Find all caption containers as anchors
       const captionPattern = /<div[^>]*class="[^"]*VwiC3b[^"]*yXK7lf[^"]*p4wth[^"]*r025kc[^"]*Hdw6tb[^"]*"[^>]*>(.*?)<\/div>/gs;
       const captionMatches = Array.from(html.matchAll(captionPattern));
-      
-      
+
+
       for (let i = 0; i < captionMatches.length && results.length < maxResults; i++) {
         try {
           const captionMatch = captionMatches[i];
           const captionHtml = captionMatch[1];
           const captionIndex = captionMatch.index!;
-          
+
           // Extract plain text description
           const caption = this.cleanTextContent(captionHtml);
           if (!caption || caption.length < 10) continue; // Skip descriptions that are too short
-          
-          // 2. Find the title before the caption
+
+          // 2. Find title before the caption
           const beforeCaption = html.substring(0, captionIndex);
           const titlePattern = /<h3[^>]*class="[^"]*LC20lb[^"]*MBeuO[^"]*DKV0Md[^"]*"[^>]*[^>]*>(.*?)<\/h3>/gs;
           const titleMatches = Array.from(beforeCaption.matchAll(titlePattern));
-          
+
           if (titleMatches.length === 0) continue;
-          
+
           const lastTitleMatch = titleMatches[titleMatches.length - 1];
           const title = this.cleanTextContent(lastTitleMatch[1]);
           if (!title) continue;
-          
-          // 3. Find the URL before the caption
+
+          // 3. Find URL before the caption
           const urlPattern = /<a[^>]*jsname="UWckNb"[^>]*class="[^"]*zReHs[^"]*"[^>]*href="([^"]*)"[^>]*>/gs;
           const urlMatches = Array.from(beforeCaption.matchAll(urlPattern));
-          
+
           if (urlMatches.length === 0) continue;
-          
+
           let url = urlMatches[urlMatches.length - 1][1];
           url = this.cleanUrl(url);
           if (!url || !url.startsWith('http')) continue;
-          
-          // 4. Find the site before the caption
+
+          // 4. Find site before the caption
           const sitePattern = /<div[^>]*class="[^"]*byrV5b[^"]*"[^>]*>.*?<cite[^>]*class="[^"]*tjvcx[^"]*GvPZzd[^"]*dTxz9[^"]*cHaqb[^"]*"[^>]*[^>]*>(.*?)<\/cite>/gs;
           const siteMatches = Array.from(beforeCaption.matchAll(sitePattern));
-          
+
           let site = '';
           if (siteMatches.length > 0) {
             site = this.cleanTextContent(siteMatches[siteMatches.length - 1][1]);
           }
-          
-          // Build search result
+
+          // Build the search result
           const result: GoogleSearchResult = {
             index: results.length + 1,
             title: title,
@@ -276,134 +257,134 @@ export class GoogleWebSearchTool {
             site: site || this.extractDomainFromUrl(url),
             query: query
           };
-          
+
           results.push(result);
-          logger.debug(`[GoogleWebSearchTool] Parsing result #${result.index}: "${result.title}"`);
-          
+          logger.debug(`[GoogleWebSearchTool] Parsed result ${result.index}: "${result.title}"`);
+
         } catch (error) {
-          logger.warn(`[GoogleWebSearchTool] Parsing result #${i + 1} search result error:`, String(error));
+          logger.warn(`[GoogleWebSearchTool] Error parsing search result ${i + 1}:`, String(error));
         }
       }
-      
+
       return results;
-      
+
     } catch (error) {
-      logger.error('[GoogleWebSearchTool] Failed to parse Google search results:', String(error));
+      logger.error(`[GoogleWebSearchTool] Failed to parse Google search results: ${String(error)}`);
       return [];
     }
   }
-  
+
   /**
-   * Execute Google web search tool
+   * Execute the Google web search tool
    * Static method, supports direct LLM invocation
    */
   static async execute(args: GoogleWebSearchToolArgs): Promise<GoogleWebSearchToolResult> {
     try {
-      // 🔍 Pre-execution check to ensure Playwright browser is installed
+      // 🔍 Check and ensure Playwright browser is installed before execution
       logger.debug('[GoogleWebSearchTool] Checking Playwright Chromium browser...');
-      const browserCheck = await ensureBrowserInstalled();
+      const browserCheck = await PlaywrightManager.getInstance().ensureBrowserInstalled();
       if (!browserCheck.installed) {
-        logger.error('[GoogleWebSearchTool] Playwright Chromium browser not installed and automatic installation failed');
+        logger.error('[GoogleWebSearchTool] Playwright Chromium browser is not installed and automatic installation failed');
         return {
           success: false,
           totalQueries: args.queries.length,
           totalResults: 0,
           results: [],
-          errors: [`Playwright Chromium headless browser not installed. Please run 'npx playwright install chromium-headless-shell' to install manually. Error: ${browserCheck.error || 'Unknown error'}`],
+          errors: [`Playwright Chromium headless browser is not installed. Run 'npx playwright install chromium-headless-shell' to install it manually. Error: ${browserCheck.error || 'Unknown error'}`],
           timestamp: new Date().toISOString()
         };
       }
       logger.debug(`[GoogleWebSearchTool] Browser check passed${browserCheck.browserPath ? ': ' + browserCheck.browserPath : ''}`);
-      
+
       const allResults: GoogleSearchResult[] = [];
       const errors: string[] = [];
-      
+
       // State file configuration
       const stateFile = path.join(os.tmpdir(), 'openkosmos-google-browser-state.json');
       const fingerprintFile = stateFile.replace('.json', '-fingerprint.json');
-      
+
       // Load saved state
       let storageState: string | undefined = undefined;
       let savedState: SavedState = {};
-      
+
       if (fs.existsSync(stateFile)) {
         logger.debug('[GoogleWebSearchTool] Browser state file found');
-        
+
         // Validate the JSON format of the state file
         try {
           const stateContent = fs.readFileSync(stateFile, 'utf8');
           JSON.parse(stateContent); // Validate JSON format
           storageState = stateFile;
-          logger.debug('[GoogleWebSearchTool] Browser state file verification passed');
+          logger.debug('[GoogleWebSearchTool] Browser state file validated');
         } catch (e) {
-          logger.warn('[GoogleWebSearchTool] Browser state file is corrupted, will delete and recreate:', String(e));
+          logger.warn(`[GoogleWebSearchTool] Browser state file is corrupted, will delete and recreate: ${String(e)}`);
           try {
             fs.unlinkSync(stateFile);
-            logger.debug('[GoogleWebSearchTool] Corrupted state file deleted');
+            logger.debug('[GoogleWebSearchTool] Deleted corrupted state file');
           } catch (deleteError) {
-            logger.warn('[GoogleWebSearchTool] Unable to delete corrupted state file:', String(deleteError));
+            logger.warn(`[GoogleWebSearchTool] Unable to delete corrupted state file: ${String(deleteError)}`);
           }
           storageState = undefined;
         }
-        
+
         if (fs.existsSync(fingerprintFile)) {
           try {
             const fingerprintData = fs.readFileSync(fingerprintFile, 'utf8');
             savedState = JSON.parse(fingerprintData);
-            logger.debug('[GoogleWebSearchTool] Saved browser fingerprint configuration loaded');
+            logger.debug('[GoogleWebSearchTool] Loaded saved browser fingerprint configuration');
           } catch (e) {
-            logger.warn('[GoogleWebSearchTool] Unable to load fingerprint configuration file, will create new fingerprint');
-            // If fingerprint file is also corrupted, delete it
+            logger.warn('[GoogleWebSearchTool] Unable to load fingerprint configuration file, will create a new fingerprint');
+            // If the fingerprint file is also corrupted, delete it
             try {
               fs.unlinkSync(fingerprintFile);
-              logger.debug('[GoogleWebSearchTool] Corrupted fingerprint file deleted');
+              logger.debug('[GoogleWebSearchTool] Deleted corrupted fingerprint file');
             } catch (deleteError) {
-              // Ignore delete failure
+              // Ignore deletion failure
             }
           }
         }
       } else {
-        logger.debug('[GoogleWebSearchTool] Browser state file not found, will create new browser session');
+        logger.debug('[GoogleWebSearchTool] Browser state file not found, will create a new browser session');
       }
-      
+
       // Device and domain lists
       const deviceList = ['Desktop Chrome', 'Desktop Edge', 'Desktop Firefox', 'Desktop Safari'];
       const googleDomains = [
         'https://www.google.com',
-        'https://www.google.co.uk', 
+        'https://www.google.co.uk',
         'https://www.google.ca',
         'https://www.google.com.au'
       ];
-      
-      // Process each query in parallel
-      
+
+      // Execute each query in parallel
+
       const searchPromises = args.queries.map(async (query, queryIndex) => {
-        
+
         try {
           const results = await this.performSingleSearch(
-            query, 
-            deviceList, 
-            googleDomains, 
-            savedState, 
-            storageState, 
-            stateFile, 
+            query,
+            deviceList,
+            googleDomains,
+            savedState,
+            storageState,
+            stateFile,
             fingerprintFile,
             (args.timeout ? args.timeout * 1000 : 300000),
             args.maxResults || 5
           );
-          
+
           return { query, results, error: null };
-          
+
         } catch (error) {
           const errorMsg = `Search query "${query}" failed: ${String(error)}`;
           logger.error(`[GoogleWebSearchTool] ${errorMsg}`);
           return { query, results: [], error: errorMsg };
         }
       });
-      
+
       // Wait for all searches to complete
       const searchResults = await Promise.allSettled(searchPromises);
-      
+
       // Process search results
       searchResults.forEach((result, index) => {
         if (result.status === 'fulfilled') {
@@ -419,8 +400,8 @@ export class GoogleWebSearchTool {
           errors.push(errorMsg);
         }
       });
-      
-      
+
+
       return {
         success: true,
         totalQueries: args.queries.length,
@@ -429,9 +410,9 @@ export class GoogleWebSearchTool {
         errors: errors.length > 0 ? errors : undefined,
         timestamp: new Date().toISOString()
       };
-      
+
     } catch (error) {
-      logger.error('[GoogleWebSearchTool] Search execution failed:', String(error));
+      logger.error(`[GoogleWebSearchTool] Search execution failed: ${String(error)}`);
       return {
         success: false,
         totalQueries: args.queries.length,
@@ -444,7 +425,7 @@ export class GoogleWebSearchTool {
   }
 
   /**
-   * Execute a single search query (follows the test code logic exactly)
+   * Execute a single search query (following the test code logic exactly)
    */
   private static async performSingleSearch(
     query: string,
@@ -457,9 +438,9 @@ export class GoogleWebSearchTool {
     timeout: number,
     maxResults: number = 5
   ): Promise<GoogleSearchResult[]> {
-    
+
     // Get device configuration
-    const getDeviceConfig= (): [string, any] => {
+    const getDeviceConfig = (): [string, any] => {
       if (savedState.fingerprint?.deviceName && devices[savedState.fingerprint.deviceName]) {
         return [savedState.fingerprint.deviceName, devices[savedState.fingerprint.deviceName]];
       } else {
@@ -468,12 +449,13 @@ export class GoogleWebSearchTool {
       }
     };
 
-    // Define search function (headless mode only)
+    // Define the search function (headless mode only)
     const performSearchAndGetHtml = async (): Promise<string> => {
       logger.debug('[GoogleWebSearchTool] Launching browser (headless mode)...');
-      
-      // Initialize browser, following the open-source project parameters exactly
-      const browser = await chromium.launch({
+
+      // Initialize browser — use PlaywrightManager instead of importing directly,
+      // to ensure the auto-reinstall logic triggers when the browser path changes or is deleted.
+      const browser = await PlaywrightManager.getInstance().launchBrowser({
         headless: true,
         timeout: timeout * 2,
         args: [
@@ -516,7 +498,7 @@ export class GoogleWebSearchTool {
           ...deviceConfig
         };
 
-        // If saved fingerprint config exists, use it; otherwise use the host machine's actual settings
+        // If saved fingerprint configuration exists, use it; otherwise use the host machine's actual settings
         if (savedState.fingerprint) {
           contextOptions = {
             ...contextOptions,
@@ -596,7 +578,7 @@ export class GoogleWebSearchTool {
         });
 
         try {
-          // Use saved Google domain or randomly select one
+          // Use the saved Google domain or randomly select one
           let selectedDomain: string;
           if (savedState.googleDomain) {
             selectedDomain = savedState.googleDomain;
@@ -609,13 +591,13 @@ export class GoogleWebSearchTool {
 
           logger.debug('[GoogleWebSearchTool] Navigating to Google search page...');
 
-          // Navigate to Google search page - use domcontentloaded to avoid long waits for async resources
+          // Navigate to the Google search page - use domcontentloaded to avoid waiting long for async resources
           const response = await page.goto(selectedDomain, {
             timeout,
             waitUntil: 'domcontentloaded'
           });
 
-          // Check if redirected to CAPTCHA/verification page
+          // Check if redirected to a bot verification page
           const currentUrl = page.url();
           const sorryPatterns = [
             'google.com/sorry/index',
@@ -632,13 +614,13 @@ export class GoogleWebSearchTool {
           );
 
           if (isBlockedPage) {
-            logger.error('[GoogleWebSearchTool] CAPTCHA page detected, search blocked');
+            logger.error('[GoogleWebSearchTool] Bot verification page detected, search was blocked');
             throw new Error('Google detected unusual traffic, please try again later or use Bing search instead');
           }
 
-          logger.debug(`[GoogleWebSearchTool] Entering search keywords: "${query}"`);
+          logger.debug(`[GoogleWebSearchTool] Typing search query: "${query}"`);
 
-          // Wait for search box to appear
+          // Wait for the search input to appear
           const searchInputSelectors = [
             "textarea[name='q']",
             "input[name='q']",
@@ -653,65 +635,65 @@ export class GoogleWebSearchTool {
           for (const selector of searchInputSelectors) {
             searchInput = await page.$(selector);
             if (searchInput) {
-              logger.debug(`[GoogleWebSearchTool] Found search box: ${selector}`);
+              logger.debug(`[GoogleWebSearchTool] Found search input: ${selector}`);
               break;
             }
           }
 
           if (!searchInput) {
-            throw new Error('Unable to find search box');
+            throw new Error('Unable to find the search input');
           }
 
-          // Click search box and enter query
+          // Click the search input and type the query
           await searchInput.click();
           await page.keyboard.type(query, { delay: this.getRandomDelay(10, 30) });
           await page.waitForTimeout(this.getRandomDelay(100, 300));
           await page.keyboard.press('Enter');
 
           logger.debug('[GoogleWebSearchTool] Waiting for search results page to load...');
-          // Wait for search results container to appear, instead of waiting for all network requests to complete
+          // Wait for the search results container to appear, rather than waiting for all network requests
           try {
             await page.waitForSelector('div#search, div.g, div[data-hveid]', { timeout: Math.min(timeout, 30000) });
             logger.debug('[GoogleWebSearchTool] Search results appeared');
           } catch (selectorError) {
-            logger.warn('[GoogleWebSearchTool] Search results selector timed out, attempting to continue...');
+            logger.warn('[GoogleWebSearchTool] Timed out waiting for search results selector, attempting to proceed...');
           }
           await page.waitForLoadState('domcontentloaded', { timeout });
 
-          // Check if redirected to verification page after search
+          // Check if redirected to a verification page after search
           const searchUrl = page.url();
           const isBlockedAfterSearch = sorryPatterns.some((pattern) => searchUrl.includes(pattern));
 
           if (isBlockedAfterSearch) {
-            logger.error('[GoogleWebSearchTool] CAPTCHA page detected after search, search blocked');
+            logger.error('[GoogleWebSearchTool] Bot verification page detected after search, search was blocked');
             throw new Error('Google detected unusual traffic after search, please try again later or use Bing search instead');
           }
 
-          // Get current page URL
+          // Get the current page URL
           const finalUrl = page.url();
           logger.debug(`[GoogleWebSearchTool] Search results page loaded: ${finalUrl}`);
 
-          // Wait for page to stabilize
+          // Wait for the page to stabilize
           logger.debug('[GoogleWebSearchTool] Waiting for page to stabilize...');
-          await page.waitForTimeout(1500);  // Slightly increase wait time to ensure content rendering
+          await page.waitForTimeout(1500);  // Slightly longer wait to ensure content has rendered
           try {
             await page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 15000) });
           } catch (loadError) {
-            logger.warn('[GoogleWebSearchTool] Page load state timed out, continuing...');
+            logger.warn('[GoogleWebSearchTool] Timed out waiting for page load state, proceeding...');
           }
 
-          // Page stability detection - avoid fetching content during page navigation
+          // Page stability check - avoid fetching content while the page is navigating
           logger.debug('[GoogleWebSearchTool] Checking page stability...');
           const isStable = await this.isPageStable(page);
           if (!isStable) {
-            logger.warn('[GoogleWebSearchTool] Page still navigating, waiting longer...');
+            logger.warn('[GoogleWebSearchTool] Page is still navigating, waiting longer...');
             await page.waitForTimeout(2000);
             try {
               await page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 15000) });
             } catch (loadError) {
-              logger.warn('[GoogleWebSearchTool] Retry page load wait timed out, continuing...');
+              logger.warn('[GoogleWebSearchTool] Retrying wait for page load timed out, proceeding...');
             }
-            
+
             // Check stability again
             const isStableRetry = await this.isPageStable(page);
             if (!isStableRetry) {
@@ -719,7 +701,7 @@ export class GoogleWebSearchTool {
             }
           }
 
-          // Get page HTML content
+          // Get the page HTML content
           const fullHtml = await page.content();
 
           // Remove CSS and JavaScript content, keep only pure HTML
@@ -738,23 +720,23 @@ export class GoogleWebSearchTool {
 
           //   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           //   const querySlug = query.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_').substring(0, 50);
-            
-          //   // Save original HTML
+
+          //   // Save raw HTML
           //   const htmlPath = path.join(debugDir, `google_search_${querySlug}_${timestamp}.html`);
           //   fs.writeFileSync(htmlPath, fullHtml, 'utf8');
           //   logger.debug(`[GoogleWebSearchTool] HTML saved: ${htmlPath}`);
 
           //   // Save screenshot
           //   const screenshotPath = path.join(debugDir, `google_search_${querySlug}_${timestamp}.png`);
-          //   await page.screenshot({ 
-          //     path: screenshotPath, 
+          //   await page.screenshot({
+          //     path: screenshotPath,
           //     fullPage: true,
           //     type: 'png'
           //   });
           //   logger.debug(`[GoogleWebSearchTool] Screenshot saved: ${screenshotPath}`);
 
           // } catch (debugError) {
-          //   logger.warn('[GoogleWebSearchTool] Failed to save debug file:', String(debugError));
+          //   logger.warn('[GoogleWebSearchTool] Failed to save debug files:', String(debugError));
           // }
 
           // Save browser state
@@ -772,7 +754,7 @@ export class GoogleWebSearchTool {
             fs.writeFileSync(fingerprintFile, JSON.stringify(savedState, null, 2), 'utf8');
             logger.debug(`[GoogleWebSearchTool] Fingerprint configuration saved: ${fingerprintFile}`);
           } catch (stateError) {
-            logger.warn('[GoogleWebSearchTool] Failed to save browser state:', String(stateError));
+            logger.warn(`[GoogleWebSearchTool] Failed to save browser state: ${String(stateError)}`);
           }
 
           await page.close();
@@ -780,9 +762,9 @@ export class GoogleWebSearchTool {
           return html;
 
         } catch (error) {
-          logger.error('[GoogleWebSearchTool] Error occurred during search:', String(error));
+          logger.error(`[GoogleWebSearchTool] Error during search: ${String(error)}`);
 
-          // Try to save state even if an error occurred
+          // Attempt to save state even if an error occurred
           try {
             logger.debug('[GoogleWebSearchTool] Attempting to save browser state...');
             const stateDir = path.dirname(stateFile);
@@ -793,7 +775,7 @@ export class GoogleWebSearchTool {
             fs.writeFileSync(fingerprintFile, JSON.stringify(savedState, null, 2), 'utf8');
             logger.debug('[GoogleWebSearchTool] Browser state saved');
           } catch (stateError) {
-            logger.warn('[GoogleWebSearchTool] Failed to save browser state:', String(stateError));
+            logger.warn(`[GoogleWebSearchTool] Failed to save browser state: ${String(stateError)}`);
           }
 
           await page.close();
@@ -806,14 +788,14 @@ export class GoogleWebSearchTool {
     };
 
     const html = await performSearchAndGetHtml();
-    
+
     // Parse search results
     const results = this.parseGoogleSearchResults(html, query, maxResults);
     return results;
   }
-  
+
   /**
-   * Get tool definition (for registering with BuiltinToolsManager)
+   * Get the tool definition (for registering with BuiltinToolsManager)
    */
   static getDefinition(): BuiltinToolDefinition {
     return {
@@ -854,7 +836,7 @@ export class GoogleWebSearchTool {
       }
     };
   }
-  
+
   /**
    * Validate arguments
    */
@@ -863,35 +845,35 @@ export class GoogleWebSearchTool {
     if (!args.queries || !Array.isArray(args.queries)) {
       return { isValid: false, error: 'queries is required and must be an array' };
     }
-    
+
     if (args.queries.length === 0) {
       return { isValid: false, error: 'queries array cannot be empty' };
     }
-    
+
     if (args.queries.length > 10) {
       return { isValid: false, error: 'queries array cannot contain more than 10 items' };
     }
-    
+
     for (let i = 0; i < args.queries.length; i++) {
       if (typeof args.queries[i] !== 'string' || args.queries[i].trim().length === 0) {
         return { isValid: false, error: `Query at index ${i} must be a non-empty string` };
       }
     }
-    
+
     // Validate maxResults
     if (args.maxResults !== undefined) {
       if (!Number.isInteger(args.maxResults) || args.maxResults < 1 || args.maxResults > 10) {
         return { isValid: false, error: 'maxResults must be an integer between 1 and 10' };
       }
     }
-    
+
     // Validate timeout
     if (args.timeout !== undefined) {
       if (!Number.isInteger(args.timeout) || args.timeout < 1000 || args.timeout > 300000) {
         return { isValid: false, error: 'timeout must be an integer between 1000 and 300000 milliseconds' };
       }
     }
-    
+
     return { isValid: true };
   }
 }

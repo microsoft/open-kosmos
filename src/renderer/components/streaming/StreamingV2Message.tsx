@@ -1,15 +1,16 @@
 /**
- * Kosmos Streaming v2 progressive rendering component
- * Based on VSCode-style streaming experience
+ * OpenKosmos Streaming v2 incremental rendering component
+ * VSCode-style streaming experience
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import MermaidDiagram from '../chat/MermaidDiagram';
-import { Message } from '../../types/chatTypes';
+import CodeBlockCopyButton from '../chat/CodeBlockCopyButton';
+import { CodeBlockContent } from '../chat/CodeBlockContent';
+import { Message } from '@shared/types/chatTypes';
 import { streamingConfigManager } from '../../lib/streaming/streamingConfig';
 import { streamingOptimizer } from '../../lib/streaming/streamingOptimizer';
 import { streamingCompatibility } from '../../lib/streaming/compatibilityLayer';
@@ -17,8 +18,8 @@ import '../../styles/StreamingV2Message.css';
 import '../../styles/markdown-render.css';
 
 /**
- * Preprocess markdown text, encode spaces in link URLs as %20
- * Fix issue where [text](path/with spaces/file) cannot be parsed by ReactMarkdown
+ * Preprocess markdown text, encoding spaces in link URLs as %20
+ * Fixes issues where [text](path/with spaces/file) cannot be parsed by ReactMarkdown
  */
 function encodeMarkdownLinkSpaces(text: string): string {
   // Match markdown links: [text](url)
@@ -76,7 +77,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
   const clickTimeoutRef = useRef<NodeJS.Timeout>();
   const lastFrameTimeRef = useRef<number>(0);
 
-  // Get UI configuration
+  // Get UI config
   const uiConfig = streamingConfigManager.getUIConfig();
 
   // 🚀 Optimized typewriter effect - using RAF and batch updates
@@ -95,15 +96,15 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     }
 
     setIsTyping(true);
-    
-    // Get optimized configuration
+
+    // Get optimized config
     const compatConfig = streamingCompatibility.getCompatibleConfig(targetText);
     const optimizedConfig = compatConfig.optimizedConfig || streamingOptimizer.getConfigForText(targetText);
-    
+
     // Use RAF for smooth animation
     let currentIndex = startIndex;
     let lastUpdateTime = performance.now();
-    
+
     const animate = (currentTime: number) => {
       // If completed, exit
       if (currentIndex >= targetText.length) {
@@ -112,26 +113,26 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
         lastFrameTimeRef.current = 0;
         return;
       }
-      
-      // Calculate time elapsed since last update
+
+      // Calculate time since last update
       const deltaTime = currentTime - lastUpdateTime;
-      
-      // Calculate target delay based on configuration
+
+      // Target delay based on config
       const targetDelay = optimizedConfig.baseDelay;
-      
+
       // 🚀 Core optimization: batch update multiple characters based on time delta
       if (deltaTime >= targetDelay) {
-        // Calculate number of characters to update (at least 1)
+        // Calculate how many characters to update (at least 1)
         const charsToUpdate = Math.max(1, Math.floor(deltaTime / targetDelay));
-        
-        // Smart batching: if batching is enabled, update more characters at once
+
+        // Smart batching: if enabled, can update more characters at once
         let actualCharsToUpdate = charsToUpdate;
         if (optimizedConfig.enableBatching) {
-          // Check if consecutive alphanumeric or Chinese characters can be batch processed
+          // Check if we can batch consecutive alphanumeric or Chinese characters
           const remainingText = targetText.substring(currentIndex);
           const alphanumMatch = remainingText.match(/^[a-zA-Z0-9]+/);
           const chineseMatch = remainingText.match(/^[\u4e00-\u9fff]+/);
-          
+
           if (alphanumMatch && alphanumMatch[0].length > 1) {
             actualCharsToUpdate = Math.min(
               alphanumMatch[0].length,
@@ -146,15 +147,15 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
             );
           }
         }
-        
+
         // Update index
         currentIndex = Math.min(currentIndex + actualCharsToUpdate, targetText.length);
-        
+
         // 🚀 Key optimization: set state once after batch update to reduce re-renders
         setDisplayedText(targetText.substring(0, currentIndex));
         lastUpdateTime = currentTime;
       }
-      
+
       // Continue animation
       if (currentIndex < targetText.length) {
         rafIdRef.current = requestAnimationFrame(animate);
@@ -163,7 +164,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
         lastFrameTimeRef.current = 0;
       }
     };
-    
+
     // Start animation
     rafIdRef.current = requestAnimationFrame(animate);
   }, []);
@@ -173,17 +174,17 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     if (isTyping && rafIdRef.current) {
       // User clicked to skip animation
       cancelAnimationFrame(rafIdRef.current);
-      
+
       const fullText = typeof message.content === 'string'
         ? message.content
         : message.content?.map(part =>
             typeof part === 'string' ? part : (part as any).text || ''
           ).join('') || '';
-          
+
       setDisplayedText(fullText);
       setIsTyping(false);
       setShouldSkipAnimation(true);
-      
+
       // Re-enable animation after 1 second
       if (clickTimeoutRef.current) {
         clearTimeout(clickTimeoutRef.current);
@@ -194,7 +195,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     }
   }, [isTyping, message.content]);
 
-  // Handle text content update
+  // Handle text content updates
   useEffect(() => {
     const text = typeof message.content === 'string'
       ? message.content
@@ -207,12 +208,12 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
       if (text !== displayedText && text.length > lastProcessedLengthRef.current) {
         const currentLength = displayedText.length;
         lastProcessedLengthRef.current = text.length;
-        
-        // Clear previous animation
+
+        // Cancel previous animation
         if (rafIdRef.current) {
           cancelAnimationFrame(rafIdRef.current);
         }
-        
+
         // Check if animation should be skipped
         if (shouldSkipAnimation || !uiConfig.showCursor) {
           // Display directly without typewriter effect
@@ -223,7 +224,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
           animateTypewriter(text, currentLength);
         }
       } else if (text.length < displayedText.length) {
-        // If text got shorter (e.g., restarted), set directly
+        // If text got shorter (e.g. restart), set directly
         setDisplayedText(text);
         lastProcessedLengthRef.current = text.length;
         setShouldSkipAnimation(false); // Reset skip state
@@ -234,7 +235,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
       setIsTyping(false);
       lastProcessedLengthRef.current = text.length;
       setShouldSkipAnimation(false); // Reset skip state
-      
+
       if ((message as any).streamingComplete && onStreamingComplete) {
         onStreamingComplete();
       }
@@ -256,7 +257,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     };
   }, []);
 
-  // Monitor height changes
+  // Watch for height changes
   useEffect(() => {
     if (containerRef.current && onHeightChange) {
       const currentHeight = containerRef.current.scrollHeight;
@@ -271,12 +272,12 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
   useEffect(() => {
     if (isStreaming && enableMetricsDisplay && streamingMetrics) {
       setShowMetrics(true);
-      
+
       // Clear previous timer
       if (metricsTimeoutRef.current) {
         clearTimeout(metricsTimeoutRef.current);
       }
-      
+
       // Set auto-hide timer
       metricsTimeoutRef.current = setTimeout(() => {
         setShowMetrics(false);
@@ -299,65 +300,89 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
 
   // 🚀 Performance optimization: cache Markdown component config to avoid recreating on every re-render
   const markdownComponents = useMemo(() => ({
-    // 🔥 Inline code: only handle code tags not inside pre
+    // 🔥 Inline code: only handles <code> tags not inside <pre>
     // react-markdown calls pre first, then code
     // We render code blocks directly in pre, so code here only handles inline code
+    // NOTE: In react-markdown v10, code is called for BOTH inline and block code.
+    // For block code (className contains 'language-'), preserve the className so pre can detect it.
     code(props: any) {
-      const { children } = props;
+      const { children, className } = props;
+      if (className && className.includes('language-')) {
+        // Block code inside <pre> — preserve className for pre handler detection
+        return <code className={className}>{children}</code>;
+      }
       return (
         <code className="inline-code">
           {children}
         </code>
       );
     },
-    // 🔥 Code blocks: pre wraps code, handle code block rendering here directly
+    // 🔥 Code blocks: pre wrapping code, handles code block rendering here
     pre(props: any) {
-      const { children } = props;
-      
-      // Extract code element info from children
-      // When react-markdown renders code blocks, children is <code className="language-xxx">...</code>
-      const codeChild = React.Children.toArray(children).find(
-        (child: any) => child?.type === 'code' || child?.props?.node?.tagName === 'code'
-      ) as React.ReactElement | undefined;
-      
-      if (codeChild && codeChild.props) {
-        const { className, children: codeContent } = codeChild.props;
-        const match = /language-(\w+)/.exec(className || '');
-        const language = match ? match[1] : 'text';
-        const content = String(codeContent).replace(/\n$/, '');
+      const { children, node } = props;
 
+      let language = 'text';
+      let content = '';
+      let detected = false;
+
+      // Strategy 1: Extract from hast node directly (most reliable in react-markdown v10+)
+      if (node?.children?.[0]?.tagName === 'code') {
+        const codeNode = node.children[0];
+        const cls = codeNode.properties?.className;
+        if (Array.isArray(cls)) {
+          const langCls = cls.find((c: string) => c.startsWith('language-'));
+          if (langCls) language = langCls.replace('language-', '');
+        } else if (typeof cls === 'string' && cls.includes('language-')) {
+          const match = /language-(\w+)/.exec(cls);
+          if (match) language = match[1];
+        }
+        // Extract text content from hast children
+        const extractText = (nodes: any[]): string => {
+          return nodes?.map((n: any) => {
+            if (n.type === 'text') return n.value || '';
+            if (n.children) return extractText(n.children);
+            return '';
+          }).join('') || '';
+        };
+        content = extractText(codeNode.children).replace(/\n$/, '');
+        detected = true;
+      }
+
+      // Strategy 2: Extract from React children (fallback)
+      if (!detected) {
+        const childArray = React.Children.toArray(children);
+        const codeChild = childArray.find(
+          (child: any) =>
+            child?.type === 'code' ||
+            child?.props?.className?.includes('language-') ||
+            (childArray.length === 1 && child?.props?.children !== undefined)
+        ) as React.ReactElement | undefined;
+
+        if (codeChild && codeChild.props) {
+          const { className, children: codeContent } = codeChild.props;
+          const match = /language-(\w+)/.exec(className || '');
+          if (match) language = match[1];
+          content = String(codeContent).replace(/\n$/, '');
+          detected = true;
+        }
+      }
+
+      if (detected) {
         if (language === 'mermaid') {
           return <MermaidDiagram definition={content} />;
         }
 
         return (
           <div className="code-block-wrapper">
-            <SyntaxHighlighter
-              PreTag="div"
-              language={language}
-              style={oneDark}
-              customStyle={{
-                margin: 0,
-                borderRadius: '0.375rem',
-                fontSize: '0.875rem',
-                display: 'block',
-                minWidth: 'fit-content',
-              }}
-              wrapLongLines={false}
-              codeTagProps={{
-                style: {
-                  whiteSpace: 'pre',
-                  wordWrap: 'normal',
-                  overflowWrap: 'normal',
-                },
-              }}
-            >
-              {content}
-            </SyntaxHighlighter>
+            <div className="code-block-header">
+              <span className="code-block-language">{language !== 'text' ? `</> ${language.toUpperCase()}` : ''}</span>
+              <CodeBlockCopyButton code={content} />
+            </div>
+            <CodeBlockContent language={language} content={content} />
           </div>
         );
       }
-      
+
       // fallback: render children directly
       return <div className="pre-wrapper">{children}</div>;
     },
@@ -409,7 +434,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     },
     a(props: any) {
       const { href, children, ...rest } = props;
-      // Detect local file path (starts with / but not //, or starts with drive letter)
+      // Detect local file paths (starting with / but not //, or starting with a drive letter)
       const isLocalPath = href && (/^\/[^/]/.test(href) || /^[A-Za-z]:[\\/]/.test(href));
       if (isLocalPath) {
         return (
@@ -435,12 +460,12 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     em(props: any) {
       return <em {...props} className="italic" />;
     }
-  }), []); // Empty dependency array, create only once
+  }), []); // Empty dependency array, only create once
 
   return (
     <div
       ref={containerRef}
-      className={`streaming-v2-message ${isTyping ? 'typing' : ''}`}
+      className={`streaming-v2-message min-w-0 w-full max-w-full ${isTyping ? 'typing' : ''}`}
       style={{
         contain: 'layout style paint',
         willChange: isStreaming || isTyping ? 'contents' : 'auto'
@@ -460,15 +485,15 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
         }}
       >
         {displayedText.trim().length > 0 && (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
             {encodeMarkdownLinkSpaces(displayedText)}
           </ReactMarkdown>
         )}
       </div>
-      
+
       {/* Performance metrics display */}
       {enableMetricsDisplay && streamingMetrics && (showMetrics || isStreaming || isTyping) && (
-        <div 
+        <div
           className="streaming-metrics"
           onClick={handleMetricsClick}
           style={{
@@ -490,7 +515,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
               </span>
             )}
           </div>
-          
+
           {showMetrics && (
             <div className="metrics-detail" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
               <div>Total time: {streamingMetrics.totalTime}ms</div>
@@ -498,7 +523,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
               <div>Content: {streamingMetrics.contentLength} chars, {streamingMetrics.wordCount} words</div>
               {streamingMetrics.latencyMetrics && (
                 <div>
-                  Latency: avg {streamingMetrics.latencyMetrics.average.toFixed(1)}ms, 
+                  Latency: avg {streamingMetrics.latencyMetrics.average.toFixed(1)}ms,
                   peak {streamingMetrics.latencyMetrics.peak}ms
                 </div>
               )}
@@ -513,8 +538,8 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
           )}
         </div>
       )}
-      
-      {/* Completion indicator removed - maintain visual consistency before and after streaming */}
+
+      {/* Completion indicator removed - maintain visual consistency before/after streaming */}
     </div>
   );
 };
@@ -538,13 +563,13 @@ export class StreamingScrollManager {
   private setupScrollListeners(): void {
     const handleScroll = () => {
       this.isUserScrolling = true;
-      
+
       // Clear previous timer
       if (this.userScrollTimeout) {
         clearTimeout(this.userScrollTimeout);
       }
-      
-      // Set user scroll end detection
+
+      // Set detection for when user stops scrolling
       this.userScrollTimeout = setTimeout(() => {
         this.isUserScrolling = false;
       }, 1000);
@@ -560,32 +585,32 @@ export class StreamingScrollManager {
       const resizeObserver = new ResizeObserver(() => {
         this.handleContentChange();
       });
-      
+
       resizeObserver.observe(this.container);
     }
   }
 
   /**
-   * Handle streaming content update
+   * Handle streaming content updates
    */
   handleStreamingUpdate(): void {
     this.handleContentChange();
   }
 
   /**
-   * Handle content change
+   * Handle content changes
    */
   private handleContentChange(): void {
-    // VSCode-style smart scroll: only auto-scroll when user is not actively scrolling
+    // VSCode-style smart scrolling: auto-scroll only when user is not actively scrolling
     if (!this.isUserScrolling) {
       const { scrollTop, scrollHeight, clientHeight } = this.container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      
+
       if (distanceFromBottom <= this.autoScrollThreshold) {
         this.scrollToBottom();
       }
     }
-    
+
     // Notify observers
     this.notifyObservers();
   }
@@ -605,10 +630,10 @@ export class StreamingScrollManager {
    */
   shouldAutoScroll(): boolean {
     if (this.isUserScrolling) return false;
-    
+
     const { scrollTop, scrollHeight, clientHeight } = this.container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    
+
     return distanceFromBottom <= this.autoScrollThreshold;
   }
 
@@ -617,8 +642,8 @@ export class StreamingScrollManager {
    */
   addObserver(callback: () => void): () => void {
     this.observerCallbacks.push(callback);
-    
-    // Return unsubscribe function
+
+    // Return function to remove observer
     return () => {
       const index = this.observerCallbacks.indexOf(callback);
       if (index > -1) {
@@ -637,7 +662,7 @@ export class StreamingScrollManager {
   }
 
   /**
-   * Update configuration
+   * Update config
    */
   updateConfig(config: { autoScrollThreshold?: number }): void {
     if (config.autoScrollThreshold !== undefined) {

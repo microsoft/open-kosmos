@@ -1,12 +1,12 @@
 // Apple Notarization Script for macOS distribution signing
-// Uses notarytool directly to avoid the hang issue with @electron/notarize
+// Uses notarytool directly to avoid @electron/notarize hang issues
 const path = require('path');
 const { execSync } = require('child_process');
 const fs = require('fs');
 
 // Configuration constants
-const POLL_INTERVAL = 30 * 1000; // Poll every 30 seconds
-const MAX_POLL_TIME = 30 * 60 * 1000; // Maximum polling time: 30 minutes
+const POLL_INTERVAL = 30 * 1000; // poll every 30 seconds
+const MAX_POLL_TIME = 30 * 60 * 1000; // poll for at most 30 minutes
 const CODESIGN_TIMEOUT = 60 * 1000; // 1 minute timeout
 
 // Verify codesign signature
@@ -25,11 +25,11 @@ function verifyCodesign(appPath) {
   }
 }
 
-// Compress .app to .zip (notarytool only accepts zip/dmg/pkg)
+// Compress .app to .zip (notarytool can only submit zip/dmg/pkg)
 function zipApp(appPath) {
   const zipPath = `${appPath}.zip`;
   console.log(`📦 Creating zip archive: ${zipPath}`);
-  
+
   // Delete existing zip if present
   if (fs.existsSync(zipPath)) {
     fs.unlinkSync(zipPath);
@@ -50,18 +50,18 @@ function zipApp(appPath) {
 // Submit to Apple notarization service (without waiting)
 function submitNotarization(zipPath, appleId, appleIdPassword, teamId) {
   console.log('📤 Submitting to Apple notarization service...');
-  
+
   try {
-    // Do not use --wait, return submission-id immediately
+    // Do not use --wait; return submission-id immediately
     const result = execSync(
       `xcrun notarytool submit "${zipPath}" \
         --apple-id "${appleId}" \
         --team-id "${teamId}" \
         --password "${appleIdPassword}" \
         --output-format json`,
-      { 
-        encoding: 'utf-8', 
-        timeout: 5 * 60 * 1000, // submit itself should be fast, 5 minutes is enough
+      {
+        encoding: 'utf-8',
+        timeout: 5 * 60 * 1000, // submit itself should be fast; 5 minutes is sufficient
         maxBuffer: 10 * 1024 * 1024 // 10MB buffer
       }
     );
@@ -93,7 +93,7 @@ function pollNotarizationStatus(submissionId, appleId, appleIdPassword, teamId) 
     pollCount++;
     const elapsedTime = Date.now() - startTime;
     
-    // Check if maximum wait time has been exceeded
+    // Check if max wait time exceeded
     if (elapsedTime > MAX_POLL_TIME) {
       throw new Error(`Notarization polling timeout after ${MAX_POLL_TIME / 1000 / 60} minutes. Submission ID: ${submissionId}`);
     }
@@ -127,12 +127,11 @@ function pollNotarizationStatus(submissionId, appleId, appleIdPassword, teamId) 
         return { success: false, status, submissionId };
       }
       
-      // Continue waiting state: In Progress
-      // Wait for next poll
+      // Waiting state: In Progress — wait for next poll
       const sleepTime = POLL_INTERVAL;
       console.log(`   Waiting ${sleepTime / 1000}s before next poll...`);
-      
-      // Node.js has no sleep, use execSync sleep
+
+      // Node.js has no sleep; use execSync sleep
       execSync(`sleep ${sleepTime / 1000}`, { stdio: 'ignore' });
       
     } catch (error) {
@@ -234,7 +233,7 @@ exports.default = async function notarizing(context) {
     submissionId = submitNotarization(appZipPath, appleId, appleIdPassword, teamId);
     
     if (!shouldWait) {
-      // Save submission-id to file for subsequent jobs
+      // Save submission-id to file for subsequent jobs to use
       const submissionIdFile = path.join(appOutDir, 'submission-id.txt');
       fs.writeFileSync(submissionIdFile, submissionId, 'utf-8');
       
@@ -244,10 +243,10 @@ exports.default = async function notarizing(context) {
       console.log('ℹ️ Notarization will continue in the background');
       console.log('ℹ️ Check status with: xcrun notarytool info "${submissionId}" --apple-id "${appleId}" --team-id "${teamId}" --password "***"');
       console.log('✅ Notarization submitted successfully!');
-      return; // Don't wait, return immediately
+      return; // Do not wait, return immediately
     }
     
-    // Step 4: Poll for status (only when shouldWait=true)
+    // Step 4: Poll for status (only executed when shouldWait=true)
     const result = pollNotarizationStatus(submissionId, appleId, appleIdPassword, teamId);
     
     if (result.success) {
@@ -280,7 +279,7 @@ exports.default = async function notarizing(context) {
     }
     throw error;
   } finally {
-    // Cleanup: remove temporary zip file (only delete in wait mode)
+    // Cleanup: remove temporary zip file (only in wait mode)
     if (shouldWait && fs.existsSync(appZipPath)) {
       console.log('🧹 Cleaning up temporary zip file...');
       fs.unlinkSync(appZipPath);

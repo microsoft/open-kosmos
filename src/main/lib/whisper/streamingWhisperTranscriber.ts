@@ -14,6 +14,8 @@ import type { WhisperModelSize } from '../userDataADO/types/profile';
 import { whisperModelManager } from './whisperModelManager';
 import * as fs from 'fs';
 import { nativeModuleManager, NativeModuleNotDownloadedError } from '../nativeModules';
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
 
 // whisper-node-addon is loaded on demand via NativeModuleManager (userData cache)
 let whisperAddon: typeof import('@kutalia/whisper-node-addon') | null = null;
@@ -115,10 +117,10 @@ async function loadWhisperAddon(): Promise<typeof import('@kutalia/whisper-node-
 
   try {
     whisperAddon = nativeModuleManager.requireModule('whisper-addon') as typeof import('@kutalia/whisper-node-addon');
-    console.log('[StreamingWhisper] Whisper addon loaded from userData cache');
+    logger.debug('[StreamingWhisper] Whisper addon loaded from userData cache');
     return whisperAddon;
   } catch (error) {
-    console.error('[StreamingWhisper] Failed to load whisper addon from cache:', error);
+    logger.error(`[StreamingWhisper] Failed to load whisper addon from cache: ${error instanceof Error ? error.message : String(error)}`)
     // Re-throw original error so the UI shows the actual failure reason
     throw error;
   }
@@ -176,7 +178,7 @@ async function transcribeBuffer(session: StreamingSession, isFinal: boolean): Pr
 
   // Prevent concurrent transcriptions - they can cause crashes
   if (session.isTranscribing) {
-    console.log('[StreamingWhisper] Transcription already in progress, marking as pending');
+    logger.debug('[StreamingWhisper] Transcription already in progress, marking as pending');
     session.pendingTranscription = true;
     return;
   }
@@ -208,7 +210,7 @@ async function transcribeBuffer(session: StreamingSession, isFinal: boolean): Pr
       session.speechSamples = 0;
     }
 
-    console.log(`[StreamingWhisper] Transcribing ${durationMs.toFixed(0)}ms of audio (${isFinal ? 'final' : 'interim'})`);
+    logger.debug(`[StreamingWhisper] Transcribing ${durationMs.toFixed(0)}ms of audio (${isFinal ? 'final' : 'interim'})`);
 
     // Determine language settings
     const isSimplifiedChinese = session.options.language === 'zh';
@@ -232,15 +234,15 @@ async function transcribeBuffer(session: StreamingSession, isFinal: boolean): Pr
 
     // Add prompt for Simplified Chinese
     if (isSimplifiedChinese) {
-      transcribeOptions.prompt = 'The following are Mandarin sentences.';
+      transcribeOptions.prompt = '以下是普通话的句子。';
     }
 
-    console.log('[StreamingWhisper] Calling whisper.transcribe...');
+    logger.debug('[StreamingWhisper] Calling whisper.transcribe...');
     const result = await whisper.transcribe(transcribeOptions);
-    console.log('[StreamingWhisper] Transcription returned');
+    logger.debug('[StreamingWhisper] Transcription returned');
 
     // Debug: Log the raw result
-    console.log('[StreamingWhisper] Raw result:', JSON.stringify(result, null, 2));
+    logger.debug(`[StreamingWhisper] Raw result: ${JSON.stringify(result, null, 2)}`);
 
     // Parse transcription result - cast to any for flexible handling
     const transcription = (result as any).transcription;
@@ -303,13 +305,13 @@ async function transcribeBuffer(session: StreamingSession, isFinal: boolean): Pr
         duration: durationMs,
       });
 
-      console.log(`[StreamingWhisper] ${isFinal ? 'Final' : 'Interim'}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+      logger.debug(`[StreamingWhisper] ${isFinal ? 'Final' : 'Interim'}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
     } else if (!text) {
-      console.log('[StreamingWhisper] No text transcribed');
+      logger.debug('[StreamingWhisper] No text transcribed');
     }
 
   } catch (error) {
-    console.error('[StreamingWhisper] Transcription error:', error);
+    logger.error(`[StreamingWhisper] Transcription error: ${error instanceof Error ? error.message : String(error)}`)
     sendUpdate(session, {
       sessionId: session.sessionId,
       type: 'error',
@@ -368,7 +370,7 @@ export async function startStreamingSession(
 
   activeSessions.set(sessionId, session);
 
-  console.log(`[StreamingWhisper] Started session ${sessionId} with model ${modelSize}`);
+  logger.debug(`[StreamingWhisper] Started session ${sessionId} with model ${modelSize}`);
 
   sendUpdate(session, {
     sessionId,
@@ -387,7 +389,7 @@ export async function processAudioChunk(
 ): Promise<void> {
   const session = activeSessions.get(sessionId);
   if (!session || !session.isActive) {
-    console.warn(`[StreamingWhisper] Session not found or inactive: ${sessionId}`);
+    logger.warn(`[StreamingWhisper] Session not found or inactive: ${sessionId}`);
     return;
   }
 
@@ -419,7 +421,7 @@ export async function processAudioChunk(
 
   // Debug logging occasionally (every 4 seconds instead of 2)
   if (session.totalSamples % (SAMPLE_RATE * 4) < pcmChunk.length) {
-    console.log(`[StreamingWhisper] Buffer: ${session.totalSamples} samples, Speech: ${session.speechSamples}, Silence: ${session.silenceSamples}, RMS: ${rms.toFixed(4)}`);
+    logger.debug(`[StreamingWhisper] Buffer: ${session.totalSamples} samples, Speech: ${session.speechSamples}, Silence: ${session.silenceSamples}, RMS: ${rms.toFixed(4)}`);
   }
 
   // Check if we should trigger transcription:
@@ -430,7 +432,7 @@ export async function processAudioChunk(
       session.silenceSamples >= silenceSamplesThreshold &&
       session.hasSpeech &&
       session.speechSamples >= MIN_SPEECH_SAMPLES_FOR_TRANSCRIPTION) {
-    console.log(`[StreamingWhisper] Silence after speech (${session.speechSamples} samples), transcribing`);
+    logger.debug(`[StreamingWhisper] Silence after speech (${session.speechSamples} samples), transcribing`);
     await transcribeBuffer(session, true);
     // Reset speech tracking for next segment
     session.silenceSamples = 0;
@@ -441,14 +443,14 @@ export async function processAudioChunk(
   // Periodically transcribe for interim results while speaking continuously
   const interimIntervalSamples = (INTERIM_INTERVAL_MS / 1000) * SAMPLE_RATE;
   if (session.speechSamples >= interimIntervalSamples && session.hasSpeech && !session.isTranscribing) {
-    console.log(`[StreamingWhisper] Interim after ${session.speechSamples} speech samples`);
+    logger.debug(`[StreamingWhisper] Interim after ${session.speechSamples} speech samples`);
     await transcribeBuffer(session, false);
   }
 
   // Trim buffer if it gets too large (prevent memory issues)
   const maxBufferSamples = BUFFER_TRIM_INTERVAL / 1000 * SAMPLE_RATE;
   if (session.totalSamples > maxBufferSamples * 1.5) {
-    console.log(`[StreamingWhisper] Trimming buffer, was ${session.totalSamples} samples`);
+    logger.debug(`[StreamingWhisper] Trimming buffer, was ${session.totalSamples} samples`);
     // Keep only the last portion of audio
     const combined = combineAudioBuffers(session.audioBuffer);
     const keepFrom = combined.length - maxBufferSamples;
@@ -463,7 +465,7 @@ export async function processAudioChunk(
 export async function stopStreamingSession(sessionId: string): Promise<void> {
   const session = activeSessions.get(sessionId);
   if (!session) {
-    console.warn(`[StreamingWhisper] Session not found: ${sessionId}`);
+    logger.warn(`[StreamingWhisper] Session not found: ${sessionId}`);
     return;
   }
 
@@ -471,7 +473,7 @@ export async function stopStreamingSession(sessionId: string): Promise<void> {
 
   // Perform final transcription if there's remaining audio
   if (session.totalSamples > 0) {
-    console.log(`[StreamingWhisper] Stopping session, transcribing remaining ${session.totalSamples} samples`);
+    logger.debug(`[StreamingWhisper] Stopping session, transcribing remaining ${session.totalSamples} samples`);
     await transcribeBuffer(session, true);
   }
 
@@ -482,7 +484,7 @@ export async function stopStreamingSession(sessionId: string): Promise<void> {
 
   // Clean up
   activeSessions.delete(sessionId);
-  console.log(`[StreamingWhisper] Session ${sessionId} stopped and cleaned up`);
+  logger.debug(`[StreamingWhisper] Session ${sessionId} stopped and cleaned up`);
 }
 
 /**
@@ -497,7 +499,7 @@ export function cancelStreamingSession(sessionId: string): void {
       type: 'stopped',
     });
     activeSessions.delete(sessionId);
-    console.log(`[StreamingWhisper] Session ${sessionId} cancelled`);
+    logger.debug(`[StreamingWhisper] Session ${sessionId} cancelled`);
   }
 }
 

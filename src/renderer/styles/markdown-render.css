@@ -1,1038 +1,1253 @@
 /**
- * Markdown rendering style specification
- * converted from designer Figma design draft (.vscode/markdown-html.css)
- * 
- * design specification: 
- * - font: Segoe Sans (body text), Cascadia Code (code)
- * - primary color: #322D29 (dark text), #F8F4F1 (light background)
- * - spacing system: 8px (paragraph), 16px (block), 28px (section)
+ * Markdown Rendering Style Specification
+ * Converted from designer Figma design (.vscode/markdown-html.css)
+ *
+ * Design Specification:
+ * - Font: Segoe Sans (body text), Cascadia Code (code)
+ * - Primary colors: #322D29 (dark text), #F8F4F1 (light background)
+ * - Spacing system: 8px (paragraph), 16px (block), 28px (section)
  */
 
 /* ============================================
- base container styles
- ============================================ */
+   Base Container Styles
+   ============================================ */
 .markdown-body {
- display: flex;
- flex-direction: column;
- align-items: flex-start;
- /* remove gap, all has spacing by element 's margin-top control */
- 
- max-width: 696px;
- width: 100%;
- 
- /* 🔥 key: prevent content expand large container causing horizontal scroll bar
- table monospace content will in .table-wrapper layer level via overflow-x: auto handle */
- overflow-x: hidden;
- 
- font-size: 16px;
- line-height: 26px;
- font-weight: 410;
- color: #322D29;
- 
- /* optimize text rendering */
- -webkit-font-smoothing: antialiased;
- -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  /* Remove gap, all spacing controlled by element margin-top */
+
+  max-width: 696px;
+  width: 100%;
+
+  /* 🔥 Key: prevent content from expanding container causing horizontal scrollbar
+     Wide content like tables is handled at .table-wrapper level via overflow-x: auto */
+  overflow-x: hidden;
+
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 410;
+  color: #322D29;
+
+  /* Optimize text rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* dark theme */
+/* Dark theme */
 /* ============================================
- title styles H1 - H6
- ============================================ */
+   Heading Styles H1 - H6
+   ============================================ */
 
-/* H1 - main title */
+/* H1 - Main heading */
 .markdown-body h1 {
- font-weight: 620;
- font-size: 28px;
- line-height: 32px;
- color: #322D29;
- 
- /* spacing specification: heading margin-top 28px, other directions are 0 */
- margin: 28px 0 0 0;
- padding: 0;
- 
- /* first H1 no need for top spacing */
- &:first-child {
- margin-top: 0;
- }
+  font-weight: 620;
+  font-size: 28px;
+  line-height: 32px;
+  color: #322D29;
+
+  /* Spacing spec: heading margin-top 28px, other sides 0 */
+  margin: 28px 0 0 0;
+  padding: 0;
+
+  /* First H1 does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
-/* H2 - second-level title */
+/* H2 - Second-level heading */
 .markdown-body h2 {
- font-weight: 620;
- font-size: 20px;
- line-height: 26px;
- color: #322D29;
- 
- /* spacing specification: heading margin-top 28px, other directions are 0 */
- margin: 28px 0 0 0;
- padding: 0;
- 
- &:first-child {
- margin-top: 0;
- }
+  font-weight: 620;
+  font-size: 20px;
+  line-height: 26px;
+  color: #322D29;
+
+  /* Spacing spec: heading margin-top 28px, other sides 0 */
+  margin: 28px 0 0 0;
+  padding: 0;
+
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
-/* H3 - third-level title */
+/* H3 - Third-level heading */
 .markdown-body h3 {
- font-weight: 620;
- font-size: 16px;
- line-height: 26px;
- color: #322D29;
- 
- /* spacing specification: heading margin-top 28px, other directions are 0 */
- margin: 28px 0 0 0;
- padding: 0;
- 
- &:first-child {
- margin-top: 0;
- }
+  font-weight: 620;
+  font-size: 16px;
+  line-height: 26px;
+  color: #322D29;
+
+  /* Spacing spec: heading margin-top 28px, other sides 0 */
+  margin: 28px 0 0 0;
+  padding: 0;
+
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
-/* H4 - H6 use with H3 same styles */
+/* H4 - H6 use the same style as H3 */
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
- font-weight: 620;
- font-size: 16px;
- line-height: 26px;
- color: #322D29;
- 
- /* spacing specification: heading margin-top 28px, other directions are 0 */
- margin: 28px 0 0 0;
- padding: 0;
- 
- &:first-child {
- margin-top: 0;
- }
+  font-weight: 620;
+  font-size: 16px;
+  line-height: 26px;
+  color: #322D29;
+
+  /* Spacing spec: heading margin-top 28px, other sides 0 */
+  margin: 28px 0 0 0;
+  padding: 0;
+
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
-/* dark theme heading */
+/* Dark theme headings */
 .markdown-body/* ============================================
- paragraph styles
- ============================================ */
+   Paragraph Styles
+   ============================================ */
 .markdown-body p {
- font-weight: 410;
- font-size: 16px;
- line-height: 26px;
- color: #322D29;
- 
- /* spacing specification: paragraph margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- padding: 0;
- 
- /* first paragraph does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
+  font-weight: 410;
+  font-size: 16px;
+  line-height: 26px;
+  color: #322D29;
+
+  /* Spacing spec: paragraph margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  padding: 0;
+
+  /* First paragraph does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .markdown-body/* ============================================
- emphasis styles
- ============================================ */
+   Emphasis Styles
+   ============================================ */
 .markdown-body strong,
 .markdown-body b {
- font-weight: 620;
+  font-weight: 620;
 }
 
 .markdown-body em,
 .markdown-body i {
- font-style: italic;
+  font-style: italic;
 }
 
 .markdown-body del,
 .markdown-body s {
- text-decoration: line-through;
- opacity: 0.7;
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 
 /* ============================================
- link styles
- ============================================ */
+   Link Styles
+   ============================================ */
 .markdown-body a {
- color: #0066CC;
- text-decoration: none;
- 
- &:hover {
- text-decoration: underline;
- }
- 
- &:visited {
- color: #551A8B;
- }
+  color: #0066CC;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:visited {
+    color: #551A8B;
+  }
 }
 
 /* ============================================
- list styles
- ============================================ */
+   List Styles
+   ============================================ */
 
-/* unordered list */
+/* Unordered list */
 .markdown-body ul {
- /* spacing specification: list margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- padding: 0;
- padding-left: 27px;
- 
- list-style: none;
- 
- /* first list does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
+  /* Spacing spec: list margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  padding: 0;
+  padding-left: 27px;
+
+  list-style: none;
+
+  /* First list does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .markdown-body ul > li {
- position: relative;
- padding-left: 10px;
- /* list item between interval only is 8px, none other spacing */
- margin: 8px 0 0 0;
- padding-top: 0;
- padding-bottom: 0;
- 
- font-weight: 410;
- font-size: 16px;
- line-height: 26px;
- 
- /* first list item does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
- 
- &::before {
- content: '•';
- position: absolute;
- left: -17px;
- font-weight: 620;
- color: #322D29;
- }
+  position: relative;
+  padding-left: 10px;
+  /* List items separated by only 8px, no other spacing */
+  margin: 8px 0 0 0;
+  padding-top: 0;
+  padding-bottom: 0;
+
+  font-weight: 410;
+  font-size: 16px;
+  line-height: 26px;
+
+  /* First list item does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &::before {
+    content: '•';
+    position: absolute;
+    left: -17px;
+    font-weight: 620;
+    color: #322D29;
+  }
 }
 
-.markdown-body/* ordered list */
+.markdown-body/* Ordered list */
 .markdown-body ol {
- /* spacing specification: list margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- padding: 0;
- padding-left: 33px;
- 
- list-style: none;
- counter-reset: list-counter;
- 
- /* first list does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
+  /* Spacing spec: list margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  padding: 0;
+  padding-left: 33px;
+
+  list-style: none;
+  counter-reset: list-counter;
+
+  /* First list does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .markdown-body ol > li {
- position: relative;
- padding-left: 8px;
- /* list item between interval only is 8px, none other spacing */
- margin: 8px 0 0 0;
- padding-top: 0;
- padding-bottom: 0;
- counter-increment: list-counter;
- 
- font-weight: 410;
- font-size: 16px;
- line-height: 26px;
- 
- /* first list item does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
- 
- &::before {
- content: counter(list-counter) '.';
- position: absolute;
- left: -25px;
- width: 22px;
- text-align: right;
- font-weight: 410;
- color: #322D29;
- }
+  position: relative;
+  padding-left: 8px;
+  /* List items separated by only 8px, no other spacing */
+  margin: 8px 0 0 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  counter-increment: list-counter;
+
+  font-weight: 410;
+  font-size: 16px;
+  line-height: 26px;
+
+  /* First list item does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &::before {
+    content: counter(list-counter) '.';
+    position: absolute;
+    left: -25px;
+    width: 22px;
+    text-align: right;
+    font-weight: 410;
+    color: #322D29;
+  }
 }
 
-.markdown-body/* nested list */
+.markdown-body/* Nested list */
 .markdown-body ul ul,
 .markdown-body ul ol,
 .markdown-body ol ul,
 .markdown-body ol ol {
- margin-top: 8px;
+  margin-top: 8px;
 }
 
-/* emphasis text in list items */
+/* Emphasized text within list items */
 .markdown-body li strong {
- font-weight: 620;
+  font-weight: 620;
 }
 
 /* ============================================
- code rendering styles - unified management
- ============================================
- 
- this section manages all code-related styles:
- 1. inline code (inline-code) - `code` single row, text inside use
- 2. fenced code block (code-block) - ``` or ~~~ multi-line, can specify language
- 
- design specification: 
- - font: Cascadia Code / var(--font-mono)
- - inline code: light semi-transparent background, dark text
- - code block: dark background (oneDark theme), light text
+   Code Rendering Styles - Unified Management
+   ============================================
+
+   This section centrally manages all code-related styles:
+   1. Inline code (inline-code) - `code` single-line, used within text
+   2. Fenced code blocks (code-block) - ``` or ~~~ multi-line, language-specifiable
+
+   Design Specification:
+   - Font: Cascadia Code / var(--font-mono)
+   - Inline code: light semi-transparent background, dark text
+   - Code block: dark background (oneDark theme), light text
 */
 
-/* --- CSS variable define --- */
+/* --- CSS Variable Definitions --- */
 :root {
- /* inline code color - light mode */
- --inline-code-bg: #EDD5C4;
- --inline-code-text: #322D29;
- 
- /* inline code color - dark mode */
- --inline-code-bg-dark: rgba(255, 255, 255, 0.12);
- --inline-code-text-dark: #E2DDD9;
- 
- /* code block color (oneDark theme) */
- --code-block-bg: rgb(40, 44, 52);
- --code-block-text: rgb(171, 178, 191);
- 
- /* code block syntax highlighting colors */
- --code-keyword: #C586C0;
- --code-string: #CE9178;
- --code-comment: #6A9955;
- --code-function: #DCDCAA;
- --code-number: #B5CEA8;
- --code-operator: #D4D4D4;
+  /* Inline code colors - light mode */
+  --inline-code-bg: #EDD5C4;
+  --inline-code-text: #322D29;
+
+  /* Inline code colors - dark mode */
+  --inline-code-bg-dark: rgba(255, 255, 255, 0.12);
+  --inline-code-text-dark: #E2DDD9;
+
+  /* Code block colors (oneDark theme) */
+  --code-block-bg: rgb(40, 44, 52);
+  --code-block-text: rgb(171, 178, 191);
+
+  /* Code block syntax highlighting colors */
+  --code-keyword: #C586C0;
+  --code-string: #CE9178;
+  --code-comment: #6A9955;
+  --code-function: #DCDCAA;
+  --code-number: #B5CEA8;
+  --code-operator: #D4D4D4;
 }
 
-/* --- 1. inline code styles (Inline Code) --- */
+/* --- 1. Inline Code Styles (Inline Code) --- */
 
-/* inline code base styles */
+/* Inline code base styles */
 .inline-code {
- font-family: var(--font-mono);
- font-size: 0.875em;
- font-weight: 400;
- line-height: 1.4;
- 
- /* light mode styles */
- background-color: var(--inline-code-bg);
- color: var(--inline-code-text);
- 
- /* padding and border-radius */
- padding: 0.125em 0.375em;
- border-radius: 4px;
- 
- /* prevent wrapping, keep in single line */
- white-space: nowrap;
- 
- /* vertical alignment */
- vertical-align: baseline;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 400;
+  line-height: 1.4;
+
+  /* Light mode styles */
+  background-color: var(--inline-code-bg);
+  color: var(--inline-code-text);
+
+  /* Padding and border radius */
+  padding: 0.125em 0.375em;
+  border-radius: 4px;
+
+  /* Long inline code needs to wrap at narrow widths to avoid being clipped by parent container */
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+
+  /* Vertical alignment */
+  vertical-align: baseline;
 }
 
-/* markdown-body inside inline code (non-code block inside code) */
+/* Inline code within markdown-body (code not inside a code block) */
 .markdown-body code:not(pre code):not(.code-block-wrapper code) {
- font-family: var(--font-mono);
- font-size: 0.875em;
- font-weight: 400;
- line-height: 1.4;
- 
- background-color: var(--inline-code-bg);
- color: var(--inline-code-text);
- 
- padding: 0.125em 0.375em;
- border-radius: 4px;
- white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 400;
+  line-height: 1.4;
+
+  background-color: var(--inline-code-bg);
+  color: var(--inline-code-text);
+
+  padding: 0.125em 0.375em;
+  border-radius: 4px;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.markdown-body/* --- 2. fenced code block styles (Code Block) --- */
+.markdown-body/* --- 2. Fenced Code Block Styles (Code Block) --- */
 
-/* code block outer wrapper */
+/* Code block outer wrapper */
 .code-block-wrapper {
- /* layout */
- display: block;
- width: 100%;
- max-width: 100%;
- min-width: 0;
- 
- /* spacing */
- margin: 0.5rem 0;
- 
- /* border-radius */
- border-radius: 0.375rem;
- 
- /* horizontal scroll */
- overflow-x: auto;
- overflow-y: hidden;
- 
- /* hide scrollbar but keep functionality */
- scrollbar-width: none;
- -ms-overflow-style: none;
+  /* Layout */
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  /* Spacing */
+  margin: 0.5rem 0;
+
+  /* Border radius */
+  border-radius: 0.375rem;
+
+  /* Horizontal scroll */
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  /* Hide scrollbar but preserve functionality */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .code-block-wrapper::-webkit-scrollbar {
- display: none;
+  display: none;
 }
 
-/* code block content container (SyntaxHighlighter generated 's div) */
-.code-block-wrapper > div {
- /* layout */
- display: block !important;
- min-width: fit-content !important;
- 
- /* color - force override SyntaxHighlighter inline styles */
- background: var(--code-block-bg) !important;
- color: var(--code-block-text) !important;
- 
- /* font */
- font-family: var(--font-mono) !important;
- font-size: 0.875rem !important;
- line-height: 1.5 !important;
- 
- /* padding and border-radius */
- padding: 1em !important;
- margin: 0 !important;
- border-radius: 0.375rem !important;
- 
- /* text rendering optimization */
- text-shadow: rgba(0, 0, 0, 0.3) 0px 1px !important;
- direction: ltr !important;
- text-align: left !important;
- 
- /* preserve code formatting */
- white-space: pre !important;
- word-spacing: normal !important;
- word-break: normal !important;
- tab-size: 2 !important;
- hyphens: none !important;
- 
- /* internal scroll */
- overflow: auto !important;
+/* Code block header bar (language label + copy button) */
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem;
+  background: rgb(30, 33, 40);
+  border-radius: 0.375rem 0.375rem 0 0;
+  min-height: 2rem;
 }
 
-/* code block inside code element */
+.code-block-language {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: rgba(171, 178, 191, 0.7);
+  user-select: none;
+  letter-spacing: 0.025em;
+}
+
+.code-block-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: rgba(171, 178, 191, 0.6);
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.code-block-copy-btn:hover {
+  color: rgba(171, 178, 191, 1);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.code-block-copy-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Code block content container (div generated by SyntaxHighlighter) */
+.code-block-wrapper > div:not(.code-block-header) {
+  /* Layout */
+  display: block !important;
+  min-width: fit-content !important;
+
+  /* Colors - force override SyntaxHighlighter inline styles */
+  background: var(--code-block-bg) !important;
+  color: var(--code-block-text) !important;
+
+  /* Font */
+  font-family: var(--font-mono) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+
+  /* Padding and border radius */
+  padding: 1em !important;
+  margin: 0 !important;
+  border-radius: 0 0 0.375rem 0.375rem !important;
+
+  /* Text rendering optimization */
+  text-shadow: rgba(0, 0, 0, 0.3) 0px 1px !important;
+  direction: ltr !important;
+  text-align: left !important;
+
+  /* Preserve code format */
+  white-space: pre !important;
+  word-spacing: normal !important;
+  word-break: normal !important;
+  tab-size: 2 !important;
+  hyphens: none !important;
+
+  /* Internal scroll */
+  overflow: auto !important;
+}
+
+/* code element within code block */
 .code-block-wrapper code {
- /* layout */
- display: block !important;
- 
- /* preserve code formatting */
- white-space: pre !important;
- word-wrap: normal !important;
- overflow-wrap: normal !important;
- word-break: normal !important;
- 
- /* inherit color, do not override */
- color: inherit !important;
- background: transparent !important;
+  /* Layout */
+  display: block !important;
+
+  /* Preserve code format */
+  white-space: pre !important;
+  word-wrap: normal !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+
+  /* Inherit color, do not override */
+  color: inherit !important;
+  background: transparent !important;
 }
 
-/* code block text selection styles - ensure in dark background top can visible */
+/* Code block text selection styles - ensure visible on dark background */
 .code-block-wrapper ::selection,
 .code-block-wrapper code ::selection,
 .code-block-wrapper span ::selection {
- background-color: rgba(56, 139, 253, 0.4) !important;
- color: #ffffff !important;
- text-shadow: none !important;
+  background-color: rgba(56, 139, 253, 0.4) !important;
+  color: #ffffff !important;
+  text-shadow: none !important;
 }
 
 .code-block-wrapper ::-moz-selection,
 .code-block-wrapper code ::-moz-selection,
 .code-block-wrapper span ::-moz-selection {
- background-color: rgba(56, 139, 253, 0.4) !important;
- color: #ffffff !important;
- text-shadow: none !important;
+  background-color: rgba(56, 139, 253, 0.4) !important;
+  color: #ffffff !important;
+  text-shadow: none !important;
 }
 
-/* code block pre element styles */
+/* Code block pre element styles */
 .code-block-pre {
- /* reset default styles */
- margin: 0;
- padding: 0;
- 
- /* inherit background and color */
- background: transparent;
- color: inherit;
+  /* Reset default styles */
+  margin: 0;
+  padding: 0;
+
+  /* Inherit background and color */
+  background: transparent;
+  color: inherit;
 }
 
-/* pre wrapper (non-code block) */
+/* pre wrapper (non-code-block) */
 .pre-wrapper {
- max-width: 100%;
- min-width: 0;
- overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
-/* --- 3. streaming rendering special handling --- */
+/* --- 3. Streaming Rendering Special Handling --- */
 
-/* code block in streaming message */
+/* Code block in streaming messages */
 .streaming-v2-message .code-block-wrapper {
- /* inherit base styles, only add transition effects */
- transition: opacity 0.1s ease-out;
+  /* Inherit base styles, only add transition effect */
+  transition: opacity 0.1s ease-out;
 }
 
 .streaming-v2-message .code-block-wrapper > div {
- min-width: fit-content;
+  min-width: fit-content;
 }
 
 .streaming-v2-message .code-block-wrapper code {
- display: block;
- white-space: pre !important;
- word-wrap: normal !important;
- overflow-wrap: normal !important;
+  display: block;
+  white-space: pre !important;
+  word-wrap: normal !important;
+  overflow-wrap: normal !important;
 }
 
-/* --- 4. markdown-body inside code block styles --- */
+/* --- 4. Code block styles within markdown-body --- */
 
-/* code block styles consistent with design spec */
+/* Keep code block styles consistent with design specification */
 .markdown-body pre {
- margin: 8px 0 0 0;
- padding: 0;
- background: var(--code-block-bg);
- border-radius: 0.5rem;
- overflow: hidden;
+  margin: 8px 0 0 0;
+  padding: 0;
+  background: var(--code-block-bg);
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
 .markdown-body pre:first-child {
- margin-top: 0;
+  margin-top: 0;
 }
 
 .markdown-body pre code {
- display: block;
- padding: 1em;
- 
- font-family: var(--font-mono);
- font-size: 0.875rem;
- line-height: 1.5;
- font-weight: 400;
- 
- color: var(--code-block-text);
- 
- overflow-x: auto;
- white-space: pre;
+  display: block;
+  padding: 1em;
+
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color: var(--code-block-text);
+
+  overflow-x: auto;
+  white-space: pre;
 }
 
-/* code block scrollbar styles */
+/* Code block scrollbar styles */
 .markdown-body pre code::-webkit-scrollbar {
- height: 3px;
+  height: 3px;
 }
 
 .markdown-body pre code::-webkit-scrollbar-track {
- background: transparent;
+  background: transparent;
 }
 
 .markdown-body pre code::-webkit-scrollbar-thumb {
- background: rgba(255, 255, 255, 0.4);
- border-radius: 10px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
 }
 
-/* code block header component (optional, for displaying language and copy button) */
+/* Code block header component (optional, for displaying language and copy button) */
 .markdown-body pre .code-header {
- display: flex;
- flex-direction: row;
- justify-content: space-between;
- align-items: center;
- padding: 12px 16px;
- border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .markdown-body pre .code-language {
- font-size: 14px;
- line-height: 20px;
- font-weight: 410;
- color: #B3ADA8;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 410;
+  color: #B3ADA8;
 }
 
 .markdown-body pre .code-copy {
- display: flex;
- align-items: center;
- gap: 4px;
- font-size: 14px;
- line-height: 20px;
- font-weight: 410;
- color: #B3ADA8;
- cursor: pointer;
- background: none;
- border: none;
- padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 410;
+  color: #B3ADA8;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 .markdown-body pre .code-copy:hover {
- color: #E2DDD9;
+  color: #E2DDD9;
 }
 
 /* ============================================
- blockquote styles
- ============================================ */
+   Blockquote Styles
+   ============================================ */
 .markdown-body blockquote {
- /* spacing specification: blockquote margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- padding: 12px 16px;
- padding-left: 20px;
- 
- background: #F8F4F1;
- border-left: 4px solid #DAC6B7;
- border-radius: 0 12px 12px 0;
- 
- /* first blockquote does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
- 
- p {
- margin: 0;
- }
-}
+  /* Spacing spec: blockquote margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  padding: 12px 16px;
+  padding-left: 20px;
 
-.markdown-body/* ============================================
- table styles
- ============================================ */
-.markdown-body table {
- width: 100%;
- /* spacing specification: table margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- 
- border-collapse: separate;
- border-spacing: 0;
- 
- border: 1px solid #DAC6B7;
- border-radius: 12px;
- overflow: hidden;
- 
- /* 🔥 use table-layout: auto let column width based on content auto-fit */
- table-layout: auto;
- 
- /* first table does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
-}
+  background: #F8F4F1;
+  border-left: 4px solid #DAC6B7;
+  border-radius: 0 12px 12px 0;
 
-/* table container - support horizontal scroll, prevent long content overflow */
-.markdown-body .table-wrapper {
- width: 100%;
- /* 🔥 enabled horizontal scroll, prevent table overflow message container */
- overflow-x: auto;
- /* spacing specification: table container margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- 
- /* table container border styles */
- border: 1px solid #DAC6B7;
- border-radius: 12px;
- 
- /* first table container does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
- 
- table {
- margin: 0;
- border: none;
- border-radius: 0;
- /* 🔥 use auto layout let column width based on content auto-fit */
- table-layout: auto;
- width: 100%;
- }
-}
+  /* First blockquote does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 
-/* table row */
-.markdown-body tr {
- /* table row has no special styles */
-}
-
-/* table header */
-.markdown-body thead {
- background: #F6E8DD;
-}
-
-/* table header cell */
-.markdown-body th {
- padding: 12px;
- 
- font-size: inherit;
- line-height: inherit;
- font-weight: 620;
- color: #322D29;
- text-align: left;
- 
- /* table header cell background */
- background: #F6E8DD;
- 
- /* border styles: right border and bottom border (0 1px 1px 0) */
- border-top: 0;
- border-left: 0;
- border-bottom: 1px solid #EBDBCE;
- border-right: 1px solid #EBDBCE;
- 
- /* 🔥 cell no wrap, long content via table horizontal scroll bar display */
- white-space: nowrap;
- 
- /* last column no right border */
- &:last-child {
- border-right: 0;
- }
-}
-
-/* content cell */
-.markdown-body td {
- padding: 12px;
- 
- font-size: inherit;
- line-height: inherit;
- font-weight: 410;
- color: #322D29;
- 
- /* content cell background */
- background: rgba(255, 255, 255, 0.25);
- 
- /* border styles: right border and bottom border (0 1px 1px 0) */
- border-top: 0;
- border-left: 0;
- border-bottom: 1px solid #EBDBCE;
- border-right: 1px solid #EBDBCE;
- 
- /* 🔥 cell no wrap, long content via table horizontal scroll bar display */
- white-space: nowrap;
- 
- /* last column no right border */
- &:last-child {
- border-right: 0;
- }
-}
-
-/* table first column bold */
-.markdown-body td:first-child {
- font-weight: 620;
-}
-
-/* last row no bottom border */
-.markdown-body tr:last-child td {
- border-bottom: 0;
-}
-
-/* last row header also no bottom border (if header is last row) */
-.markdown-body tr:last-child th {
- border-bottom: 0;
-}
-
-/* dark theme table */
-.markdown-body.markdown-body.markdown-body.markdown-body.markdown-body/* ============================================
- divider styles
- ============================================ */
-.markdown-body hr {
- /* spacing specification: divider margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- padding: 0;
- 
- border: none;
- border-top: 1px solid rgba(0, 0, 0, 0.1);
- 
- height: 0;
- 
- /* first divider does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
-}
-
-.markdown-body/* ============================================
- image styles
- ============================================ */
-.markdown-body img {
- max-width: 100%;
- height: auto;
- 
- /* spacing specification: image margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- border-radius: 8px;
- 
- display: block;
- 
- /* first image does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
+  p {
+    margin: 0;
+  }
 }
 
 /* ============================================
- task list styles
- ============================================ */
+   Table Styles
+   ============================================ */
+.markdown-body table {
+  width: auto;
+  /* Spacing spec: table margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+
+  border-collapse: separate;
+  border-spacing: 0;
+
+  border: 1px solid #DAC6B7;
+  border-radius: 12px;
+  overflow: hidden;
+
+  /* 🔥 Use table-layout: auto to let column widths adapt to content */
+  table-layout: auto;
+
+  /* First table does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+/* Table container - supports horizontal scrolling, prevents long content overflow */
+.markdown-body .table-wrapper {
+  display: block;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  /* 🔥 Enable horizontal scroll to prevent table from overflowing message container */
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Spacing spec: table container margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+
+  /* Table container border styles */
+  border: 1px solid #DAC6B7;
+  border-radius: 12px;
+
+  /* First table container does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+
+  table {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    /* 🔥 Use auto layout to let column widths adapt to content */
+    table-layout: auto;
+    width: auto;
+  }
+}
+
+/* Table row */
+.markdown-body tr {
+  /* Table rows have no special styles */
+}
+
+/* Table header */
+.markdown-body thead {
+  background: #F6E8DD;
+}
+
+/* Table header cells */
+.markdown-body th {
+  padding: 12px;
+
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 620;
+  color: #322D29;
+  text-align: left;
+
+  /* Table header cell background */
+  background: #F6E8DD;
+
+  /* Border styles: right and bottom borders (0 1px 1px 0) */
+  border-top: 0;
+  border-left: 0;
+  border-bottom: 1px solid #EBDBCE;
+  border-right: 1px solid #EBDBCE;
+
+  /* 🔥 Cell no-wrap, long content displayed via table horizontal scrollbar */
+  white-space: nowrap;
+
+  /* Last column has no right border */
+  &:last-child {
+    border-right: 0;
+  }
+}
+
+/* Content cells */
+.markdown-body td {
+  padding: 12px;
+
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 410;
+  color: #322D29;
+
+  /* Content cell background */
+  background: rgba(255, 255, 255, 0.25);
+
+  /* Border styles: right and bottom borders (0 1px 1px 0) */
+  border-top: 0;
+  border-left: 0;
+  border-bottom: 1px solid #EBDBCE;
+  border-right: 1px solid #EBDBCE;
+
+  /* 🔥 Allow long text to wrap to prevent table from breaking container */
+  white-space: normal;
+  word-break: break-word;
+
+  /* Last column has no right border */
+  &:last-child {
+    border-right: 0;
+  }
+}
+
+/* First column of table is bold */
+.markdown-body td:first-child {
+  font-weight: 620;
+}
+
+/* Last row has no bottom border */
+.markdown-body tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Last row header also has no bottom border (if header is the last row) */
+.markdown-body tr:last-child th {
+  border-bottom: 0;
+}
+
+/* Dark theme table */
+.markdown-body.markdown-body.markdown-body.markdown-body.markdown-body/* ============================================
+   Horizontal Rule Styles
+   ============================================ */
+.markdown-body hr {
+  /* Spacing spec: hr margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  padding: 0;
+
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+
+  height: 0;
+
+  /* First hr does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+.markdown-body/* ============================================
+   Image Styles
+   ============================================ */
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+
+  /* Spacing spec: image margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+  border-radius: 8px;
+
+  display: block;
+
+  /* First image does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+/* ============================================
+   Task List Styles
+   ============================================ */
 .markdown-body ul.task-list {
- padding-left: 0;
+  padding-left: 0;
 }
 
 .markdown-body .task-list-item {
- list-style: none;
- padding-left: 28px;
- position: relative;
- 
- &::before {
- content: none;
- }
+  list-style: none;
+  padding-left: 28px;
+  position: relative;
+
+  &::before {
+    content: none;
+  }
 }
 
 .markdown-body .task-list-item input[type="checkbox"] {
- position: absolute;
- left: 0;
- top: 3px;
- 
- width: 20px;
- height: 20px;
- 
- margin: 0;
- cursor: pointer;
- 
- /* custom checkbox appearance */
- appearance: none;
- -webkit-appearance: none;
- 
- background: #FFFFFF;
- border: 2px solid #DAC6B7;
- border-radius: 9999px;
- 
- &:checked {
- background: #272320;
- border-color: #272320;
- 
- /* check icon */
- &::after {
- content: '✓';
- position: absolute;
- left: 50%;
- top: 50%;
- transform: translate(-50%, -50%);
- color: #E2DDD9;
- font-size: 12px;
- font-weight: bold;
- }
- }
+  position: absolute;
+  left: 0;
+  top: 3px;
+
+  width: 20px;
+  height: 20px;
+
+  margin: 0;
+  cursor: pointer;
+
+  /* Custom checkbox appearance */
+  appearance: none;
+  -webkit-appearance: none;
+
+  background: #FFFFFF;
+  border: 2px solid #DAC6B7;
+  border-radius: 9999px;
+
+  &:checked {
+    background: #272320;
+    border-color: #272320;
+
+    /* Checkmark icon */
+    &::after {
+      content: '✓';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: #E2DDD9;
+      font-size: 12px;
+      font-weight: bold;
+    }
+  }
 }
 
 
 
 /* ============================================
- user message styles
- ============================================ */
+   User Message Styles
+   ============================================ */
 .markdown-body.user-message {
- align-items: flex-end;
- padding-left: 48px;
+  align-items: flex-end;
+  padding-left: 48px;
 }
 
 .markdown-body.user-message .message-bubble {
- display: inline-block;
- padding: 16px 20px;
- 
- background: #F8F4F1;
- border-radius: 20px;
- 
- max-width: 100%;
+  display: inline-block;
+  padding: 16px 20px;
+
+  background: #F8F4F1;
+  border-radius: 20px;
+
+  max-width: 100%;
 }
 
 .markdown-body.user-message p {
- font-size: 14px;
- line-height: 20px;
- font-weight: 410;
- color: #272320;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 410;
+  color: #272320;
 }
 
 /* ============================================
- MCP tool call card styles
- ============================================ */
+   MCP Tool Call Card Styles
+   ============================================ */
 .markdown-body .tool-card {
- box-sizing: border-box;
- 
- display: flex;
- flex-direction: row;
- justify-content: space-between;
- align-items: center;
- padding: 10px 16px;
- gap: 8px;
- 
- width: 100%;
- 
- background: #FFFFFF;
- border: 1px solid rgba(0, 0, 0, 0.1);
- border-radius: 12px;
- 
- /* spacing specification: tool card margin-top 8px, other directions are 0 */
- margin: 8px 0 0 0;
- 
- /* first tool card does not need top spacing */
- &:first-child {
- margin-top: 0;
- }
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  gap: 8px;
+
+  width: 100%;
+
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+
+  /* Spacing spec: tool card margin-top 8px, other sides 0 */
+  margin: 8px 0 0 0;
+
+  /* First tool card does not need top spacing */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .markdown-body .tool-card .tool-status {
- display: flex;
- align-items: center;
- gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .markdown-body .tool-card .tool-checkbox {
- width: 20px;
- height: 20px;
- 
- background: #272320;
- border-radius: 9999px;
- 
- display: flex;
- align-items: center;
- justify-content: center;
- 
- color: #E2DDD9;
- font-size: 12px;
+  width: 20px;
+  height: 20px;
+
+  background: #272320;
+  border-radius: 9999px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #E2DDD9;
+  font-size: 12px;
 }
 
 .markdown-body .tool-card .tool-label {
- font-size: 15px;
- line-height: 20px;
- font-weight: 410;
- color: #322D29;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 410;
+  color: #322D29;
 }
 
 .markdown-body .tool-card .tool-name {
- display: inline-block;
- padding: 4px 8px;
- 
- background: #F8F4F1;
- border-radius: 12px;
- 
- font-size: 15px;
- line-height: 20px;
- font-weight: 410;
- color: #322D29;
+  display: inline-block;
+  padding: 4px 8px;
+
+  background: #F8F4F1;
+  border-radius: 12px;
+
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 410;
+  color: #322D29;
 }
 
 .markdown-body.markdown-body.markdown-body/* ============================================
- responsive adjustments
- ============================================ */
+   Responsive Adjustments
+   ============================================ */
 @media (max-width: 768px) {
- .markdown-body {
- max-width: 100%;
- font-size: 15px;
- line-height: 24px;
- }
- 
- .markdown-body h1 {
- font-size: 24px;
- line-height: 28px;
- }
- 
- .markdown-body h2 {
- font-size: 18px;
- line-height: 24px;
- }
- 
- .markdown-body pre code {
- font-size: 13px;
- line-height: 18px;
- }
- 
- /* 🔥 remove min-width, keep auto-fit */
- .markdown-body th,
- .markdown-body td {
- padding: 8px;
- font-size: 13px;
- }
+  .markdown-body {
+    max-width: 100%;
+    font-size: 15px;
+    line-height: 24px;
+  }
+
+  .markdown-body h1 {
+    font-size: 24px;
+    line-height: 28px;
+  }
+
+  .markdown-body h2 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .markdown-body pre code {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* 🔥 Remove min-width, keep adaptive */
+  .markdown-body th,
+  .markdown-body td {
+    padding: 8px;
+    font-size: 13px;
+  }
 }
 
 /* ============================================
- print styles
- ============================================ */
+   Print Styles
+   ============================================ */
 @media print {
- .markdown-body {
- max-width: 100%;
- color: #000000;
- }
- 
- .markdown-body pre {
- background: #f5f5f5;
- border: 1px solid #ddd;
- }
- 
- .markdown-body pre code {
- color: #333333;
- }
- 
- .markdown-body a {
- color: #000000;
- text-decoration: underline;
- }
- 
- /* code-related print styles */
- .inline-code {
- background: #f5f5f5;
- color: #333333;
- border: 1px solid #ddd;
- }
- 
- .code-block-wrapper > div {
- background: #f5f5f5 !important;
- color: #333333 !important;
- border: 1px solid #ddd !important;
- }
+  .markdown-body {
+    max-width: 100%;
+    color: #000000;
+  }
+
+  .markdown-body pre {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+  }
+
+  .markdown-body pre code {
+    color: #333333;
+  }
+
+  .markdown-body a {
+    color: #000000;
+    text-decoration: underline;
+  }
+
+  /* Code-related print styles */
+  .inline-code {
+    background: #f5f5f5;
+    color: #333333;
+    border: 1px solid #ddd;
+  }
+
+  .code-block-wrapper > div {
+    background: #f5f5f5 !important;
+    color: #333333 !important;
+    border: 1px solid #ddd !important;
+  }
 }
 
 /* ============================================
- code responsive adaptation
- ============================================ */
+   Code Responsive Adaptation
+   ============================================ */
 @media (max-width: 640px) {
- .inline-code {
- font-size: 0.8125em;
- }
- 
- .code-block-wrapper > div {
- font-size: 0.8125rem !important;
- padding: 0.75em !important;
- }
+  .inline-code {
+    font-size: 0.8125em;
+  }
+
+  .code-block-wrapper > div {
+    font-size: 0.8125rem !important;
+    padding: 0.75em !important;
+  }
 }
 
 /* ============================================
- Mermaid chart styles
- ============================================ */
+   Mermaid Diagram Styles
+   ============================================ */
 .mermaid-diagram-wrapper {
- margin: 8px 0;
- padding: 16px;
- background: #ffffff;
- border-radius: 0.375rem;
- border: 1px solid #e5e7eb;
- overflow-x: auto;
- text-align: center;
+  margin: 8px 0;
+  padding: 16px;
+  background: #ffffff;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+  overflow-x: auto;
+  text-align: center;
+  width: 100%;
+}
+
+.mermaid-diagram-wrapper-interactive {
+  position: relative;
 }
 
 .mermaid-diagram-wrapper svg {
- max-width: 100%;
- height: auto;
+  width: 100%;
+  height: auto;
+}
+
+.mermaid-fullscreen-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 3px;
+  color: #6b7280;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.mermaid-diagram-wrapper-interactive:hover .mermaid-fullscreen-btn {
+  opacity: 1;
+}
+
+.mermaid-fullscreen-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* Fullscreen overlay */
+.mermaid-fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mermaidOverlayFadeIn 0.2s ease-out;
+}
+
+.mermaid-fullscreen-content {
+  position: relative;
+  width: 92vw;
+  height: 90vh;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: mermaidContentZoomIn 0.25s ease-out;
+}
+
+.mermaid-fullscreen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 2;
+}
+
+.mermaid-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mermaid-toolbar-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.mermaid-toolbar-btn-active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.mermaid-toolbar-zoom-label {
+  font-size: 12px;
+  color: #6b7280;
+  min-width: 42px;
+  text-align: center;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mermaid-toolbar-btn-active:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.mermaid-fullscreen-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mermaid-fullscreen-close-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.mermaid-fullscreen-diagram {
+  flex: 1;
+  overflow: hidden;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.mermaid-fullscreen-diagram svg {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+@keyframes mermaidOverlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mermaidContentZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .mermaid-diagram-error {
- background: #fef2f2;
- border-color: #fca5a5;
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 .mermaid-error-label {
- font-size: 0.75rem;
- color: #dc2626;
- margin-bottom: 8px;
- font-weight: 500;
+  font-size: 0.75rem;
+  color: #dc2626;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
 .mermaid-error-code {
- font-size: 0.8125rem;
- color: #7f1d1d;
- background: transparent;
- margin: 0;
- padding: 0;
- white-space: pre-wrap;
- word-break: break-word;
- text-align: left;
+  font-size: 0.8125rem;
+  color: #7f1d1d;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
 }
 
 .mermaid-diagram-loading {
- background: #f9fafb;
+  background: #f9fafb;
 }
 
 .mermaid-loading-code {
- font-size: 0.8125rem;
- color: #6b7280;
- background: transparent;
- margin: 0;
- padding: 0;
- white-space: pre-wrap;
- word-break: break-word;
- text-align: left;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
 }

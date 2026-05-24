@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Icon Generation Script for Kosmos
+ * Icon Generation Script for OpenKosmos
  * Generates .ico, .svg, iconset, and .icns files from PNG sources
  */
 
@@ -9,34 +9,32 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const brandConfig = require('./brand-config');
-
 const ROOT_DIR = path.join(__dirname, '..');
-const WIN_SOURCE_DIR = brandConfig.paths.assetsWin;
-const MAC_SOURCE_DIR = brandConfig.paths.assetsMac;
+const WIN_SOURCE_DIR = path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets', 'win');
+const MAC_SOURCE_DIR = path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets', 'mac');
 
 /**
- * Helper function: Auto-generate PNGs of different sizes from a large image
+ * Helper: auto-generate PNGs at different sizes from a large master image.
  * @param {string} masterFile Master file path (recommended 1024x1024)
  * @param {Array<number>} sizes List of sizes to generate
  * @param {string} outputDir Output directory
  * @param {string} prefix Filename prefix (e.g. "icon_round_")
- * @param {string} suffix Filename suffix (e.g. "") - default none
+ * @param {string} suffix Filename suffix (e.g. "") - empty by default
  */
 async function generateIntermediatePngs(masterFile, sizes, outputDir, prefix, suffix = '') {
   if (!fs.existsSync(masterFile)) {
-    console.error(`❌ Cannot find master source file: ${masterFile}`);
+    console.error(`❌ Master source file not found: ${masterFile}`);
     return false;
   }
 
-  console.log(`🔄 Auto-generating ${sizes.length} intermediate PNG sizes from master file...`);
+  console.log(`🔄 Auto-generating ${sizes.length} intermediate PNGs from master file...`);
   
   for (const size of sizes) {
     const filename = `${prefix}${size}x${size}${suffix}.png`;
     const outputPath = path.join(outputDir, filename);
 
-    // Only generate when file doesn't exist to avoid redundant work (manually delete old files to force update)
-    // Fix: Always overwrite to ensure icons are up-to-date
+    // Only generate if the file doesn't already exist (to avoid redundant work).
+    // Note: always overwrite to ensure icons are up to date.
     try {
       await sharp(masterFile)
         .resize(size, size, {
@@ -62,14 +60,14 @@ async function generateIntermediatePngs(masterFile, sizes, outputDir, prefix, su
 async function generateWindowsIco() {
   console.log('📦 Generating Windows .ico file...');
 
-  const icoPath = brandConfig.paths.iconWin;
+  const icoPath = path.join(WIN_SOURCE_DIR, 'app.ico');
   const masterIcon = path.join(WIN_SOURCE_DIR, 'icon_round_1024x1024.png');
 
   // Required sizes for .ico: 16, 32, 48, 64, 128, 256
   // Added 24 and 512 as requested by user
   const sizes = [16, 24, 32, 48, 64, 128, 256, 512];
   
-  // 1. Try to auto-generate missing sizes from 1024x1024
+  // 1. Try to auto-generate missing sizes from the 1024x1024 master
   if (fs.existsSync(masterIcon)) {
     await generateIntermediatePngs(masterIcon, sizes, WIN_SOURCE_DIR, 'icon_round_');
   }
@@ -159,7 +157,7 @@ async function generateWindowsSvg() {
       fs.writeFileSync(svgPath, svgContent);
       console.log(`✅ Successfully generated embedded PNG-SVG: ${svgPath}`);
       console.log(
-        '⚠️  Note: This is not a true vector image. Install potrace to generate a true vector SVG',
+        '⚠️  Note: this is not a true vector image. Install potrace to generate a true vector SVG.',
       );
       return true;
     } catch (svgError) {
@@ -176,7 +174,7 @@ async function generateWindowsSvg() {
 async function generateMacIconset() {
   console.log('🍎 Generating Mac .iconset directory...');
   
-  const iconsetPath = path.join(MAC_SOURCE_DIR, 'Kosmos.iconset');
+  const iconsetPath = path.join(MAC_SOURCE_DIR, 'OpenKosmos.iconset');
   
   // Create iconset directory if it doesn't exist
   if (!fs.existsSync(iconsetPath)) {
@@ -197,15 +195,15 @@ async function generateMacIconset() {
     { size: 1024, src: 'icon_512x512.png', dest: 'icon_512x512@2x.png' },
   ];
 
-  // 0. Check for Master Icon, generate base sizes if available
+  // 0. Check for a master icon; if found, generate base sizes first
   const masterIconMac = path.join(MAC_SOURCE_DIR, 'icon_1024x1024.png');
   const masterIconWin = path.join(WIN_SOURCE_DIR, 'icon_round_1024x1024.png');
   
-  // Prefer Mac's 1024, fall back to Win's 1024
+  // Prefer Mac 1024; fall back to Win 1024 if not found
   const sourceMaster = fs.existsSync(masterIconMac) ? masterIconMac : (fs.existsSync(masterIconWin) ? masterIconWin : null);
 
   if (sourceMaster) {
-     // Base sizes required by iconset (those referenced in src)
+     // Base sizes required by the iconset (those referenced in src)
      const baseSizes = [16, 32, 128, 256, 512]; 
      await generateIntermediatePngs(sourceMaster, baseSizes, MAC_SOURCE_DIR, 'icon_');
   }
@@ -253,11 +251,11 @@ async function generateMacIconset() {
 async function generateMacIcns() {
   console.log('📦 Generating Mac .icns file...');
   
-  const iconsetPath = path.join(MAC_SOURCE_DIR, 'Kosmos.iconset');
-  const icnsPath = path.join(MAC_SOURCE_DIR, 'Kosmos.icns');
+  const iconsetPath = path.join(MAC_SOURCE_DIR, 'OpenKosmos.iconset');
+  const icnsPath = path.join(MAC_SOURCE_DIR, 'OpenKosmos.icns');
   
   if (!fs.existsSync(iconsetPath)) {
-    console.error('❌ iconset directory does not exist, please generate iconset first');
+    console.error('❌ iconset directory not found, please generate the iconset first');
     return false;
   }
   
@@ -276,12 +274,12 @@ async function generateMacIcns() {
       return false;
     }
   } else {
-    console.log('⚠️  Not macOS, trying png2icons...');
+    console.log('⚠️  Not on macOS, trying png2icons...');
     
     try {
       // Use png2icons with proper format flag
       const source512 = path.join(MAC_SOURCE_DIR, 'icon_512x512.png');
-      const outputBase = path.join(MAC_SOURCE_DIR, 'Kosmos');
+      const outputBase = path.join(MAC_SOURCE_DIR, 'OpenKosmos');
       
       if (!fs.existsSync(source512)) {
         console.error('❌ Missing 512x512 source file');
@@ -297,7 +295,7 @@ async function generateMacIcns() {
       console.error('❌ png2icons failed:', error.message);
       console.log('\n💡 Suggestions:');
       console.log('   1. Run this script on macOS to use iconutil');
-      console.log('   2. Or manually use an online tool: https://cloudconvert.com/png-to-icns');
+      console.log('   2. Or use an online converter: https://cloudconvert.com/png-to-icns');
       return false;
     }
   }
@@ -313,12 +311,12 @@ async function main() {
   
   // Check if source directories exist
   if (!fs.existsSync(WIN_SOURCE_DIR)) {
-    console.error(`❌ Windows icon source directory does not exist: ${WIN_SOURCE_DIR}`);
+    console.error(`❌ Windows icon source directory not found: ${WIN_SOURCE_DIR}`);
     process.exit(1);
   }
   
   if (!fs.existsSync(MAC_SOURCE_DIR)) {
-    console.error(`❌ Mac icon source directory does not exist: ${MAC_SOURCE_DIR}`);
+    console.error(`❌ Mac icon source directory not found: ${MAC_SOURCE_DIR}`);
     process.exit(1);
   }
   
@@ -335,7 +333,7 @@ async function main() {
   };
   
   // Generate Windows icons
-  console.log('🪟 Windows Icon Generation');
+  console.log('🪟 Windows icon generation');
   console.log('─'.repeat(60));
   results.windowsIco = await generateWindowsIco();
   console.log('');
@@ -343,7 +341,7 @@ async function main() {
   console.log('');
   
   // Generate Mac icons
-  console.log('🍎 Mac Icon Generation');
+  console.log('🍎 Mac icon generation');
   console.log('─'.repeat(60));
   results.macIconset = await generateMacIconset();
   console.log('');
@@ -351,7 +349,7 @@ async function main() {
   console.log('');
   
   // Summary
-  console.log('📊 Generation Results Summary');
+  console.log('📊 Generation summary');
   console.log('═'.repeat(60));
   console.log(`Windows .ico:  ${results.windowsIco ? '✅' : '❌'}`);
   console.log(`Windows .svg:  ${results.windowsSvg ? '✅' : '❌'}`);
@@ -364,10 +362,10 @@ async function main() {
   if (allSuccess) {
     console.log('🎉 All icons generated successfully!');
     console.log('');
-    console.log('Icons have been generated to the corresponding brands directory.');
-    console.log(`   Location: ${brandConfig.paths.assets}`);
+    console.log('Icons have been generated in their respective brands directories.');
+    console.log(`   Location: ${path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets')}`);
   } else {
-    console.log('⚠️  Some icons failed to generate, please check the error messages above');
+    console.log('⚠️  Some icons failed to generate, see errors above');
     process.exit(1);
   }
 }

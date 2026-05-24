@@ -1,12 +1,12 @@
 /**
- * Google Web Search Tool Execution Test
- * Uses ts-node to directly run TypeScript source code to test search functionality
+ * Google Web Search Tool execution test.
+ * Runs TypeScript source directly via ts-node to test search functionality.
  */
 
 const path = require('path');
 
 async function testGoogleSearch() {
-  console.log('🚀 Starting test for GoogleWebSearchTool.execute()');
+  console.log('🚀 Starting test of GoogleWebSearchTool.execute()');
   console.log('Time:', new Date().toLocaleString());
   console.log('');
 
@@ -23,7 +23,7 @@ async function testGoogleSearch() {
       }
     });
     
-    // Directly import TypeScript source code
+    // Import the TypeScript source directly
     const toolPath = path.join(__dirname, '../src/main/lib/mcpRuntime/builtinTools/googleWebSearchTool.ts');
     console.log('📂 Loading module:', toolPath);
     
@@ -35,23 +35,23 @@ async function testGoogleSearch() {
     
     console.log('✅ Successfully loaded GoogleWebSearchTool');
     console.log('');
-    
-    // Prepare test parameters
+
+    // Prepare test arguments
     const testArgs = {
     //   queries: ['JavaScript tutorial', 'Node.js best practices'],
-      queries: ["Netherlands election 2023 results", "Netherlands election 2023 latest news", "Netherlands general election latest news"],
+      queries: ["Netherlands election 2023 results", "Netherlands general election 2023 latest news", "Netherlands general election latest news"],
       maxResults: 5,
       timeout: 60000
     };
     
-    console.log('📋 Test parameters:');
+    console.log('📋 Test arguments:');
     console.log(JSON.stringify(testArgs, null, 2));
     console.log('');
     
     console.log('🔍 Starting search...');
     const startTime = Date.now();
     
-    // Call execute method
+    // Call the execute method
     const result = await GoogleWebSearchTool.execute(testArgs);
     
     const endTime = Date.now();
@@ -61,10 +61,10 @@ async function testGoogleSearch() {
     console.log('✅ Search complete!');
     console.log(`⏱️  Duration: ${duration.toFixed(2)} seconds`);
     console.log('');
-    
+
     // Print result summary
     console.log('📊 Result summary:');
-    console.log(`  Success status: ${result.success}`);
+    console.log(`  Success: ${result.success}`);
     console.log(`  Total queries: ${result.totalQueries}`);
     console.log(`  Total results: ${result.totalResults}`);
     console.log(`  Timestamp: ${result.timestamp}`);
@@ -92,7 +92,7 @@ async function testGoogleSearch() {
     
     // Print error messages
     if (result.errors && result.errors.length > 0) {
-      console.log('❌ Error messages:');
+      console.log('❌ Errors:');
       result.errors.forEach((error, index) => {
         console.log(`  ${index + 1}. ${error}`);
       });
@@ -104,7 +104,7 @@ async function testGoogleSearch() {
   } catch (error) {
     console.error('❌ Test failed:', error.message);
     console.error('');
-    console.error('💡 Ensure dependencies are installed:');
+    console.error('💡 Make sure dependencies are installed:');
     console.error('  1. npm install ts-node typescript --save-dev');
     console.error('  2. npm install playwright');
     console.error('');
@@ -112,7 +112,7 @@ async function testGoogleSearch() {
   }
 }
 
-// Execute test
+// Run test
 if (require.main === module) {
   testGoogleSearch().catch(console.error);
 }

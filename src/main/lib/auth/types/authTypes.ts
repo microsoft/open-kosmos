@@ -1,12 +1,12 @@
-// src/main/lib/auth/types/authTypes.ts - V3.0 adapted for new auth.json format
+// src/main/lib/auth/types/authTypes.ts - V3.0 adapted to new auth.json format
 
 /**
- * The sole authentication data structure - AuthData
- * Used throughout the entire auth flow, from auth.json to memory to IPC communication
+ * The single authentication data structure - AuthData
+ * Used throughout the entire authentication flow, from auth.json to in-memory to IPC communication
  *
- * V3.0 new Token structure (no backward compatibility):
- * - gitHubTokens: Obtained from GitHub OAuth, contains complete token info (no expires field, validity verified via getUserInfo)
- * - copilotTokens: Obtained from Copilot API, expires_at is a seconds-level timestamp
+ * V3.0 new Token structure (not backward compatible):
+ * - gitHubTokens: obtained from GitHub OAuth, contains complete token info (no expires field; validity verified via getUserInfo)
+ * - copilotTokens: obtained from Copilot API, expires_at is a seconds-precision timestamp
  */
 export interface AuthData {
   version: string;
@@ -33,7 +33,7 @@ export interface AuthData {
     copilotTokens: {
       timestamp: string;
       api_url: string;
-      expires_at: number; // Seconds-level timestamp
+      expires_at: number; // Seconds-precision timestamp
       token: string;
     };
     capabilities: string[];
@@ -66,7 +66,7 @@ export interface IAuthManager {
 }
 
 /**
- * Profile scan result type
+ * Profile scan result types
  */
 export interface ProfileWithExpiredAuth {
   alias: string;

@@ -218,7 +218,7 @@ ipcMain.handle('whisper:transcribe', async (_, audioBuffer) => {
 ### Step 6: Update preload script
 
 ```typescript
-// In src/main/preload.ts
+// In src/preload/main.ts
 whisper: {
   initialize: (modelName: string) => ipcRenderer.invoke('whisper:initialize', modelName),
   transcribe: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('whisper:transcribe', audioBuffer),

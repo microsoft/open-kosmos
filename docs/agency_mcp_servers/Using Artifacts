@@ -1,0 +1,88 @@
+Using Artifacts
+Plugins can distribute MCP server binaries via Azure Artifacts feeds using agency artifact exec. This command works like npx — it downloads the artifact on first use, caches it locally, and runs a binary from within it. Stdin/stdout/stderr pass through transparently, making it ideal for stdio-based MCP servers.
+
+How It Works
+In your plugin's MCP config (agent frontmatter mcp_servers, .vscode/mcp.json, or ~/.copilot/mcp-config.json), specify agency as the command with artifact exec arguments:
+
+{
+  "mcpServers": {
+    "my-mcp": {
+      "type": "stdio",
+      "command": "agency",
+      "args": [
+        "artifact", "exec",
+        "--feed", "https://pkgs.dev.azure.com/myorg/MyProject/_packaging/MyFeed/upack/download",
+        "--name", "my-mcp-server",
+        "--version", "1.0.0",
+        "--", "my-mcp-server", "--stdio"
+      ]
+    }
+  }
+}
+When the engine spawns this MCP server, Agency:
+
+Resolves the package name with a platform suffix (e.g., my-mcp-server.win-x64 on Windows)
+Checks the local cache (~/.agency/artifacts/cli/my-mcp-server.{rid}/{version}/)
+Downloads the artifact from the ADO feed if that version is not cached
+Resolves my-mcp-server inside the artifact directory (appending .exe on Windows automatically)
+Executes it with stdin/stdout pass-through
+Cross-Platform Support
+agency artifact exec is designed to work identically across Windows, macOS, and Linux with zero config changes:
+
+Automatic platform package selection (--rid auto): By default, --rid auto appends the current platform's Runtime Identifier to --name. For example, --name my-mcp-server becomes:
+
+Platform	Resolved package name
+Windows x64	my-mcp-server.win-x64
+Windows ARM64	my-mcp-server.win-arm64
+macOS ARM64	my-mcp-server.osx-arm64
+macOS x64	my-mcp-server.osx-x64
+Linux x64	my-mcp-server.linux-x64
+Linux ARM64	my-mcp-server.linux-arm64
+This means the same MCP config works everywhere — just publish platform-specific packages with the .{rid} suffix.
+
+Automatic binary name resolution: The command after -- is resolved with platform awareness:
+
+On Windows: my-server automatically finds my-server.exe
+On Linux/macOS: my-server.exe automatically finds my-server (without extension)
+Opting out: Use --rid none to use the exact --name without any platform suffix, or --rid win-x64 to force a specific platform.
+
+CLI Reference
+# Download an artifact to the local cache
+agency artifact download --feed <URL> --name <NAME> [--version <VERSION>] [--rid auto|none|<RID>]
+
+# Download (if needed) and execute a binary from an artifact
+agency artifact exec --feed <URL> --name <NAME> [--version <VERSION>] [--rid auto|none|<RID>] -- <COMMAND> [ARGS...]
+Option	Required	Default	Description
+--feed	Yes	—	Azure Artifacts feed URL
+--name	Yes	—	Base package name (platform suffix appended by --rid)
+--version	No	latest	Package version (omit for latest)
+--type	No	universal	universal or nuget
+--rid	No	auto	Platform suffix: auto (detect), none (exact name), or explicit RID
+--output	No	~/.agency/artifacts/cli/{name}.{rid}/{version}/	Download directory (download only). When specified, this exact path is used.
+Publishing MCP Server Binaries
+Publish platform-specific packages with the .{rid} suffix so --rid auto resolves correctly:
+
+As Universal Packages (one per platform):
+
+# Build for each platform, then publish each:
+az artifacts universal publish \
+  --organization https://dev.azure.com/myorg \
+  --project MyProject --scope project \
+  --feed MyFeed \
+  --name my-mcp-server.win-x64 \
+  --version 1.0.0 \
+  --path ./dist/win-x64/
+
+az artifacts universal publish \
+  --organization https://dev.azure.com/myorg \
+  --project MyProject --scope project \
+  --feed MyFeed \
+  --name my-mcp-server.linux-x64 \
+  --version 1.0.0 \
+  --path ./dist/linux-x64/
+As NuGet packages:
+
+Create a .nuspec per platform (e.g., My.Mcp.Server.win-x64.nuspec).
+Run nuget pack to create the .nupkg.
+Push to your ADO feed.
+See Plugin Artifacts for full details on feed URL format and authentication.

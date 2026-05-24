@@ -1,5 +1,5 @@
 // src/renderer/components/chat/toolCallDisplayConfig.ts
-// Tool Call display configuration file, maps tool names to descriptive text and icons
+// Tool Call display configuration file, mapping tool names to descriptive text and icons
 
 import { LucideIcon, Globe, FileText, FileSearch, FolderOpen, Terminal, Brain, Code, Wrench, FilePlus, FileEdit, Database, MessageSquare, Eye, Zap, Settings, Book, Image, Mail, Calendar, Link, Download, Upload, Play } from 'lucide-react';
 
@@ -7,32 +7,32 @@ import { LucideIcon, Globe, FileText, FileSearch, FolderOpen, Terminal, Brain, C
  * Tool icon type
  */
 export type ToolIconType =
-  | 'globe'      // Web/search
-  | 'file'       // File read
-  | 'file-plus'  // File create
-  | 'file-edit'  // File edit
-  | 'file-search'// File search
-  | 'folder'     // Folder/directory
-  | 'terminal'   // Command execution
-  | 'code'       // Code execution
-  | 'brain'      // Memory/AI
-  | 'database'   // Database
-  | 'message'    // Message/conversation
-  | 'image'      // Image
-  | 'mail'       // Email
-  | 'calendar'   // Calendar
-  | 'link'       // Link
-  | 'download'   // Download
-  | 'upload'     // Upload
-  | 'play'       // Execute/play
-  | 'settings'   // Settings
-  | 'book'       // Documentation
-  | 'eye'        // View
-  | 'zap'        // Quick action
-  | 'wrench';    // Default tool
+  | 'globe'       // Web/search
+  | 'file'        // File read
+  | 'file-plus'   // File create
+  | 'file-edit'   // File edit
+  | 'file-search' // File search
+  | 'folder'      // Folder/directory
+  | 'terminal'    // Command execution
+  | 'code'        // Code execution
+  | 'brain'       // Memory/AI
+  | 'database'    // Database
+  | 'message'     // Message/conversation
+  | 'image'       // Image
+  | 'mail'        // Email
+  | 'calendar'    // Calendar
+  | 'link'        // Link
+  | 'download'    // Download
+  | 'upload'      // Upload
+  | 'play'        // Execute/play
+  | 'settings'    // Settings
+  | 'book'        // Documentation
+  | 'eye'         // View
+  | 'zap'         // Quick action
+  | 'wrench';     // Default tool
 
 /**
- * Icon type to Lucide component mapping
+ * Mapping from icon type to Lucide component
  */
 export const iconTypeToComponent: Record<ToolIconType, LucideIcon> = {
   'globe': Globe,
@@ -61,7 +61,7 @@ export const iconTypeToComponent: Record<ToolIconType, LucideIcon> = {
 };
 
 /**
- * Safely parse JSON string
+ * Safely parse a JSON string
  */
 const safeParseArgs = (toolArgs?: string): Record<string, unknown> | null => {
   if (!toolArgs) return null;
@@ -73,7 +73,7 @@ const safeParseArgs = (toolArgs?: string): Record<string, unknown> | null => {
 };
 
 /**
- * Get description from arguments
+ * Get the description from arguments
  */
 const getDescriptionFromArgs = (args: Record<string, unknown> | null): string | null => {
   if (!args) return null;
@@ -83,7 +83,7 @@ const getDescriptionFromArgs = (args: Record<string, unknown> | null): string | 
   return null;
 };
 
-// ===== Fallback display text generation functions for each tool =====
+// ===== Fallback display text generator functions for each tool =====
 
 const getExecuteCommandDisplayText = (args: Record<string, unknown> | null): string => {
   if (args?.command && typeof args.command === 'string' && args.command.trim()) {
@@ -181,15 +181,15 @@ const getSearchTextInFilesDisplayText = (args: Record<string, unknown> | null): 
 };
 
 /**
- * Get display text for a Tool Call
- * @param toolName - Tool name (function.name)
- * @param toolArgs - Tool arguments (function.arguments), optional JSON string
- * @returns Display text
+ * Get the display text for a Tool Call
+ * @param toolName - tool name (function.name)
+ * @param toolArgs - tool arguments (function.arguments), optional JSON string
+ * @returns display text
  */
-export const getToolCallDisplayText = (toolName: string, toolArgs?: string): string => {
+export const getToolCallDisplayText = (toolName: string, toolArgs?: string, toolResultText?: string): string => {
   const args = safeParseArgs(toolArgs);
 
-  // Prefer returning description (if available)
+  // Return description first (if available)
   const description = getDescriptionFromArgs(args);
   if (description) {
     return description;
@@ -203,11 +203,9 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string): str
 
     // ===== Web search tools =====
     case 'bing_web_search':
-    case 'google_web_search':
       return getWebSearchDisplayText(args);
 
     case 'bing_image_search':
-    case 'google_image_search':
       return getImageSearchDisplayText(args);
 
     case 'fetch_web_content':
@@ -232,11 +230,11 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string): str
     // ===== File search tools =====
     case 'search_files':
       return getSearchFilesDisplayText(args);
-    case 'search_text_in_files':
+    case 'search_file_contents':
       return getSearchTextInFilesDisplayText(args);
 
     // ===== Download tools =====
-    case 'download_and_save_as':
+    case 'download_file':
       return 'Downloaded file';
 
     // ===== Time tools =====
@@ -244,40 +242,88 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string): str
       return 'Got current time';
 
     // ===== MCP management tools =====
-    case 'get_mcp_config_from_lib':
-      return 'Got MCP config from library';
-    case 'add_mcp_by_config':
+    case 'create_mcp_server_from_config':
       return 'Added MCP server';
-    case 'update_mcp_by_config':
+    case 'update_mcp_server':
       return 'Updated MCP server';
-    case 'check_mcp_status':
+    case 'get_mcp_status':
       return 'Checked MCP status';
-    case 'toggle_mcp_by_name':
+    case 'set_mcp_connection_state':
       return 'Toggled MCP server';
 
     // ===== Agent management tools =====
-    case 'get_agent_config_from_lib':
-      return 'Got agent config from library';
-    case 'add_agent_by_config':
+    case 'create_agent_from_config':
       return 'Added agent';
-    case 'update_agent_by_config':
+    case 'update_agent':
       return 'Updated agent';
-    case 'check_agent_status':
+    case 'get_agent_status':
       return 'Checked agent status';
-    case 'get_all_agents':
+    case 'list_agents':
       return 'Got all agents';
     case 'set_primary_agent':
       return 'Set primary agent';
 
     // ===== Skill management tools =====
-    case 'add_skill_from_lib_by_name':
-      return 'Added skill from library';
-    case 'check_skill_status':
-      return 'Checked skill status';
+    case 'search_skills': {
+      if (args?.query && typeof args.query === 'string' && args.query.trim()) {
+        return `Searched skills: ${args.query.trim()}`;
+      }
+      return 'Searched skills';
+    }
 
-    // ===== Presentation tools =====
+    // ===== Schedule tools =====
+    case 'create_schedule': {
+      if (args?.name && typeof args.name === 'string' && args.name.trim()) {
+        return `Created schedule: ${args.name.trim()}`;
+      }
+      return 'Created schedule';
+    }
+    case 'get_schedule':
+      return 'Retrieved schedules';
+    case 'update_schedule': {
+      if (args?.name && typeof args.name === 'string' && args.name.trim()) {
+        return `Edited schedule: ${args.name.trim()}`;
+      }
+      return 'Edited schedule';
+    }
+    case 'run_schedule':
+      return 'Ran schedule';
+
+    // ===== Present tools =====
     case 'present_deliverables':
       return getPresentDisplayText(args);
+
+    // ===== Tool Search =====
+    case 'tool_search': {
+      // Parse result to get match count and total
+      let matchCount: number | null = null;
+      let totalCount: number | null = null;
+      if (toolResultText) {
+        try {
+          const parsed = JSON.parse(toolResultText);
+          const data = typeof parsed.data === 'string' ? JSON.parse(parsed.data) : parsed;
+          if (Array.isArray(data.matches)) {
+            matchCount = data.matches.length;
+          }
+          if (typeof data.total_deferred_tools === 'number') {
+            totalCount = data.total_deferred_tools;
+          }
+        } catch { /* ignore */ }
+      }
+      const countInfo = matchCount !== null
+        ? ` → found ${matchCount}${totalCount !== null ? `/${totalCount}` : ''}`
+        : '';
+
+      if (args?.query && typeof args.query === 'string' && args.query.trim()) {
+        const query = args.query.trim();
+        if (query.startsWith('select:')) {
+          const names = query.substring(7).split(',').map((n: string) => n.trim()).filter(Boolean);
+          return `Fetched tool${names.length > 1 ? 's' : ''}: ${names.join(', ')}${countInfo}`;
+        }
+        return `Searched tools: ${query}${countInfo}`;
+      }
+      return `Searched tools${countInfo}`;
+    }
 
     // ===== Default =====
     default:
@@ -286,9 +332,9 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string): str
 };
 
 /**
- * Get summary display text for Tool Calls Section
- * @param count - Number of tool calls
- * @returns Summary display text
+ * Get the summary display text for a Tool Calls Section
+ * @param count - number of tool calls
+ * @returns summary display text
  */
 export const getToolCallsSummaryText = (count: number): string => {
   if (count === 1) {
@@ -298,9 +344,9 @@ export const getToolCallsSummaryText = (count: number): string => {
 };
 
 /**
- * Get icon type for a Tool Call
- * @param toolName - Tool name (function.name)
- * @returns Icon type
+ * Get the icon type for a Tool Call
+ * @param toolName - tool name (function.name)
+ * @returns icon type
  */
 export const getToolCallIconType = (toolName: string): ToolIconType => {
   switch (toolName) {
@@ -310,12 +356,10 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
 
     // ===== Web search tools =====
     case 'bing_web_search':
-    case 'google_web_search':
     case 'fetch_web_content':
       return 'globe';
 
     case 'bing_image_search':
-    case 'google_image_search':
       return 'image';
 
     // ===== File write tools =====
@@ -336,11 +380,11 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
 
     // ===== File search tools =====
     case 'search_files':
-    case 'search_text_in_files':
+    case 'search_file_contents':
       return 'file-search';
 
     // ===== Download tools =====
-    case 'download_and_save_as':
+    case 'download_file':
       return 'download';
 
     // ===== Time tools =====
@@ -348,39 +392,44 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
       return 'calendar';
 
     // ===== MCP management tools =====
-    case 'get_mcp_config_from_lib':
-    case 'add_mcp_by_config':
-    case 'update_mcp_by_config':
-    case 'check_mcp_status':
-    case 'toggle_mcp_by_name':
+    case 'create_mcp_server_from_config':
+    case 'update_mcp_server':
+    case 'get_mcp_status':
+    case 'set_mcp_connection_state':
       return 'settings';
 
     // ===== Agent management tools =====
-    case 'get_agent_config_from_lib':
-    case 'add_agent_by_config':
-    case 'update_agent_by_config':
-    case 'check_agent_status':
-    case 'get_all_agents':
+    case 'create_agent_from_config':
+    case 'update_agent':
+    case 'get_agent_status':
+    case 'list_agents':
     case 'set_primary_agent':
       return 'brain';
 
     // ===== Skill management tools =====
-    case 'add_skill_from_lib_by_name':
-    case 'check_skill_status':
+    case 'search_skills':
+    case 'tool_search':
       return 'zap';
 
-    // ===== Presentation tools =====
+    // ===== Schedule tools =====
+    case 'create_schedule':
+    case 'get_schedule':
+    case 'update_schedule':
+    case 'run_schedule':
+      return 'calendar';
+
+    // ===== Present tools =====
     case 'present_deliverables':
       return 'eye';
 
-    // ===== Default: infer from tool name patterns =====
+    // ===== Default: infer from tool name pattern =====
     default:
       return inferIconTypeFromName(toolName);
   }
 };
 
 /**
- * Infer icon type from tool name patterns
+ * Infer icon type from tool name pattern
  */
 const inferIconTypeFromName = (toolName: string): ToolIconType => {
   const lowerName = toolName.toLowerCase();
@@ -432,8 +481,8 @@ const inferIconTypeFromName = (toolName: string): ToolIconType => {
 };
 
 /**
- * Get icon component for a Tool Call
- * @param toolName - Tool name (function.name)
+ * Get the icon component for a Tool Call
+ * @param toolName - tool name (function.name)
  * @returns Lucide icon component
  */
 export const getToolCallIcon = (toolName: string): LucideIcon => {

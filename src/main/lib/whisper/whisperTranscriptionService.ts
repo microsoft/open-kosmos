@@ -7,9 +7,8 @@
  * - Audio transcription (file-based and PCM buffer)
  * - GPU acceleration support (Vulkan/Metal)
  *
- * Note: The native addon is not distributed with the app installer. On first use,
- *       it is downloaded on demand from the npm CDN to the userData/native-modules/ directory
- *       via NativeModuleManager.
+ * Note: native addon is not distributed with the app installer; it is downloaded on demand from
+ *      the npm CDN to userData/native-modules/ on first use, via NativeModuleManager.
  */
 
 import * as path from 'path';
@@ -18,8 +17,10 @@ import { app } from 'electron';
 import type { WhisperModelSize } from '../userDataADO/types/profile';
 import { whisperModelManager } from './whisperModelManager';
 import { nativeModuleManager, NativeModuleNotDownloadedError } from '../nativeModules';
+import { createLogger } from '../unifiedLogger';
+const logger = createLogger();
 
-// Whisper addon module cache
+// Module cache for the whisper addon
 let whisperAddon: { transcribe: (opts: Record<string, unknown>) => Promise<{ transcription: unknown }> } | null = null;
 
 /**
@@ -51,30 +52,30 @@ export interface TranscribeOptions {
 }
 
 /**
- * Lazily load whisper addon
+ * Lazy-load the whisper addon
  *
- * Preferentially loads from NativeModuleManager's userData cache path.
- * If not yet downloaded, throws NativeModuleNotDownloadedError (caller can guide user to download).
+ * Preferentially loads from the userData cache path managed by NativeModuleManager.
+ * If not yet downloaded, throws NativeModuleNotDownloadedError (caller can prompt the user to download).
  */
 async function loadWhisperAddon(): Promise<{ transcribe: (opts: Record<string, unknown>) => Promise<{ transcription: unknown }> }> {
   if (whisperAddon) {
     return whisperAddon;
   }
 
-  // 1. First try loading from NativeModuleManager's downloaded path
+  // 1. Preferentially try loading from the path already downloaded by NativeModuleManager
   if (nativeModuleManager.isAvailable('whisper-addon')) {
     try {
       const mod = nativeModuleManager.requireModule('whisper-addon') as typeof whisperAddon;
       whisperAddon = mod;
-      console.log('[WhisperTranscription] Whisper addon loaded from userData cache');
+      logger.debug('[WhisperTranscription] Whisper addon loaded from userData cache');
       return whisperAddon!;
     } catch (err) {
-      console.warn('[WhisperTranscription] Failed to load from userData cache:', err);
-      // Continue trying built-in path
+      logger.warn(`[WhisperTranscription] Failed to load from userData cache: ${err instanceof Error ? err.message : String(err)}`)
+      // Fall through to try the built-in path
     }
   }
 
-  // userData cache unavailable, prompt user to download via UI
+  // userData cache unavailable — prompt the user to download via the UI
   throw new NativeModuleNotDownloadedError('whisper-addon');
 }
 
@@ -99,9 +100,9 @@ export async function transcribePCM(
     throw new Error(`Whisper model not found: ${modelPath}. Please download the model first.`);
   }
 
-  console.log('[WhisperTranscription] Starting transcription with model:', modelPath);
-  console.log('[WhisperTranscription] PCM data length:', pcmData.length, 'samples');
-  console.log('[WhisperTranscription] Language option:', options.language);
+  logger.debug(`[WhisperTranscription] Starting transcription with model: ${modelPath}`);
+  logger.debug(`[WhisperTranscription] PCM data length: ${pcmData.length} ${'samples'}`);
+  logger.debug(`[WhisperTranscription] Language option: ${options.language}`);
 
   // Determine the actual Whisper language and prompt for Chinese variants
   // zh = Simplified Chinese (use prompt to guide output)
@@ -130,13 +131,13 @@ export async function transcribePCM(
 
     // Add prompt to guide Simplified Chinese output
     if (isSimplifiedChinese) {
-      transcribeOptions.prompt = 'The following are Mandarin sentences.';
+      transcribeOptions.prompt = '以下是普通话的句子。';
     }
 
-    console.log('[WhisperTranscription] Transcribe options:', JSON.stringify({
+    logger.debug(`[WhisperTranscription] Transcribe options: ${JSON.stringify({
       ...transcribeOptions,
       pcmf32: `[Float32Array length=${pcmData.length}]`
-    }));
+    })}`);
 
     const result = await whisper.transcribe(transcribeOptions);
 
@@ -165,11 +166,11 @@ export async function transcribePCM(
     }
 
     text = text.trim();
-    console.log('[WhisperTranscription] Transcription complete:', text.substring(0, 100) + '...');
+    logger.debug(`[WhisperTranscription] Transcription complete: ${text.substring(0, 100) + '...'}`);
 
     return { text, segments };
   } catch (error) {
-    console.error('[WhisperTranscription] Transcription failed:', error);
+    logger.error(`[WhisperTranscription] Transcription failed: ${error instanceof Error ? error.message : String(error)}`)
     throw error;
   }
 }
@@ -199,7 +200,7 @@ export async function transcribeFile(
     throw new Error(`Audio file not found: ${filePath}`);
   }
 
-  console.log('[WhisperTranscription] Starting file transcription:', filePath);
+  logger.debug(`[WhisperTranscription] Starting file transcription: ${filePath}`);
 
   // Determine the actual Whisper language and prompt for Chinese variants
   const isSimplifiedChinese = options.language === 'zh';
@@ -225,7 +226,7 @@ export async function transcribeFile(
 
     // Add prompt to guide Simplified Chinese output
     if (isSimplifiedChinese) {
-      transcribeOptions.prompt = 'The following are Mandarin sentences.';
+      transcribeOptions.prompt = '以下是普通话的句子。';
     }
 
     const result = await whisper.transcribe(transcribeOptions);
@@ -253,11 +254,11 @@ export async function transcribeFile(
     }
 
     text = text.trim();
-    console.log('[WhisperTranscription] File transcription complete:', text.substring(0, 100) + '...');
+    logger.debug(`[WhisperTranscription] File transcription complete: ${text.substring(0, 100) + '...'}`);
 
     return { text, segments };
   } catch (error) {
-    console.error('[WhisperTranscription] File transcription failed:', error);
+    logger.error(`[WhisperTranscription] File transcription failed: ${error instanceof Error ? error.message : String(error)}`)
     throw error;
   }
 }
@@ -266,15 +267,15 @@ export async function transcribeFile(
  * Check if Whisper addon is available (downloaded or built-in)
  */
 export async function isWhisperAvailable(): Promise<boolean> {
-  // Fast path: check NativeModuleManager cache or userData download
+  // Fast path: check NativeModuleManager cache or userData already downloaded
   if (nativeModuleManager.isAvailable('whisper-addon')) return true;
 
   return false;
 }
 
 /**
- * Trigger on-demand download of the whisper addon.
- * Used for UI-guided user download on first STT feature use.
+ * Trigger an on-demand download of the whisper addon.
+ * Used for UI-guided downloads when the user first accesses the STT feature.
  */
 export async function downloadWhisperAddon(
   onProgress?: (progress: { bytesDownloaded: number; bytesTotal: number; percent: number }) => void,
@@ -282,7 +283,7 @@ export async function downloadWhisperAddon(
   await nativeModuleManager.ensureDownloaded('whisper-addon', (p) => {
     onProgress?.({ bytesDownloaded: p.bytesDownloaded, bytesTotal: p.bytesTotal, percent: p.percent });
   });
-  // Clear module cache after download, will reload on next loadWhisperAddon call
+  // After download completes, clear the module cache so the next loadWhisperAddon call reloads it
   whisperAddon = null;
 }
 

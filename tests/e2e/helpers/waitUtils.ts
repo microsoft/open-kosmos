@@ -1,9 +1,9 @@
 import type { Page, ElectronApplication } from '@playwright/test';
 
 /**
- * Wait for app to fully load (through App.tsx's isAppReady gate)
+ * Wait for the app to fully load (through the isAppReady gate in App.tsx).
  *
- * App.tsx displays "Initializing Core Services..." text before backend services are ready.
+ * App.tsx displays "Initializing Core Services..." while backend services are not yet ready.
  * This function waits for that text to disappear from the DOM.
  *
  * @param page - Playwright Page object
@@ -25,12 +25,12 @@ export async function waitForAppReady(
 }
 
 /**
- * Wait for a specific selector to become visible
- * Wraps the common waitForSelector pattern with a friendly error message
+ * Wait for a specific selector to become visible.
+ * Wraps the common waitForSelector pattern with a friendly error message.
  *
  * @param page - Playwright Page object
  * @param selector - CSS selector
- * @param description - description of the wait target (used in error message)
+ * @param description - description of the wait target (used in error messages)
  * @param timeout - timeout in milliseconds
  */
 export async function waitForVisible(
@@ -57,7 +57,7 @@ export async function waitForVisible(
 }
 
 /**
- * Wait for a specific IPC call to complete (via polling)
+ * Wait for a specific IPC call to complete (detected by polling).
  *
  * @param checkFn - async check function that returns a boolean
  * @param timeout - timeout in milliseconds
@@ -78,12 +78,12 @@ export async function waitForCondition(
 }
 
 /**
- * Safely get page text content (won't throw on failure)
- * Used for debugging and error diagnostics
+ * Safely get the page text content (does not throw on failure).
+ * Used for debugging and error diagnostics.
  *
  * @param page - Playwright Page object
  * @param maxLength - maximum return length
- * @returns page text content or error description
+ * @returns page text content or an error description
  */
 export async function safeGetPageText(
   page: Page,
@@ -98,10 +98,10 @@ export async function safeGetPageText(
 }
 
 /**
- * Wait for specific text to disappear from the page
+ * Wait for specific text to no longer appear on the page.
  *
  * @param page - Playwright Page object
- * @param text - text to wait to disappear
+ * @param text - text to wait for disappearance
  * @param timeout - timeout in milliseconds
  */
 export async function waitForTextToDisappear(
@@ -120,8 +120,8 @@ export async function waitForTextToDisappear(
 }
 
 /**
- * Take a screenshot for debugging
- * Saved to tests/e2e/test-results/ directory
+ * Take a screenshot for debugging.
+ * Saves to the tests/e2e/test-results/ directory.
  *
  * @param page - Playwright Page object
  * @param name - screenshot filename (without extension)

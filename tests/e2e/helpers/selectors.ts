@@ -1,20 +1,20 @@
 /**
  * Common selector constants
  *
- * ⚠️ The app currently has very few data-testid attributes, so selectors are primarily based on:
+ * ⚠️ The current app has almost no data-testid attributes, so selectors are primarily based on:
  *   - Text matching (text=...)
  *   - CSS class names (.class-name)
  *   - Semantic roles (role)
  *
- * data-testid attributes should be gradually added to key components to improve selector stability.
+ * Key components should progressively be given data-testid attributes to improve selector stability.
  *
  * Naming convention: {MODULE}_{COMPONENT}_{ELEMENT}, all uppercase with underscores.
  */
 export const Selectors = {
-  // ==================== App.tsx Initial Loading Screen ====================
+  // ==================== App.tsx initialization loading screen ====================
   /** App initialization loading screen (dark background #1c1c1c) */
   LOADING_SCREEN_TEXT: 'text=Initializing Core Services',
-  LOADING_SCREEN_BRAND: 'text=OpenKosmos',
+  LOADING_SCREEN_BRAND: 'text=KOSMOS',
   LOADING_SPINNER: '.animate-spin',
 
   // ==================== StartupPage (route /) ====================
@@ -37,30 +37,30 @@ export const Selectors = {
   /** SignInPage card title */
   SIGN_IN_CARD_TITLE: '.signin-card-title',
 
-  // --- State 2: Default login (new user) ---
-  /** "Welcome to OpenKosmos" title */
+  // --- State 2: default login (new user) ---
+  /** "Welcome to KOSMOS" heading */
   SIGN_IN_WELCOME_TITLE: 'text=Welcome to',
-  /** Main sign-in button */
+  /** Primary login button */
   SIGN_IN_BUTTON: 'button:has-text("Sign In with GitHub Copilot")',
-  /** Sign-in button loading state */
+  /** Login button loading state */
   SIGN_IN_BUTTON_LOADING: 'button:has-text("Connecting to GitHub")',
 
-  // --- State 1: Profile selection ---
-  /** Profile selection title */
+  // --- State 1: profile selection ---
+  /** Profile selection heading */
   SIGN_IN_CHOOSE_PROFILE: 'text=Choose Your Profile',
-  /** New account sign-in button */
+  /** Sign in with new account button */
   SIGN_IN_NEW_ACCOUNT: 'button:has-text("Sign In with New GitHub Account")',
 
-  // --- State 3: Generating device code ---
-  /** "Generating Device Code" title */
+  // --- State 3: generating device code ---
+  /** "Generating Device Code" heading */
   SIGN_IN_GENERATING_CODE: 'text=Generating Device Code',
   /** Generating code loading animation */
   SIGN_IN_LOADING_ICON: '.signin-loading-icon',
 
-  // --- State 4: Device code flow ---
-  /** "GitHub Copilot Authorization" title */
+  // --- State 4: device code flow ---
+  /** "GitHub Copilot Authorization" heading */
   SIGN_IN_DEVICE_FLOW_TITLE: 'text=GitHub Copilot Authorization',
-  /** Device code display (<code> element with mono font text) */
+  /** Device code display (mono font text inside <code> element) */
   SIGN_IN_DEVICE_CODE: 'code.font-mono',
   /** Copy button */
   SIGN_IN_COPY_BUTTON: 'button:has-text("Copy")',
@@ -89,7 +89,7 @@ export const Selectors = {
   /** DataLoading details list */
   DATA_LOADING_DETAILS: '.data-loading-details',
 
-  // ==================== Agent / Chat Page ====================
+  // ==================== Agent / chat page ====================
   /** Chat input textarea */
   CHAT_TEXTAREA: '.chat-textarea',
   /** Chat send button (idle state) */
@@ -104,13 +104,17 @@ export const Selectors = {
   CHAT_ASSISTANT_MESSAGE: '.message-container.assistant-message-container',
   /** Message content (markdown body) */
   CHAT_MESSAGE_CONTENT: '.message-content.markdown-body',
+  /** Left-side chat session list */
+  CHAT_SESSION_LIST: '.chat-sessions-list',
+  /** Left-side chat session item */
+  CHAT_SESSION_ITEM: '.chat-session-item',
   /** Message streaming state */
   CHAT_MESSAGE_STREAMING: '.message-content.markdown-body.streaming',
   /** Model selector */
   CHAT_MODEL_SELECTOR: '.model-selector',
-  /** Model selection button */
+  /** Model selector button */
   CHAT_MODEL_BUTTON: '.model-selector .model-button',
-  /** Legacy selector — kept for backward compatibility */
+  /** Legacy selectors — kept for backward compatibility */
   CHAT_INPUT:
     'textarea[placeholder*="message"], textarea[placeholder*="Message"]',
   CHAT_SEND_BUTTON_LEGACY:
@@ -120,21 +124,19 @@ export const Selectors = {
   NAV_SETTINGS: 'a[href*="settings"]',
   NAV_AGENT: 'a[href*="agent"]',
 
-  // ==================== Settings Page ====================
+  // ==================== Settings page ====================
   SETTINGS_NAV_MCP: 'a[href*="settings/mcp"]',
   SETTINGS_NAV_RUNTIME: 'a[href*="settings/runtime"]',
   SETTINGS_NAV_SKILLS: 'a[href*="settings/skills"]',
   SETTINGS_NAV_MEMORY: 'a[href*="settings/memory"]',
   SETTINGS_NAV_ABOUT: 'a[href*="settings/about"]',
   SETTINGS_NAV_VOICE: 'a[href*="settings/voice-input"]',
-  SETTINGS_NAV_TTS: 'a[href*="settings/tts"]',
   SETTINGS_NAV_SCREENSHOT: 'a[href*="settings/screenshot"]',
   SETTINGS_NAV_BROWSER: 'a[href*="settings/browser-control"]',
   SETTINGS_NAV_TOOLBAR: 'a[href*="settings/toolbar"]',
 
-  // ==================== MCP Management ====================
+  // ==================== MCP management ====================
   MCP_ADD_SERVER_BUTTON: 'button:has-text("Add")',
-  MCP_LIBRARY: 'a[href*="mcp-library"]',
 
   // ==================== Common UI ====================
   DIALOG_OVERLAY: '[role="dialog"]',
