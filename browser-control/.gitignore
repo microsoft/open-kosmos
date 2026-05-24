@@ -1,0 +1,47 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+node_modules
+.output/*
+!.output/*.pem
+stats.html
+stats-*.json
+.wxt
+web-ext.config.ts
+dist
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.onnx
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Prevent npm metadata pollution
+false/
+metadata-v1.3/
+registry.npmmirror.com/
+registry.npmjs.com/
+
+other/
+tools_optimize.md
+Agents.md
+CLAUDE.md
+
+**/coverage/
+
+.docs/
+.claude/
