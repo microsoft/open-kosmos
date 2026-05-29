@@ -21,7 +21,7 @@ npm error Missing: fs-extra@10.1.0 from lock file
 
 ```
 npm error code 1
-npm error path D:\a\Kosmos\Kosmos
+npm error path D:\a\OpenKosmos\OpenKosmos
 npm error command failed
 npm error command C:\Windows\system32\cmd.exe /d /s /c electron-rebuild -f -w better-sqlite3
 npm error A complete log of this run can be found in: C:\npm\cache\_logs\2025-12-20T14_04_48_557Z-debug-0.log

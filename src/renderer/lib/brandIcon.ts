@@ -1,3 +1,3 @@
-import openkosmosIcon from '../assets/openkosmos/app.svg';
+import kosmosIcon from '../assets/kosmos/app.svg';
 
-export const appIcon: string = openkosmosIcon;
+export const appIcon: string = kosmosIcon;

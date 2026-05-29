@@ -23,6 +23,7 @@ export default tseslint.config(
       'electron-builder.config.js',
       'test-mcp-fetcher.js',
       'updater/**',
+      'azure-bot/**',
     ],
   },
 

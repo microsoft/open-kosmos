@@ -25,6 +25,7 @@ import {
   getFeatureFlagConfig,
   resolveDefaultValue,
 } from './featureFlagDefinitions';
+import { BRAND_NAME } from '@shared/constants/branding';
 import { createLogger } from '../unifiedLogger';
 const logger = createLogger();
 
@@ -39,7 +40,7 @@ class FeatureFlagManager {
     // Initialize context (using temporary values, will be updated in initialize)
     this.context = {
       isDev: false,
-      brandName: 'openkosmos',
+      brandName: BRAND_NAME || 'kosmos',
       platform: process.platform,
       arch: process.arch,
     };

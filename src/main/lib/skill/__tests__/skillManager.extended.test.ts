@@ -659,7 +659,7 @@ describe('SkillManager — extended coverage', () => {
       const { app } = await import('electron');
       (app.getPath as Mock).mockReturnValue(tempRoot);
       const dir = skillManager.createTempDirectory();
-      expect(dir).toContain('openkosmos-skill');
+      expect(dir).toContain('kosmos-skill');
       fs.rmSync(dir, { recursive: true, force: true });
     });
   });

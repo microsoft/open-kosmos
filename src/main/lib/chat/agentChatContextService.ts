@@ -1,6 +1,7 @@
 import { Message, MessageHelper } from '@shared/types/chatTypes';
 import type { AgentConfig } from './agentChat';
 import { ChatStatus, type ContextStats, type ContextTokenUsage } from './agentChatTypes';
+import { featureFlagManager } from '../featureFlags';
 import { createLogger } from '../unifiedLogger';
 import type { ChatSessionFile } from '../userDataADO/chatSessionFileOps';
 import type { GhcModelCapabilities } from '@shared/types/ghcChatTypes';
@@ -122,16 +123,30 @@ export class AgentChatContextService {
     return 1.0;
   }
 
+  async extractFactsFromConversation(): Promise<void> {
+    // Memory system removed — no-op
+  }
+
   async addMessageToContext(message: Message): Promise<void> {
     const currentChatSession = this.deps.getCurrentChatSession();
     if (!currentChatSession) {
       return;
     }
 
-    currentChatSession.context_history.push(message);
+    let enhancedMessage = message;
+    if (message.role === 'user') {
+      enhancedMessage = await this.enhanceUserMessageContext(message);
+    }
+
+    currentChatSession.context_history.push(enhancedMessage);
     this.deps.setLastUpdated(new Date().toISOString());
 
     this.calculateAndNotifyContext();
+  }
+
+  async enhanceUserMessageContext(message: Message): Promise<Message> {
+    // Memory system removed — return message unchanged
+    return message;
   }
 
   async checkAndCompress(options?: { emitStatus?: boolean; force?: boolean }): Promise<{ applied: boolean }> {
@@ -248,7 +263,7 @@ export class AgentChatContextService {
     if (currentTools.length > 0) {
       // When tool search is active, only inline tools (not deferred) are sent as tool schemas.
       // Deferred tools are sent as a text index instead. Calculate tokens accordingly.
-      const toolSearchEnabled = isFeatureEnabled('openkosmosFeatureToolSearch')
+      const toolSearchEnabled = isFeatureEnabled('kosmosFeatureToolSearch')
         && shouldEnableToolSearch(currentTools, modelCapabilities.maxContextLength);
       if (toolSearchEnabled) {
         const { filteredTools, deferredTools } = filterToolsForRequest(

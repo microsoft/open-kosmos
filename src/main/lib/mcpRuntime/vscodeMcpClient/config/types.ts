@@ -79,7 +79,6 @@ export interface ValidationRuleResult {
 export interface PlatformInfo {
   platform: string;
   isSupported: boolean;
-  vscodeConfigPath: string;
   vscodeConfigPaths: string[];
   displayName: string;
 }
@@ -94,7 +93,7 @@ export interface OpenKosmosAppMCPServerConfig {
   url?: string;
   env?: Record<string, string>;
   version?: string;
-  source?: 'ON-DEVICE';
+  source?: 'IN-LIBRARY' | 'ON-DEVICE';
 }
 
 export interface ImportValidationResult {
@@ -221,7 +220,7 @@ export const DEFAULT_CONFIG_ADAPTER_OPTIONS: Required<ConfigAdapterOptions> = {
 export const SUPPORTED_CONFIG_FORMATS = [
   'settings.json',
   'mcp.json',
-  'openkosmos.json'
+  'kosmos.json'
 ] as const;
 
 export const SUPPORTED_TRANSPORT_TYPES = [

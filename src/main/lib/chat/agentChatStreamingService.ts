@@ -103,7 +103,7 @@ export class AgentChatStreamingService {
       const currentTools = await this.deps.getCurrentAvailableTools();
 
       // --- Tool Search: filter deferred tools ---
-      const toolSearchFeatureEnabled = isFeatureEnabled('openkosmosFeatureToolSearch');
+      const toolSearchFeatureEnabled = isFeatureEnabled('kosmosFeatureToolSearch');
       const toolSearchAutoEnabled = toolSearchFeatureEnabled && shouldEnableToolSearch(currentTools, modelCapabilities.maxContextLength);
       const contextHistory = this.deps.getContextHistory();
       const { filteredTools: toolsForRequest, deferredTools, toolSearchEnabled } =
@@ -444,6 +444,7 @@ export class AgentChatStreamingService {
                       firstTokenReported = true;
                       if (!this.ttftReportedForTurn) {
                         this.ttftReportedForTurn = true;
+                        const now = Date.now();
                         if (this.turnStartTime > 0) {
                           this.turnStartTime = 0;
                         }
@@ -503,7 +504,6 @@ export class AgentChatStreamingService {
                 firstTokenReported = true;
                 if (!this.ttftReportedForTurn) {
                   this.ttftReportedForTurn = true;
-                  const now = Date.now();
                   if (this.turnStartTime > 0) {
                     this.turnStartTime = 0;
                   }

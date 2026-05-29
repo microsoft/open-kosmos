@@ -7,6 +7,7 @@ import {
   ToastProvider,
   ToastContextSetter,
 } from './components/ui/ToastProvider';
+import { UpdateProvider } from './components/autoUpdate/UpdateProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import WindowsTitleBar from './components/layout/WindowsTitleBar';
 import WindowZoomHotkeys from './components/layout/WindowZoomHotkeys';
@@ -29,6 +30,8 @@ const McpConnectionFailureToastListener: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
+  // ToolBar window feature removed
+
   return (
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       {/* McpConnectionFailureToastListener must be inside HashRouter because it uses useNavigate */}
@@ -228,7 +231,7 @@ const App: React.FC = () => {
   return (
     <ToastProvider>
       <ToastContextSetter />
-      
+      <UpdateProvider>
         <AuthProvider>
           <ReauthProvider>
             <ProfileDataProvider>
@@ -236,7 +239,7 @@ const App: React.FC = () => {
             </ProfileDataProvider>
           </ReauthProvider>
         </AuthProvider>
-      
+      </UpdateProvider>
     </ToastProvider>
   );
 };

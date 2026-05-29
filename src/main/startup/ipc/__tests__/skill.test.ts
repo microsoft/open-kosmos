@@ -6,6 +6,7 @@ const mockShowOpenDialog = vi.fn();
 
 const mockInstallAndActivateSkill = vi.fn();
 const mockUpdateSkillFromDevice = vi.fn();
+const mockRecordSkillInstalledWithProps = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('electron', async () => ({
   app: {
@@ -30,6 +31,12 @@ vi.mock('../../../lib/skill/installAndActivateSkill', async () => ({
 
 vi.mock('../../../lib/skill/skillDeviceImporter', async () => ({
   updateSkillFromDevice: (...args: any[]) => mockUpdateSkillFromDevice(...args),
+}));
+
+vi.mock('../../../lib/analytics', async () => ({
+  analyticsManager: {
+    recordSkillInstalledWithProps: (...args: any[]) => mockRecordSkillInstalledWithProps(...args),
+  },
 }));
 
 vi.mock('../../../lib/skill/deleteInstalledSkill', async () => ({
@@ -85,6 +92,8 @@ describe('startup/ipc/skill Windows selection flow', () => {
       skillVersion: '1.0.1',
       inputType: 'zip',
     });
+
+    mockRecordSkillInstalledWithProps.mockResolvedValue(undefined);
   });
 
   afterAll(() => {

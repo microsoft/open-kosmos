@@ -23,7 +23,7 @@ vi.mock('../../ui/ToastProvider', async () => ({
 vi.mock('../../userData/userDataProvider', async () => ({
   useAgentConfig: () => ({
     agent: {
-      knowledgeBase: '/workspace/knowledge',
+      knowledge: { knowledgeBase: '/workspace/knowledge' },
     },
   }),
 }));
@@ -210,7 +210,7 @@ describe('GeneratedFileCards', () => {
       <GeneratedFileCards
         items={[
           {
-            filePath: '/Users/testuser/Library/Application Support/openkosmos-app/profiles/demo-user/chat_workspaces/chat_1774501148705_hn6mnv93u/202603/chatSession_20260326203735/我的母亲.md',
+            filePath: '/Users/pumpedgechina/Library/Application Support/open-kosmos-app/profiles/demo_user/chat_workspaces/chat_1774501148705_hn6mnv93u/202603/chatSession_20260326203735/我的母亲.md',
             exists: true,
           },
         ]}

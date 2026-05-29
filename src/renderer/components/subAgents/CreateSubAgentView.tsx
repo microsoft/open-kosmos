@@ -109,6 +109,7 @@ const CreateSubAgentView: React.FC = () => {
 
   return (
     <div className="sub-agent-form-view">
+      {/* Header - based on SubAgentLibraryViewHeader using unified-header */}
       <div className="unified-header">
         <div className="header-title">
           <button className="btn-action" onClick={() => navigate('/settings/sub-agents')} title="Back">

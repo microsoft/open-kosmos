@@ -167,7 +167,7 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
             fontSize: '11px',
             overflow: 'auto',
             whiteSpace: 'pre',
-          }}>{`plugins:\n  entries:\n    openkosmos:\n      enabled: true\n      config:\n        url: "${info.addresses[0] ? `ws://${info.addresses[0]}:${info.port}` : 'ws://<your-ip>:' + info.port}"\n        accounts:\n          <openclaw-agent-id>:\n            token: "${token ? '<click Show above to reveal>' : '<no token>'}"`}</pre>
+          }}>{`plugins:\n  entries:\n    kosmos:\n      enabled: true\n      config:\n        url: "${info.addresses[0] ? `ws://${info.addresses[0]}:${info.port}` : 'ws://<your-ip>:' + info.port}"\n        accounts:\n          <openclaw-agent-id>:\n            token: "${token ? '<click Show above to reveal>' : '<no token>'}"`}</pre>
         </div>
       </div>
     </div>

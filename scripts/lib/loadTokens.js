@@ -6,8 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-
-const openkosmosConfig = require('../../brands/openkosmos/config.json');
+const brandConfig = require('../brand-config');
 
 /**
  * Get the path to the auth.json file.
@@ -15,7 +14,7 @@ const openkosmosConfig = require('../../brands/openkosmos/config.json');
 function getAuthFilePath() {
   // Default path.
   // Prefer productName as the directory name to stay in sync with Electron app.setName().
-  const appDirName = openkosmosConfig.productName || 'openkosmos-app';
+  const appDirName = brandConfig.config.productName || 'open-kosmos-app';
 
   // Windows: AppData/Roaming/<AppName>
   // macOS: Library/Application Support/<AppName>
@@ -33,12 +32,12 @@ function getAuthFilePath() {
     userDataRoot,
     appDirName,
     'profiles',
-    'demo-user',
+    'demo_user',
     'auth.json',
   );
 
   // Support a custom path via environment variable
-  const customPath = process.env.OPENKOSMOS_AUTH_FILE;
+  const customPath = process.env.OpenKosmos_AUTH_FILE;
 
   return customPath || defaultPath;
 }

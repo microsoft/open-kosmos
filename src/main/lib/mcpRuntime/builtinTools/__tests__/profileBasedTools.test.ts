@@ -11,7 +11,7 @@ vi.mock('../../unifiedLogger', () => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/tmp/openkosmos-test') },
+  app: { getPath: vi.fn(() => '/tmp/kosmos-test') },
 }));
 
 const profileCacheManagerMock = {

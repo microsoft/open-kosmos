@@ -23,6 +23,7 @@ import {
   shouldCatchUpMissedOccurrence,
 } from './cronRecovery';
 import { runCronWatchdog } from './cronWatchdog';
+import { notifyScheduledJobCompletion } from '../remoteChannel/schedulerNotifier';
 
 const logger = createLogger();
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -1066,6 +1067,18 @@ export class SchedulerManager {
     });
   }
 
+  private notifyRemoteCompletion(job: SchedulerJob, success: boolean, chatSessionId?: string): void {
+    if (!this.currentUserAlias) return;
+    if (job.notifyOnCompletion === false) return;
+    notifyScheduledJobCompletion({
+      alias: this.currentUserAlias,
+      jobId: job.id,
+      jobName: job.name,
+      success,
+      chatSessionId,
+    });
+  }
+
   /** Execute a job by delegating runtime creation/execution to AgentChatManager. */
   private async executeJob(
     job: SchedulerJob,
@@ -1142,6 +1155,7 @@ export class SchedulerManager {
           });
         }
 
+        this.notifyRemoteCompletion(job, true, result.chatSessionId);
 
         if (job.scheduleType === 'once') {
           this.unregisterTask(job.id, 'once-job-completed');
@@ -1181,6 +1195,7 @@ export class SchedulerManager {
         });
       }
 
+      this.notifyRemoteCompletion(job, false);
 
       if (job.scheduleType === 'once') {
         this.unregisterTask(job.id, 'once-job-failed');
@@ -1219,6 +1234,7 @@ export class SchedulerManager {
         });
       }
 
+      this.notifyRemoteCompletion(job, false);
 
       if (job.scheduleType === 'once') {
         this.unregisterTask(job.id, 'once-job-failed');

@@ -1,10 +1,10 @@
-"""Kosmos platform adapter.
+"""OpenKosmos platform adapter.
 
-Connects Hermes to a Kosmos desktop app instance via WebSocket.
-Kosmos is an Electron desktop app that provides a chat UI and connects
+Connects Hermes to a OpenKosmos desktop app instance via WebSocket.
+OpenKosmos is an Electron desktop app that provides a chat UI and connects
 to AI agent backends via WebSocket.
 
-The adapter is a WS CLIENT connecting to Kosmos's WS server.
+The adapter is a WS CLIENT connecting to OpenKosmos's WS server.
 
 Protocol (JSON-based):
 - Auth: send {"type": "auth", "token": "<token>"}
@@ -52,22 +52,22 @@ AUTH_FAILURE_CODES = {
 
 
 def check_kosmos_requirements() -> bool:
-    """Check if Kosmos adapter dependencies are available."""
+    """Check if OpenKosmos adapter dependencies are available."""
     return WEBSOCKETS_AVAILABLE
 
 
-class KosmosAdapter(BasePlatformAdapter):
-    """WebSocket client adapter for Kosmos desktop app."""
+class OpenKosmosAdapter(BasePlatformAdapter):
+    """WebSocket client adapter for OpenKosmos desktop app."""
 
     def __init__(self, config: PlatformConfig):
-        super().__init__(config, Platform.KOSMOS)
+        super().__init__(config, Platform.OpenKosmos)
 
         # Parse config
-        self._url: str = config.extra.get("url") or os.getenv("KOSMOS_URL", "")
-        self._token: str = config.extra.get("token") or os.getenv("KOSMOS_TOKEN", "")
+        self._url: str = config.extra.get("url") or os.getenv("OpenKosmos_URL", "")
+        self._token: str = config.extra.get("token") or os.getenv("OpenKosmos_TOKEN", "")
 
-        # Allow all users by default (Kosmos is a local desktop app)
-        allow_all_default = os.getenv("KOSMOS_ALLOW_ALL_USERS", "true")
+        # Allow all users by default (OpenKosmos is a local desktop app)
+        allow_all_default = os.getenv("OpenKosmos_ALLOW_ALL_USERS", "true")
         self._allow_all: bool = allow_all_default.lower() in ("true", "1", "yes")
 
         # WebSocket connection state
@@ -83,15 +83,15 @@ class KosmosAdapter(BasePlatformAdapter):
         self._base_reconnect_delay: float = 1.0
 
     async def connect(self) -> bool:
-        """Connect to Kosmos WS server and authenticate."""
+        """Connect to OpenKosmos WS server and authenticate."""
         if not self._url:
-            logger.error("[kosmos] No URL configured. Set KOSMOS_URL or config.extra.url")
-            self._set_fatal_error("no_url", "No Kosmos URL configured", retryable=False)
+            logger.error("[kosmos] No URL configured. Set OpenKosmos_URL or config.extra.url")
+            self._set_fatal_error("no_url", "No OpenKosmos URL configured", retryable=False)
             return False
 
         if not self._token:
-            logger.error("[kosmos] No token configured. Set KOSMOS_TOKEN or config.extra.token")
-            self._set_fatal_error("no_token", "No Kosmos token configured", retryable=False)
+            logger.error("[kosmos] No token configured. Set OpenKosmos_TOKEN or config.extra.token")
+            self._set_fatal_error("no_token", "No OpenKosmos token configured", retryable=False)
             return False
 
         try:
@@ -179,7 +179,7 @@ class KosmosAdapter(BasePlatformAdapter):
         self._authenticated = False
 
     async def disconnect(self) -> None:
-        """Disconnect from Kosmos."""
+        """Disconnect from OpenKosmos."""
         self._should_reconnect = False
 
         # Cancel reconnect task if running
@@ -250,11 +250,11 @@ class KosmosAdapter(BasePlatformAdapter):
                 logger.exception("[kosmos] Error handling message: %s", e)
 
     async def _handle_message(self, data: dict) -> None:
-        """Process an incoming message from Kosmos."""
+        """Process an incoming message from OpenKosmos."""
         msg_type = data.get("type")
 
         if msg_type == "message":
-            # User message from Kosmos
+            # User message from OpenKosmos
             text = data.get("text", "")
             conversation_id = data.get("conversationId", "")
 
@@ -263,12 +263,12 @@ class KosmosAdapter(BasePlatformAdapter):
                 return
 
             # Build session source
-            # For Kosmos, the conversationId IS the chat_id
+            # For OpenKosmos, the conversationId IS the chat_id
             source = self.build_source(
                 chat_id=conversation_id,
-                chat_name=f"Kosmos:{conversation_id[:8]}",
-                chat_type="dm",  # Kosmos is a personal desktop app
-                user_id="kosmos_user",  # Single user per Kosmos instance
+                chat_name=f"OpenKosmos:{conversation_id[:8]}",
+                chat_type="dm",  # OpenKosmos is a personal desktop app
+                user_id="kosmos_user",  # Single user per OpenKosmos instance
                 user_name="User",
             )
 
@@ -349,14 +349,14 @@ class KosmosAdapter(BasePlatformAdapter):
         reply_to: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
-        """Send a message (push + push_end) to Kosmos.
+        """Send a message (push + push_end) to OpenKosmos.
 
-        chat_id IS the conversationId for Kosmos.
+        chat_id IS the conversationId for OpenKosmos.
         """
         if not self._ws or not self._authenticated:
             return SendResult(
                 success=False,
-                error="Not connected to Kosmos",
+                error="Not connected to OpenKosmos",
                 retryable=True,
             )
 
@@ -398,8 +398,8 @@ class KosmosAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e), retryable=True)
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
-        """Send typing indicator - Kosmos doesn't support this yet."""
-        # No-op: Kosmos doesn't have typing indicators
+        """Send typing indicator - OpenKosmos doesn't support this yet."""
+        # No-op: OpenKosmos doesn't have typing indicators
         pass
 
     async def send_image(
@@ -410,7 +410,7 @@ class KosmosAdapter(BasePlatformAdapter):
         reply_to: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
-        """Send an image - not supported by Kosmos yet."""
+        """Send an image - not supported by OpenKosmos yet."""
         # Fall back to sending URL as text
         text = f"{caption}\n{image_url}" if caption else image_url
         return await self.send(chat_id=chat_id, content=text, reply_to=reply_to)
@@ -418,7 +418,7 @@ class KosmosAdapter(BasePlatformAdapter):
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get information about a conversation."""
         return {
-            "name": f"Kosmos:{chat_id[:8]}",
+            "name": f"OpenKosmos:{chat_id[:8]}",
             "type": "dm",
             "chat_id": chat_id,
         }

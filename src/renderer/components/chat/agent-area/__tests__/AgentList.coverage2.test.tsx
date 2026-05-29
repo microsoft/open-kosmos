@@ -87,7 +87,7 @@ vi.mock('../../../lib/userData/types', async (importOriginal) => {
   return { ...actual, isBuiltinAgent: vi.fn().mockReturnValue(false) };
 });
 
-vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'openkosmos' }));
+vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'kosmos' }));
 
 vi.mock('lucide-react', () => {
   const Mock = ({ size, ...rest }: any) => <span {...rest} />;

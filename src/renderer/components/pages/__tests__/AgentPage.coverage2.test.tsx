@@ -26,14 +26,13 @@ const mocks = vi.hoisted(() => {
   ]);
   const mockGetCurrentUserAlias = vi.fn(() => 'user1');
   const mockStartNewChatFor = vi.fn(async () => ({ success: true, chatSessionId: 'session-1' }));
-  const mockGetPmAgentSayHiMessageConfig = vi.fn(() => ({ type: 'hi' }));
   const mockUpdateFreDone = vi.fn(async () => {});
   const mockUseCurrentChatId = vi.fn(() => null as string | null);
   const mockUseCurrentChatSessionId = vi.fn(() => null as string | null);
   return {
     mockNavigate, mockNeedsFRE, mockSubscribe, mockGetProfile,
     mockGetChatConfigs, mockGetCurrentUserAlias, mockStartNewChatFor,
-    mockGetPmAgentSayHiMessageConfig, mockUpdateFreDone,
+    mockUpdateFreDone,
     mockUseCurrentChatId, mockUseCurrentChatSessionId,
   };
 });
@@ -77,10 +76,6 @@ vi.mock('../../../lib/userData', () => ({
 
 vi.mock('../../../lib/chat/startNewChatFor', () => ({
   startNewChatFor: (...a: any[]) => mocks.mockStartNewChatFor(...a),
-}));
-
-vi.mock('../../../lib/chat/pmAgentSayHi', () => ({
-  getPmAgentSayHiMessageConfig: (...a: any[]) => mocks.mockGetPmAgentSayHiMessageConfig(...a),
 }));
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
@@ -319,7 +314,7 @@ describe('AgentPage — coverage2 (syncWithAgentChatManager)', () => {
     render(<AgentPage />);
     await act(async () => {});
 
-    expect(mocks.mockStartNewChatFor).toHaveBeenCalledWith('chat-1', expect.anything());
+    expect(mocks.mockStartNewChatFor).toHaveBeenCalledWith('chat-1', undefined);
   });
 
   it('skips startNewChatFor when currentChatId is set but session exists', async () => {

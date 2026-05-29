@@ -28,7 +28,7 @@
 All channels are namespaced under `screenshot:*` via `connectRenderToMain('screenshot')` in `src/shared/ipc/screenshot.ts`. Types: `CaptureResult`, `SaveToFileResult`, `DisplayInfo`, `WindowFrame`, `ScreenshotSettings`.
 
 ### Settings
-Stored in `appCacheManager` (UserDataADO). Feature flag `openkosmosFeatureScreenshot` can force `enabled: false` at runtime.
+Stored in `appCacheManager` (UserDataADO). Feature flag `kosmosFeatureScreenshot` can force `enabled: false` at runtime.
 
 ## Common Changes
 | Scenario | Files to Modify | Notes |
@@ -67,5 +67,5 @@ Stored in `appCacheManager` (UserDataADO). Feature flag `openkosmosFeatureScreen
 - ⚠️ `captureReadyPromise` starts as a pre-rejected `Promise`; `getInitData` awaits it, so calling it before `capture()` will throw.
 
 ## Related
-- Depends on: [UserDataADO](../userDataADO/ai.prompt.md) (`appCacheManager` for settings), [featureFlags](../featureFlags/ai.prompt.md) (`openkosmosFeatureScreenshot`), `src/shared/ipc/screenshot.ts` (IPC type contract), `node-screenshots` (window enumeration)
+- Depends on: [UserDataADO](../userDataADO/ai.prompt.md) (`appCacheManager` for settings), [featureFlags](../featureFlags/ai.prompt.md) (`kosmosFeatureScreenshot`), `src/shared/ipc/screenshot.ts` (IPC type contract), `node-screenshots` (window enumeration)
 - Depended by: `src/main/main.ts` (registers IPC + shortcut at startup), renderer screenshot overlay UI (`src/renderer/screenshot/`)

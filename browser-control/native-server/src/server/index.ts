@@ -85,7 +85,7 @@ export class Server {
     // MCP routes
     this.setupMcpRoutes();
 
-    // Control routes (for Kosmos to update settings)
+    // Control routes (for OpenKosmos to update settings)
     this.setupControlRoutes();
   }
 
@@ -103,7 +103,7 @@ export class Server {
   }
 
   // ============================================================
-  // Control Routes (for Kosmos)
+  // Control Routes (for OpenKosmos)
   // ============================================================
 
   private setupControlRoutes(): void {
@@ -132,7 +132,7 @@ export class Server {
         });
 
         console.error(`[Server] Browser switched, exiting to release port for ${browser}...`);
-        // Notify Kosmos before exiting, then exit regardless of notification result
+        // Notify OpenKosmos before exiting, then exit regardless of notification result
         notifyServerDown('browser-switch').finally(() => {
           process.exit(0);
         });
@@ -254,7 +254,7 @@ export class Server {
         // Transport found, proceed
       } else if (!sessionId && isInitializeRequest(request.body)) {
         // Clean up all stale sessions before creating a new one
-        // This handles the case where Kosmos restarts while Native Server is still running
+        // This handles the case where OpenKosmos restarts while Native Server is still running
         for (const [oldId, oldTransport] of this.transportsMap.entries()) {
           try {
             await oldTransport.close();
@@ -379,7 +379,7 @@ export class Server {
 
       this.isRunning = true;
 
-      // Notify Kosmos that Native Server is up and ready
+      // Notify OpenKosmos that Native Server is up and ready
       notifyServerUp(port).catch(() => {});
     } catch (err) {
       this.isRunning = false;

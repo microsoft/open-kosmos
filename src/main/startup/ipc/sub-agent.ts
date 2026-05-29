@@ -20,8 +20,8 @@ export default function(ctx: Context) {
 
   // Get all sub-agent configs (read complete SubAgentConfig from file system)
   ipcMain.handle('subAgent:getAll', async () => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: true, data: [] };
     }
     try {
@@ -35,8 +35,8 @@ export default function(ctx: Context) {
 
   // Add sub-agent (write AGENT.md + update profile index)
   ipcMain.handle('subAgent:add', async (_, config: any) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -56,8 +56,8 @@ export default function(ctx: Context) {
 
   // Update sub-agent (update AGENT.md + profile index)
   ipcMain.handle('subAgent:update', async (_, name: string, config: any) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -77,8 +77,8 @@ export default function(ctx: Context) {
 
   // Delete sub-agent (delete agent directory + profile index + cascade cleanup ChatAgent references)
   ipcMain.handle('subAgent:delete', async (_, name: string) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -98,8 +98,8 @@ export default function(ctx: Context) {
 
   // Import Claude Code format .md file as sub-agent
   ipcMain.handle('subAgent:importFromFile', async (_, filePath: string) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -126,8 +126,8 @@ export default function(ctx: Context) {
 
   // Export as Claude Code standard format
   ipcMain.handle('subAgent:exportAsClaudeCode', async (_, name: string) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -153,8 +153,8 @@ export default function(ctx: Context) {
 
   // Open agent directory in file manager
   ipcMain.handle('subAgent:openInExplorer', async (_, name: string) => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
       return { success: false, error: 'Sub-Agent feature is disabled' };
     }
     try {
@@ -174,8 +174,27 @@ export default function(ctx: Context) {
     }
   });
 
+  // Manually trigger file system scan sync
+  ipcMain.handle('subAgent:syncFromDisk', async () => {
+    // 🔒 Feature Flag check: kosmosFeatureSubAgent
+    if (!isFeatureEnabled('kosmosFeatureSubAgent')) {
+      return { success: true, data: [] };
+    }
+    try {
+      if (!ctx.currentUserAlias) {
+        return { success: false, error: 'No current user alias set' };
+      }
+      const pcManager = await getProfileCacheManager();
+      await pcManager.syncSubAgentIndex(ctx.currentUserAlias);
+      const subAgents = await pcManager.getSubAgents();
+      return { success: true, data: subAgents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
   // ===============================
-  // Sub-Agent Task IPC handlers
+  // Sub-Agent Task Streaming IPC handlers
   // ===============================
 
   // List all tasks for a session (metadata only)
@@ -241,25 +260,4 @@ export default function(ctx: Context) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
-
-  // Manually trigger file system scan sync
-  ipcMain.handle('subAgent:syncFromDisk', async () => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
-      return { success: true, data: [] };
-    }
-    try {
-      if (!ctx.currentUserAlias) {
-        return { success: false, error: 'No current user alias set' };
-      }
-      const pcManager = await getProfileCacheManager();
-      await pcManager.syncSubAgentIndex(ctx.currentUserAlias);
-      const subAgents = await pcManager.getSubAgents();
-      return { success: true, data: subAgents };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
 }
-

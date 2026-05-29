@@ -23,7 +23,6 @@ const mockStartWatch = vi.fn(async () => ({ success: true }));
 const mockStopWatch = vi.fn(async () => ({ success: true }));
 const mockOnRefresh = vi.fn(() => vi.fn());
 const mockOpenPasteDialog = vi.fn();
-const mockOpenSharePointSearch = vi.fn();
 
 vi.mock('../../../../lib/chat/workspaceOps', async () => ({
   getWorkspaceFileTree: (...args: unknown[]) => mockGetWorkspaceFileTree(...args),
@@ -43,12 +42,6 @@ vi.mock('../../../../lib/chat/workspaceOps', async () => ({
 vi.mock('../PasteToWorkspaceProvider', async () => ({
   usePasteToWorkspace: () => ({
     openPasteDialog: mockOpenPasteDialog,
-  }),
-}));
-
-vi.mock('../SharePointSearchProvider', async () => ({
-  useSharePointSearch: () => ({
-    openSharePointSearch: mockOpenSharePointSearch,
   }),
 }));
 

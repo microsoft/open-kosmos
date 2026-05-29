@@ -344,7 +344,7 @@ export class NativeMessagingHost {
     });
     this.pendingRequests.clear();
 
-    // Notify Kosmos before stopping server and exiting
+    // Notify OpenKosmos before stopping server and exiting
     notifyServerDown('browser-closed')
       .finally(() => {
         if (this.associatedServer && this.associatedServer.isRunning) {

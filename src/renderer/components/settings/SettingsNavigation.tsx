@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Camera, Terminal, Archive } from 'lucide-react';
+import { Camera, Terminal, Globe, Archive } from 'lucide-react';
 import NavItem from '../ui/navigation/NavItem';
 import '../../styles/LeftNavigation.css';
 import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
@@ -40,13 +40,6 @@ const AboutIcon = () => (
   </svg>
 );
 
-// Voice/Microphone icon
-const VoiceIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 2C10.3431 2 9 3.34315 9 5V12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12V5C15 3.34315 13.6569 2 12 2ZM10.5 5C10.5 4.17157 11.1716 3.5 12 3.5C12.8284 3.5 13.5 4.17157 13.5 5V12C13.5 12.8284 12.8284 13.5 12 13.5C11.1716 13.5 10.5 12.8284 10.5 12V5ZM6.25 10C6.66421 10 7 10.3358 7 10.75V12C7 14.7614 9.23858 17 12 17C14.7614 17 17 14.7614 17 12V10.75C17 10.3358 17.3358 10 17.75 10C18.1642 10 18.5 10.3358 18.5 10.75V12C18.5 15.3137 16.0376 18.0299 12.75 18.4435V21.25C12.75 21.6642 12.4142 22 12 22C11.5858 22 11.25 21.6642 11.25 21.25V18.4435C7.96243 18.0299 5.5 15.3137 5.5 12V10.75C5.5 10.3358 5.83579 10 6.25 10Z" fill="currentColor"/>
-  </svg>
-);
-
 // Browser icon - for Browser Control settings
 const BrowserIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -80,18 +73,15 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
   const browserControlEnabled = useFeatureFlag('browserControl');
 
   // Sub-Agent feature controlled by feature flag
-  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
+  const subAgentEnabled = useFeatureFlag('kosmosFeatureSubAgent');
 
-  // Voice Input feature controlled by feature flag
-  const voiceInputEnabled = useFeatureFlag('openkosmosFeatureVoiceInput');
+  const screenshotEnabled = useFeatureFlag('kosmosFeatureScreenshot');
 
-  const screenshotEnabled = useFeatureFlag('openkosmosFeatureScreenshot');
+  // Remote Channel entry controlled by feature flag
+  const remoteChannelEnabled = useFeatureFlag('kosmosFeatureRemoteChannel');
 
   // Plugin feature controlled by feature flag
-  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
-
-  // Memex Memory feature controlled by feature flag
-  const memexMemoryEnabled = useFeatureFlag('openkosmosFeatureMemexMemory');
+  const pluginsEnabled = useFeatureFlag('kosmosFeaturePlugins');
 
   const { width } = LeftNavSizeAtom.useData();
 
@@ -111,13 +101,11 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
     if (path.includes('/settings/skills')) return 'skills';
     if (path.includes('/settings/plugins')) return 'plugins';
     if (path.includes('/settings/sub-agents')) return 'sub-agents';
-    if (path.includes('/settings/memory')) return 'memory';
-    if (path.includes('/settings/voice-input')) return 'voice-input';
     if (path.includes('/settings/screenshot')) return 'screenshot';
     if (path.includes('/settings/about')) return 'about';
     if (path.includes('/settings/browser-control')) return 'browser-control';
-    if (path.includes('/settings/memex')) return 'memex';
     if (path.includes('/settings/archived-agents')) return 'archived-agents';
+    if (path.includes('/settings/remote-channel')) return 'remote-channel';
     return 'mcp'; // Default: show mcp
   };
 
@@ -243,33 +231,6 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             />
           )}
 
-          {memexMemoryEnabled && (
-          <NavItem
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="12" cy="12" r="2" fill="currentColor"/>
-              </svg>
-            }
-            label="Memex Memory"
-            isActive={activeView === 'memex'}
-            onClick={() => navigate('/settings/memex')}
-            ariaLabel="Memex Memory Settings"
-          />
-          )}
-
-          {/* Voice Input entry controlled by feature flag */}
-          {voiceInputEnabled && (
-            <NavItem
-              icon={<VoiceIcon />}
-              label="Voice Input"
-              isActive={activeView === 'voice-input'}
-              onClick={() => navigate('/settings/voice-input')}
-              ariaLabel="Voice Input Settings"
-            />
-          )}
-
           {screenshotEnabled && (
             <NavItem
               icon={<Camera size={18} />}
@@ -287,6 +248,17 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             onClick={() => navigate('/settings/archived-agents')}
             ariaLabel="Archived Agents"
           />
+
+          {/* Remote Channel entry controlled by feature flag */}
+          {remoteChannelEnabled && (
+            <NavItem
+              icon={<Globe size={18} />}
+              label="Remote Channel"
+              isActive={activeView === 'remote-channel'}
+              onClick={() => navigate('/settings/remote-channel')}
+              ariaLabel="Remote Channel Settings"
+            />
+          )}
 
           <NavItem
             icon={<AboutIcon />}

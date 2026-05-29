@@ -305,7 +305,7 @@ describe('BrowserControlHttpServer', () => {
       if (handler) handler(req, res);
       await new Promise((r) => setTimeout(r, 50));
       expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ 'Content-Type': 'application/json' }));
-      expect(mockMcpConnect).toHaveBeenCalledWith('openkosmos-chrome-extension');
+      expect(mockMcpConnect).toHaveBeenCalledWith('kosmos-chrome-extension');
     });
 
     it('POST /api/server-up does NOT reconnect if already connected', async () => {
@@ -322,7 +322,7 @@ describe('BrowserControlHttpServer', () => {
       if (handler) handler(req, res);
       await new Promise((r) => setTimeout(r, 50));
       expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ 'Content-Type': 'application/json' }));
-      expect(mockMcpDisconnect).toHaveBeenCalledWith('openkosmos-chrome-extension');
+      expect(mockMcpDisconnect).toHaveBeenCalledWith('kosmos-chrome-extension');
     });
 
     it('POST /api/server-down does not disconnect when not connected', async () => {

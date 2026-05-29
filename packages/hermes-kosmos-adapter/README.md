@@ -1,8 +1,8 @@
-# Hermes Kosmos Adapter
+# Hermes OpenKosmos Adapter
 
-Kosmos platform adapter for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
+OpenKosmos platform adapter for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
-Connects Hermes to the Kosmos desktop app via WebSocket, allowing users to chat with Hermes through the Kosmos UI.
+Connects Hermes to the OpenKosmos desktop app via WebSocket, allowing users to chat with Hermes through the OpenKosmos UI.
 
 ## Files
 
@@ -20,9 +20,9 @@ Connects Hermes to the Kosmos desktop app via WebSocket, allowing users to chat 
 
 3. Configure environment variables:
    ```bash
-   export KOSMOS_URL="ws://<kosmos-host>:9527"
-   export KOSMOS_TOKEN="<your-token>"
-   export KOSMOS_ALLOW_ALL_USERS=true
+   export OpenKosmos_URL="ws://<kosmos-host>:9527"
+   export OpenKosmos_TOKEN="<your-token>"
+   export OpenKosmos_ALLOW_ALL_USERS=true
    ```
 
 4. Configure LLM provider in `~/.hermes/config.yaml`:
@@ -44,13 +44,13 @@ Connects Hermes to the Kosmos desktop app via WebSocket, allowing users to chat 
 
 ## WS Protocol
 
-The adapter connects as a WS client to Kosmos's WS server (port 9527):
+The adapter connects as a WS client to OpenKosmos's WS server (port 9527):
 
 - Auth: `{"type": "auth", "token": "..."}`
-- User message (Kosmos → Hermes): `{"type": "message", "text": "...", "conversationId": "..."}`  
-- Reply (Hermes → Kosmos): `{"type": "push", "text": "...", "conversationId": "..."}`
+- User message (OpenKosmos → Hermes): `{"type": "message", "text": "...", "conversationId": "..."}`  
+- Reply (Hermes → OpenKosmos): `{"type": "push", "text": "...", "conversationId": "..."}`
 - End reply: `{"type": "push_end", "conversationId": "..."}`
 
 ## Status
 
-✅ Tested and working — full round-trip: Kosmos → Hermes → LLM → Kosmos
+✅ Tested and working — full round-trip: OpenKosmos → Hermes → LLM → OpenKosmos

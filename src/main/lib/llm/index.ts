@@ -6,6 +6,7 @@ export * from './ghcModelApi';
 export * from './systemPromptLlmWritter';
 export * from './mcpConfigLlmFormatter';
 export * from './chatSessionTitleLlmSummarizer';
+export * from './textLlmEmbedder';
 export * from './fileNameLlmGenerator';
 export * from './documentSummaryLlmGenerator';
 export * from './contextCompressionLlmSummarizer';

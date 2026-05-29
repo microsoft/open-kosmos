@@ -222,7 +222,7 @@ class BrowserControlHttpServer {
   // Native Server Signal Handlers
   // ============================================================
 
-  private static readonly MCP_SERVER_NAME = 'openkosmos-chrome-extension';
+  private static readonly MCP_SERVER_NAME = 'kosmos-chrome-extension';
 
   /**
    * Read the JSON body of a POST request

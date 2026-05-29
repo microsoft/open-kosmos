@@ -12,7 +12,6 @@ import {
   useCurrentChatSessionId,
   useCurrentChatId,
 } from '../../lib/chat/agentChatSessionCacheManager';
-import { getPmAgentSayHiMessageConfig } from '../../lib/chat/pmAgentSayHi';
 import { startNewChatFor } from '../../lib/chat/startNewChatFor';
 import { createLogger } from '../../lib/utilities/logger';
 const logger = createLogger('[AgentPage]');
@@ -176,7 +175,7 @@ export const AgentPage: React.FC = () => {
       // Call startNewChatFor to start a new chat session
       const result = await startNewChatFor(
         targetChatId,
-        getPmAgentSayHiMessageConfig(targetChatId),
+        undefined,
       );
       if (result.success && result.chatSessionId) {
         logger.debug('[AgentPage] ✅ Primary agent selected successfully:', {
@@ -281,7 +280,7 @@ export const AgentPage: React.FC = () => {
 
     const result = await startNewChatFor(
       currentChatId,
-      getPmAgentSayHiMessageConfig(currentChatId),
+      undefined,
     );
 
     if (result.success && result.chatSessionId) {

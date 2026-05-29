@@ -41,9 +41,6 @@ vi.mock('../../ui/ToastProvider', async () => ({
   useToast: () => ({ showToast: vi.fn(), showError: vi.fn() }),
 }));
 
-vi.mock('../message/TextToSpeechButton', async () => ({
-  TextToSpeechButton: () => null,
-}));
 
 vi.mock('../../../lib/featureFlags', async () => ({
   useFeatureFlag: () => false,
@@ -67,18 +64,6 @@ vi.mock('../message/SayHiActionItems', async () => ({
     markdownBody: content,
     actionItemGroups: [],
   })),
-}));
-
-vi.mock('../message/PmProjectSayHiCards', async () => ({
-  __esModule: true,
-  default: () => null,
-  parsePmSayHiCards: vi.fn(() => null),
-}));
-
-vi.mock('../message/PmAgentSayHiCards', async () => ({
-  __esModule: true,
-  default: () => null,
-  parsePmAgentSayHiMessage: vi.fn(() => null),
 }));
 
 // ── helpers ──────────────────────────────────────────────────────────────────

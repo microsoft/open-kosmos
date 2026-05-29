@@ -1,4 +1,4 @@
-# Kosmos E2E Testing Technical Plan — Based on Playwright
+# OpenKosmos E2E Testing Technical Plan — Based on Playwright
 
 > **Version**: 1.0
 > **Updated**: 2026-02-24
@@ -109,6 +109,7 @@ The app may have multiple windows open simultaneously:
 | Window | HTML Entry | Purpose |
 |------|----------|------|
 | Main | `index.html` | Main application |
+| Toolbar | `toolbar.html` | Floating toolbar |
 | Screenshot | `screenshot.html` | Screenshot overlay |
 
 **Solution**: Use `electronApp.windows()` to get window list, filter by URL or title to find target window.
@@ -125,12 +126,10 @@ app.setPath('userData', path.join(app.getPath('appData'), userDataName));
 
 #### F. Feature Flag Control
 
-Some pages are behind Feature Flags (e.g., Memory, Voice Input only available in dev mode):
+Some pages are behind Feature Flags (e.g., Memory only available in dev mode):
 
 | Feature Flag | Default Condition |
 |-------------|---------|
-| `kosmosFeatureMemory` | dev mode (excluding win32-arm64) |
-| `kosmosFeatureVoiceInput` | dev mode |
 | `browserControl` | dev + win32 |
 
 **Solution**: Set `NODE_ENV=development` on E2E startup or use `--enable-features` CLI argument.
@@ -173,7 +172,7 @@ Some pages are behind Feature Flags (e.g., Memory, Voice Input only available in
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      Kosmos Electron App                         │
+│                      OpenKosmos Electron App                         │
 │  ┌──────────────────┐    IPC    ┌────────────────────────────┐   │
 │  │   Main Process   │ ◄──────► │    Renderer Process        │   │
 │  │  dist/main/      │          │    dist/renderer/           │   │
@@ -415,7 +414,6 @@ export const test = base.extend<ElectronFixtures>({
         '--disable-gpu-sandbox',
         '--no-sandbox',
         // Optional: enable specific Feature Flags
-        // '--enable-features=kosmosFeatureMemory',
       ],
       env: {
         ...process.env,
@@ -750,7 +748,7 @@ test.describe('App Startup Flow', () => {
   test('App title contains OpenKosmos', async ({ electronApp }) => {
     const window = await electronApp.firstWindow();
     const title = await window.title();
-    expect(title).toMatch(/OpenKosmos/i);
+    expect(title).toMatch(/OpenKosmos|OpenKosmos/i);
   });
 
   test('Redirects to login page without account', async ({ mainWindow }) => {

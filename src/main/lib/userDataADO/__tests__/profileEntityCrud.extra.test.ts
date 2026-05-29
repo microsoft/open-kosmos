@@ -340,8 +340,8 @@ describe('addSubAgent', () => {
     const profile = makeV2Profile({ sub_agents: [{ name: 'my-agent', version: '0.1', source: 'ON-DEVICE' }] });
     const ctx = makeCtx(profile);
     await addSubAgent(ctx, 'alice', { ...agentCfg, version: '2.0.0' });
-    // version is taken from config
-    expect((profile.sub_agents as any[])[0].version).toBe('2.0.0');
+    // version is no longer taken from config; always set to '1.0.0'
+    expect((profile.sub_agents as any[])[0].version).toBe('1.0.0');
     expect((profile.sub_agents as any[]).length).toBe(1);
   });
 

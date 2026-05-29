@@ -185,15 +185,6 @@ vi.mock('../../../lib/workspace/workspaceSearchService', async () => ({
 }));
 
 vi.mock('../ErrorBar', () => ({ default: () => null }));
-vi.mock('../../../lib/featureFlags', async () => ({
-  useFeatureFlag: vi.fn(() => false),
-}));
-vi.mock('../VoiceInputButton', async () => ({
-  VoiceInputButton: () => null,
-}));
-vi.mock('../../../lib/userData', async () => ({
-  useVoiceInputEnabled: vi.fn(() => false),
-}));
 vi.mock('../../../lib/chat/chatInputKeyboard', async () => ({
   getChatInputEnterAction: vi.fn(() => 'send'),
   getChatInputShortcutHint: vi.fn(() => 'Enter to send'),

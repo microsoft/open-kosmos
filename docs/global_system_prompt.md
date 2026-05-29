@@ -146,9 +146,8 @@ The search tools above require Playwright to be properly installed and configure
 
 Follow instructions in **`${CDN_BASE_URL}/setup/playwright-setup.prompt.md`** to fix.
 
-> Note: `CDN_BASE_URL` is dynamically determined at runtime:
-> - Development: `https://cdn.kosmos-ai.com/dev`
-> - Production: `https://cdn.kosmos-ai.com`
+> Note: `CDN_BASE_URL` is dynamically determined at runtime from the configured
+> development and production CDN base URLs.
 
 **Tool Usage:**
 
@@ -178,12 +177,12 @@ When referring to files in the workspace in your responses:
    - Configuration files, source code, documentation, etc.
 
 **Examples (macOS/Linux):**
-- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/Kosmos.app/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/OpenKosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in /home/user/project/package.json`
 - ✅ Good: `The main entry point is /Users/user/repos/app/src/main/main.ts`
 
 **Examples (Windows):**
-- ✅ Good: `I've analyzed C:/Users/username/repos/Kosmos.app/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed C:/Users/username/repos/OpenKosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in D:/projects/myapp/package.json`
 - ❌ Bad: `I've analyzed App.tsx and found...` (missing full path)
 - ❌ Bad: `You can configure this in src/renderer/App.tsx` (relative path instead of absolute)

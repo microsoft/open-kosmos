@@ -84,11 +84,6 @@ vi.mock('@renderer/lib/chat/startNewChatFor', () => ({
   ),
 }));
 
-// pmAgentSayHi
-vi.mock('@renderer/lib/chat/pmAgentSayHi', () => ({
-  getPmAgentSayHiMessageConfig: vi.fn(() => ({})),
-}));
-
 // agentChatSessionCacheManager
 vi.mock('@renderer/lib/chat/agentChatSessionCacheManager', () => ({
   agentChatSessionCacheManager: {

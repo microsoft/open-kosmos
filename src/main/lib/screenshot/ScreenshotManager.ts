@@ -380,7 +380,7 @@ export class ScreenshotManager {
       const pngData = imageData || (await this.cropFromDisplay(displayId, rect)).toPNG();
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const defaultFilename = `openkosmos-screenshot-${timestamp}.png`;
+      const defaultFilename = `kosmos-screenshot-${timestamp}.png`;
       const defaultDir = savePath || app.getPath('downloads');
 
       const parentWindow = this.displays.get(displayId)?.window ?? this.mainWindow;

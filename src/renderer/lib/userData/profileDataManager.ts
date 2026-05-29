@@ -8,6 +8,7 @@ import {
   type ChatAgent,
   type ChatSession,
   type StarredChatSessionIndexItem,
+  type ContextEnhancement,
   type SkillConfig,
   type SubAgentConfig
 } from './types'
@@ -274,7 +275,7 @@ export class ProfileDataManager {
         const subAgentIndex = data.profile.sub_agents || []
         if (subAgentIndex.length > 0) {
           // Set lightweight data first so the count is visible immediately
-          this.cache.subAgents = subAgentIndex as SubAgentConfig[]
+          this.cache.subAgents = subAgentIndex as unknown as SubAgentConfig[]
           // Then fetch full configs asynchronously
           this.fetchFullSubAgentConfigs()
         } else {
@@ -627,26 +628,24 @@ export class ProfileDataManager {
    * Get the Context Enhancement config for the current Chat's Agent
    * Returns memory-related config, including search_memory and generate_memory settings
    */
-  getCurrentAgentContextEnhancement(): Record<string, unknown> | null {
+  getCurrentAgentContextEnhancement(): ContextEnhancement | null {
     const agent = this.getCurrentAgent()
     return agent?.context_enhancement || null
   }
 
   /**
    * Check if the current Agent has memory search enabled
-   * Note: Memory (mem0) has been removed; always returns false.
    */
   isMemorySearchEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
+    const contextEnhancement = this.getCurrentAgentContextEnhancement()
     return contextEnhancement?.search_memory?.enabled || false
   }
 
   /**
    * Check if the current Agent has memory generation enabled
-   * Note: Memory (mem0) has been removed; always returns false.
    */
   isMemoryGenerationEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
+    const contextEnhancement = this.getCurrentAgentContextEnhancement()
     return contextEnhancement?.generate_memory?.enabled || false
   }
 
@@ -658,7 +657,7 @@ export class ProfileDataManager {
     semantic_similarity_threshold: number;
     semantic_top_n: number
   } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
+    const contextEnhancement = this.getCurrentAgentContextEnhancement()
     const searchMemory = contextEnhancement?.search_memory
 
     return {
@@ -672,7 +671,7 @@ export class ProfileDataManager {
    * Get the current Agent's memory generation config
    */
   getMemoryGenerationConfig(): { enabled: boolean } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement() as any
+    const contextEnhancement = this.getCurrentAgentContextEnhancement()
     const generateMemory = contextEnhancement?.generate_memory
 
     return {
@@ -761,11 +760,12 @@ export class ProfileDataManager {
   /**
    * Get Sub-Agents statistics
    */
-  getSubAgentsStats(): { total: number; onDevice: number } {
+  getSubAgentsStats(): { total: number; inLibrary: number; onDevice: number } {
     const subAgents = this.cache.subAgents || []
     return {
       total: subAgents.length,
-      onDevice: subAgents.filter(sa => sa.source === 'ON-DEVICE').length,
+      inLibrary: 0,
+      onDevice: subAgents.length,
     }
   }
 

@@ -143,6 +143,8 @@ describe('NativeServerFetcher — downloadFile branches', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // CDN has no built-in default; provide one so HTTP-path tests have a base URL.
+    process.env.PRODUCTION_BASE_CDN_URL = 'https://cdn.test.example.com';
     const mod = await import('../nativeServerFetcher');
     NativeServerFetcher = mod.NativeServerFetcher;
   });
@@ -322,6 +324,8 @@ describe('NativeServerFetcher — extractZip branches', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // CDN has no built-in default; provide one so HTTP-path tests have a base URL.
+    process.env.PRODUCTION_BASE_CDN_URL = 'https://cdn.test.example.com';
     const mod = await import('../nativeServerFetcher');
     NativeServerFetcher = mod.NativeServerFetcher;
   });

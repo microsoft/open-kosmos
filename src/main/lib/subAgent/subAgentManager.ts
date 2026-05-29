@@ -461,7 +461,6 @@ export class SubAgentManager extends EventEmitter {
         description: params.task.slice(0, 200),
         system_prompt: params.systemPrompt || DEFAULT_ADHOC_SYSTEM_PROMPT,
         model: params.model || INHERIT_MODEL_VALUE,
-        mcp_servers: [],
         mcpServers: [],
         skills: [],
         tools: [],

@@ -36,10 +36,10 @@ describe('initExternalAgentModule', () => {
     expect(result).toBe(mockService);
   });
 
-  it('calls service.start with the alias and default port 51927', async () => {
+  it('calls service.start with the alias and default port 19527', async () => {
     mockStart.mockResolvedValue(undefined);
     await initExternalAgentModule('myAlias');
-    expect(mockStart).toHaveBeenCalledWith('myAlias', 51927);
+    expect(mockStart).toHaveBeenCalledWith('myAlias', 19527);
   });
 
   it('swallows start errors and still returns the service', async () => {

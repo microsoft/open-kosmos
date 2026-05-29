@@ -1,4 +1,3 @@
-
 export * from './common';
 export { default as MainToolbar } from './screenshot-bar';
 

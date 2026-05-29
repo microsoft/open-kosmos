@@ -9,7 +9,7 @@ function resolveUserDataPath(): string {
   try {
     return app.getPath('userData');
   } catch {
-    return process.env.OpenKosmos_TEST_USER_DATA_PATH || path.join(os.tmpdir(), 'openkosmos-app-test');
+    return process.env.OpenKosmos_TEST_USER_DATA_PATH || path.join(os.tmpdir(), 'open-kosmos-app-test');
   }
 }
 

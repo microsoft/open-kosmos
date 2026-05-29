@@ -85,22 +85,6 @@ describe('SkillsView', () => {
     });
   });
 
-  it('does not pass a hidden chat context and reopens agent selection after device install from settings', async () => {
-    render(<SkillsView />);
-
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent('skills:addFromDevice'));
-    });
-
-    await waitFor(() => {
-      expect(mockAddSkillFromDevice).toHaveBeenCalledWith(undefined, {
-        requestSource: 'settings',
-        selectionMode: undefined,
-      });
-      expect(mockSetSkill).toHaveBeenCalledWith('pdf');
-    });
-  });
-
   it('passes explicit artifact selection mode for split add menu events', async () => {
     render(<SkillsView />);
 

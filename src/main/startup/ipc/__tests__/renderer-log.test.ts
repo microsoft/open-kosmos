@@ -43,7 +43,7 @@ describe('renderer log IPC', () => {
 
   it('forwards structured renderer logs when the app is launched with --dev', async () => {
     process.argv.push('--dev');
-    const log = { __openkosmos_log: true, level: 'INFO', message: 'renderer ready' };
+    const log = { __kosmos_log: true, level: 'INFO', message: 'renderer ready' };
 
     const { registerRendererLogIPC } = await import('../renderer-log');
     registerRendererLogIPC();
@@ -54,7 +54,7 @@ describe('renderer log IPC', () => {
   });
 
   it('does not forward renderer logs outside development logging mode', async () => {
-    const log = { __openkosmos_log: true, level: 'INFO', message: 'renderer ready' };
+    const log = { __kosmos_log: true, level: 'INFO', message: 'renderer ready' };
 
     const { registerRendererLogIPC } = await import('../renderer-log');
     registerRendererLogIPC();

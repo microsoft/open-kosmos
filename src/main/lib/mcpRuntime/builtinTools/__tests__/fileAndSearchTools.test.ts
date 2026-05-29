@@ -13,7 +13,7 @@ vi.mock('../../unifiedLogger', () => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn((n: string) => (n === 'userData' ? '/tmp/openkosmos-test' : os.tmpdir())) },
+  app: { getPath: vi.fn((n: string) => (n === 'userData' ? '/tmp/kosmos-test' : os.tmpdir())) },
 }));
 
 // ─────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ describe('WriteFileTool', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-write-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-write-'));
   });
 
   afterEach(async () => {
@@ -113,7 +113,7 @@ describe('ReadFileTool', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-read-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-read-'));
   });
 
   afterEach(async () => {
@@ -162,7 +162,7 @@ describe('SearchFilesTool', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-searchfiles-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-searchfiles-'));
   });
 
   afterEach(async () => {
@@ -207,7 +207,7 @@ describe('SearchFileContentsTool', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-searchcontents-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-searchcontents-'));
   });
 
   afterEach(async () => {

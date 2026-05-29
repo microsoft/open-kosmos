@@ -1,12 +1,12 @@
-// OpenClaw Kosmos Channel Plugin — Protocol & Config Types
+// OpenClaw OpenKosmos Channel Plugin — Protocol & Config Types
 //
 // Protocol direction (from plugin's perspective):
-//   ServerMessage = Kosmos WS server → Plugin (client)
-//   ClientMessage = Plugin (client) → Kosmos WS server
+//   ServerMessage = OpenKosmos WS server → Plugin (client)
+//   ClientMessage = Plugin (client) → OpenKosmos WS server
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/channel-core';
 
-// ====== Client → Server (Plugin → Kosmos) ======
+// ====== Client → Server (Plugin → OpenKosmos) ======
 
 /** Authentication request (first message after WS connection) */
 export interface AuthMessage {
@@ -29,7 +29,7 @@ export interface PushEndMessage {
 
 export type ClientMessage = AuthMessage | PushMessage | PushEndMessage;
 
-// ====== Server → Client (Kosmos → Plugin) ======
+// ====== Server → Client (OpenKosmos → Plugin) ======
 
 /** Authentication succeeded */
 export interface AuthSuccessMessage {
@@ -42,7 +42,7 @@ export interface AuthErrorMessage {
   error: string;
 }
 
-/** User message from Kosmos */
+/** User message from OpenKosmos */
 export interface TextMessage {
   type: 'message';
   text: string;
@@ -65,7 +65,7 @@ export type ServerMessage =
 // ====== Plugin Configuration Types ======
 
 /**
- * Kosmos config as it appears in OpenClaw config.yaml:
+ * OpenKosmos config as it appears in OpenClaw config.yaml:
  * ```yaml
  * plugins:
  *   entries:
@@ -78,23 +78,23 @@ export type ServerMessage =
  *             token: "auth-token-from-kosmos"
  * ```
  */
-export interface KosmosAccountEntry {
+export interface OpenKosmosAccountEntry {
   token?: string;
 }
 
-export interface KosmosChannelConfig {
-  /** WebSocket URL to connect to Kosmos (e.g. ws://localhost:9527) */
+export interface OpenKosmosChannelConfig {
+  /** WebSocket URL to connect to OpenKosmos (e.g. ws://localhost:9527) */
   url?: string;
-  accounts?: Record<string, KosmosAccountEntry>;
+  accounts?: Record<string, OpenKosmosAccountEntry>;
 }
 
 /** Type alias for OpenClaw config */
-export type KosmosConfig = OpenClawConfig;
+export type OpenKosmosConfig = OpenClawConfig;
 
 // ====== Resolved Account Types ======
 
 /** Resolved account after config lookup */
-export interface ResolvedKosmosAccount {
+export interface ResolvedOpenKosmosAccount {
   accountId: string;
   token: string;
   configured: boolean;

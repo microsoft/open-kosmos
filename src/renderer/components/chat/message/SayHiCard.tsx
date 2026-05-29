@@ -4,14 +4,6 @@
  * Renders one action card with an emoji icon, a bold title, and a muted
  * description line.  All interaction logic (what happens on click) is left
  * to the caller via the `onClick` prop, keeping this component fully reusable.
- *
- * Usage example:
- *   <SayHiCard
- *     emoji="💬"
- *     title="Summarize recent activity"
- *     description="Summarize the latest status and add as context."
- *     onClick={() => sendMessage('Summarize ...')}
- *   />
  */
 
 import React from 'react';

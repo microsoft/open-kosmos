@@ -30,7 +30,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
   const navigate = useNavigate()
   const { addChat, chats } = useChats()
   const { showToast } = useToast()
-  const externalAgentEnabled = useFeatureFlag('openkosmosFeatureExternalAgent');
+  const externalAgentEnabled = useFeatureFlag('kosmosFeatureExternalAgent');
 
   // Form data
   const [formData, setFormData] = useState<AgentFormData>({

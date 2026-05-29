@@ -1,4 +1,4 @@
-# Focus Kosmos and snap window to left using Win + Left + Esc (press together, release in reverse)
+# Focus OpenKosmos and snap window to left using Win + Left + Esc (press together, release in reverse)
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -20,9 +20,9 @@ public class Win32 {
 }
 "@
 
-# Find and restore Kosmos window first
+# Find and restore OpenKosmos window first
 $kosmos = Get-Process -ErrorAction SilentlyContinue | 
-          Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like '*Kosmos*' } | 
+          Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like '*OpenKosmos*' } | 
           Select-Object -First 1
 if ($kosmos) {
     $hwnd = $kosmos.MainWindowHandle

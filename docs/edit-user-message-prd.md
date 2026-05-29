@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos already supports sending a new message and retrying a failed response, but it was missing a clean way to correct an already-sent user prompt in place. The product now needs an edit-and-regenerate workflow that remains linear, supports attachment edits, and respects Kosmos's context-compression model.
+OpenKosmos already supports sending a new message and retrying a failed response, but it was missing a clean way to correct an already-sent user prompt in place. The product now needs an edit-and-regenerate workflow that remains linear, supports attachment edits, and respects OpenKosmos's context-compression model.
 
 The critical architectural fact is that `chat_history` is durable session history, while `context_history` is the currently reconstructable working context. Older user turns may remain in `chat_history` but disappear from `context_history` after compression.
 
@@ -10,18 +10,18 @@ The critical architectural fact is that `chat_history` is durable session histor
 
 Without direct editing, users have to send follow-up corrections such as "ignore the previous prompt" or "use this file instead". That makes the conversation noisy, preserves incorrect prompts in the model context, and makes attachment mistakes awkward to recover from.
 
-At the same time, Kosmos cannot safely allow unconditional historical editing because an older prompt may no longer exist in the active context needed for deterministic regeneration.
+At the same time, OpenKosmos cannot safely allow unconditional historical editing because an older prompt may no longer exist in the active context needed for deterministic regeneration.
 
 ## 3. Product Decision
 
-Kosmos will show an inline `Edit` action on all user messages in writable local sessions.
+OpenKosmos will show an inline `Edit` action on all user messages in writable local sessions.
 
 Whether a specific message can actually be edited is decided at click time by a backend precheck:
 
 1. the target user message must still exist in `chat_history`
 2. the same message must still exist in `context_history`
 
-If the precheck passes, the message enters inline edit mode. If it fails, Kosmos refuses before entering edit mode and explains that the original editable content has already been compressed out of the active context.
+If the precheck passes, the message enters inline edit mode. If it fails, OpenKosmos refuses before entering edit mode and explains that the original editable content has already been compressed out of the active context.
 
 ## 4. Scope
 
@@ -87,7 +87,7 @@ The renderer may show `Edit` broadly, but the backend is the source of truth. A 
 
 1. As a user, I want to edit a prior prompt that is still in active context so I can correct it directly.
 2. As a user, I want to edit attachments together with the prompt text.
-3. As a user, I want Kosmos to reject the action immediately if the prompt is no longer safely editable.
+3. As a user, I want OpenKosmos to reject the action immediately if the prompt is no longer safely editable.
 4. As a user, I want downstream responses after the edited prompt to be replaced by regenerated output.
 
 ## 8. Experience Summary
@@ -100,7 +100,7 @@ All user messages show an `Edit` action when the session is locally editable and
 
 When the user clicks `Edit`:
 
-1. Kosmos sends a precheck request to the backend.
+1. OpenKosmos sends a precheck request to the backend.
 2. If the message is still editable, the user bubble enters inline edit mode.
 3. Existing text and attachments are preloaded.
 4. Downstream content is visually de-emphasized.
@@ -108,7 +108,7 @@ When the user clicks `Edit`:
 
 ### 8.3 Precheck Failure
 
-If the message has already been compressed out of `context_history`, Kosmos does not enter edit mode. Instead it shows an error explaining that the original editable content is no longer visible in the active context, so the message can no longer be edited.
+If the message has already been compressed out of `context_history`, OpenKosmos does not enter edit mode. Instead it shows an error explaining that the original editable content is no longer visible in the active context, so the message can no longer be edited.
 
 ### 8.4 Save Behavior
 
@@ -146,7 +146,7 @@ The inline editor must support:
 
 ### 9.3 Warning for External Side Effects
 
-If later messages contain potentially mutating tool activity, Kosmos should warn:
+If later messages contain potentially mutating tool activity, OpenKosmos should warn:
 
 `Regenerating will not undo external actions that were already executed.`
 
@@ -267,7 +267,7 @@ The backend owns editability, truncation, persistence, and regeneration. The ren
 1. If there is no downstream output yet, editing still works and simply regenerates from the updated turn.
 2. If the first user message is edited, the session title should be reset to `New Chat`.
 3. If the target message has been compressed out of active context, edit must be rejected before entering edit mode.
-4. If downstream tools already caused external side effects, Kosmos warns but does not roll them back.
+4. If downstream tools already caused external side effects, OpenKosmos warns but does not roll them back.
 
 ## 14. Success Metrics
 

@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/kosmos",
   "version": "0.1.0",
-  "description": "OpenClaw channel plugin for Kosmos desktop app",
+  "description": "OpenClaw channel plugin for OpenKosmos desktop app",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

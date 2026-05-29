@@ -2,9 +2,9 @@
 
 ## 1. Background
 
-Users have requested support for a `star chat session` capability in Kosmos similar to Claude Desktop, for long-term retention of high-value sessions and quick re-access later.
+Users have requested support for a `star chat session` capability in OpenKosmos similar to Claude Desktop, for long-term retention of high-value sessions and quick re-access later.
 
-Kosmos already has the following base capabilities:
+OpenKosmos already has the following base capabilities:
 
 - Chat Session-level menu actions: Rename, Fork, Download, Delete
 - Ability to update Chat Session metadata individually
@@ -23,9 +23,9 @@ What is currently missing is the ability to "promote important sessions into a l
 
 ### 2.2 Existing Information Architecture Constraints
 
-Kosmos's current left-hand navigation follows an "Agent first, Chat Session second" structure, whereas Claude Desktop is more of a "Session first" structure.
+OpenKosmos's current left-hand navigation follows an "Agent first, Chat Session second" structure, whereas Claude Desktop is more of a "Session first" structure.
 
-Therefore, this requirement does not recommend directly copying Claude Desktop's full navigation model. Instead, star/favorite capabilities in the Claude style should be introduced while preserving Kosmos's existing information architecture.
+Therefore, this requirement does not recommend directly copying Claude Desktop's full navigation model. Instead, star/favorite capabilities in the Claude style should be introduced while preserving OpenKosmos's existing information architecture.
 
 ## 3. Product Goals
 
@@ -55,7 +55,7 @@ Therefore, this requirement does not recommend directly copying Claude Desktop's
 
 ### 5.1 Recommended Approach
 
-A "Claude-style capability + Kosmos-style placement" design:
+A "Claude-style capability + OpenKosmos-style placement" design:
 
 1. Add a `starred` state to `ChatSession` metadata.
 2. Add a `Star` / `Unstar` action to the session overflow menu.
@@ -391,7 +391,7 @@ V1 should only implement the menu entry; do not add hover quick-star buttons, bu
 
 ## 15. Recommended Conclusion
 
-This is an incremental requirement that fits well with the current Kosmos architecture:
+This is an incremental requirement that fits well with the current OpenKosmos architecture:
 
 1. Clear user value
 2. Clear technical path

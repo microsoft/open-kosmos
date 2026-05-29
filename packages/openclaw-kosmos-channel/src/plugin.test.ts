@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 
-// Mock openclaw SDK — not installed in Kosmos repo
+// Mock openclaw SDK — not installed in OpenKosmos repo
 vi.mock('openclaw/plugin-sdk/channel-core', () => ({}));
 vi.mock('openclaw/plugin-sdk/inbound-reply-dispatch', () => ({
   dispatchInboundReplyWithBase: vi.fn(),
@@ -214,6 +214,6 @@ describe('outbound.sendText', () => {
         to: 'conv-123',
         accountId: 'nonexistent',
       } as any)
-    ).rejects.toThrow('No connected Kosmos client');
+    ).rejects.toThrow('No connected OpenKosmos client');
   });
 });

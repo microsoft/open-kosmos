@@ -1,26 +1,26 @@
-// OpenClaw Kosmos Channel Plugin — Inbound Message Routing
+// OpenClaw OpenKosmos Channel Plugin — Inbound Message Routing
 
 import { dispatchInboundReplyWithBase } from 'openclaw/plugin-sdk/inbound-reply-dispatch';
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/channel-core';
-import type { ResolvedKosmosAccount } from './types';
+import type { ResolvedOpenKosmosAccount } from './types';
 
-export interface KosmosMessageHandler {
+export interface OpenKosmosMessageHandler {
   sendReply: (text: string, conversationId: string) => void;
   sendReplyEnd?: (conversationId: string) => void;
   sendError: (error: string, conversationId: string) => void;
 }
 
-export interface HandleKosmosInboundParams {
+export interface HandleOpenKosmosInboundParams {
   cfg: OpenClawConfig;
-  account: ResolvedKosmosAccount;
+  account: ResolvedOpenKosmosAccount;
   text: string;
   conversationId: string;
   /** The channelRuntime from ChannelGatewayContext */
   channelRuntime: any; // PluginRuntimeChannel (ChannelRuntimeSurface)
-  handler: KosmosMessageHandler;
+  handler: OpenKosmosMessageHandler;
 }
 
-export async function handleKosmosInbound(params: HandleKosmosInboundParams): Promise<void> {
+export async function handleOpenKosmosInbound(params: HandleOpenKosmosInboundParams): Promise<void> {
   const { cfg, account, text, conversationId, channelRuntime, handler } = params;
 
   const from = `kosmos:${account.accountId}`;
@@ -87,10 +87,10 @@ export async function handleKosmosInbound(params: HandleKosmosInboundParams): Pr
       handler.sendReply(payload.text ?? '', conversationId);
     },
     onRecordError: (err) => {
-      console.error('[KosmosPlugin] recordInboundSession error:', err);
+      console.error('[OpenKosmosPlugin] recordInboundSession error:', err);
     },
     onDispatchError: (err, info) => {
-      console.error(`[KosmosPlugin] dispatch error (${info.kind}):`, err);
+      console.error(`[OpenKosmosPlugin] dispatch error (${info.kind}):`, err);
       handler.sendError('Failed to process message', conversationId);
     },
   });

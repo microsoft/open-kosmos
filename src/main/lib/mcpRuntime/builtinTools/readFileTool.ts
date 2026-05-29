@@ -15,9 +15,6 @@ import * as nodePath from 'path';
 import * as readline from 'readline';
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 
-// Re-export types for backward compatibility
-export type { BuiltinToolDefinition, ToolExecutionResult } from './types';
-
 // ============ Safety limit constants ============
 const READ_FILE_LIMITS = {
   MAX_BYTES_PER_CALL: 128 * 1024,    // 128KB - maximum bytes per call

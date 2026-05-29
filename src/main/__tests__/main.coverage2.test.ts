@@ -76,7 +76,7 @@ const mocks = vi.hoisted(() => {
     isPackaged: false,
     requestSingleInstanceLock: vi.fn(() => true),
     getPath: vi.fn((_name: string) => '/tmp/test-userdata'),
-    getName: vi.fn(() => 'openkosmos-test'),
+    getName: vi.fn(() => 'kosmos-test'),
     getVersion: vi.fn(() => '0.0.0-test'),
   };
 
@@ -249,7 +249,6 @@ vi.mock('../startup/lazy', () => ({
     Promise.resolve({
       setMainWindow: vi.fn(),
       getAllChatConfigs: vi.fn(() => []),
-      getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: '' })),
     }),
   ),
   getAppCacheManager: vi.fn(() => Promise.resolve(mockAppCacheManager)),
@@ -261,7 +260,6 @@ vi.mock('../startup/lazy', () => ({
   ),
   getProfileCacheManagerSync: vi.fn(() => ({
     getAllChatConfigs: vi.fn(() => []),
-    getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: '' })),
   })),
   getAdvancedLogger: vi.fn(() => mockAdvancedLogger),
   useRemoteChannelManager: vi.fn(async (fn: any) => fn({ stopAll: vi.fn(() => Promise.resolve()) })),
@@ -294,7 +292,6 @@ vi.mock('../lib/assetsFetcher/assetsLibraryManager', () => ({
 }));
 
 vi.mock('../lib/analytics', () => ({
-  appInsightsClient: { init: vi.fn() },
   analyticsManager: {
     init: vi.fn(() => Promise.resolve()),
     recordAppStart: vi.fn(() => Promise.resolve()),
@@ -311,9 +308,6 @@ vi.mock('../lib/scheduler/SchedulerManager', () => ({
   },
 }));
 
-vi.mock('../lib/mem0/openkosmos-adapters', () => ({
-  resetOpenKosmosMemory: vi.fn(() => Promise.resolve()),
-}));
 
 vi.mock('../lib/mcpRuntime/mcpClientManager', () => ({
   mcpClientManager: {

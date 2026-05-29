@@ -41,7 +41,7 @@ vi.mock('../../ui/ToastProvider', () => ({
 }))
 
 vi.mock('../../../../shared/constants/branding', () => ({
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }))
 
 vi.mock('../../../../main/lib/userDataADO/types/profile', () => ({

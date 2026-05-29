@@ -5,5 +5,5 @@
  * during application startup.
  */
 
-export { StartupUpdateService } from './startupUpdateService';
+export { StartupUpdateService, mergeEnv, mergeAgentMcpServers, mergeAgentSkills } from './startupUpdateService';
 export type { StartupUpdateStep, StartupUpdateProgress, StartupUpdateResult } from './startupUpdateService';

@@ -53,9 +53,6 @@ vi.mock('../../chat/agentChatManager', async () => ({
   },
 }));
 
-vi.mock('../../mem0/openkosmos-adapters', async () => ({
-  resetOpenKosmosMemory: vi.fn().mockResolvedValue(undefined),
-}));
 
 import { MainAuthManager } from '../authManager';
 

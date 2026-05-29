@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "kosmos-app",
+      "name": "open-kosmos-app",
       "dependencies": {
         "@ai-sdk/openai-compatible": "0.2.14",
         "@google/generative-ai": "^0.1.3",

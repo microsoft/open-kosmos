@@ -2,7 +2,7 @@
 
 > **Document Version**: v1.0
 > **Research Date**: 2026-02-26
-> **Purpose**: Provide technical reference for developing sub-agent capabilities in OpenOpenKosmos AI Studio
+> **Purpose**: Provide technical reference for developing sub-agent capabilities in OpenKosmos AI Studio
 
 ---
 

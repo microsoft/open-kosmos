@@ -30,7 +30,7 @@ function countTokens(text: string): number {
 // 1. Read Copilot token (from local auth.json)
 // ============================================================
 
-const BRAND_DIRS = ['openkosmos-app', 'Electron'];
+const BRAND_DIRS = ['open-kosmos-app', 'Electron'];
 
 function discoverAuthPaths(): string[] {
   const paths: string[] = [];

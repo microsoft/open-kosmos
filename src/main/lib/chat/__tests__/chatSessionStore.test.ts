@@ -21,7 +21,7 @@ const mockChatSessionManager = vi.hoisted(() => ({
   persistNewChatSession: vi.fn().mockResolvedValue(true),
   persistUpdatedChatSession: vi.fn().mockResolvedValue(true),
   deleteChatSession: vi.fn().mockResolvedValue(true),
-  getAllChatSessions: vi.fn().mockResolvedValue([]),
+  getChatSessions: vi.fn().mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 }),
 }));
 
 vi.mock('../../userDataADO/chatSessionManager', () => ({
@@ -81,7 +81,7 @@ describe('ChatSessionStore', () => {
     mockChatSessionManager.persistNewChatSession.mockResolvedValue(true);
     mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
     mockChatSessionManager.deleteChatSession.mockResolvedValue(true);
-    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
+    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
   });
 
   describe('getInstance', () => {
@@ -175,7 +175,7 @@ describe('ChatSessionStore', () => {
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       vi.clearAllMocks();
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const updated = makeMetadata({ title: 'Updated Title' });
       const result = await store.saveSession('alice', 'chat-1', updated, makeFile({ title: 'Updated Title' }));
@@ -198,7 +198,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const result = await store.patchMetadata('alice', 'chat-1', 'session-2026-01', { title: 'Patched' });
       expect(result).not.toBeNull();
@@ -222,7 +222,7 @@ describe('ChatSessionStore', () => {
       await store.createSession('alice', 'chat-1', makeMetadata({ readStatus: 'read' }), makeFile());
       vi.clearAllMocks();
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata({ readStatus: 'unread' })]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata({ readStatus: 'unread' })], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const result = await store.setReadStatus('alice', 'chat-1', 'session-2026-01', 'unread');
       expect(result).not.toBeNull();
@@ -260,7 +260,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata({ title: 'Renamed' })]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata({ title: 'Renamed' })], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const result = await store.renameSession('alice', 'chat-1', 'session-2026-01', 'Renamed');
       expect(result).not.toBeNull();
@@ -273,7 +273,7 @@ describe('ChatSessionStore', () => {
     it('removes session from cache and returns true', async () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const deleted = await store.deleteSession('alice', 'chat-1', 'session-2026-01');
       expect(deleted).toBe(true);
@@ -284,7 +284,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.deleteChatSession.mockResolvedValue(false);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const deleted = await store.deleteSession('alice', 'chat-1', 'session-2026-01');
       expect(deleted).toBe(false);
@@ -297,11 +297,11 @@ describe('ChatSessionStore', () => {
     it('merges in-memory overlays over persisted data', async () => {
       const store = createFreshStore();
       const persisted = makeMetadata({ chatSession_id: 'other-2026-01', title: 'Old' });
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([persisted]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [persisted], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       // Cache a different session
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([persisted]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [persisted], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const projection = await store.getChatSessionsProjection('alice', 'chat-1');
       expect(projection.alias).toBe('alice');
@@ -316,7 +316,7 @@ describe('ChatSessionStore', () => {
     it('counts unread user sessions', async () => {
       const store = createFreshStore();
       const unread = makeMetadata({ readStatus: 'unread' });
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.userUnreadCount).toBe(1);
@@ -330,7 +330,7 @@ describe('ChatSessionStore', () => {
         schedulerJobId: 'job-1',
         schedulerCompletedAt: new Date().toISOString(),
       });
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([recentScheduled]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [recentScheduled], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.scheduledUnreadCount).toBe(1);
@@ -345,7 +345,7 @@ describe('ChatSessionStore', () => {
         schedulerJobId: 'job-1',
         schedulerCompletedAt: oldDate,
       });
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([oldScheduled]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [oldScheduled], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.scheduledUnreadCount).toBe(0);
@@ -357,7 +357,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       const unread1 = makeMetadata({ chatSession_id: 'session-2026-01', readStatus: 'unread' });
       const unread2 = makeMetadata({ chatSession_id: 'session-2026-02', readStatus: 'unread' });
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread1, unread2]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread1, unread2], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
       mockChatSessionManager.readMonthIndex.mockResolvedValue({ sessions: [unread1] });
       mockChatSessionManager.getChatSessionFile.mockResolvedValue(makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
@@ -365,7 +365,7 @@ describe('ChatSessionStore', () => {
       // Pre-cache session 1 only to avoid loadMonthIndex for session 2
       await store.createSession('alice', 'chat-1', unread1, makeFile());
       vi.clearAllMocks();
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread1, unread2]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread1, unread2], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
       mockChatSessionManager.readMonthIndex.mockResolvedValue({
         sessions: [unread2],
       });
@@ -382,7 +382,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const result = await store.patchSchedulerMetadata('alice', 'chat-1', 'session-2026-01', {
         schedulerJobId: 'job-99',
@@ -424,7 +424,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata({ title: 'Original' }), makeFile());
       mockChatSessionManager.persistNewChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
+      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
 
       const result = await store.copySession('alice', 'chat-1', 'session-2026-01', 'fork-2026-01');
       expect(result).toBe(true);

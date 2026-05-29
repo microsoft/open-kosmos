@@ -33,7 +33,9 @@ interface AddMcpByConfigArgs {
     /** MCP server version (optional, defaults to 1.0.0) */
     version?: string;
     /** MCP server source (optional, defaults to ON-DEVICE) */
-    source?: 'ON-DEVICE' | 'PLUGIN';
+    source?: 'IN-LIBRARY' | 'ON-DEVICE';
+    /** 🆕 Remote CDN version (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
+    remoteVersion?: string;
   };
 }
 
@@ -103,8 +105,12 @@ export class CreateMcpServerFromConfigTool {
               },
               source: {
                 type: 'string',
-                enum: ['ON-DEVICE', 'PLUGIN'],
+                enum: ['IN-LIBRARY', 'ON-DEVICE'],
                 description: 'MCP server source (optional, defaults to ON-DEVICE)'
+              },
+              remoteVersion: {
+                type: 'string',
+                description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
               }
             },
             required: ['name', 'transport']
@@ -187,6 +193,10 @@ export class CreateMcpServerFromConfigTool {
         // 🆕 Added: version and source fields; use config values if specified, otherwise use defaults
         version: finalVersion,
         source: finalSource,
+        // 🆕 Added: remoteVersion field
+        // For IN-LIBRARY sources, remoteVersion equals version (both are the CDN library version)
+        // For ON-DEVICE sources, remoteVersion should be an empty string
+        remoteVersion: finalSource === 'IN-LIBRARY' ? finalVersion : ''
       };
 
       // 🆕 Refactored: call mcpClientManager to add MCP server (mcpClientManager internally updates ProfileCacheManager)

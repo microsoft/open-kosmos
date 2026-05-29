@@ -68,7 +68,7 @@ describe('FileOperations - mocked fs error paths', () => {
 
   it('cleanupOldLogFiles handles unlink failure gracefully (partial delete)', async () => {
     // Set up readdir to return one old log file
-    vi.mocked(fs.readdir).mockResolvedValue(['openkosmos-1999-01-01.log'] as any);
+    vi.mocked(fs.readdir).mockResolvedValue(['kosmos-1999-01-01.log'] as any);
     vi.mocked(fs.stat).mockResolvedValue({ size: 1024, birthtime: new Date(), mtime: new Date() } as any);
     // unlink throws but cleanupOldLogFiles should not propagate it
     vi.mocked(fs.unlink).mockRejectedValue(new Error('unlink failed'));

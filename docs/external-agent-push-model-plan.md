@@ -1,12 +1,12 @@
 # External Agent: Request-Response → Push Model Plan
 
-> **Summary (English):** This document describes the migration of External Agent from a request-response model (user sends → WS forwards → wait for reply/reply_end) to a push model where external bots can proactively push messages to Kosmos via `push`/`push_end` WebSocket messages. Key changes: fire-and-forget sends, `AgentChatPushReceiver` for streaming/persistence, and unread marking on push completion.
+> **Summary (English):** This document describes the migration of External Agent from a request-response model (user sends → WS forwards → wait for reply/reply_end) to a push model where external bots can proactively push messages to OpenKosmos via `push`/`push_end` WebSocket messages. Key changes: fire-and-forget sends, `AgentChatPushReceiver` for streaming/persistence, and unread marking on push completion.
 
 ## Background
 
 The current External Agent uses a request-response model: user sends message → WS forwards → wait for reply/reply_end → return. The entire flow is synchronously driven by `AgentChat.streamMessage`; external bots can only reply after the user sends a message and cannot proactively push messages.
 
-**Goal**: External bots can proactively push messages to the Kosmos chat interface at any time, without needing the user to trigger a message first.
+**Goal**: External bots can proactively push messages to the OpenKosmos chat interface at any time, without needing the user to trigger a message first.
 
 ---
 
@@ -332,7 +332,7 @@ interface PushMessageState {
 
 ### New WS Protocol Message Types
 
-Bot → Kosmos:
+Bot → OpenKosmos:
 ```json
 { "type": "push", "text": "chunk of text", "conversationId": "optional_session_id" }
 { "type": "push_end", "conversationId": "optional_session_id" }

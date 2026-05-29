@@ -61,8 +61,8 @@ vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger
 
 vi.mock('../../utilities/contentUtils', async () => ({ formatFileSize: vi.fn() }));
 
-vi.mock('../../userDataADO/openkosmosPlaceholders', async () => ({
-  openkosmosPlaceholderManager: {},
+vi.mock('../../userDataADO/kosmosPlaceholders', async () => ({
+  kosmosPlaceholderManager: {},
   containsOpenKosmosPlaceholder: vi.fn(() => false),
 }));
 

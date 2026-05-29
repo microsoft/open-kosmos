@@ -6,13 +6,11 @@ import * as https from 'https';
 import { spawn, execSync } from 'child_process';
 import { createLogger } from '../unifiedLogger';
 import { LocalPythonMirror } from './LocalPythonMirror';
-import { isFeatureEnabled } from '../featureFlags';
 import { appCacheManager } from '../userDataADO/appCacheManager';
 import type { RuntimeEnvironment, RuntimeMode } from '../userDataADO/types/app';
 import { DEFAULT_RUNTIME_ENVIRONMENT } from '../userDataADO/types/app';
 import { getTerminalManager } from '../terminalManager';
 import StreamZip from 'node-stream-zip';
-
 const logger = createLogger();
 
 export type InternalToolType = 'bun' | 'uv';
@@ -21,7 +19,6 @@ export class RuntimeManager {
   private static instance: RuntimeManager;
   private binPath: string;
   private venvPath: string;
-
   // Installation locks to prevent concurrent installations of the same component
   private installLocks: Map<string, Promise<void>> = new Map();
 
@@ -146,14 +143,13 @@ export class RuntimeManager {
    * Returns the absolute path to the Python virtual environment directory.
    *
    * The venv lives under {userData}/python-venv/ (e.g.
-   * ~/Library/Application Support/openkosmos-app/python-venv/ on macOS).
+   * ~/Library/Application Support/open-kosmos-app/python-venv/ on macOS).
    *
    * This is deliberately NOT in process.cwd()/.venv because:
    *   - process.cwd() is "/" on packaged macOS apps and "C:\Windows\System32"
    *     on packaged Windows apps — both are not writable.
    *   - app.getPath('userData') is always writable, in both dev and production.
-   *   - Other app-managed resources (whisper models, native modules, playwright
-   *     profiles) already live under userData.
+   *   - Other app-managed resources (playwright profiles) already live under userData.
    *
    * The VIRTUAL_ENV environment variable is set in getEnvWithInternalPath()
    * so that `uv pip install`, `python`, and any subprocess automatically

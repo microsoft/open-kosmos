@@ -22,7 +22,7 @@ import * as fs from 'fs/promises';
 import { SearchFileContentsTool } from '../searchFileContentsTool';
 
 async function makeTmpDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-cov2-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-cov2-'));
 }
 
 async function cleanTmpDir(dir: string) {
@@ -234,7 +234,7 @@ describe('SearchFileContentsTool — context invalid non-integer', () => {
   });
 });
 
-// ── isMicrosoftAuthority via windows.net URL ──────────────────────────────────
+// ── isOAuthAuthority via windows.net URL ──────────────────────────────────
 describe('SearchFileContentsTool — shouldSkipByGlob private', () => {
   const skip = (rel: string, glob?: string) =>
     (SearchFileContentsTool as any).shouldSkipByGlob(rel, glob);

@@ -4,35 +4,24 @@
 
 /**
  * All known Feature Flag names
- * Naming convention: openkosmosFeatureXXXXX
+ * Naming convention: kosmosFeatureXXXXX
  * Add new feature flags here
  */
 export type FeatureFlagName =
-  | 'openkosmosFeatureToolbarSettings'    // Settings page Toolbar entry
-  | 'openkosmosFeatureMemory'             // Memory/Context Enhancement feature
-  | 'openkosmosFeatureScreenshot'         // Screenshot capture feature
-  | 'openkosmosFeatureVoiceInput'         // Voice Input (Speech-to-Text) feature
+  | 'kosmosFeatureScreenshot'         // Screenshot capture feature
   | 'browserControl'                  // Browser Control / Chrome Extension feature
-  | 'openkosmosUseGit'                    // Git integration feature
-  | 'openkosmosFeatureScheduler'          // Cron-based scheduled task system
-  | 'openkosmosFeatureSubAgent'           // Sub-Agent system
-  | 'openkosmosFeatureSubAgentAutoWake'   // Auto-wake parent on background result ready
-  | 'openkosmosUseSync'                   // Sync feature for profile data
-
-  | 'openkosmosFeatureRemoteChannel'      // Remote Channel / Remote Control feature
-  | 'openkosmosPathPortability'           // Cross-OS path conversion for profile sync
-  | 'openkosmosFeatureRemoteChannelGraphDownload'   // Use Graph API for remote channel attachment downloads
-  | 'openkosmosFeatureBuddy'              // Buddy companion widget
-  | 'openkosmosFeatureMemexMemory'        // Per-agent Zettelkasten memory via memex MCP
-  | 'openkosmosFeatureCodingAgent'       // Foreground coding agent (Claude Code CLI)
-  | 'openkosmosFeatureAzureCli'          // Built-in Azure CLI execute tool
-  | 'openkosmosFeatureExternalAgent'    // External Agent via WebSocket
-  | 'openkosmosFeatureDoctor'            // Doctor (in-app self-diagnosis) entry in UserMenu
-  | 'openkosmosFeatureSendTeamsMessage'  // Teams write tools (send, react, edit) and Outlook email
-  | 'openkosmosFeatureAgencyCLI'         // Microsoft 365 MCP servers via Agency CLI
-  | 'openkosmosFeatureToolSearch'        // Deferred tool loading for large tool sets
-  | 'openkosmosFeaturePlugins'           // Plugin management feature
-  // Add more feature flags here...
+  | 'kosmosUseGit'                    // Git integration feature
+  | 'kosmosFeatureScheduler'          // Cron-based scheduled task system
+  | 'kosmosFeatureSubAgent'           // Sub-Agent system
+  | 'kosmosFeatureSubAgentAutoWake'   // Auto-wake parent on background result ready
+  | 'kosmosFeatureRemoteChannel'      // Remote Channel / Remote Control feature
+  | 'kosmosPathPortability'           // Cross-OS path conversion for profile sync
+  | 'kosmosFeatureBuddy'              // Buddy companion widget
+  | 'kosmosFeatureCodingAgent'       // Foreground coding agent (Claude Code CLI)
+  | 'kosmosFeatureExternalAgent'    // External Agent via WebSocket
+  | 'kosmosFeatureDoctor'            // Doctor (in-app self-diagnosis) entry in UserMenu
+  | 'kosmosFeatureToolSearch'        // Deferred tool loading for large tool sets
+  | 'kosmosFeaturePlugins'           // Plugin management feature
   ;
 
 /**
@@ -69,7 +58,7 @@ export interface FeatureFlagConfig {
    * defaultValue: false
    *
    * // Dynamic logic
-   * defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'pm-studio'
+   * defaultValue: (ctx) => ctx.isDev
    */
   defaultValue: FeatureFlagDefaultValue;
 }

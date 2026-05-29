@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-This document defines the implementation for making Skill installation and current-chat activation a single coherent flow in Kosmos.
+This document defines the implementation for making Skill installation and current-chat activation a single coherent flow in OpenKosmos.
 
 The design keeps the existing data model intact:
 
@@ -344,6 +344,32 @@ Callable means:
 2. appliedToCurrentAgent is true
 
 For current implementation, no extra runtime gate is needed beyond those two checks.
+
+## 11. Telemetry Changes
+
+### 11.1 Existing Event
+
+Keep the existing install analytics flow in:
+
+1. [src/main/lib/analytics/analyticsManager.ts](../src/main/lib/analytics/analyticsManager.ts)
+
+### 11.2 New Events
+
+Add:
+
+1. `skill_applied_to_agent`
+2. `skill_install_and_activate_completed`
+3. `skill_install_activation_abandoned`
+
+Suggested properties:
+
+1. `skillName`
+2. `skillVersion`
+3. `source`
+4. `chatId`
+5. `agentName`
+6. `resolution`
+7. `requestSource`
 
 ## 12. Testing Plan
 

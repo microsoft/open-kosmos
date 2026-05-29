@@ -13,7 +13,7 @@ describe('CrashCaptureManager', () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-crash-capture-'));
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-crash-capture-'));
     userDataDir = path.join(tempRoot, 'userData');
     crashDumpsDir = path.join(tempRoot, 'crashDumps');
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -31,7 +31,7 @@ describe('CrashCaptureManager', () => {
 
       return tempRoot;
     });
-    (electronMock.app.getName as Mock).mockReturnValue('openkosmos-test');
+    (electronMock.app.getName as Mock).mockReturnValue('kosmos-test');
     (electronMock.app.getVersion as Mock).mockReturnValue('9.9.9-test');
     (electronMock.app.on as unknown as Mock | undefined) = vi.fn();
     (electronMock.BrowserWindow as unknown as { fromId?: Mock }).fromId = vi.fn(() => null);
@@ -42,7 +42,7 @@ describe('CrashCaptureManager', () => {
   });
 
   it('captures recent logs, current run marker, and crash dumps in renderer-error bundles', async () => {
-    seedLogFile(userDataDir, 'openkosmos-2026-04-07.log', ['line-1', 'line-2']);
+    seedLogFile(userDataDir, 'kosmos-2026-04-07.log', ['line-1', 'line-2']);
     seedLogFile(userDataDir, 'renderer.log', ['renderer-line']);
     seedCrashDump(crashDumpsDir, 'renderer.dmp', 'dump-data');
 
@@ -64,7 +64,7 @@ describe('CrashCaptureManager', () => {
     expect(attachments.previousRun).toBe(false);
     expect(attachments.recentLogs).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ fileName: 'openkosmos-2026-04-07.log', copied: true }),
+        expect.objectContaining({ fileName: 'kosmos-2026-04-07.log', copied: true }),
         expect.objectContaining({ fileName: 'renderer.log', copied: true }),
       ]),
     );
@@ -74,7 +74,7 @@ describe('CrashCaptureManager', () => {
       ]),
     );
     expect(fs.existsSync(path.join(bundleDir, 'state', 'current-run.json'))).toBe(true);
-    expect(fs.existsSync(path.join(bundleDir, 'recent-logs', 'openkosmos-2026-04-07.tail.log'))).toBe(true);
+    expect(fs.existsSync(path.join(bundleDir, 'recent-logs', 'kosmos-2026-04-07.tail.log'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'crash-dumps', 'renderer.dmp'))).toBe(true);
     expect(fs.readFileSync(path.join(bundleDir, 'README.txt'), 'utf8')).toContain('crash-dumps/');
   });
@@ -88,7 +88,7 @@ describe('CrashCaptureManager', () => {
         sessionId: 'session-prev',
         pid: 321,
         startedAt: '2026-04-07T01:00:00.000Z',
-        appName: 'openkosmos-test',
+        appName: 'kosmos-test',
         appVersion: '1.2.3',
         platform: process.platform,
         arch: process.arch,
@@ -97,7 +97,7 @@ describe('CrashCaptureManager', () => {
       }),
       'utf8',
     );
-    seedLogFile(userDataDir, 'openkosmos-2026-04-07.log', ['main-line']);
+    seedLogFile(userDataDir, 'kosmos-2026-04-07.log', ['main-line']);
     seedCrashDump(crashDumpsDir, 'main.dmp', 'main-dump');
 
     const { crashCaptureManager } = await import('../CrashCaptureManager');

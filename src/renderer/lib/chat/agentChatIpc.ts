@@ -16,7 +16,6 @@ class AgentChatIpc {
   private toolResultListeners: ((result: any) => void)[] = [];
   private contextChangeListeners: ((stats: any) => void)[] = [];
 
-  private streamingCleanup: (() => void) | null = null;
   private toolUseCleanup: (() => void) | null = null;
   private toolResultCleanup: (() => void) | null = null;
   private toolMessageAddedCleanup: (() => void) | null = null;
@@ -37,17 +36,6 @@ class AgentChatIpc {
     this.streamingChunkCleanup = window.electronAPI.agentChat.onStreamingChunk((chunk: StreamingChunk) => {
       // chunk is automatically handled by AgentChatSessionCacheManager's IPC listener
       // No action needed here; just keep the connection alive
-    });
-
-    // 🔥 Retain old streamingMessage listener for backward compatibility (in case backend still sends it)
-    this.streamingCleanup = window.electronAPI.agentChat.onStreamingMessage((message: any) => {
-      this.streamingMessageListeners.forEach(listener => {
-        try {
-          listener(message);
-        } catch (error) {
-          logger.error('[AgentChatIpc] Error in streaming message listener:', error);
-        }
-      });
     });
 
     // Set up tool use listener
@@ -446,10 +434,6 @@ class AgentChatIpc {
     if (this.streamingChunkCleanup) {
       this.streamingChunkCleanup();
       this.streamingChunkCleanup = null;
-    }
-    if (this.streamingCleanup) {
-      this.streamingCleanup();
-      this.streamingCleanup = null;
     }
     if (this.toolUseCleanup) {
       this.toolUseCleanup();

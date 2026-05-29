@@ -23,8 +23,6 @@ import { useAuthContext } from '../auth/AuthProvider'
 import { useToast } from '../ui/ToastProvider'
 import { pluginApi } from '../../ipc/plugin'
 import type { PluginInfo } from '../../../shared/ipc/plugin'
-import { BRAND_NAME } from '../../../shared/constants/branding'
-import { isBuiltinAgent } from '../../../main/lib/userDataADO/types/profile'
 
 interface ApplyPluginToAgentsDialogProps {
   open: boolean
@@ -62,15 +60,9 @@ const ApplyPluginToAgentsDialog: React.FC<ApplyPluginToAgentsDialogProps> = ({
     if (!open || !pluginId) return []
 
     const items: AgentItem[] = []
-    const shouldInclude = (agent: { name: string; source?: string }) => {
-      if (isBuiltinAgent(agent.name, BRAND_NAME) && agent.name === 'Kobi') {
-        return false
-      }
-      return true
-    }
 
     for (const chat of chats) {
-      if (chat.chat_type === 'single_agent' && chat.agent && shouldInclude(chat.agent)) {
+      if (chat.chat_type === 'single_agent' && chat.agent) {
         items.push({
           chatId: chat.chat_id,
           agentName: chat.agent.name,
@@ -82,7 +74,6 @@ const ApplyPluginToAgentsDialog: React.FC<ApplyPluginToAgentsDialogProps> = ({
 
       if (chat.chat_type === 'multi_agent' && chat.agents) {
         for (const agent of chat.agents) {
-          if (!shouldInclude(agent)) continue
           items.push({
             chatId: chat.chat_id,
             agentName: agent.name,

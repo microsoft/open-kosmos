@@ -1,27 +1,27 @@
 # @openclaw/kosmos — Channel Plugin Setup Guide
 
-Connect [OpenClaw](https://openclaw.dev) to Kosmos Desktop, so OpenClaw agents can receive messages from Kosmos users and reply through the Kosmos chat UI.
+Connect [OpenClaw](https://openclaw.dev) to OpenKosmos Desktop, so OpenClaw agents can receive messages from OpenKosmos users and reply through the OpenKosmos chat UI.
 
 ## How It Works
 
 ```
-Kosmos User → Kosmos Desktop (WS Server :9527) → OpenClaw Plugin (WS Client) → OpenClaw Agent → Reply → Kosmos UI
+OpenKosmos User → OpenKosmos Desktop (WS Server :9527) → OpenClaw Plugin (WS Client) → OpenClaw Agent → Reply → OpenKosmos UI
 ```
 
-- **Kosmos** runs a WebSocket server on port 9527
+- **OpenKosmos** runs a WebSocket server on port 9527
 - **OpenClaw** connects as a WS client using this plugin
-- Each Kosmos "External Agent" has its own auth token
+- Each OpenKosmos "External Agent" has its own auth token
 - Messages are routed by `conversationId` so multiple chat sessions stay isolated
 
 ## Prerequisites
 
-- Kosmos Desktop running with at least one **External Agent** created
+- OpenKosmos Desktop running with at least one **External Agent** created
 - OpenClaw instance (self-hosted or cloud)
-- Network connectivity between OpenClaw and Kosmos (same machine, LAN, or tunnel)
+- Network connectivity between OpenClaw and OpenKosmos (same machine, LAN, or tunnel)
 
-## Step 1: Create an External Agent in Kosmos
+## Step 1: Create an External Agent in OpenKosmos
 
-1. Open Kosmos Desktop
+1. Open OpenKosmos Desktop
 2. Click **"+ New Agent"** → select **"🐾 External Agent"**
 3. Give it a name (e.g. "My OpenClaw Bot")
 4. After creation, open the agent's **Settings** tab
@@ -43,15 +43,15 @@ plugins:
     kosmos:
       enabled: true
       config:
-        url: "ws://YOUR_KOSMOS_IP:9527"    # WebSocket URL from Kosmos UI
+        url: "ws://YOUR_OpenKosmos_IP:9527"    # WebSocket URL from OpenKosmos UI
         accounts:
           <openclaw-agent-id>:               # Must match your OpenClaw agent id
-            token: "YOUR_AUTH_TOKEN"        # Auth token from Kosmos agent settings
+            token: "YOUR_AUTH_TOKEN"        # Auth token from OpenKosmos agent settings
 ```
 
 ### Multiple Agents
 
-If you have multiple External Agents in Kosmos, each with its own token:
+If you have multiple External Agents in OpenKosmos, each with its own token:
 
 ```yaml
 plugins:
@@ -78,48 +78,48 @@ openclaw start
 You should see in the logs:
 
 ```
-[KosmosPlugin] Connecting to Kosmos at ws://10.0.0.5:9527 (account: default)
-[KosmosPlugin] Connected to Kosmos, sending auth
-[KosmosPlugin] Authenticated with Kosmos
+[OpenKosmosPlugin] Connecting to OpenKosmos at ws://10.0.0.5:9527 (account: default)
+[OpenKosmosPlugin] Connected to OpenKosmos, sending auth
+[OpenKosmosPlugin] Authenticated with OpenKosmos
 ```
 
-In Kosmos, the connection indicator in the agent settings will turn green (● Connected).
+In OpenKosmos, the connection indicator in the agent settings will turn green (● Connected).
 
 ## Troubleshooting
 
 ### Connection refused
-- Verify Kosmos is running and the External Agent feature is enabled
-- Check the IP address — use the address shown in Kosmos agent settings, not `localhost` (unless OpenClaw runs on the same machine)
+- Verify OpenKosmos is running and the External Agent feature is enabled
+- Check the IP address — use the address shown in OpenKosmos agent settings, not `localhost` (unless OpenClaw runs on the same machine)
 - Check firewall rules for port 9527
 
 ### Auth token rejected (close code 4004)
-- The token in `config.yaml` must exactly match the token shown in Kosmos agent settings
+- The token in `config.yaml` must exactly match the token shown in OpenKosmos agent settings
 - Each External Agent has a unique token — make sure you're using the right one
 - The plugin will **not** retry after a 4004 rejection (to avoid brute-force)
 
 ### Reconnection
-The plugin automatically reconnects with exponential backoff (1s → 2s → 4s → ... → 30s max) on normal disconnections (network drop, Kosmos restart). No manual intervention needed.
+The plugin automatically reconnects with exponential backoff (1s → 2s → 4s → ... → 30s max) on normal disconnections (network drop, OpenKosmos restart). No manual intervention needed.
 
 ### Messages not arriving
 - Ensure the OpenClaw agent routing is configured to handle the `kosmos` channel
-- Check that `conversationId` is being passed correctly — each Kosmos chat session has its own ID
+- Check that `conversationId` is being passed correctly — each OpenKosmos chat session has its own ID
 
 ## WebSocket Protocol Reference
 
-### Client → Server (Plugin → Kosmos)
+### Client → Server (Plugin → OpenKosmos)
 
 | Message | Fields | Description |
 |---------|--------|-------------|
 | `auth` | `type: "auth"`, `token: string` | First message after connection |
 | `reply` | `type: "reply"`, `text: string`, `conversationId: string` | Agent reply to user |
 
-### Server → Client (Kosmos → Plugin)
+### Server → Client (OpenKosmos → Plugin)
 
 | Message | Fields | Description |
 |---------|--------|-------------|
 | `auth_success` | `type: "auth_success"` | Authentication succeeded |
 | `auth_error` | `type: "auth_error"`, `error: string` | Authentication failed |
-| `message` | `type: "message"`, `text: string`, `conversationId: string` | User message from Kosmos |
+| `message` | `type: "message"`, `text: string`, `conversationId: string` | User message from OpenKosmos |
 | `error` | `type: "error"`, `error: string`, `conversationId?: string` | Server error |
 
 ### Close Codes

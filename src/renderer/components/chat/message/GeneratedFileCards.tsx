@@ -286,7 +286,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
   const handleAddToKnowledge = async (filePath: string) => {
     try {
       setFileMenuOpen({});
-      const knowledgeBasePath = currentAgent?.knowledge?.knowledgeBase ?? currentAgent?.knowledgeBase;
+      const knowledgeBasePath = currentAgent?.knowledge?.knowledgeBase;
       if (!knowledgeBasePath) {
         showToast('Current agent has no knowledge base configured', 'error');
         return;
@@ -505,7 +505,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
                 <span className="file-attachment-menu-item-text">Install skill</span>
               </button>
             )}
-            {shouldShowMoveToKnowledgeBaseOption(filePath, currentAgent?.knowledge?.knowledgeBase ?? currentAgent?.knowledgeBase, isSessionIdle) && (
+            {shouldShowMoveToKnowledgeBaseOption(filePath, currentAgent?.knowledge?.knowledgeBase, isSessionIdle) && (
               <button
                 className="file-attachment-menu-item"
                 onClick={() => handleAddToKnowledge(filePath)}

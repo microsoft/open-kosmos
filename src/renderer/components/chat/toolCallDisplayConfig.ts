@@ -242,6 +242,8 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string, tool
       return 'Got current time';
 
     // ===== MCP management tools =====
+    case 'get_mcp_template_from_library':
+      return 'Got MCP config from library';
     case 'create_mcp_server_from_config':
       return 'Added MCP server';
     case 'update_mcp_server':
@@ -252,6 +254,8 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string, tool
       return 'Toggled MCP server';
 
     // ===== Agent management tools =====
+    case 'get_agent_template_from_library':
+      return 'Got agent config from library';
     case 'create_agent_from_config':
       return 'Added agent';
     case 'update_agent':
@@ -392,6 +396,7 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
       return 'calendar';
 
     // ===== MCP management tools =====
+    case 'get_mcp_template_from_library':
     case 'create_mcp_server_from_config':
     case 'update_mcp_server':
     case 'get_mcp_status':
@@ -399,6 +404,7 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
       return 'settings';
 
     // ===== Agent management tools =====
+    case 'get_agent_template_from_library':
     case 'create_agent_from_config':
     case 'update_agent':
     case 'get_agent_status':

@@ -38,7 +38,7 @@ export class SubAgentAutoWakeController {
   }
 
   private handleResultReady(sessionId: string): void {
-    if (!this.host.isFeatureEnabled('openkosmosFeatureSubAgentAutoWake')) return;
+    if (!this.host.isFeatureEnabled('kosmosFeatureSubAgentAutoWake')) return;
 
     const existing = this.debounceTimers.get(sessionId);
     if (existing) clearTimeout(existing);

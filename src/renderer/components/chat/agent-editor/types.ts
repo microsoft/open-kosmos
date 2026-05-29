@@ -10,13 +10,13 @@ export interface AgentConfig {
   id: string
   name: string
   emoji: string
-  avatar?: string // Agent avatar URL
+  avatar?: string // Agent avatar URL (only for IN-LIBRARY agents)
   role: string
   model: string
   workspace?: string // Agent working directory path
   knowledgeBase?: string // Knowledge Base directory path, defaults to workspace/knowledge
   version?: string // Agent version number
-  source?: 'ON-DEVICE' | 'EXTERNAL' // Agent source
+  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL' // Agent source
   mcpServers: AgentMcpServer[] // MCP server config array
   systemPrompt: string
   skills?: string[] // List of Skill names used by this Agent
@@ -38,7 +38,8 @@ export interface TabComponentProps {
   onDataChange?: (tabName: AgentEditorTabName, data: Partial<AgentConfig>, hasChanges: boolean) => void // Change tracking callback
   cachedData?: Partial<AgentConfig> | null // Cached modified data, used to preserve changes when switching tabs
   fieldErrors?: Record<string, string> // Field-level error messages
-  readOnly?: boolean // Read-only mode, prevents editing for certain agents
+  readOnly?: boolean // Read-only mode, prevents editing for IN-LIBRARY agents
+  isFromLibrary?: boolean // Whether from Library, for fine-grained edit permission control (e.g., model editable but name not editable in Basic Tab)
 }
 
 export interface TabState {

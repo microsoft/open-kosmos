@@ -28,7 +28,7 @@ export interface FacadeResult {
 export interface ManageSkillsInput {
   action: 'install' | 'uninstall' | 'bind' | 'unbind';
   skill_names: string[];
-  source?: 'device';
+  source?: 'library' | 'device' | 'clawhub' | 'github';
   path?: string;
   agent_names?: string[];
   all_agents?: boolean;
@@ -42,6 +42,7 @@ export interface ManageMcpInput {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  from_library?: boolean;
 }
 
 export interface ManageAgentsInput {
@@ -57,6 +58,7 @@ export interface ManageAgentsInput {
   mcp_tool_filter?: Record<string, string[]>;
   skills?: string[];
   memory_enabled?: boolean;
+  from_library?: boolean;
   greeting?: string;
   quick_starts?: Array<{ title: string; description: string; prompt: string }>;
 }

@@ -1,8 +1,23 @@
 /**
  * Update Agent by Config Tool
- * Updates an installed Agent using Agent configuration.
+ * Updates an installed Agent using Agent configuration
  *
- * Source is always ON-DEVICE. Version is auto-incremented on each update.
+ * Workflow:
+ * 1. Receive Agent configuration object
+ * 2. Validate that the Agent is installed (by name lookup)
+ * 3. Process update according to source and version rules
+ * 4. Call profileCacheManager to update the configuration
+ *
+ * Source and Version update rules:
+ * 2.1. If original source is ON-DEVICE
+ *      2.1.1. If new source is ON-DEVICE => ignore new version, use original source, auto-increment original version patch
+ *      2.1.2. If new source is IN-LIBRARY => new version must not be empty && new version > original version, override with new source and version
+ *      2.1.3. If new source is not provided => ignore new version, use original source, auto-increment original version patch
+ *
+ * 2.2. If original source is IN-LIBRARY
+ *      2.2.1. If new source is ON-DEVICE => not allowed to overwrite IN-LIBRARY config with ON-DEVICE config
+ *      2.2.2. If new source is IN-LIBRARY => new version must not be empty && new version > original version, override with new source and version
+ *      2.2.3. If new source is not provided => must specify new source and new version
  */
 
 import { BuiltinToolDefinition } from './types';
@@ -10,9 +25,12 @@ import {
   ChatAgent,
   AgentMcpServer,
   AgentKnowledge,
+  ContextEnhancement,
+  DEFAULT_CONTEXT_ENHANCEMENT,
   DEFAULT_CHAT_AGENT
 } from '../../userDataADO/types/profile';
 import { profileCacheManager } from "../../userDataADO/profileCacheManager";
+import { mergeAgentMcpServers, mergeAgentSkills } from "../../startupUpdate/startupUpdateService";
 
 /**
  * Agent MCP Server configuration input interface
@@ -58,7 +76,7 @@ interface UpdateAgentByConfigArgs {
     name: string;
     /** Agent emoji (optional) */
     emoji?: string;
-    /** Agent avatar URL (optional; should be empty for ON-DEVICE agents) */
+    /** Agent avatar URL (optional; only for IN-LIBRARY agents, should be empty for ON-DEVICE agents) */
     avatar?: string;
     /** Agent role description (optional) */
     role?: string;
@@ -78,8 +96,12 @@ interface UpdateAgentByConfigArgs {
     knowledgeBase?: string;
     /** Agent knowledge settings (optional) */
     knowledge?: AgentKnowledgeInput;
-    /** Agent version (optional, auto-managed) */
+    /** Agent version (required when source is IN-LIBRARY) */
     version?: string;
+    /** Agent source */
+    source?: 'IN-LIBRARY' | 'ON-DEVICE';
+    /** 🆕 Remote CDN version (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
+    remoteVersion?: string;
     /** 🆕 Zero States configuration (optional, for initial chat experience) */
     zero_states?: {
       greeting?: string;
@@ -126,6 +148,43 @@ function incrementPatchVersion(version: string): string {
   return `${major}.${minor}.${patch + 1}`;
 }
 
+/**
+ * Compare two semantic version numbers
+ * @param newVersion new version
+ * @param oldVersion original version
+ * @returns 1 if newVersion > oldVersion, -1 if newVersion < oldVersion, 0 if equal
+ */
+function compareVersions(newVersion: string, oldVersion: string): number {
+  const parseVersion = (version: string): number[] => {
+    const parts = version.split('.');
+    return [
+      parseInt(parts[0], 10) || 0,
+      parseInt(parts[1], 10) || 0,
+      parseInt(parts[2], 10) || 0
+    ];
+  };
+
+  const newParts = parseVersion(newVersion);
+  const oldParts = parseVersion(oldVersion);
+
+  for (let i = 0; i < 3; i++) {
+    if (newParts[i] > oldParts[i]) return 1;
+    if (newParts[i] < oldParts[i]) return -1;
+  }
+
+  return 0;
+}
+
+/**
+ * Check whether the new version is greater than the original version
+ * @param newVersion new version
+ * @param oldVersion original version
+ * @returns true if newVersion > oldVersion
+ */
+function isVersionGreater(newVersion: string, oldVersion: string): boolean {
+  return compareVersions(newVersion, oldVersion) > 0;
+}
+
 function normalizeKnowledgeInput(input: AgentKnowledgeInput | undefined, existingAgent: ChatAgent): AgentKnowledge {
   const existingKnowledge = existingAgent.knowledge || {};
 
@@ -133,7 +192,7 @@ function normalizeKnowledgeInput(input: AgentKnowledgeInput | undefined, existin
     ...existingKnowledge,
     knowledgeBase: input?.knowledgeBase !== undefined
       ? input.knowledgeBase
-      : (existingKnowledge.knowledgeBase ?? existingAgent.knowledgeBase),
+      : (existingKnowledge.knowledgeBase ?? existingAgent.knowledge?.knowledgeBase),
   };
 }
 
@@ -166,7 +225,7 @@ export class UpdateAgentTool {
               },
               avatar: {
                 type: 'string',
-                description: 'The avatar image URL for the agent (optional, should be empty for ON-DEVICE agents)'
+                description: 'The avatar image URL for the agent (optional, only used for IN-LIBRARY agents, should be empty for ON-DEVICE agents)'
               },
               role: {
                 type: 'string',
@@ -260,12 +319,16 @@ export class UpdateAgentTool {
               },
               version: {
                 type: 'string',
-                description: 'Agent version (auto-managed)'
+                description: 'Agent version (required when source is IN-LIBRARY)'
               },
               source: {
                 type: 'string',
-                enum: ['ON-DEVICE'],
+                enum: ['IN-LIBRARY', 'ON-DEVICE'],
                 description: 'Agent source'
+              },
+              remoteVersion: {
+                type: 'string',
+                description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
               },
               zero_states: {
                 type: 'object',
@@ -371,11 +434,79 @@ export class UpdateAgentTool {
 
       const existingAgent = existingChat.agent;
       const chatId = existingChat.chat_id;
+      const oldSource = existingAgent.source || 'ON-DEVICE';
       const oldVersion = existingAgent.version || '1.0.0';
+      const newSource = config.source;
+      const newVersion = config.version;
 
-      // Always ON-DEVICE; auto-increment patch version
-      const finalSource: 'ON-DEVICE' = 'ON-DEVICE';
-      const finalVersion: string = incrementPatchVersion(oldVersion);
+      // Process update according to source and version rules
+      let finalSource: 'IN-LIBRARY' | 'ON-DEVICE' = oldSource as 'IN-LIBRARY' | 'ON-DEVICE';
+      let finalVersion: string = oldVersion;
+
+      // 2.1. If original source is ON-DEVICE
+      if (oldSource === 'ON-DEVICE') {
+        if (newSource === 'ON-DEVICE' || newSource === undefined) {
+          // 2.1.1 or 2.1.3: ignore new version, use original source, auto-increment original version patch
+          finalSource = 'ON-DEVICE';
+          finalVersion = incrementPatchVersion(oldVersion);
+        } else if (newSource === 'IN-LIBRARY') {
+          // 2.1.2: new version must not be empty && new version > original version, override with new source and version
+          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
+            return {
+              success: false,
+              message: 'When changing source from ON-DEVICE to IN-LIBRARY, version must be provided',
+              error: 'VERSION_REQUIRED'
+            };
+          }
+          const trimmedNewVersion = newVersion.trim();
+          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
+            return {
+              success: false,
+              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating to IN-LIBRARY`,
+              error: 'VERSION_NOT_GREATER'
+            };
+          }
+          finalSource = 'IN-LIBRARY';
+          finalVersion = trimmedNewVersion;
+        }
+      }
+      // 2.2. If original source is IN-LIBRARY
+      else if (oldSource === 'IN-LIBRARY') {
+        if (newSource === 'ON-DEVICE') {
+          // 2.2.1: not allowed to overwrite IN-LIBRARY config with ON-DEVICE config
+          return {
+            success: false,
+            message: 'Cannot override IN-LIBRARY configuration with ON-DEVICE configuration. IN-LIBRARY Agents must be updated from the library.',
+            error: 'SOURCE_OVERRIDE_NOT_ALLOWED'
+          };
+        } else if (newSource === 'IN-LIBRARY') {
+          // 2.2.2: new version must not be empty && new version > original version, override with new source and version
+          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
+            return {
+              success: false,
+              message: 'When updating IN-LIBRARY Agent, version must be provided',
+              error: 'VERSION_REQUIRED'
+            };
+          }
+          const trimmedNewVersion = newVersion.trim();
+          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
+            return {
+              success: false,
+              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating IN-LIBRARY Agent`,
+              error: 'VERSION_NOT_GREATER'
+            };
+          }
+          finalSource = 'IN-LIBRARY';
+          finalVersion = trimmedNewVersion;
+        } else {
+          // 2.2.3: if new source is not provided => must specify new source and new version
+          return {
+            success: false,
+            message: 'When updating IN-LIBRARY Agent without specifying source, both source and version must be provided',
+            error: 'SOURCE_AND_VERSION_REQUIRED'
+          };
+        }
+      }
 
       const normalizedKnowledge = normalizeKnowledgeInput({
         ...knowledgeInput,
@@ -383,33 +514,50 @@ export class UpdateAgentTool {
       }, existingAgent);
 
       // Build the updated ChatAgent
-      // Build mcp_servers array (full replacement for ON-DEVICE)
+      // Build mcp_servers array (if new ones are provided)
+      // IN-LIBRARY update: merge strategy — keep local tool selection, add remote new servers
+      // ON-DEVICE update: full replacement
       let finalMcpServers: AgentMcpServer[] | undefined;
       if (config.mcp_servers !== undefined) {
-        finalMcpServers = (config.mcp_servers || []).map(server => ({
+        const newMcpServers = (config.mcp_servers || []).map(server => ({
           name: server.name,
           tools: Array.isArray(server.tools) ? server.tools : []
         }));
+        if (finalSource === 'IN-LIBRARY') {
+          // IN-LIBRARY: merge — preserve local tools selections, add new remote servers
+          finalMcpServers = mergeAgentMcpServers(existingAgent.mcp_servers || [], newMcpServers);
+        } else {
+          // ON-DEVICE: complete replacement
+          finalMcpServers = newMcpServers;
+        }
       }
 
-      // Build skills array (full replacement for ON-DEVICE)
+      // Build skills array
+      // IN-LIBRARY update: merge strategy — keep local skills, add remote new skills
+      // ON-DEVICE update: full replacement
       let finalSkills: string[] | undefined;
       if (config.skills !== undefined) {
-        finalSkills = config.skills;
+        if (finalSource === 'IN-LIBRARY') {
+          // IN-LIBRARY: merge — union of local and remote skills
+          finalSkills = mergeAgentSkills(existingAgent.skills || [], config.skills || []);
+        } else {
+          // ON-DEVICE: complete replacement
+          finalSkills = config.skills;
+        }
       }
 
       // Build context_enhancement (if new ones are provided)
-      let contextEnhancement: Record<string, unknown> | undefined;
+      let contextEnhancement: ContextEnhancement | undefined;
       if (config.context_enhancement !== undefined) {
-        const existingCE = (existingAgent.context_enhancement || {}) as any;
+        const existingCE = existingAgent.context_enhancement || DEFAULT_CONTEXT_ENHANCEMENT;
         contextEnhancement = {
           search_memory: {
-            enabled: config.context_enhancement?.search_memory?.enabled ?? existingCE?.search_memory?.enabled ?? false,
-            semantic_similarity_threshold: config.context_enhancement?.search_memory?.semantic_similarity_threshold ?? existingCE?.search_memory?.semantic_similarity_threshold ?? 0.7,
-            semantic_top_n: config.context_enhancement?.search_memory?.semantic_top_n ?? existingCE?.search_memory?.semantic_top_n ?? 5
+            enabled: config.context_enhancement?.search_memory?.enabled ?? existingCE.search_memory.enabled,
+            semantic_similarity_threshold: config.context_enhancement?.search_memory?.semantic_similarity_threshold ?? existingCE.search_memory.semantic_similarity_threshold,
+            semantic_top_n: config.context_enhancement?.search_memory?.semantic_top_n ?? existingCE.search_memory.semantic_top_n
           },
           generate_memory: {
-            enabled: config.context_enhancement?.generate_memory?.enabled ?? existingCE?.generate_memory?.enabled ?? false
+            enabled: config.context_enhancement?.generate_memory?.enabled ?? existingCE.generate_memory.enabled
           }
         };
       }
@@ -420,15 +568,25 @@ export class UpdateAgentTool {
         emoji: config.emoji || existingAgent.emoji,
         avatar: config.avatar !== undefined ? config.avatar : (existingAgent.avatar || ''),
         role: config.role || existingAgent.role,
-        model: config.model || existingAgent.model,
+        // model defers to local: keep local model for IN-LIBRARY, allow remote override for ON-DEVICE
+        model: finalSource === 'IN-LIBRARY' ? (existingAgent.model || config.model) : (config.model || existingAgent.model),
         system_prompt: config.system_prompt !== undefined ? config.system_prompt : existingAgent.system_prompt,
         workspace: config.workspace !== undefined ? config.workspace : existingAgent.workspace,
         knowledge: normalizedKnowledge,
+        // mcp_servers and skills have already been merged or replaced based on source type
         mcp_servers: finalMcpServers !== undefined ? finalMcpServers : existingAgent.mcp_servers,
+        // Use new context_enhancement if provided; otherwise keep original
         context_enhancement: contextEnhancement !== undefined ? contextEnhancement : existingAgent.context_enhancement,
+        // skills have already been merged or replaced based on source type
         skills: finalSkills !== undefined ? finalSkills : existingAgent.skills,
+        // Version and source use the result after rule processing
         version: finalVersion,
         source: finalSource,
+        // 🆕 remoteVersion: use the passed value or keep original for IN-LIBRARY; clear for ON-DEVICE
+        remoteVersion: finalSource === 'IN-LIBRARY'
+          ? (config.remoteVersion || existingAgent.remoteVersion || '')
+          : '',
+        // 🆕 zero_states: use new value if provided; otherwise keep original
         zero_states: config.zero_states !== undefined ? config.zero_states : existingAgent.zero_states
       };
 
@@ -446,12 +604,12 @@ export class UpdateAgentTool {
       // Successfully updated
       return {
         success: true,
-        message: `Successfully updated Agent "${agentName}". Version: ${oldVersion} -> ${finalVersion}.`,
+        message: `Successfully updated Agent "${agentName}". Version: ${oldVersion} -> ${finalVersion}, Source: ${oldSource} -> ${finalSource}.`,
         agent_name: agentName,
         chat_id: chatId,
         old_version: oldVersion,
         new_version: finalVersion,
-        old_source: 'ON-DEVICE',
+        old_source: oldSource,
         new_source: finalSource
       };
 
@@ -485,8 +643,8 @@ export class UpdateAgentTool {
     }
 
     // Validate source if provided
-    if (config.source && !['ON-DEVICE'].includes(config.source)) {
-      return { valid: false, error: 'Source must be ON-DEVICE' };
+    if (config.source && !['IN-LIBRARY', 'ON-DEVICE'].includes(config.source)) {
+      return { valid: false, error: 'Source must be IN-LIBRARY or ON-DEVICE' };
     }
 
     return { valid: true };

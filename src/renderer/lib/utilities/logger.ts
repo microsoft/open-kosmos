@@ -13,7 +13,7 @@ type LogLevel = 'DEBUG' | 'VERBOSE' | 'INFO' | 'WARN' | 'ERROR' | 'PERF' | 'SYST
 
 // Structured log entry for Main process to parse
 interface StructuredLog {
-  __openkosmos_log: true; // Marker for Main to identify our logs
+  __kosmos_log: true; // Marker for Main to identify our logs
   level: LogLevel;
   source: string; // Module/component name (from prefix)
   message: string; // First argument stringified
@@ -87,7 +87,7 @@ export class Logger {
       // Send structured JSON to Main process via IPC for file logging
       const [firstArg, ...restArgs] = args;
       const structuredLog: StructuredLog = {
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level,
         source: this.source,
         message: serializeArgs([firstArg]),

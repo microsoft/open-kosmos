@@ -1,7 +1,8 @@
 import React, { useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Import } from 'lucide-react';
+import { Plus, Import, Store } from 'lucide-react';
 import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
+import { isCdnConfigured } from '@shared/utils/cdn';
 
 interface McpAddMenuDropdownProps {
   mcpAddMenuRef: React.RefObject<HTMLDivElement>;
@@ -29,6 +30,14 @@ const McpAddMenuDropdown: React.FC<McpAddMenuDropdownProps> = ({
     e.preventDefault();
     // Navigate to VS Code import page
     navigate('/settings/mcp/import-vscode');
+    onClose();
+  };
+
+  const handleAddFromLibrary = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    // Navigate to MCP Library page
+    navigate('/settings/mcp/mcp-library');
     onClose();
   };
 
@@ -65,6 +74,17 @@ const McpAddMenuDropdown: React.FC<McpAddMenuDropdownProps> = ({
         <span className="dropdown-menu-item-icon"><Import size={16} strokeWidth={1.5} /></span>
         <span className="dropdown-menu-item-text">Import from VS Code</span>
       </button>
+      {/* MCP Library is a CDN-backed optional feature; hide entry when no CDN is configured */}
+      {isCdnConfigured() && (
+      <button
+        className="dropdown-menu-item"
+        onClick={handleAddFromLibrary}
+        role="menuitem"
+      >
+        <span className="dropdown-menu-item-icon"><Store size={16} strokeWidth={1.5} /></span>
+        <span className="dropdown-menu-item-text">Add from MCP Library</span>
+      </button>
+      )}
     </div>
   );
 };

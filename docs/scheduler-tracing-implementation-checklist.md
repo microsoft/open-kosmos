@@ -566,7 +566,7 @@ For a future missed-run incident, the logs must answer all of the following:
 
 ## Related Investigation Context
 
-- User incident profile: `user-a`
+- User incident profile: `user_a`
 - Incident shape: jobs loaded, enabled, and registered; app remained alive around expected fire time; no `executeJob()` entry logs for missed occurrences
-- Control case: `demo-user` minute-level cron schedule on app version `2.7.3` fired normally
+- Control case: `user_b` minute-level cron schedule on app version `2.7.3` fired normally
 - Current hypothesis: state-dependent scheduler runtime failure triggered by a specific recovery / updater / session lifecycle sequence rather than a general cron engine failure

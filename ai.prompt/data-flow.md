@@ -29,7 +29,7 @@ See [ai.prompt.md](../src/shared/ipc/ai.prompt.md). Two factory functions cover 
 - Main side pushes via `webContents.send()`; renderer subscribes via `ipcRenderer.on()`
 - Main process also emits `navigate:to` to trigger renderer-side route changes
 
-Currently adopted by: screenshot overlay, browser control, scheduler, plugin, buddy, memex.
+Currently adopted by: screenshot overlay, remote channels, browser control, scheduler, plugin, buddy.
 
 See [IPC Framework details](../src/shared/ipc/ai.prompt.md)
 

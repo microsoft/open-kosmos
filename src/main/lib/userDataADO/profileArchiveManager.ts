@@ -12,6 +12,7 @@ import {
   isProfileV2,
   isBuiltinAgent,
 } from './types/profile';
+import { BRAND_NAME } from '@shared/constants/branding';
 
 const logger = createConsoleLogger();
 
@@ -99,7 +100,7 @@ export async function archiveChatConfig(ctx: ArchiveContext, alias: string, chat
 
     const chatToArchive = profile.chats[chatIndex];
 
-    if (isBuiltinAgent(chatToArchive.agent?.name)) {
+    if (isBuiltinAgent(chatToArchive.agent?.name, BRAND_NAME)) {
       logger.warn('[ProfileCacheManager] Cannot archive built-in agent', 'archiveChatConfig', {
         alias, chatId, agentName: chatToArchive.agent?.name,
       });

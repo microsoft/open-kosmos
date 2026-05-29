@@ -13,12 +13,6 @@ interface SubAgentListItemProps {
   parentSkillsCount?: number
 }
 
-const contextAccessLabels: Record<string, string> = {
-  isolated: 'Isolated',
-  parent_summary: 'Summary',
-  full_history: 'Full History',
-}
-
 /**
  * SubAgentListItem - Sub-agent list card component
  *
@@ -36,7 +30,7 @@ const SubAgentListItem: React.FC<SubAgentListItemProps> = ({
 
   // Calculate effective MCP count (own + inherited from parent)
   const mcpDisplay = useMemo(() => {
-    const ownCount = config.mcpServers?.length || config.mcp_servers?.length || 0
+    const ownCount = config.mcpServers?.length || 0
     const inheritEnabled = config.inherit_mcp_servers !== false // default true
     if (inheritEnabled && parentMcpCount > 0) {
       return `${ownCount + parentMcpCount} (${parentMcpCount} inherited)`
@@ -65,11 +59,9 @@ const SubAgentListItem: React.FC<SubAgentListItemProps> = ({
       className={`sub-agent-card-wrapper ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
     >
-      {/* Header Row: emoji + name + version + menu button */}
+      {/* Header Row: name + menu button */}
       <div className="sub-agent-card-header">
-        <span className="sub-agent-card-emoji">{config.emoji}</span>
-        <span className="sub-agent-card-name">{config.display_name}</span>
-        <span className="sub-agent-card-version">v{config.version}</span>
+        <span className="sub-agent-card-name">{config.name}</span>
         <div className="sub-agent-menu-container">
           <button
             ref={menuButtonRef}
@@ -93,7 +85,8 @@ const SubAgentListItem: React.FC<SubAgentListItemProps> = ({
         <span className="sub-agent-card-meta-separator">·</span>
         <span>Skills: {skillsDisplay}</span>
         <span className="sub-agent-card-meta-separator">·</span>
-        <span>Context: {contextAccessLabels[config.context_access || 'isolated'] || config.context_access || 'isolated'}</span>
+        <span>Context: Isolated</span>
+
       </div>
     </div>
   )

@@ -54,7 +54,7 @@ vi.mock('../../../lib/userData/types', async (importOriginal) => {
   };
 });
 
-vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'openkosmos' }));
+vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'kosmos' }));
 
 function buildElectronApi() {
   return {
@@ -735,17 +735,6 @@ describe('When electronAPI is unavailable', () => {
     await new Promise(r => setTimeout(r, 50));
     const agentAvatars = screen.getAllByTestId('agent-avatar');
     expect(agentAvatars.length).toBeGreaterThan(0);
-  });
-});
-
-// ============================================================
-// Example agent badge
-// ============================================================
-
-describe('Example agent badge', () => {
-  it('shows Example badge for PM Agent - Journeys', () => {
-    render(<AgentList chats={[makeChat({ agent: { name: 'PM Agent - Journeys' } })]} excludeBuiltinAgents={false} />);
-    expect(screen.getByText('Example')).toBeInTheDocument();
   });
 });
 

@@ -8,8 +8,6 @@
  * - deleteChatSession: invalid id, no month, monthIndex missing, empty after delete
  * - getChatSessionFile: invalid id, no month, monthIndex missing, session not in index, file missing
  * - getMoreChatSessions: no chatIndex, fromMonthIndex >= months
- * - getAllChatSessions: no chatIndex
- * - migrateFromProfile: empty sessions, invalid ids, no file content
  * - withMonthIndexWriteLock: concurrent operations
  */
 
@@ -398,63 +396,6 @@ describe('ChatSessionManager coverage2', () => {
       const result = await manager.getMoreChatSessions('user', 'chat1', 0);
       expect(result.sessions).toHaveLength(1);
       expect(result.loadedMonth).toBe('202412');
-    });
-  });
-
-  describe('getAllChatSessions', () => {
-    it('returns empty when no chat index', async () => {
-      (fs.existsSync as any).mockReturnValueOnce(false);
-      const result = await manager.getAllChatSessions('user', 'chat1');
-      expect(result).toHaveLength(0);
-    });
-
-    it('returns empty on error', async () => {
-      (fs.existsSync as any).mockReturnValueOnce(true);
-      mockFsPromises.readFile.mockRejectedValueOnce(new Error('io error'));
-      const result = await manager.getAllChatSessions('user', 'chat1');
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  describe('migrateFromProfile', () => {
-    it('returns true for empty sessions', async () => {
-      const result = await manager.migrateFromProfile('user', 'chat1', [], async () => null);
-      expect(result).toBe(true);
-    });
-
-    it('skips invalid chatSessionIds', async () => {
-      const { isValidChatSessionId } = await import('../pathUtils');
-      (isValidChatSessionId as any).mockReturnValueOnce(false);
-
-      mockFsPromises.writeFile.mockResolvedValue(undefined);
-      const result = await manager.migrateFromProfile('user', 'chat1', [
-        { chatSession_id: 'bad-id', title: 'Test', last_updated: '' } as any,
-      ], async () => null);
-      expect(result).toBe(true);
-    });
-
-    it('handles missing getChatSessionFile gracefully', async () => {
-      (fs.existsSync as any).mockReturnValue(false);
-      mockFsPromises.writeFile.mockResolvedValue(undefined);
-      mockFsPromises.rename.mockResolvedValue(undefined);
-      mockFsPromises.readFile.mockResolvedValue(JSON.stringify({
-        chat_id: 'chat1', months: [], last_updated: ''
-      }));
-
-      const result = await manager.migrateFromProfile('user', 'chat1', [
-        { chatSession_id: VALID_SESSION_ID, title: 'Test', last_updated: '2024-12-01' } as any,
-      ], async () => null); // No file content
-      expect(result).toBe(true);
-    });
-
-    it('returns false on exception', async () => {
-      mockFsPromises.writeFile.mockRejectedValue(new Error('disk error'));
-      mockFsPromises.readFile.mockRejectedValue(new Error('read error'));
-      const result = await manager.migrateFromProfile('user', 'chat1', [
-        { chatSession_id: VALID_SESSION_ID, title: 'Test', last_updated: '2024-12-01' } as any,
-      ], async () => null);
-      // Returns false or true depending on error handling — just check no unhandled error
-      expect(typeof result).toBe('boolean');
     });
   });
 

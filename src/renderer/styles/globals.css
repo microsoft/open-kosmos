@@ -577,7 +577,8 @@
 }
 
 .model-view,
-.mcp-view {
+.mcp-view,
+.toolbar-settings-view {
   height: 100%;
   overflow: hidden;
   display: flex;

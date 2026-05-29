@@ -175,6 +175,34 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
 
   // Compute whether to show the Update button and its tooltip
   const updateButtonInfo = useMemo(() => {
+    if (!agent) {
+      return { show: false, tooltip: '' };
+    }
+
+    const { version, remoteVersion, source } = agent;
+
+    // Condition 0: ON-DEVICE agents should not show the Update button
+    // ON-DEVICE agents are user-created and have no remote library version to update to
+    if (source === 'ON-DEVICE') {
+      return { show: false, tooltip: '' };
+    }
+
+    // Condition 1: remoteVersion must not be empty
+    if (!remoteVersion || remoteVersion.trim() === '') {
+      return { show: false, tooltip: '' };
+    }
+
+    // Condition 2: all ChatSessions for the current chatId must be Idle
+    // Cannot update config while a session is active
+    if (!areAllChatSessionsIdle()) {
+      return { show: false, tooltip: '' };
+    }
+
+    // Condition 3: version is empty OR remoteVersion > version
+    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
+      return { show: true, tooltip: 'Update to latest version in library' };
+    }
+
     return { show: false, tooltip: '' };
   }, [agent, areAllChatSessionsIdle]);
 

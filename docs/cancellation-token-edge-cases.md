@@ -639,7 +639,7 @@ Return getDisplayMessages()
 
 ### Comparison with VSCode Approach
 
-| Feature | VSCode Approach | Kosmos Simplified Approach |
+| Feature | VSCode Approach | OpenKosmos Simplified Approach |
 |---------|----------------|----------------------------|
 | **Complexity** | High (requires validateToolMessages) | Low (directly clean tool_calls) |
 | **User experience** | Partial output not visible after cancel | Partial output retained after cancel ✅ |

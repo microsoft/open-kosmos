@@ -1,8 +1,8 @@
 {
   "name": "kosmos-electron",
   "version": "1.0.0",
-  "description": "KOSMOS.APP - AI Assistant Desktop Application",
-  "author": "KOSMOS Team",
+  "description": "OpenKosmos.APP - AI Assistant Desktop Application",
+  "author": "OpenKosmos Team",
   "main": "dist/main/main.js",
   "homepage": "./",
   "private": true,
@@ -82,8 +82,8 @@
     "webpack-dev-server": "^4.15.1"
   },
   "build": {
-    "appId": "com.kosmos.app",
-    "productName": "KOSMOS",
+    "appId": "com.open-kosmos-ai-studio",
+    "productName": "OpenKosmos",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -120,7 +120,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KOSMOS",
+      "shortcutName": "OpenKosmos",
       "displayLanguageSelector": true,
       "multiLanguageInstaller": true,
       "allowElevation": true,

@@ -9,7 +9,7 @@ vi.mock('../../../utilities/logger', () => ({
 }));
 
 vi.mock('@shared/constants/branding', () => ({
-  BRAND_NAME: 'openkosmos'
+  BRAND_NAME: 'kosmos'
 }));
 
 // Provide a simple in-memory localStorage stub so the module can use it
@@ -104,10 +104,10 @@ describe('FeatureFlagCacheManager', () => {
     it('falls back to localStorage on backend failure', async () => {
       // Pre-populate localStorage with cached flags
       lsStub.setItem(
-        'openkosmos_feature_flags_cache',
+        'kosmos_feature_flags_cache',
         JSON.stringify({ flags: { cachedFlag: true }, timestamp: Date.now() })
       );
-      lsStub.setItem('openkosmos_feature_flags_cache_version', '1.0');
+      lsStub.setItem('kosmos_feature_flags_cache_version', '1.0');
 
       (window as any).electronAPI = {
         featureFlags: {
@@ -122,8 +122,8 @@ describe('FeatureFlagCacheManager', () => {
     });
 
     it('clears old localStorage cache when version mismatches', async () => {
-      lsStub.setItem('openkosmos_feature_flags_cache', JSON.stringify({ flags: { old: true } }));
-      lsStub.setItem('openkosmos_feature_flags_cache_version', '0.0'); // old version
+      lsStub.setItem('kosmos_feature_flags_cache', JSON.stringify({ flags: { old: true } }));
+      lsStub.setItem('kosmos_feature_flags_cache_version', '0.0'); // old version
 
       (window as any).electronAPI = {
         featureFlags: {
@@ -156,7 +156,7 @@ describe('FeatureFlagCacheManager', () => {
 
       await featureFlagCacheManager.initialize();
 
-      const stored = lsStub.getItem('openkosmos_feature_flags_cache');
+      const stored = lsStub.getItem('kosmos_feature_flags_cache');
       expect(stored).not.toBeNull();
       const parsed = JSON.parse(stored!);
       expect(parsed.flags).toEqual({ saved: true });

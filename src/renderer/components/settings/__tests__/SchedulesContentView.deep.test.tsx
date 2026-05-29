@@ -42,7 +42,7 @@ vi.mock('../../lib/scheduler/cronDescriptions', () => ({
 }));
 
 vi.mock('../../styles/ContentView.css', () => ({}));
-vi.mock('../../styles/ToolbarSettingsView.css', () => ({}));
+vi.mock('../../styles/SettingsShared.css', () => ({}));
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => {

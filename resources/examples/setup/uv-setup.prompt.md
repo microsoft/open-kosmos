@@ -59,7 +59,7 @@ uv --version
 
 ## 🔧 3. PATH Configuration
 
-> ⚠️ **Important**: After installation, **restart the Kosmos app** for the PATH changes to take effect globally. Session-level PATH updates do not apply to the running app.
+> ⚠️ **Important**: After installation, **restart the OpenKosmos app** for the PATH changes to take effect globally. Session-level PATH updates do not apply to the running app.
 
 The installer automatically adds `%USERPROFILE%\.local\bin` to your system PATH.
 
@@ -122,7 +122,7 @@ uv --version
 
 ## 🔧 3. PATH Configuration
 
-> ⚠️ **Important**: After installation, **restart the Kosmos app** for the PATH changes to take effect globally. Session-level PATH updates do not apply to the running app.
+> ⚠️ **Important**: After installation, **restart the OpenKosmos app** for the PATH changes to take effect globally. Session-level PATH updates do not apply to the running app.
 
 The installer automatically adds `~/.local/bin` to your PATH.
 
@@ -146,7 +146,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
 
-Then restart the Kosmos app.
+Then restart the OpenKosmos app.
 
 ---
 

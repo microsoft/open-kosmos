@@ -491,19 +491,19 @@ describe('GhcModelsManager', () => {
         makeModel('gemini-2.5-pro'),
         makeModel('gpt-5.5'),
         makeModel('gpt-4.1'), // Should be excluded (< 5.1)
-        makeModel('claude-haiku-4.5'), // Should be excluded by OPENKOSMOS_MODEL_EXCLUDE
+        makeModel('claude-haiku-4.5'), // Should be excluded by OpenKosmos_MODEL_EXCLUDE
         makeModel('gemini-2.5-flash'), // Should be excluded
       ];
       mockReadFile.mockResolvedValue(JSON.stringify({ models }));
 
       await manager.initialize('test-alias');
-      const openkosmos = manager.getAllOpenKosmosUsedModels();
+      const kosmos = manager.getAllOpenKosmosUsedModels();
 
       // Should include: claude-sonnet-4.6, claude-opus-4.5, gemini-2.5-pro, gpt-5.5
-      expect(openkosmos).toHaveLength(4);
+      expect(kosmos).toHaveLength(4);
       // Claude first (sortGroup 0), then Gemini (1), then GPT (2)
-      expect(openkosmos[0].id).toMatch(/^claude/);
-      expect(openkosmos[openkosmos.length - 1].id).toMatch(/^gpt/);
+      expect(kosmos[0].id).toMatch(/^claude/);
+      expect(kosmos[kosmos.length - 1].id).toMatch(/^gpt/);
     });
 
     it('should exclude non-chat and non-picker-enabled models', async () => {
@@ -516,9 +516,9 @@ describe('GhcModelsManager', () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ models }));
 
       await manager.initialize('test-alias');
-      const openkosmos = manager.getAllOpenKosmosUsedModels();
-      expect(openkosmos).toHaveLength(1);
-      expect(openkosmos[0].id).toBe('claude-sonnet-4.6');
+      const kosmos = manager.getAllOpenKosmosUsedModels();
+      expect(kosmos).toHaveLength(1);
+      expect(kosmos[0].id).toBe('claude-sonnet-4.6');
     });
   });
 

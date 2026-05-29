@@ -23,11 +23,11 @@ describe('skillSnapshotBuilder', () => {
           source: 'ON-DEVICE',
         },
       ],
-      userDataPath: '/tmp/openkosmos-user-data',
+      userDataPath: '/tmp/kosmos-user-data',
     });
 
     expect(snapshot.binding_signature).toBe(JSON.stringify(['pptx', 'missing-skill']));
-    const expectedSkillPath = path.join('/tmp/openkosmos-user-data', 'profiles', 'alice', 'skills', 'pptx', 'SKILL.md');
+    const expectedSkillPath = path.join('/tmp/kosmos-user-data', 'profiles', 'alice', 'skills', 'pptx', 'SKILL.md');
 
     expect(snapshot.skills).toEqual([
       {
@@ -57,10 +57,10 @@ describe('skillSnapshotBuilder', () => {
           name: 'beta',
           description: 'Beta skill',
           version: '2.0.0',
-          source: 'ON-DEVICE',
+          source: 'IN-LIBRARY',
         },
       ],
-      userDataPath: '/tmp/openkosmos-user-data',
+      userDataPath: '/tmp/kosmos-user-data',
     });
 
     expect(snapshot.binding_signature).toBe(JSON.stringify(['alpha', 'beta']));
@@ -72,7 +72,7 @@ describe('skillSnapshotBuilder', () => {
       userAlias: 'alice',
       skillNames: ['missing-skill'],
       availableSkills: [],
-      userDataPath: '/tmp/openkosmos-user-data',
+      userDataPath: '/tmp/kosmos-user-data',
     });
 
     expect(snapshot.skills).toEqual([]);
@@ -85,7 +85,7 @@ describe('skillSnapshotBuilder', () => {
       userAlias: 'alice',
       skillNames: undefined,
       availableSkills: [{ name: 'pptx', description: 'desc', version: '1.0.0', source: 'ON-DEVICE' }],
-      userDataPath: '/tmp/openkosmos-user-data',
+      userDataPath: '/tmp/kosmos-user-data',
     });
 
     expect(snapshot.skills).toEqual([]);
@@ -98,7 +98,7 @@ describe('skillSnapshotBuilder', () => {
       userAlias: 'alice',
       skillNames: ['pptx'],
       availableSkills: null as any,
-      userDataPath: '/tmp/openkosmos-user-data',
+      userDataPath: '/tmp/kosmos-user-data',
     });
 
     expect(snapshot.skills).toEqual([]);

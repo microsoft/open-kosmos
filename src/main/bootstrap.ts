@@ -15,13 +15,13 @@ import * as path from 'path';
  *                              e.g. "OpenKosmos"
  *
  * process.env.APP_ID         → appId from config.json (used as Windows AUMID)
- *                              e.g. "com.openkosmos.app"
+ *                              e.g. "com.open-kosmos-ai-studio"
  *
  * process.env.USER_DATA_NAME → userDataName from config.json
- *                              e.g. "openkosmos-app"
+ *                              e.g. "open-kosmos-app"
  *
  * process.env.BRAND_NAME     → Brand folder name
- *                              e.g. "openkosmos"
+ *                              e.g. "kosmos"
  *
  * ============================================================================
  * USER DATA PATH RESOLUTION
@@ -29,26 +29,22 @@ import * as path from 'path';
  *
  * Windows:
  *   app.getPath('appData') = C:\Users\<user>\AppData\Roaming
- *   userData = C:\Users\<user>\AppData\Roaming\<userDataName>
- *            → openkosmos-app
+ *   userData = C:\Users\<user>\AppData\Roaming\open-kosmos-app
  *
  * macOS:
  *   app.getPath('appData') = ~/Library/Application Support
- *   userData = ~/Library/Application Support/<userDataName>
- *            → openkosmos-app
+ *   userData = ~/Library/Application Support/open-kosmos-app
  *
  * Linux:
  *   app.getPath('appData') = ~/.config
- *   userData = ~/.config/<userDataName>
+ *   userData = ~/.config/open-kosmos-app
  *
  * ============================================================================
  * WHY THIS IS IMPORTANT
  * ============================================================================
  *
- * 1. Brand Isolation: Separate user data directories per brand
- * 2. Timing: Must run before ANY module calls app.getPath('userData')
- * 3. Electron Default: Without this, Electron uses package.json "name" field
- *    which would be "openkosmos-app" for both brands (collision!)
+ * 1. Timing: Must run before ANY module calls app.getPath('userData')
+ * 2. Electron Default: Without this, Electron uses the package.json "name" field
  *
  */
 // ============================================================================
@@ -78,8 +74,8 @@ if (testUserDataOverride) {
   console.log(`[Bootstrap] Setting App Name to: ${process.env.APP_NAME}`);
   app.setName(process.env.APP_NAME);
 
-  // USER_DATA_NAME determines the folder name under AppData/Application Support
-  // This is separate from APP_NAME to allow flexibility (no spaces in folder names)
+  // USER_DATA_NAME determines the folder name under AppData/Application Support.
+  // This is separate from APP_NAME to allow flexibility (no spaces in folder name).
   const userDataName = process.env.USER_DATA_NAME || process.env.APP_NAME;
   const customUserDataPath = path.join(app.getPath('appData'), userDataName);
   console.log(`[Bootstrap] Setting User Data Path to: ${customUserDataPath}`);

@@ -15,7 +15,7 @@ const logger = createLogger('[ModelCacheManager]');
 export class ModelCacheManager {
   private static instance: ModelCacheManager;
   private allModels: GhcCopilotModel[] = [];
-  private openkosmosUsedModels: GhcCopilotModel[] = [];
+  private kosmosUsedModels: GhcCopilotModel[] = [];
   private defaultModel: string = 'claude-opus-4.6'; // Fallback default value
   private initialized: boolean = false;
   private unsubscribe: (() => void) | null = null;
@@ -92,9 +92,9 @@ export class ModelCacheManager {
       }
 
       // Fetch OpenKosmos-used models
-      const openkosmosModelsResult = await window.electronAPI.models.getAllOpenKosmosUsedModels();
-      if (!openkosmosModelsResult.success) {
-        throw new Error(openkosmosModelsResult.error || 'Failed to fetch OpenKosmos models');
+      const kosmosModelsResult = await window.electronAPI.models.getAllOpenKosmosUsedModels();
+      if (!kosmosModelsResult.success) {
+        throw new Error(kosmosModelsResult.error || 'Failed to fetch OpenKosmos models');
       }
 
       // Fetch default model
@@ -105,18 +105,18 @@ export class ModelCacheManager {
 
       // Update in-memory cache
       this.allModels = allModelsResult.data || [];
-      this.openkosmosUsedModels = openkosmosModelsResult.data || [];
+      this.kosmosUsedModels = kosmosModelsResult.data || [];
 
       logger.debug('[ModelCache] Successfully synced models from backend', {
         allModels: this.allModels.length,
-        openkosmosModels: this.openkosmosUsedModels.length
+        kosmosModels: this.kosmosUsedModels.length
       });
 
       // Dispatch custom event to notify UI components that model data has been updated
       window.dispatchEvent(new CustomEvent('modelCacheUpdated', {
         detail: {
           allModelsCount: this.allModels.length,
-          openkosmosModelsCount: this.openkosmosUsedModels.length,
+          kosmosModelsCount: this.kosmosUsedModels.length,
           timestamp: Date.now()
         }
       }));
@@ -137,7 +137,7 @@ export class ModelCacheManager {
    * Get the list of models used by OpenKosmos
    */
   public getAllOpenKosmosUsedModels(): GhcCopilotModel[] {
-    return this.openkosmosUsedModels;
+    return this.kosmosUsedModels;
   }
 
   /**
@@ -209,7 +209,7 @@ export class ModelCacheManager {
    */
   public clearCache(): void {
     this.allModels = [];
-    this.openkosmosUsedModels = [];
+    this.kosmosUsedModels = [];
     this.defaultModel = 'claude-opus-4.6';
     this.initialized = false;
     logger.debug('[ModelCache] Cache cleared');
@@ -233,7 +233,7 @@ export class ModelCacheManager {
     return {
       initialized: this.initialized,
       allModelsCount: this.allModels.length,
-      openkosmosModelsCount: this.openkosmosUsedModels.length,
+      kosmosModelsCount: this.kosmosUsedModels.length,
       defaultModel: this.defaultModel
     };
   }

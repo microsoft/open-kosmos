@@ -47,7 +47,7 @@ export default function(ctx: Context) {
 
       // Initialize SchedulerManager in background — must not block sign-in
       // Chain onto any prior init promise so dispose always waits for the full sequence
-      if (isFeatureEnabled('openkosmosFeatureScheduler')) {
+      if (isFeatureEnabled('kosmosFeatureScheduler')) {
         logger.info('[Startup] SchedulerManager initialization requested (background)', 'auth:setCurrentSession', {
           userLogin,
           trigger: 'session_restore',
@@ -116,7 +116,7 @@ export default function(ctx: Context) {
       const logger = getAdvancedLogger();
       const targetAlias = ctx.currentUserAlias;
 
-      if (isFeatureEnabled('openkosmosFeatureScheduler')) {
+      if (isFeatureEnabled('kosmosFeatureScheduler')) {
         try {
           // Wait for background init to finish before disposing to avoid race
           const capturedInitPromise = ctx._schedulerInitPromise;

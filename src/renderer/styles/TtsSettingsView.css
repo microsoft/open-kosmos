@@ -1,0 +1,135 @@
+/* ===========================
+   TTS Settings View Styles
+   =========================== */
+
+.tts-settings-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #FFFFFF;
+}
+
+.tts-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Error Message */
+.tts-settings-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.tts-settings-error .message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tts-settings-error .error-icon {
+  color: #ef4444;
+}
+
+.tts-settings-error .message-label {
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.tts-settings-error .message-text {
+  margin: 0;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+/* Settings Form */
+.tts-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.tts-settings-form-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Settings Card */
+.tts-settings-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.tts-settings-card .card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 8px 0;
+}
+
+.tts-settings-card .card-description {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 16px 0;
+}
+
+/* Speed Slider */
+.speed-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.speed-slider {
+  flex: 1;
+  max-width: 300px;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #0ea5e9;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background 0.2s ease;
+}
+
+.speed-slider::-webkit-slider-thumb:hover {
+  background: #0284c7;
+}
+
+.speed-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #0ea5e9;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.speed-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  min-width: 40px;
+  text-align: center;
+}

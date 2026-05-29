@@ -31,7 +31,7 @@ describe('FileOperations - additional coverage', () => {
     process.env.NODE_ENV = 'test';
     process.argv.splice(0, process.argv.length, ...originalArgv.filter((a) => a !== '--dev'));
     resetDevStartupLogFileNameForTest();
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-fileops-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-fileops-test-'));
   });
 
   afterEach(async () => {
@@ -98,7 +98,7 @@ describe('FileOperations - additional coverage', () => {
   it('getLogFilePath without filename uses getCurrentLogFileName', () => {
     process.env.NODE_ENV = 'production';
     const p = getLogFilePath('/logs');
-    expect(p).toContain('/logs/openkosmos-');
+    expect(p).toContain('/logs/kosmos-');
   });
 
   it('formatLogEntryForFile with source and metadata', () => {
@@ -139,10 +139,10 @@ describe('FileOperations - additional coverage', () => {
 
   it('getAllLogFiles lists .log files', async () => {
     process.env.NODE_ENV = 'production';
-    const logFile = path.join(tempDir, 'openkosmos-2026-01-01.log');
+    const logFile = path.join(tempDir, 'kosmos-2026-01-01.log');
     await fs.writeFile(logFile, 'test');
     const files = await getAllLogFiles(tempDir);
-    expect(files.some(f => f.name === 'openkosmos-2026-01-01.log')).toBe(true);
+    expect(files.some(f => f.name === 'kosmos-2026-01-01.log')).toBe(true);
     expect(files[0]).toHaveProperty('size');
     expect(files[0]).toHaveProperty('createdAt');
     expect(files[0]).toHaveProperty('modifiedAt');
@@ -156,7 +156,7 @@ describe('FileOperations - additional coverage', () => {
 
   it('needsCleanup returns true for old production log in production mode', async () => {
     process.env.NODE_ENV = 'production';
-    await fs.writeFile(path.join(tempDir, 'openkosmos-1999-01-01.log'), 'old');
+    await fs.writeFile(path.join(tempDir, 'kosmos-1999-01-01.log'), 'old');
     const result = await needsCleanup(tempDir);
     expect(result).toBe(true);
   });
@@ -174,7 +174,7 @@ describe('FileOperations - additional coverage', () => {
     // devStartupLogFileName was reset in beforeEach when NODE_ENV was 'test'
     // Now getDevStartupLogFileName will create a new one in 'development' mode
     // Write an old dev log that differs from the current one
-    await fs.writeFile(path.join(tempDir, 'openkosmos-dev-2020-01-01-00-00-00.log'), 'old dev');
+    await fs.writeFile(path.join(tempDir, 'kosmos-dev-2020-01-01-00-00-00.log'), 'old dev');
     const result = await needsCleanup(tempDir);
     expect(result).toBe(true);
     process.env.NODE_ENV = 'test'; // restore for afterEach
@@ -200,8 +200,8 @@ describe('FileOperations - additional coverage', () => {
       String(today.getMonth() + 1).padStart(2, '0'),
       String(today.getDate()).padStart(2, '0'),
     ].join('-');
-    await fs.writeFile(path.join(tempDir, `openkosmos-${todayStr}.log`), 'today');
-    await fs.writeFile(path.join(tempDir, 'openkosmos-1999-01-01.log'), 'old');
+    await fs.writeFile(path.join(tempDir, `kosmos-${todayStr}.log`), 'today');
+    await fs.writeFile(path.join(tempDir, 'kosmos-1999-01-01.log'), 'old');
 
     const stats = await getLogDirectoryStats(tempDir);
     expect(stats.todayFileExists).toBe(true);

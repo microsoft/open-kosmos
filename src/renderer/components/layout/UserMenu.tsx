@@ -1,10 +1,13 @@
 import { atom } from '@/atom';
 import { memo, useEffect, useRef } from 'react';
-import { Settings, LogOut, MessageSquareText } from 'lucide-react';
+import { Settings, LogOut, RotateCw, MessageSquareText, Hospital } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useUpdate } from '../autoUpdate/UpdateProvider';
 import { useAuthContext } from '../auth/AuthProvider';
 import { createLogger } from '@/lib/utilities/logger';
 import { BRAND_CONFIG } from '@shared/constants/branding';
+import { doctorInquiryAtom } from '@/states/doctor.atom';
+import { useFeatureFlag } from '@/lib/featureFlags/useFeatureFlag';
 
 const logger = createLogger('[UserMenu]');
 
@@ -12,12 +15,41 @@ export const userMenuVisibleAtom = atom(false);
 
 interface UserMenuProps {}
 
+function ReportBug(props: {
+  setVisible: (v: boolean) => void;
+}) {
+  const [state, actions] = doctorInquiryAtom.use();
+  const doctorEnabled = useFeatureFlag('kosmosFeatureDoctor');
+
+  if (!doctorEnabled) return null;
+  if (state.type !== 'idle') return null;
+
+  function onReportBug() {
+    props.setVisible(false);
+    actions.show();
+  }
+
+  return (
+    <button
+      className="dropdown-menu-item"
+      onClick={onReportBug}
+      title="Report a bug"
+    >
+      <span className="dropdown-menu-item-icon">
+        <Hospital size={16} strokeWidth={1.5} />
+      </span>
+      <span className="dropdown-menu-item-text">Report Bug</span>
+    </button>
+  )
+}
+
 function Menu(props: UserMenuProps) {
   const [visible, setVisible] = userMenuVisibleAtom.use();
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut } = useAuthContext();
+  const { checkForUpdates, showUpdateDialog } = useUpdate();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -37,6 +69,13 @@ function Menu(props: UserMenuProps) {
     setVisible(false);
   }
 
+  async function onCheckForUpdates() {
+    setVisible(false);
+    try {
+      await checkForUpdates();
+      showUpdateDialog();
+    } catch (error) {}
+  }
 
   async function onLogout() {
     setVisible(false);
@@ -74,6 +113,16 @@ function Menu(props: UserMenuProps) {
       </button>
       <button
         className="dropdown-menu-item"
+        onClick={onCheckForUpdates}
+        title="Check for app updates"
+      >
+        <span className="dropdown-menu-item-icon">
+          <RotateCw size={16} strokeWidth={1.5} />
+        </span>
+        <span className="dropdown-menu-item-text">Check Updates</span>
+      </button>
+      <button
+        className="dropdown-menu-item"
         onClick={onSendFeedback}
         title="Send feedback"
       >
@@ -82,6 +131,7 @@ function Menu(props: UserMenuProps) {
         </span>
         <span className="dropdown-menu-item-text">Send Feedback</span>
       </button>
+      <ReportBug setVisible={setVisible} />
       <button className="dropdown-menu-item danger" onClick={onLogout}>
         <span className="dropdown-menu-item-icon">
           <LogOut size={16} strokeWidth={1.5} />

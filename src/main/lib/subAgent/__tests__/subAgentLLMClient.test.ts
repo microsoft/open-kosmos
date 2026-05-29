@@ -49,7 +49,7 @@ vi.mock('../../auth/ghcConfig', async () => ({
     API_ENDPOINT: 'https://mock.api',
     USER_AGENT: 'MockAgent/1.0',
     EDITOR_VERSION: 'vscode/1.0',
-    EDITOR_PLUGIN_VERSION: 'openkosmos/1.0',
+    EDITOR_PLUGIN_VERSION: 'kosmos/1.0',
   },
 }));
 

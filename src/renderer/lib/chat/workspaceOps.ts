@@ -569,21 +569,6 @@ export class WorkspaceOpsManager {
   }
 
   /**
-   * Add file change listener (kept for compatibility, actually triggers refresh)
-   * @param listener Listener callback function
-   * @returns Function to remove listener
-   */
-  onFileChange(listener: (changes: FileChange[]) => void): () => void {
-    // Convert to refresh listener
-    const refreshListener = () => {
-      // Call original listener, pass empty change array since we no longer care about specific changes
-      listener([]);
-    };
-
-    return this.onRefresh(refreshListener);
-  }
-
-  /**
    * Add error listener
    * @param listener Listener callback function
    * @returns Function to remove listener
@@ -869,13 +854,6 @@ export async function stopWatch(): Promise<WorkspaceOperationResult> {
  */
 export async function getWatcherStats(): Promise<WorkspaceOperationResult> {
   return await workspaceOps.getWatcherStats();
-}
-
-/**
- * Add file change listener
- */
-export function onFileChange(listener: (changes: FileChange[]) => void): () => void {
-  return workspaceOps.onFileChange(listener);
 }
 
 /**

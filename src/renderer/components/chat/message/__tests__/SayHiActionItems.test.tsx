@@ -25,7 +25,6 @@ describe('parseSayHiContent', () => {
   it('returns full text as markdownBody when no delimiter', () => {
     const result = parseSayHiContent('Hello world');
     expect(result.markdownBody).toBe('Hello world');
-    expect(result.actionItems).toEqual([]);
     expect(result.actionItemGroups).toEqual([]);
   });
 
@@ -33,7 +32,7 @@ describe('parseSayHiContent', () => {
     const raw = `Hello\n${SAY_HI_ACTION_ITEMS_DELIMITER}\nItem one\nItem two`;
     const result = parseSayHiContent(raw);
     expect(result.markdownBody).toBe('Hello');
-    expect(result.actionItems).toEqual(['Item one', 'Item two']);
+    expect(result.actionItemGroups[0].items).toEqual(['Item one', 'Item two']);
   });
 
   it('groups items by ## heading', () => {
@@ -54,8 +53,8 @@ describe('parseSayHiContent', () => {
 
   it('skips empty lines in action section', () => {
     const raw = `Body\n${SAY_HI_ACTION_ITEMS_DELIMITER}\n\nItem A\n\nItem B\n`;
-    const { actionItems } = parseSayHiContent(raw);
-    expect(actionItems).toEqual(['Item A', 'Item B']);
+    const { actionItemGroups } = parseSayHiContent(raw);
+    expect(actionItemGroups[0].items).toEqual(['Item A', 'Item B']);
   });
 
   it('returns ungrouped items in single group with empty title', () => {

@@ -2,7 +2,7 @@ import type { RequestInteractiveInputArgs, RequestInteractiveInputToolResult } f
 import type { ChoiceInteractionRequest, FormInteractionRequest, InteractiveResponse } from '@shared/types/interactiveRequestTypes';
 import { createLogger } from '../unifiedLogger';
 import { mainAuthManager } from '../auth/authManager';
-import { containsOpenKosmosPlaceholder, openkosmosPlaceholderManager } from '../userDataADO/openkosmosPlaceholders';
+import { containsOpenKosmosPlaceholder, kosmosPlaceholderManager } from '../userDataADO/kosmosPlaceholders';
 import { userInputPlaceholderParser, UserInputField } from '../userDataADO/userInputPlaceholderParser';
 import {
   isNonInteractiveRuntimeInteractionError,
@@ -96,6 +96,14 @@ export class AgentChatToolPostProcessor {
 
     if (toolName === 'request_interactive_input') {
       return this.postProcessForRequestInteractiveInputTool(toolResult);
+    }
+
+    if (toolName === 'get_mcp_template_from_library') {
+      return this.postProcessForGetMcpTemplateFromLibraryTool(toolResult);
+    }
+
+    if (toolName === 'get_agent_template_from_library') {
+      return this.postProcessForGetAgentTemplateFromLibraryTool(toolResult);
     }
 
     return toolResult;
@@ -232,6 +240,251 @@ export class AgentChatToolPostProcessor {
         error: 'INTERACTIVE_INPUT_POST_PROCESS_FAILED',
         message: error instanceof Error ? error.message : 'Failed to process interactive input request',
       };
+    }
+  }
+
+  async postProcessForGetMcpTemplateFromLibraryTool(toolResult: any): Promise<any> {
+    try {
+      let configData: any;
+      if (typeof toolResult === 'string') {
+        try {
+          configData = JSON.parse(toolResult);
+        } catch {
+          return toolResult;
+        }
+      } else if (typeof toolResult === 'object') {
+        configData = toolResult;
+      } else {
+        return toolResult;
+      }
+
+      const actualConfig = (configData.config && typeof configData.config === 'object') ? configData.config : configData;
+
+      if (!actualConfig.env || typeof actualConfig.env !== 'object') {
+        const currentAuth = mainAuthManager.getCurrentAuth();
+        const currentUserAlias = currentAuth?.ghcAuth?.alias || '';
+        if (currentUserAlias && actualConfig.url && typeof actualConfig.url === 'string' && containsOpenKosmosPlaceholder(actualConfig.url)) {
+          actualConfig.url = kosmosPlaceholderManager.replacePlaceholders(actualConfig.url, { alias: currentUserAlias });
+          logger.info('[AgentChat] Replaced OpenKosmos placeholders in MCP config url', 'postProcessForGetMcpTemplateFromLibraryTool', {
+            agentName: this.deps.getAgentName(),
+          });
+        }
+        return typeof toolResult === 'string' ? JSON.stringify(configData, null, 2) : configData;
+      }
+
+      const currentAuth = mainAuthManager.getCurrentAuth();
+      const currentUserAlias = currentAuth?.ghcAuth?.alias || '';
+
+      if (currentUserAlias) {
+        const envEntries = Object.entries(actualConfig.env);
+        let hasOpenKosmosPlaceholder = false;
+        for (const [, value] of envEntries) {
+          if (typeof value === 'string' && containsOpenKosmosPlaceholder(value)) {
+            hasOpenKosmosPlaceholder = true;
+            break;
+          }
+        }
+
+        const urlHasPlaceholder = actualConfig.url && typeof actualConfig.url === 'string' && containsOpenKosmosPlaceholder(actualConfig.url);
+
+        if (hasOpenKosmosPlaceholder) {
+          actualConfig.env = kosmosPlaceholderManager.replacePlaceholdersInObject(actualConfig.env, { alias: currentUserAlias });
+          logger.info('[AgentChat] Replaced OpenKosmos placeholders in MCP config env', 'postProcessForGetMcpTemplateFromLibraryTool', {
+            agentName: this.deps.getAgentName(),
+          });
+        }
+
+        if (urlHasPlaceholder) {
+          actualConfig.url = kosmosPlaceholderManager.replacePlaceholders(actualConfig.url, { alias: currentUserAlias });
+          logger.info('[AgentChat] Replaced OpenKosmos placeholders in MCP config url', 'postProcessForGetMcpTemplateFromLibraryTool', {
+            agentName: this.deps.getAgentName(),
+          });
+        }
+      }
+
+      const configForUserInput = { env: actualConfig.env, url: actualConfig.url || '' };
+      const parseResult = userInputPlaceholderParser.parseConfig(configForUserInput);
+      if (!parseResult.hasUserInputFields) {
+        return typeof toolResult === 'string' ? JSON.stringify(configData, null, 2) : configData;
+      }
+
+      const mcpServerName = actualConfig.name || 'MCP Server';
+      const mcpServerContact = actualConfig.contact || '';
+      logger.info('[AgentChat] Found user input fields in MCP config, requesting user info', 'postProcessForGetMcpTemplateFromLibraryTool', {
+        userInputFieldsCount: parseResult.fields.length,
+        mcpServerName,
+        mcpServerContact,
+        fields: parseResult.fields.map((field: UserInputField) => ({
+          key: field.key,
+          type: field.type,
+          control: field.control,
+          varName: field.varName,
+        })),
+        agentName: this.deps.getAgentName(),
+      });
+
+      const bodyDescription = mcpServerContact
+        ? `Please fill in the following environment variables to complete the MCP server setup. Contact <strong class="contact-highlight">${mcpServerContact}</strong> for assistance if you need help.`
+        : 'Please fill in the following environment variables to complete the MCP server setup.';
+
+      const infoInputRequestData = {
+        fields: parseResult.fields.map((field: UserInputField) => ({
+          key: field.key,
+          label: field.label,
+          type: field.type.toLowerCase(),
+          control: field.control,
+          varName: field.varName,
+          required: field.isRequired,
+          defaultValue: field.defaultValue,
+        })),
+        header: { title: `Configure ${mcpServerName}` },
+        body: { description: bodyDescription },
+      };
+
+      const userInputs = await this.deps.requestUserInfoInput(infoInputRequestData);
+
+      if (userInputs === null) {
+        const resultWithoutEnv = JSON.parse(JSON.stringify(configData));
+        const targetToModify = (resultWithoutEnv.config && typeof resultWithoutEnv.config === 'object') ? resultWithoutEnv.config : resultWithoutEnv;
+        delete targetToModify.env;
+        logger.info('[AgentChat] User skipped info input, removing env from config', 'postProcessForGetMcpTemplateFromLibraryTool', {
+          agentName: this.deps.getAgentName(),
+        });
+        return typeof toolResult === 'string' ? JSON.stringify(resultWithoutEnv, null, 2) : resultWithoutEnv;
+      }
+
+      const updatedResult = JSON.parse(JSON.stringify(configData));
+      const targetToModify = (updatedResult.config && typeof updatedResult.config === 'object') ? updatedResult.config : updatedResult;
+      const updatedEnv = { ...targetToModify.env };
+      for (const field of parseResult.fields) {
+        const inputValue = userInputs[field.key];
+        const isInputEmpty = inputValue === null || inputValue === undefined || String(inputValue).trim() === '';
+        if (!field.isRequired && isInputEmpty) {
+          delete updatedEnv[field.key];
+        } else if (Object.prototype.hasOwnProperty.call(userInputs, field.key)) {
+          updatedEnv[field.key] = String(inputValue);
+        }
+      }
+      targetToModify.env = updatedEnv;
+      logger.info('[AgentChat] User provided info input, updated config with user values', 'postProcessForGetMcpTemplateFromLibraryTool', {
+        updatedFields: Object.keys(userInputs),
+        agentName: this.deps.getAgentName(),
+      });
+      return typeof toolResult === 'string' ? JSON.stringify(updatedResult, null, 2) : updatedResult;
+    } catch (error) {
+      this.rethrowBlockedInteractionError(error);
+
+      logger.error('[AgentChat] Error in postProcessForGetMcpTemplateFromLibraryTool', 'postProcessForGetMcpTemplateFromLibraryTool', {
+        error: error instanceof Error ? error.message : String(error),
+        agentName: this.deps.getAgentName(),
+      });
+      return toolResult;
+    }
+  }
+
+  async postProcessForGetAgentTemplateFromLibraryTool(toolResult: any): Promise<any> {
+    try {
+      let configData: any;
+      if (typeof toolResult === 'string') {
+        try {
+          configData = JSON.parse(toolResult);
+        } catch {
+          return toolResult;
+        }
+      } else if (typeof toolResult === 'object') {
+        configData = toolResult;
+      } else {
+        return toolResult;
+      }
+
+      const actualConfig = (configData.config && typeof configData.config === 'object') ? configData.config : configData;
+      if (!actualConfig.configuration || typeof actualConfig.configuration !== 'object') {
+        return toolResult;
+      }
+
+      const configuration = actualConfig.configuration;
+      const currentAuth = mainAuthManager.getCurrentAuth();
+      const currentUserAlias = currentAuth?.ghcAuth?.alias || '';
+
+      if (currentUserAlias && configuration.workspace && typeof configuration.workspace === 'string') {
+        if (containsOpenKosmosPlaceholder(configuration.workspace)) {
+          configuration.workspace = kosmosPlaceholderManager.replacePlaceholders(configuration.workspace, { alias: currentUserAlias });
+          logger.info('[AgentChat] Replaced OpenKosmos placeholders in Agent workspace', 'postProcessForGetAgentTemplateFromLibraryTool', {
+            agentName: this.deps.getAgentName(),
+            newWorkspace: configuration.workspace,
+          });
+        }
+      }
+
+      if (configuration.workspace && typeof configuration.workspace === 'string') {
+        const parseResult = userInputPlaceholderParser.parseConfig({ workspace: configuration.workspace });
+        if (parseResult.hasUserInputFields) {
+          const agentName = actualConfig.name || 'Agent';
+          const agentContact = actualConfig.contact || '';
+          logger.info('[AgentChat] Found user input fields in Agent workspace, requesting user info', 'postProcessForGetAgentTemplateFromLibraryTool', {
+            userInputFieldsCount: parseResult.fields.length,
+            agentName,
+            agentContact,
+            fields: parseResult.fields.map((field: UserInputField) => ({
+              key: field.key,
+              type: field.type,
+              control: field.control,
+              varName: field.varName,
+            })),
+          });
+
+          const bodyDescription = agentContact
+            ? `Please fill in the following configuration to complete the Agent setup. Contact <strong class="contact-highlight">${agentContact}</strong> for assistance if you need help.`
+            : 'Please fill in the following configuration to complete the Agent setup.';
+
+          const infoInputRequestData = {
+            fields: parseResult.fields.map((field: UserInputField) => ({
+              key: field.key,
+              label: field.label,
+              type: field.type.toLowerCase(),
+              control: field.control,
+              varName: field.varName,
+              required: field.isRequired,
+              defaultValue: field.defaultValue,
+            })),
+            header: { title: `Configure ${agentName}` },
+            body: { description: bodyDescription },
+          };
+
+          const userInputs = await this.deps.requestUserInfoInput(infoInputRequestData);
+          if (userInputs === null) {
+            configuration.workspace = '';
+            logger.info('[AgentChat] User skipped workspace input, setting workspace to empty', 'postProcessForGetAgentTemplateFromLibraryTool', {
+              agentName: this.deps.getAgentName(),
+            });
+          } else {
+            for (const field of parseResult.fields) {
+              const inputValue = userInputs[field.key];
+              const isInputEmpty = inputValue === null || inputValue === undefined || String(inputValue).trim() === '';
+              if (!field.isRequired && isInputEmpty) {
+                configuration.workspace = '';
+              } else if (Object.prototype.hasOwnProperty.call(userInputs, field.key)) {
+                configuration.workspace = String(inputValue);
+              }
+            }
+
+            logger.info('[AgentChat] User provided workspace input, updated Agent config', 'postProcessForGetAgentTemplateFromLibraryTool', {
+              updatedFields: Object.keys(userInputs),
+              agentName: this.deps.getAgentName(),
+            });
+          }
+        }
+      }
+
+      return typeof toolResult === 'string' ? JSON.stringify(configData, null, 2) : configData;
+    } catch (error) {
+      this.rethrowBlockedInteractionError(error);
+
+      logger.error('[AgentChat] Error in postProcessForGetAgentTemplateFromLibraryTool', 'postProcessForGetAgentTemplateFromLibraryTool', {
+        error: error instanceof Error ? error.message : String(error),
+        agentName: this.deps.getAgentName(),
+      });
+      return toolResult;
     }
   }
 }

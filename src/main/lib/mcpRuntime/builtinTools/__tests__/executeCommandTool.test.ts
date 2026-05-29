@@ -22,7 +22,7 @@ vi.mock('../builtinToolsManager', async () => ({
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue('/tmp/mock-user-data'),
-    getName: vi.fn().mockReturnValue('openkosmos'),
+    getName: vi.fn().mockReturnValue('kosmos'),
   },
 }));
 
@@ -65,6 +65,7 @@ describe('ExecuteCommandTool timeout selection', () => {
   it('extends the default timeout for other interactive auth commands', () => {
     const commands = [
       'gh auth refresh -h github.com -s repo',
+      'az login',
       'npm login',
       'npm adduser',
       'pnpm login',

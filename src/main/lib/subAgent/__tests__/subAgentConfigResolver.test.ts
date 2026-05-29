@@ -82,7 +82,7 @@ function makeConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
     name: 'test-agent',
     model: '',
     context_access: 'isolated',
-    mcp_servers: [],
+    mcpServers: [],
     skills: [],
     builtin_tools: [],
     knowledgeBase: '',
@@ -163,15 +163,15 @@ describe('SubAgentConfigResolver', () => {
 
   describe('resolveInheritedConfig', () => {
     it('returns only child servers when no parent config', () => {
-      const config = makeConfig({ mcp_servers: [{ name: 'child-s', tools: ['t1'] }] });
+      const config = makeConfig({ mcpServers: [{ name: 'child-s', tools: ['t1'] }] });
       const result = resolveInheritedConfig(config, undefined);
       expect(result.resolvedMcpServers).toHaveLength(1);
       expect(result.resolvedMcpServers[0].inherited).toBe(false);
     });
 
     it('merges parent servers that are not in child', () => {
-      const config = makeConfig({ mcp_servers: [{ name: 'child-s', tools: [] }] });
-      const parent = { mcp_servers: [{ name: 'parent-s', tools: ['t2'] }] };
+      const config = makeConfig({ mcpServers: [{ name: 'child-s', tools: [] }] });
+      const parent = { mcpServers: [{ name: 'parent-s', tools: ['t2'] }] };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedMcpServers).toHaveLength(2);
       const parentServer = result.resolvedMcpServers.find(s => s.name === 'parent-s');
@@ -179,8 +179,8 @@ describe('SubAgentConfigResolver', () => {
     });
 
     it('child server overrides parent with same name', () => {
-      const config = makeConfig({ mcp_servers: [{ name: 'shared', tools: ['child-tool'] }] });
-      const parent = { mcp_servers: [{ name: 'shared', tools: ['parent-tool'] }] };
+      const config = makeConfig({ mcpServers: [{ name: 'shared', tools: ['child-tool'] }] });
+      const parent = { mcpServers: [{ name: 'shared', tools: ['parent-tool'] }] };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedMcpServers).toHaveLength(1);
       expect(result.resolvedMcpServers[0].inherited).toBe(false);
@@ -188,7 +188,7 @@ describe('SubAgentConfigResolver', () => {
 
     it('does not inherit when inherit_mcp_servers is false', () => {
       const config = makeConfig({
-        mcp_servers: [{ name: 'child-s', tools: [] }],
+        mcpServers: [{ name: 'child-s', tools: [] }],
         inherit_mcp_servers: false,
       });
       const parent = { mcp_servers: [{ name: 'parent-s', tools: [] }] };
@@ -198,35 +198,35 @@ describe('SubAgentConfigResolver', () => {
 
     it('merges skills from parent', () => {
       const config = makeConfig({ skills: ['child-skill'] });
-      const parent = { mcp_servers: [], skills: ['parent-skill'] };
+      const parent = { mcpServers: [], skills: ['parent-skill'] };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedSkills).toHaveLength(2);
     });
 
     it('does not duplicate skills with same name', () => {
       const config = makeConfig({ skills: ['shared-skill'] });
-      const parent = { mcp_servers: [], skills: ['shared-skill'] };
+      const parent = { mcpServers: [], skills: ['shared-skill'] };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedSkills).toHaveLength(1);
     });
 
     it('inherits knowledgeBase from parent when child has none', () => {
       const config = makeConfig();
-      const parent = { mcp_servers: [], knowledgeBase: '/data/kb' };
+      const parent = { mcpServers: [], knowledgeBase: '/data/kb' };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedKnowledgeBase).toBe('/data/kb');
     });
 
     it('child knowledgeBase takes priority over parent', () => {
       const config = makeConfig({ knowledgeBase: '/child/kb' });
-      const parent = { mcp_servers: [], knowledgeBase: '/parent/kb' };
+      const parent = { mcpServers: [], knowledgeBase: '/parent/kb' };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedKnowledgeBase).toBe('/child/kb');
     });
 
     it('does not inherit knowledgeBase when inherit_knowledge_base is false', () => {
       const config = makeConfig({ inherit_knowledge_base: false });
-      const parent = { mcp_servers: [], knowledgeBase: '/parent/kb' };
+      const parent = { mcpServers: [], knowledgeBase: '/parent/kb' };
       const result = resolveInheritedConfig(config, parent as any);
       expect(result.resolvedKnowledgeBase).toBeUndefined();
     });

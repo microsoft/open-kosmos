@@ -104,9 +104,9 @@ vi.mock('../auth/McpAuthService', () => ({
   },
 }));
 
-vi.mock('../../userDataADO/openkosmosPlaceholders', () => ({
+vi.mock('../../userDataADO/kosmosPlaceholders', () => ({
   containsOpenKosmosPlaceholder: (...a: any[]) => mockContainsOpenKosmosPlaceholder(...a),
-  openkosmosPlaceholderManager: {
+  kosmosPlaceholderManager: {
     replacePlaceholders: (...a: any[]) => mockReplacePlaceholders(...a),
     replacePlaceholdersInObject: (...a: any[]) => mockReplacePlaceholdersInObject(...a),
   },
@@ -172,21 +172,6 @@ describe('MCPClientManager supplementary', () => {
 
   afterEach(() => {
     (MCPClientManager as any).instance = null;
-  });
-
-  // ── McpAuthService.onInteraction callback ────────────────────────────────
-
-  it('sets needs-user-interaction status when consent-requested fires', async () => {
-    const mgr = MCPClientManager.getInstance();
-    // Trigger the interaction callback registered in constructor
-    (mockOnInteraction as any)._triggerInteraction({ serverName: 'auth-server', phase: 'consent-requested' });
-    expect(mgr.getMcpServerRuntimeState('auth-server')?.status).toBe('needs-user-interaction');
-  });
-
-  it('does not update status for non consent-requested phases', async () => {
-    const mgr = MCPClientManager.getInstance();
-    (mockOnInteraction as any)._triggerInteraction({ serverName: 'auth-server', phase: 'other-phase' });
-    expect(mgr.getMcpServerRuntimeState('auth-server')).toBeUndefined();
   });
 
   // ── _updateServerTools / _updateServerError — new state creation path ─────

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Settings } from 'lucide-react';
+import { ChevronRight, ChevronDown, Settings, RotateCw } from 'lucide-react';
 
 import '../../../styles/Agent.css';
 import { TabComponentProps, AgentMcpServer } from './types';
@@ -480,6 +480,72 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     navigate('/settings/mcp');
   }, [navigate, location.pathname]);
 
+  /**
+   * Navigate to MCP Library View and select the given MCP Server
+   * Follows ChatViewHeader's approach: use URL query parameters to pass the selection
+   * Also pass returnPath state so the SettingsPage Back button can return correctly
+   */
+  const handleUpdateMcp = useCallback((serverName: string) => {
+    if (!serverName) {
+      logger.warn('Update button clicked but server name is not available');
+      return;
+    }
+
+    logger.debug('Update button clicked for MCP server:', serverName);
+
+    // Navigate to the MCP Library page, passing the server name as a query parameter
+    // Use encodeURIComponent to ensure special characters in the name are correctly encoded
+    // Route path reference AppRoutes.tsx: /settings/mcp/mcp-library
+    const mcpLibraryUrl = `/settings/mcp/mcp-library?selectMcp=${encodeURIComponent(serverName)}`;
+
+    // Pass returnPath state so the SettingsPage Back button can return to the current page
+    navigate(mcpLibraryUrl, { state: { returnPath: location.pathname } });
+  }, [navigate, location.pathname]);
+
+  /**
+   * Compare version strings; returns 1 if v1 > v2
+   * Supports semantic versioning format (e.g. 1.0.0, 2.1.3)
+   */
+  const compareVersions = useCallback((v1: string, v2: string): number => {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+
+    const maxLength = Math.max(parts1.length, parts2.length);
+
+    for (let i = 0; i < maxLength; i++) {
+      const p1 = parts1[i] || 0;
+      const p2 = parts2[i] || 0;
+
+      if (p1 > p2) return 1;
+      if (p1 < p2) return -1;
+    }
+
+    return 0;
+  }, []);
+
+  // Determine whether to show the Update button for an MCP server
+  const shouldShowUpdateButton = useCallback((server: any) => {
+    const { version, remoteVersion, source } = server;
+
+    // ON-DEVICE MCP Servers should not show the Update button
+    // ON-DEVICE servers are user-created and have no remote library version to update from
+    if (source === 'ON-DEVICE') {
+      return false;
+    }
+
+    // Only consider showing button when remoteVersion is non-empty
+    if (!remoteVersion || remoteVersion.trim() === '') {
+      return false;
+    }
+
+    // Show button if version is empty or remoteVersion > version
+    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
+      return true;
+    }
+
+    return false;
+  }, [compareVersions]);
+
   // Get server current state
   const getCurrentState = useCallback((server: any) => {
     const serverTools = server.tools || [];
@@ -721,6 +787,19 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                           </div>
                         </div>
                         <div className="server-actions">
+                          {shouldShowUpdateButton(server) && (
+                            <button
+                              className="update-mcp-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateMcp(server.name);
+                              }}
+                              title="Update to the latest version in library"
+                            >
+                              <RotateCw size={14} className="update-mcp-icon" />
+                              <span className="update-mcp-text">Update</span>
+                            </button>
+                          )}
                           <button
                             className="manage-btn always-visible"
                             onClick={(e) => {

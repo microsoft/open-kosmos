@@ -50,17 +50,12 @@ import AgentSubAgentsTab from '../AgentSubAgentsTab';
 function createSubAgentEntry(overrides: Record<string, unknown> = {}) {
   return {
     name: 'web-researcher',
-    display_name: 'Web Researcher',
     description: 'Searches the web for information',
-    emoji: '🔍',
-    version: '1.0.0',
-    source: 'ON-DEVICE' as const,
-    context_access: 'isolated',
+    source: 'IN-LIBRARY' as const,
     system_prompt: 'You are a web researcher.',
     mcp_servers: [],
     skills: [],
     builtin_tools: [],
-    max_turns: 25,
     ...overrides,
   };
 }
@@ -69,7 +64,7 @@ function createAgentData(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     id: 'agent-001',
     name: 'Test Agent',
-    emoji: '🧪',
+    emoji: '🤖',
     role: 'General assistant',
     model: 'gpt-4o',
     mcpServers: [],
@@ -106,12 +101,8 @@ describe('AgentSubAgentsTab', () => {
         createSubAgentEntry(),
         createSubAgentEntry({
           name: 'code-reviewer',
-          display_name: 'Code Reviewer',
           description: 'Reviews code and suggests improvements',
-          emoji: '🔎',
-          version: '2.0.0',
           source: 'ON-DEVICE',
-          context_access: 'full',
         }),
       ],
       stats: { total: 2, library: 1, device: 1 },
@@ -166,32 +157,14 @@ describe('AgentSubAgentsTab', () => {
   describe('rendering sub-agent cards', () => {
     it('should render all available sub-agents', () => {
       renderTab();
-      expect(screen.getByText('Web Researcher')).toBeInTheDocument();
-      expect(screen.getByText('Code Reviewer')).toBeInTheDocument();
-    });
-
-    it('should render emoji for each sub-agent', () => {
-      renderTab();
-      expect(screen.getByText('🔍')).toBeInTheDocument();
-      expect(screen.getByText('🔎')).toBeInTheDocument();
-    });
-
-    it('should render version with v prefix', () => {
-      renderTab();
-      expect(screen.getByText('v1.0.0')).toBeInTheDocument();
-      expect(screen.getByText('v2.0.0')).toBeInTheDocument();
+      expect(screen.getByText('web-researcher')).toBeInTheDocument();
+      expect(screen.getByText('code-reviewer')).toBeInTheDocument();
     });
 
     it('should render descriptions', () => {
       renderTab();
       expect(screen.getByText('Searches the web for information')).toBeInTheDocument();
       expect(screen.getByText('Reviews code and suggests improvements')).toBeInTheDocument();
-    });
-
-    it('should render context_access text', () => {
-      renderTab();
-      expect(screen.getByText('isolated')).toBeInTheDocument();
-      expect(screen.getByText('full')).toBeInTheDocument();
     });
 
     it('should show header with "0 selected" initially', () => {
@@ -230,7 +203,7 @@ describe('AgentSubAgentsTab', () => {
       expect(checkboxes[0]).not.toBeChecked();
 
       // Click the card
-      const card = screen.getByText('Web Researcher').closest('.skill-card');
+      const card = screen.getByText('web-researcher').closest('.skill-card');
       if (card) {
         fireEvent.click(card);
       }
@@ -254,7 +227,7 @@ describe('AgentSubAgentsTab', () => {
       const checkboxes = screen.getAllByRole('checkbox');
       expect(checkboxes[0]).toBeChecked();
 
-      const card = screen.getByText('Web Researcher').closest('.skill-card');
+      const card = screen.getByText('web-researcher').closest('.skill-card');
       if (card) {
         fireEvent.click(card);
       }
@@ -332,7 +305,7 @@ describe('AgentSubAgentsTab', () => {
       const checkboxes = screen.getAllByRole('checkbox');
       expect(checkboxes[0]).not.toBeChecked();
 
-      const card = screen.getByText('Web Researcher').closest('.skill-card');
+      const card = screen.getByText('web-researcher').closest('.skill-card');
       if (card) {
         fireEvent.click(card);
       }

@@ -246,5 +246,5 @@ export const CONFIG_MODULE_INFO = {
     'Intelligent cache management'
   ],
   supportedPlatforms: ['macOS', 'Windows', 'Linux'],
-  supportedFormats: ['settings.json', 'mcp.json', 'openkosmos.json']
+  supportedFormats: ['settings.json', 'mcp.json', 'kosmos.json']
 } as const;

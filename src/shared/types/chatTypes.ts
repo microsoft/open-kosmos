@@ -5,8 +5,6 @@ export interface LlmApiSettings {
   apiVersion: string;
 }
 
-// Keep Config as alias for backward compatibility
-export type Config = LlmApiSettings;
 
 // ===== Image support definitions - used by file processing tools =====
 export enum ChatImageMimeType {
@@ -263,24 +261,6 @@ export class MessageHelper {
   }
 }
 
-// ===== Deprecated legacy interface definitions - transitional compatibility support =====
-// Note: The following interfaces are deprecated, kept only for transitional compatibility,
-// and will be fully removed in phase 4
-
-// @deprecated Use the new UnifiedContentPart instead
-export interface ChatReferenceBinaryData {
-  readonly mimeType: string;
-  data(): Promise<Uint8Array>;
-  readonly reference?: string; // Corresponds to VSCode's Uri
-}
-
-// @deprecated Use the new UnifiedContentPart instead
-export interface LanguageModelDataPart {
-  mimeType: string;
-  data: Uint8Array;
-}
-
-// @deprecated Use the new UnifiedContentPart instead
 export interface ChatReferenceFileData {
   readonly mimeType: string;
   data(): Promise<Uint8Array | string>; // Supports both binary and text

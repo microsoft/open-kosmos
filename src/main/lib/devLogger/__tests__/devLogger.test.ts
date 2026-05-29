@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../unifiedLogger/FileOperations', () => ({
   isDevelopmentLogEnvironment: vi.fn(() => true),
   getDefaultLogDirectory: vi.fn(() => '/tmp/test-logs'),
-  getCurrentLogFileName: vi.fn(() => 'openkosmos-dev-2026-01-01-00-00-00.log'),
+  getCurrentLogFileName: vi.fn(() => 'kosmos-dev-2026-01-01-00-00-00.log'),
   ensureLogDirectoryExists: vi.fn(() => Promise.resolve()),
   cleanupOldLogFiles: vi.fn(() => Promise.resolve()),
 }));
@@ -41,7 +41,7 @@ describe('DevLogger module', () => {
       const logger = getDevLogger()!;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'INFO',
         source: 'TestSource',
         message: 'Hello world',
@@ -55,7 +55,7 @@ describe('DevLogger module', () => {
       const logger = getDevLogger()!;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'DEBUG',
         source: 'TestSource',
         message: 'debug message',
@@ -69,7 +69,7 @@ describe('DevLogger module', () => {
       const logger = getDevLogger()!;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'WARN',
         source: 'TestSource',
         message: 'warning',
@@ -83,7 +83,7 @@ describe('DevLogger module', () => {
       const logger = getDevLogger()!;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'ERROR',
         source: 'TestSource',
         message: 'an error',
@@ -97,7 +97,7 @@ describe('DevLogger module', () => {
       const logger = getDevLogger()!;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'SYSTEM',
         source: 'TestSource',
         message: 'system message',
@@ -113,7 +113,7 @@ describe('DevLogger module', () => {
         expect(msg).toContain('extra-arg');
       });
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'INFO',
         source: 'TestSource',
         message: 'msg with args',
@@ -130,7 +130,7 @@ describe('DevLogger module', () => {
       vi.spyOn(console, 'log').mockImplementation(() => {});
       // Add a log entry
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'INFO',
         source: 'Flush',
         message: 'flush me',
@@ -157,7 +157,7 @@ describe('DevLogger module', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.spyOn(console, 'log').mockImplementation(() => {});
       logger.handleLog({
-        __openkosmos_log: true,
+        __kosmos_log: true,
         level: 'INFO',
         source: 'Flush',
         message: 'fail flush',

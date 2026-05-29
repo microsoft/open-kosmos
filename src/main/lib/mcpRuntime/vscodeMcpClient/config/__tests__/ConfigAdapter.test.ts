@@ -225,7 +225,7 @@ describe('ConfigAdapter.migrateConfigs', () => {
   it('emits config-migrated event', async () => {
     const handler = vi.fn();
     adapter.on('config-migrated', handler);
-    await adapter.migrateConfigs([makeStdioConfig()], 'openkosmos');
+    await adapter.migrateConfigs([makeStdioConfig()], 'kosmos');
     expect(handler).toHaveBeenCalledOnce();
   });
 });

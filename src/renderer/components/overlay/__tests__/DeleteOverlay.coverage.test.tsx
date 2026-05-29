@@ -83,10 +83,6 @@ vi.mock('@renderer/lib/chat/startNewChatFor', () => ({
   startNewChatFor: mockStartNewChatFor,
 }));
 
-vi.mock('@renderer/lib/chat/pmAgentSayHi', () => ({
-  getPmAgentSayHiMessageConfig: vi.fn(() => ({})),
-}));
-
 vi.mock('@renderer/lib/chat/agentChatSessionCacheManager', () => ({
   agentChatSessionCacheManager: {
     getCurrentChatId: mockGetCurrentChatId,
@@ -361,7 +357,7 @@ describe('DeleteOverlay — confirm flows', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
 
-    expect(mockStartNewChatFor).toHaveBeenCalledWith('agent-1', expect.anything());
+    expect(mockStartNewChatFor).toHaveBeenCalledWith('agent-1', undefined);
     expect(mockDeleteChatSession).toHaveBeenCalled();
     expect(mockShowSuccess).toHaveBeenCalled();
   });

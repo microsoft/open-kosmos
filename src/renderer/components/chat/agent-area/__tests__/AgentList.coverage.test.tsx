@@ -90,7 +90,7 @@ vi.mock('../../../lib/userData/types', async (importOriginal) => {
   return { ...actual, isBuiltinAgent: vi.fn().mockReturnValue(false) };
 });
 
-vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'openkosmos' }));
+vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'kosmos' }));
 
 // ─── electronAPI setup ───────────────────────────────────────────────────────
 function buildElectronApi() {

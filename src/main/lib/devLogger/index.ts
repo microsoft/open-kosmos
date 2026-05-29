@@ -5,7 +5,7 @@
  * process via console-message events and writes them to files.
  *
  * This enables Claude Code (or any developer) to see Renderer logs via:
- *   tail -f ~/.config/openkosmos-app/logs/openkosmos-dev-YYYY-MM-DD-HH-mm-ss.log
+ *   tail -f ~/.config/open-kosmos-app/logs/kosmos-dev-YYYY-MM-DD-HH-mm-ss.log
  */
 
 import type { BrowserWindow, WebContents } from 'electron';
@@ -45,7 +45,7 @@ function getMinLogLevel(): LogLevel {
 
 // Structured log entry from Renderer
 interface RendererLog {
-  __openkosmos_log: true;
+  __kosmos_log: true;
   level: LogLevel;
   source: string;
   message: string;
@@ -211,7 +211,7 @@ class DevLogger {
       // Only log if it meets the minimum level threshold
       if (this.shouldLog(mappedLevel)) {
         const fallbackLog: RendererLog = {
-          __openkosmos_log: true,
+          __kosmos_log: true,
           level: mappedLevel,
           source,
           message,

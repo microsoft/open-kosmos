@@ -23,7 +23,7 @@ process.stderr?.on?.('error', (err: NodeJS.ErrnoException) => {
 import { app, BrowserWindow, Menu, shell, protocol, powerMonitor, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFile, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import JSZip from 'jszip';
 
 
@@ -40,14 +40,13 @@ protocol.registerSchemesAsPrivileged([
     }
   },
 ]);
-import SelectionHook, { type SelectionHookInstance, type TextSelectionData } from 'selection-hook'
-import { recoverSelectionText } from './lib/selectionHookEncoding';
 
 // 🚀 Phase 2 optimization: heavy modules converted to dynamic import, not loaded at startup
 // The following modules perform heavy initialization on import (singleton creation, file I/O, config reading, etc.)
 // Changed to on-demand loading, significantly improving Windows startup speed
 
 // Type imports (no code execution, used for type checking only)
+import { UpdateManager } from './lib/autoUpdate/updateManager';
 
 const DEV_SERVER_PORT = process.env.DEV_SERVER_PORT || '39017';
 const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] || `http://localhost:${DEV_SERVER_PORT}`;
@@ -67,11 +66,13 @@ import {
   getMainAuthManager,
   getMainTokenMonitor,
   getAdvancedLogger,
+  useRemoteChannelManager,
   useAdvancedLogger,
 } from './startup/lazy';
 import { setUpIPC } from './startup/ipc';
 import { startEvalMode } from './startup/evalMode';
 import { ghcModelsManager } from "./lib/llm/ghcModelsManager";
+import { assetsLibraryManager } from "./lib/assetsFetcher/assetsLibraryManager";
 import { schedulerManager } from "./lib/scheduler/SchedulerManager";
 import { mcpClientManager } from "./lib/mcpRuntime/mcpClientManager";
 import { agentChatManager } from "./lib/chat/agentChatManager";
@@ -79,6 +80,11 @@ import { chatSessionStore } from "./lib/chat/chatSessionStore";
 import { scheduleStore } from "./lib/scheduler/scheduleStore";
 import { SubAgentTaskStore } from "./lib/subAgent/subAgentTaskStore";
 
+
+// 🚀 Dynamically create UpdateManager (avoid import type limitation)
+async function createUpdateManager(getMainWindow: () => BrowserWindow | null): Promise<UpdateManager> {
+  return new UpdateManager(getMainWindow);
+}
 
 console.timeEnd('[Startup] Module imports');
 
@@ -153,7 +159,7 @@ class ElectronApp {
   private selectedText: string = ''; // Store captured selected text
   private isDev: boolean = false;
   private currentUserAlias: string | null = null;
-  private selectionHook: SelectionHookInstance | null = null; // SelectionHook instance
+  private updateManager: UpdateManager | null = null;
 
   // 🚀 State tracking: app component initialization status
   private isAnalyticsReady: boolean = false;
@@ -162,7 +168,7 @@ class ElectronApp {
   private lastSuspendAt: number | null = null;
 
   private logSchedulerLifecycleState(event: string, extra?: Record<string, unknown>): void {
-    if (!isFeatureEnabled('openkosmosFeatureScheduler')) return;
+    if (!isFeatureEnabled('kosmosFeatureScheduler')) return;
 
     Promise.resolve()
       .then(() => {
@@ -259,11 +265,8 @@ class ElectronApp {
         this.logSchedulerLifecycleState('before-quit', {
           appUptimeSeconds: Math.round(process.uptime()),
         });
-        // Ensure SelectionHook is properly cleaned up before app exit
-        this.cleanupSelectionHook();
       } catch (error) {
         // Ignore cleanup errors to avoid preventing app exit
-        safeConsole.warn('[APP-EXIT] Error during SelectionHook cleanup:', error);
       }
     });
 
@@ -272,11 +275,8 @@ class ElectronApp {
         this.logSchedulerLifecycleState('will-quit', {
           appUptimeSeconds: Math.round(process.uptime()),
         });
-        // Last chance to clean up SelectionHook
-        this.cleanupSelectionHook();
       } catch (error) {
         // Ignore cleanup errors, ensure app can exit normally
-        safeConsole.warn('[APP-EXIT] Final cleanup error (ignored):', error);
       }
     });
     app.on('before-quit', this.onBeforeQuit.bind(this));
@@ -293,10 +293,18 @@ class ElectronApp {
       get isAgentChatReady() { return host.isAgentChatReady; }
       get selectedText() { return host.selectedText; }
 
+      get updateManager() {
+        if (host.updateManager) {
+          return Promise.resolve(host.updateManager);
+        }
+        return createUpdateManager(() => host.mainWindow).then((manager) => {
+          manager.startPeriodicCheck(360); // Check every 6 hours
+          host.updateManager = manager;
+          return manager;
+        });
+      }
 
-      cleanupSelectionHook = host.cleanupSelectionHook.bind(host);
-      onBeforeQuit = host.onBeforeQuit.bind(host);
-      registerGlobalShortcuts = host.registerGlobalShortcuts.bind(host);
+      onBeforeQuit = host.onBeforeQuit.bind(host);      registerGlobalShortcuts = host.registerGlobalShortcuts.bind(host);
       getPersistedWindowZoomLevel = host.getPersistedWindowZoomLevel.bind(host);
       applyWindowZoomLevel = host.applyWindowZoomLevel.bind(host);
       stepWindowZoomLevel = host.stepWindowZoomLevel.bind(host);
@@ -316,7 +324,9 @@ class ElectronApp {
    */
   private async checkAssetsLibrariesAsync(): Promise<void> {
     try {
-      // Refresh remote model list
+      safeConsole.log('[UPDATE] Starting assets library check...');
+
+      // 🆕 Also refresh remote model list (non-blocking, failure does not affect subsequent assets check)
       try {
         const refreshed = await ghcModelsManager.refreshFromRemote();
         if (refreshed) {
@@ -324,6 +334,19 @@ class ElectronApp {
         }
       } catch (modelsError) {
         safeConsole.warn('[UPDATE] Models refresh failed (non-fatal):', modelsError);
+      }
+
+      // Dynamically import AssetsLibraryManager to avoid circular dependency
+
+      // Execute check and update
+      const result = await assetsLibraryManager.checkAndUpdateLibraries(this.currentUserAlias || undefined);
+
+      // Log results
+      const successCount = result.fetchResults.filter(r => r.success).length;
+      safeConsole.log(`[UPDATE] Assets library check completed: ${successCount}/${result.fetchResults.length} libraries successful`);
+
+      if (result.updateResult) {
+        safeConsole.log(`[UPDATE] Profile updates - Agents: ${result.updateResult.updatedAgents}, MCP: ${result.updateResult.updatedMcpServers}, Skills: ${result.updateResult.updatedSkills}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -410,7 +433,7 @@ class ElectronApp {
         );
       }
 
-      if (isFeatureEnabled('openkosmosFeatureScheduler') && suspendedAt && suspendedForMs && suspendedForMs > 0) {
+      if (isFeatureEnabled('kosmosFeatureScheduler') && suspendedAt && suspendedForMs && suspendedForMs > 0) {
         Promise.resolve()
           .then(() => schedulerManager.handleSystemResume(suspendedAt, resumedAt))
           .catch((schedulerError) => {
@@ -461,44 +484,11 @@ class ElectronApp {
 
       crashCaptureManager.recordBreadcrumb('lifecycle', 'app-ready');
 
-
-
       const crashStatus = crashCaptureManager.getStatus();
-      getAdvancedLogger().info('scheduler.lifecycle.startup-recovery-context', 'main:onReady', { previousSessionId: crashStatus.recoveredCrash?.previousSessionId ?? null, currentSessionId: crashStatus.currentSessionId, recoveredCrashDetected: crashStatus.hasRecoveredCrash, alias: this.currentUserAlias, schedulerWillInit: isFeatureEnabled('openkosmosFeatureScheduler') });
+      getAdvancedLogger().info('scheduler.lifecycle.startup-recovery-context', 'main:onReady', { previousSessionId: crashStatus.recoveredCrash?.previousSessionId ?? null, currentSessionId: crashStatus.currentSessionId, recoveredCrashDetected: crashStatus.hasRecoveredCrash, alias: this.currentUserAlias, schedulerWillInit: isFeatureEnabled('kosmosFeatureScheduler') });
       this.registerPowerMonitorLogging();
 
-      // 🧹 Cleanup: remove playwright-profiles directory and legacy session state
-      // files on every startup.  Playwright persistent contexts may leave behind
-      // lock files or corrupted state that causes launch failures on subsequent
-      // runs.  Wiping the directory ensures a fresh browser context each time.
-      // The session-state JSON files (browser-session-state.json,
-      // cdp-session-state.json, kosmos-token-cache.json) are legacy token caches
-      // that must stay removed. Browser auth now persists only via the
-      // profile-scoped OpenKosmosTokenCache path.
-      try {
-        const userDataPath = app.getPath('userData');
-
-        // 1. Remove playwright-profiles directory
-        const playwrightProfilesDir = path.join(userDataPath, 'playwright-profiles');
-        if (fs.existsSync(playwrightProfilesDir)) {
-          fs.rmSync(playwrightProfilesDir, { recursive: true, force: true });
-          safeConsole.info('[Startup] 🧹 Removed playwright-profiles directory');
-        }
-
-        // 2. Remove legacy session state files
-        const legacyFiles = ['browser-session-state.json', 'cdp-session-state.json', 'kosmos-token-cache.json'];
-        for (const filename of legacyFiles) {
-          const filePath = path.join(userDataPath, filename);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            safeConsole.info(`[Startup] 🧹 Removed legacy session state file: ${filename}`);
-          }
-        }
-      } catch (cleanupErr) {
-        safeConsole.warn('[Startup] Failed to clean up playwright/session state files:', cleanupErr);
-      }
-
-      // 🚀 Highest priority: warm up AppCacheManager (read app.json / migrate runtimeConfig.json)
+      // 🚀 Highest priority: warm up AppCacheManager (read app.json)
       // Fire-and-forget, fully parallel with all subsequent tasks, ensure earlier than profile.json initialization
       getAppCacheManager().catch((e) => {
         safeConsole.warn('[Startup] AppCacheManager pre-warm failed:', e);
@@ -508,7 +498,7 @@ class ElectronApp {
       // 🚀 Optimization: start window creation task immediately
       const windowCreationTask = this.createMainWindow();
 
-      // Mark Analytics as ready immediately (analytics removed)
+      // Analytics removed — mark as ready immediately
       this.isAnalyticsReady = true;
       this.checkAppReadiness();
 
@@ -529,6 +519,22 @@ class ElectronApp {
         createLogger().error('[Startup] Menu/Shortcuts initialization failed', 'main', { error: e });
       }
 
+      // 🚀 Optimization: deferred update manager initialization, non-blocking startup
+      setImmediate(async () => {
+        try {
+          if (this.mainWindow) {
+            this.updateManager = await createUpdateManager(() => this.getMainWindow());
+            // Always enable periodic check
+            this.updateManager.startPeriodicCheck(360); // Check every 6 hours
+            safeConsole.log('[Startup] UpdateManager periodic check started', { intervalMinutes: 360 });
+            getAdvancedLogger().info('[Startup] UpdateManager periodic check started', 'main', { intervalMinutes: 360 });
+          } else {
+            safeConsole.warn('[Startup] mainWindow not available for UpdateManager initialization');
+          }
+        } catch (e) {
+          safeConsole.error('[Startup] UpdateManager initialization failed:', e);
+        }
+      });
 
       safeConsole.timeEnd('[Startup] onReady');
     } catch (error) {
@@ -587,7 +593,7 @@ class ElectronApp {
       });
 
       // Phase 0.5: stop all scheduled tasks
-      if (isFeatureEnabled('openkosmosFeatureScheduler')) {
+      if (isFeatureEnabled('kosmosFeatureScheduler')) {
         exitSafeLog('Phase 0.5: Stopping scheduled cron tasks');
         try {
           getAdvancedLogger().info('scheduler.lifecycle.shutdown-sequence', 'main:onBeforeQuit', { stage: 'before-dispose', reason: 'app-quit', schedulerState: schedulerManager.getRuntimeDiagnostics() });
@@ -611,11 +617,20 @@ class ElectronApp {
         }
       }
 
-      // Phase 1: Clean up resources
-      exitSafeLog('Phase 1: Cleaning up resources');
-
-      // Phase 1.5: Remote Channel cleanup removed (integration deleted)
-      exitSafeLog('Phase 1.5: Skipped (Remote Channel integration removed)');
+      // Phase 1.5: Clean up Remote Channels
+      exitSafeLog('Phase 1.5: Cleaning up Remote Channels');
+      try {
+        await useRemoteChannelManager(m => Promise.race([
+          m.stopAll(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('RemoteChannel cleanup timeout')), 10000)
+          ),
+        ]));
+        exitSafeLog('Remote channel cleanup completed successfully');
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        safeConsole.warn(`Remote channel cleanup failed or timed out: ${errorMessage}`);
+      }
 
       // Phase 2: Clean up MCP clients and child processes
       exitSafeLog('Phase 2: Cleaning up MCP clients and child processes');
@@ -639,6 +654,13 @@ class ElectronApp {
           exitSafeLog('Attempting force cleanup of remaining child processes');
           await this.forceCleanupChildProcesses(exitId);
         }
+      }
+
+      // Phase 3: Clean up update manager
+      exitSafeLog('Phase 3: Cleaning up UpdateManager');
+      if (this.updateManager) {
+        this.updateManager.destroy();
+        exitSafeLog('UpdateManager destroyed');
       }
 
       // Clean up global shortcuts
@@ -741,7 +763,7 @@ class ElectronApp {
       // frame: defaults to true, no need to set explicitly
       icon: app.isPackaged
         ? path.join(process.resourcesPath, 'brand-assets/win/app.ico')
-        : path.join(__dirname, `../../brands/openkosmos/assets/win/app.ico`),
+        : path.join(__dirname, `../../brands/${process.env.BRAND_NAME}/assets/win/app.ico`),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -1084,94 +1106,6 @@ class ElectronApp {
     return this.mainWindow;
   }
 
-  private async initSelectionHook(): Promise<void> {
-    const logger = getAdvancedLogger();
-
-    if( this.selectionHook) {
-      return;
-    }
-
-    try {
-      const selectionHook = new SelectionHook();
-
-      selectionHook.on('text-selection', (selection: TextSelectionData) => {
-        logger.info('[SELECTION-HOOK] Text selection event received:' + selection.text);
-        if (selection && selection.text && selection.text.length > 0 && selection.text.length < 20000) {
-          this.selectedText = recoverSelectionText(selection.text.trim());
-        }
-      });
-
-      this.selectionHook = selectionHook;
-      this.selectionHook!.start({debug: this.isDev});
-
-      // 🔥 Fix: register process exit listener to safely clean up SelectionHook
-      process.on('exit', () => {
-        this.cleanupSelectionHook();
-      });
-      logger.info('[SELECTION-HOOK] selection-hook initialized successfully');
-    } catch (error) {
-      logger.warn(`[SELECTION-HOOK] Failed to initialize selection-hook: ${error instanceof Error ? error.message : String(error)}`);
-      // If selection-hook initialization fails, set to null, fall back to clipboard approach
-      this.selectionHook = null;
-    }
-  }
-
-  /**
-   * Safely clean up SelectionHook instance
-   * Prevent crash during app exit
-   */
-  private cleanupSelectionHook() {
-    if (this.selectionHook) {
-      try {
-        // Try to safely stop SelectionHook
-        if (typeof this.selectionHook.stop === 'function') {
-          this.selectionHook.stop();
-        }
-
-        // Clear reference, let garbage collector handle it
-        this.selectionHook = null;
-
-      } catch (error) {
-        // Ignore errors during cleanup to avoid crash
-        safeConsole.warn('[SELECTION-HOOK] Error during cleanup (ignored):', error);
-        this.selectionHook = null;
-      }
-    }
-  }
-
-  /**
-   * Capture user-selected text
-   * Strategy: three-tier fallback strategy
-   * 1. selection-hook native module (recommended, directly reads system selected text)
-   * 2. Electron clipboard API (fallback, requires user to manually copy)
-   * 3. Exception fault tolerance handling
-   */
-  private async captureSelectedText(): Promise<void> {
-    if (process.platform === 'darwin') {
-      return;
-    }
-    // Approach 1: selection-hook (real-time monitoring)
-    // If selectionHook is initialized, rely on 'selection' event to update this.selectedText in real-time
-    if (this.selectionHook) {
-      // 🟢 Optimization: proactively get current selection (more reliable than relying on events, especially in shortcut-triggered scenarios)
-      // Reference SelectionService.ts processSelectTextByShortcut implementation
-      try {
-        const logger = getAdvancedLogger();
-        // @ts-ignore - selection-hook typing might vary
-        if (typeof this.selectionHook.getCurrentSelection === 'function') {
-           // @ts-ignore
-           const selection = this.selectionHook.getCurrentSelection();
-           if (selection && selection.text && selection.text.length > 0) {
-               this.selectedText = recoverSelectionText(selection.text.trim());
-               logger.info('[SELECTION-HOOK] Active capture success: ' + this.selectedText.substring(0, 50) + '...');
-           }
-        }
-      } catch (e) {
-         // logger.warn('[SELECTION-HOOK] Active capture failed, falling back to cached event data', e);
-      }
-    }
-  }
-
   private async createDebugWindow(): Promise<void> {
     // If debug window already exists, just focus it
     if (this.debugWindow && !this.debugWindow.isDestroyed()) {
@@ -1194,7 +1128,7 @@ class ElectronApp {
         ? path.join(process.resourcesPath, 'brand-assets/win/app.ico')
         : path.join(
             __dirname,
-            `../../brands/openkosmos/assets/win/app.ico`,
+            `../../brands/${process.env.BRAND_NAME}/assets/win/app.ico`,
           ),
       webPreferences: {
         nodeIntegration: false,
@@ -1273,7 +1207,6 @@ class ElectronApp {
    * Register global shortcuts
    */
   private async registerGlobalShortcuts(): Promise<void> {
-    const logger = getAdvancedLogger();
     // Unregister existing shortcuts to prevent duplicates or stale shortcuts
     this.unregisterGlobalShortcuts();
 
@@ -1595,6 +1528,13 @@ class ElectronApp {
                 { role: 'delete' as const },
                 { role: 'selectAll' as const },
                 { type: 'separator' as const },
+                {
+                  label: 'Speech',
+                  submenu: [
+                    { role: 'startSpeaking' as const },
+                    { role: 'stopSpeaking' as const },
+                  ],
+                },
               ]
             : [
                 { role: 'delete' as const },

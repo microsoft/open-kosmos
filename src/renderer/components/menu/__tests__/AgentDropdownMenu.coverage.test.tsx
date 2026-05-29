@@ -52,7 +52,7 @@ vi.mock('../../../lib/userData', () => ({
 vi.mock('../../ui/use-click-out', () => ({ useClickOut: vi.fn() }));
 
 // ── BRAND_NAME ────────────────────────────────────────────────────────────────
-vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'openkosmos' }));
+vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'kosmos' }));
 
 // ── DuplicateAgentOverlay — duck-typed atom mock ──────────────────────────────
 const mockDuplicateShow = vi.hoisted(() => vi.fn());

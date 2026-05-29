@@ -545,7 +545,7 @@ export class SubAgentChat {
       // Use resolved MCP servers (includes inherited from parent) instead of raw config
       const mcpServersForTools = subAgent.resolvedMcpServers.length > 0
         ? subAgent.resolvedMcpServers.map(s => ({ name: s.name, tools: s.tools }))
-        : (config.mcp_servers || []);
+        : (config.mcpServers || []).filter((s): s is import('../userDataADO/types/profile').AgentMcpServer => typeof s !== 'string');
 
       return mcpClientManager.getToolsForSubAgent(
         mcpServersForTools,

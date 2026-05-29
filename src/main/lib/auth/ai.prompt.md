@@ -11,7 +11,6 @@
 | `tokenMonitor.ts` | `MainTokenMonitor` — 60s polling loop; refreshes Copilot token when ≤5 min remain; triggers re-login when GitHub token invalid | small |
 | `refreshTokenAnalyzer.ts` | `RefreshTokenAnalyzer` — HTTP-status-based error classifier (401/403/429/5xx/network); determines retry strategy vs session clear | medium |
 | `ghcConfig.ts` | OAuth client ID, API endpoint, and other GitHub Copilot constants | tiny |
-| `aliasUtils.ts` | `aliasToAadAccount()` — derives AAD account identifier from user alias | tiny |
 | `types/` | `authTypes.ts` (`AuthData`, `IAuthManager`), `refreshTokenTypes.ts` | small |
 
 ## Architecture
@@ -34,7 +33,6 @@
 ## Gotchas
 - ⚠️ `MainTokenMonitor` guards against double-start with `isMonitoring && monitorInterval` checks — do not call `startMonitoring()` more than once (main.ts handles startup order).
 - ⚠️ The GitHub OAuth token has no `expires_in` field from GitHub's API; the monitor only polls the Copilot token. A GitHub token can be silently revoked (403), which `RefreshTokenAnalyzer` maps to a session-clear action.
-- ⚠️ `aliasUtils.ts` derives AAD identity from the alias string; if the format changes, profile directory paths change and existing data becomes inaccessible.
 - ⚠️ Auth data is written to disk synchronously (`fs.writeFileSync`) to avoid losing tokens during abrupt app exit.
 
 ## Related

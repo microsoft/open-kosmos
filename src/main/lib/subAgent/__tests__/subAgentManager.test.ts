@@ -150,7 +150,7 @@ function createMockSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubA
     name: 'test-agent',
     description: 'A test sub-agent',
     system_prompt: 'You are a test agent',
-    mcp_servers: [],
+    mcpServers: [],
     ...overrides,
   };
 }
@@ -168,7 +168,6 @@ describe('SubAgentManager', () => {
     const mockConfig = createMockSubAgentConfig();
     mockFileManager.readAgentConfig.mockResolvedValue(mockConfig);
 
-    // Keep legacy mock for backward compat (some tests may still reference it)
     const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
     vi.mocked(profileCacheManager.getSubAgents).mockReturnValue([mockConfig] as any);
   });
@@ -622,7 +621,7 @@ describe('SubAgentManager', () => {
     describe('MCP Servers merge', () => {
       it('should return only child MCP servers when no parent config', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [{ name: 'child-server', tools: ['t1'] }],
+          mcpServers: [{ name: 'child-server', tools: ['t1'] }],
         });
 
         const result = resolveInheritedConfig(config, undefined);
@@ -637,11 +636,11 @@ describe('SubAgentManager', () => {
 
       it('should merge parent MCP servers when inherit_mcp_servers is true', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [{ name: 'child-server', tools: ['t1'] }],
+          mcpServers: [{ name: 'child-server', tools: ['t1'] }],
           inherit_mcp_servers: true,
         });
         const parentConfig = {
-          mcp_servers: [
+          mcpServers: [
             { name: 'parent-server', tools: ['t2'] },
             { name: 'shared-server', tools: ['t3'] },
           ],
@@ -665,11 +664,11 @@ describe('SubAgentManager', () => {
 
       it('should give child priority over same-name parent MCP server', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [{ name: 'shared-server', tools: ['child-tool'] }],
+          mcpServers: [{ name: 'shared-server', tools: ['child-tool'] }],
           inherit_mcp_servers: true,
         });
         const parentConfig = {
-          mcp_servers: [{ name: 'shared-server', tools: ['parent-tool'] }],
+          mcpServers: [{ name: 'shared-server', tools: ['parent-tool'] }],
         };
 
         const result = resolveInheritedConfig(config, parentConfig);
@@ -684,11 +683,11 @@ describe('SubAgentManager', () => {
 
       it('should NOT merge parent MCP servers when inherit_mcp_servers is false', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [{ name: 'child-only', tools: [] }],
+          mcpServers: [{ name: 'child-only', tools: [] }],
           inherit_mcp_servers: false,
         });
         const parentConfig = {
-          mcp_servers: [{ name: 'parent-server', tools: ['t1'] }],
+          mcpServers: [{ name: 'parent-server', tools: ['t1'] }],
         };
 
         const result = resolveInheritedConfig(config, parentConfig);
@@ -700,11 +699,11 @@ describe('SubAgentManager', () => {
 
       it('should treat undefined inherit_mcp_servers as true (default inherit)', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [],
+          mcpServers: [],
           // inherit_mcp_servers is undefined
         });
         const parentConfig = {
-          mcp_servers: [{ name: 'parent-server', tools: ['t1'] }],
+          mcpServers: [{ name: 'parent-server', tools: ['t1'] }],
         };
 
         const result = resolveInheritedConfig(config, parentConfig);
@@ -737,7 +736,7 @@ describe('SubAgentManager', () => {
           inherit_skills: true,
         });
         const parentConfig = {
-          mcp_servers: [],
+          mcpServers: [],
           skills: ['parent-skill', 'shared-skill'],
         };
 
@@ -763,7 +762,7 @@ describe('SubAgentManager', () => {
           inherit_skills: false,
         });
         const parentConfig = {
-          mcp_servers: [],
+          mcpServers: [],
           skills: ['parent-skill'],
         };
 
@@ -776,7 +775,7 @@ describe('SubAgentManager', () => {
       it('should treat undefined inherit_skills as true (default inherit)', () => {
         const config = createMockSubAgentConfig({ skills: [] });
         const parentConfig = {
-          mcp_servers: [],
+          mcpServers: [],
           skills: ['parent-skill'],
         };
 
@@ -794,7 +793,7 @@ describe('SubAgentManager', () => {
       it('should inherit parent knowledgeBase when available', () => {
         const config = createMockSubAgentConfig({});
         const parentConfig = {
-          mcp_servers: [],
+          mcpServers: [],
           knowledgeBase: '/parent/kb',
         };
 
@@ -805,7 +804,7 @@ describe('SubAgentManager', () => {
       it('should return undefined when parent has no knowledgeBase', () => {
         const config = createMockSubAgentConfig({});
         const parentConfig = {
-          mcp_servers: [],
+          mcpServers: [],
         };
 
         const result = resolveInheritedConfig(config, parentConfig);
@@ -824,13 +823,13 @@ describe('SubAgentManager', () => {
     describe('Combined scenarios', () => {
       it('should resolve all three fields correctly in a full merge', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [{ name: 'child-mcp', tools: [] }],
+          mcpServers: [{ name: 'child-mcp', tools: [] }],
           skills: ['child-skill'],
           inherit_mcp_servers: true,
           inherit_skills: true,
         });
         const parentConfig = {
-          mcp_servers: [
+          mcpServers: [
             { name: 'parent-mcp', tools: ['pt1'] },
             { name: 'child-mcp', tools: ['pt2'] },
           ],
@@ -864,11 +863,11 @@ describe('SubAgentManager', () => {
 
       it('should handle empty child config with all inherited from parent', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [],
+          mcpServers: [],
           skills: [],
         });
         const parentConfig = {
-          mcp_servers: [{ name: 'p-server', tools: ['t1'] }],
+          mcpServers: [{ name: 'p-server', tools: ['t1'] }],
           skills: ['p-skill'],
           knowledgeBase: '/parent/data',
         };
@@ -884,7 +883,7 @@ describe('SubAgentManager', () => {
 
       it('should return all empty when both child and parent have no config', () => {
         const config = createMockSubAgentConfig({
-          mcp_servers: [],
+          mcpServers: [],
           skills: [],
         });
 
@@ -1525,7 +1524,7 @@ describe('SubAgentManager', () => {
 
       mockFileManager.readAgentConfig.mockResolvedValue(
         createMockSubAgentConfig({
-          mcp_servers: [{ name: 'server-a', tools: [] }] as any,
+          mcpServers: [{ name: 'server-a', tools: [] }] as any,
           skills: ['my-skill'],
           inherit_mcp_servers: false,
           inherit_skills: false,
@@ -1553,7 +1552,7 @@ describe('SubAgentManager', () => {
 
       mockFileManager.readAgentConfig.mockResolvedValue(
         createMockSubAgentConfig({
-          mcp_servers: [{ name: 'server-a', tools: [] }] as any,
+          mcpServers: [{ name: 'server-a', tools: [] }] as any,
           inherit_mcp_servers: false,
           inherit_skills: false,
         }),
@@ -1610,7 +1609,7 @@ describe('SubAgentManager', () => {
 
       mockFileManager.readAgentConfig.mockResolvedValue(
         createMockSubAgentConfig({
-          mcp_servers: [{ name: 'server-a', tools: [] }] as any,
+          mcpServers: [{ name: 'server-a', tools: [] }] as any,
           skills: ['skill-x'],
           inherit_mcp_servers: false,
           inherit_skills: false,
@@ -1831,7 +1830,7 @@ describe('SubAgentManager', () => {
 
       mockFileManager.readAgentConfig.mockResolvedValue(
         createMockSubAgentConfig({
-          mcp_servers: [{ name: 'server-a', tools: [] }] as any,
+          mcpServers: [{ name: 'server-a', tools: [] }] as any,
           inherit_mcp_servers: false,
           inherit_skills: false,
         }),
@@ -1922,7 +1921,7 @@ describe('SubAgentManager', () => {
         name: 'test-agent',
         description: 'test',
         context_access: 'isolated',
-        mcp_servers: [],
+        mcpServers: [],
         skills: [],
       });
 
@@ -2005,7 +2004,7 @@ describe('SubAgentManager', () => {
         name: 'bg-agent',
         description: 'test',
         context_access: 'isolated',
-        mcp_servers: [],
+        mcpServers: [],
         skills: [],
       });
 
@@ -2035,7 +2034,7 @@ describe('SubAgentManager', () => {
         name: 'msg-agent',
         description: 'test',
         context_access: 'isolated',
-        mcp_servers: [],
+        mcpServers: [],
         skills: [],
       });
 
@@ -2071,7 +2070,7 @@ describe('SubAgentManager', () => {
         name: 'msg-agent',
         description: 'test',
         context_access: 'isolated',
-        mcp_servers: [],
+        mcpServers: [],
         skills: [],
       });
 
@@ -2095,7 +2094,7 @@ describe('SubAgentManager', () => {
         name: 'msg-agent',
         description: 'test',
         context_access: 'isolated',
-        mcp_servers: [],
+        mcpServers: [],
         skills: [],
       });
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { SchedulerJob } from '@shared/ipc/scheduler'
-
+import { ChevronDown, Mail, Plus } from 'lucide-react'
 
 import '../../../styles/Agent.css'
 import { TabComponentProps } from './types'
@@ -11,11 +11,13 @@ import { profileDataManager } from '../../../lib/userData'
 import { showScheduledRunStartedToast } from '../../../lib/scheduler/showScheduledRunStartedToast'
 import { useToast } from '../../ui/ToastProvider'
 import { useNavigate } from 'react-router-dom'
+import { SCHEDULE_TEMPLATES, type ScheduleTemplateInitialValues } from './scheduleTemplates'
 
 const AgentSchedulesTab: React.FC<TabComponentProps> = ({
   agentId,
   agentData,
   readOnly = false,
+  isFromLibrary = false,
 }) => {
   const navigate = useNavigate()
   const { showToast, showSuccess, showError } = useToast()
@@ -24,6 +26,11 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [isOverlayOpen, setIsOverlayOpen] = useState(false)
   const [editingJob, setEditingJob] = useState<SchedulerJob | null>(null)
+  const [templateInitialValues, setTemplateInitialValues] = useState<ScheduleTemplateInitialValues | undefined>(undefined)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const addMenuRef = useRef<HTMLDivElement>(null)
+
+  const hasTemplates = SCHEDULE_TEMPLATES.length > 0
 
   const loadJobs = useCallback(async () => {
     if (!agentId) {
@@ -179,15 +186,38 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
 
   const handleOpenAddSchedule = useCallback(() => {
     setEditingJob(null)
+    setTemplateInitialValues(undefined)
+    setAddMenuOpen(false)
     setIsOverlayOpen(true)
   }, [])
+
+  const handleOpenTemplateSchedule = useCallback((templateId: string) => {
+    const template = SCHEDULE_TEMPLATES.find(t => t.id === templateId)
+    if (!template || !agentData) return
+    setEditingJob(null)
+    setTemplateInitialValues(template.buildInitialValues(agentData))
+    setAddMenuOpen(false)
+    setIsOverlayOpen(true)
+  }, [agentData])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!addMenuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setAddMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [addMenuOpen])
 
   const handleEditSchedule = useCallback((job: SchedulerJob) => {
     setEditingJob(job)
     setIsOverlayOpen(true)
   }, [])
 
-  const isScheduleReadOnly = readOnly
+  const isScheduleReadOnly = readOnly || isFromLibrary
   const isEmptyState = !error && jobs.length === 0
 
   return (
@@ -199,14 +229,93 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
           </span>
         </div>
         <div className="header-actions">
-          <button
-            className="manage-servers-btn"
-            onClick={handleOpenAddSchedule}
-            title="Add new schedule"
-            disabled={isScheduleReadOnly}
-          >
-            Add New Schedule
-          </button>
+          {hasTemplates ? (
+            <div ref={addMenuRef} style={{ position: 'relative' }}>
+              <button
+                className="manage-servers-btn"
+                onClick={() => setAddMenuOpen(prev => !prev)}
+                disabled={isScheduleReadOnly}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              >
+                Add New Schedule
+                <ChevronDown size={14} />
+              </button>
+              {addMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '4px',
+                    minWidth: '220px',
+                    background: '#fff',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    zIndex: 50,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <button
+                    onClick={handleOpenAddSchedule}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#111827',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                  >
+                    <Plus size={14} />
+                    Blank Schedule
+                  </button>
+                  <div style={{ height: '1px', background: '#E5E7EB' }} />
+                  {SCHEDULE_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => handleOpenTemplateSchedule(tpl.id)}
+                      title={tpl.description}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: '#111827',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
+                      <Mail size={14} />
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              className="manage-servers-btn"
+              onClick={handleOpenAddSchedule}
+              title="Add new schedule"
+              disabled={isScheduleReadOnly}
+            >
+              Add New Schedule
+            </button>
+          )}
         </div>
       </div>
 
@@ -292,12 +401,14 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
           setIsOverlayOpen(open)
           if (!open) {
             setEditingJob(null)
+            setTemplateInitialValues(undefined)
           }
         }}
         defaultAgentId={agentId}
         lockAgent
         agents={availableScheduleAgents}
         editingJob={editingJob}
+        initialValues={templateInitialValues}
         onCreated={(job) => {
           setJobs((prev) => [job, ...prev])
         }}

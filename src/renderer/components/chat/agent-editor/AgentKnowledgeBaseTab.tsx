@@ -67,7 +67,7 @@ const isImageFile = (filename: string): boolean => {
  */
 
 // File icon component - consistent with SkillFolderExplorer
-const FileIcon: React.FC<{ extension: string | null; fileName?: string }> = ({ extension }) => {
+const FileIcon: React.FC<{ extension: string | null; fileName?: string }> = ({ extension, fileName: _fileName }) => {
   const ext = extension?.toLowerCase();
   switch (ext) {
     case 'ts':
@@ -130,8 +130,12 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
   onDataChange,
   cachedData,
   readOnly = false,
+  isFromLibrary = false,
 }) => {
-  const isWorkspacePathDisabled = readOnly
+  // IN-LIBRARY agent edit permissions:
+  // - knowledgeBase path selection: not editable
+  // - File management (Add/Delete): editable
+  const isWorkspacePathDisabled = readOnly || isFromLibrary
 
   const [workspacePath, setWorkspacePath] = useState<string>('');
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -879,6 +883,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
   const getEmptyStateMessage = useCallback(() => {
     const agentName = agentData?.name || 'Agent';
 
+    // OpenKosmos or default
     return {
       title: 'Add documents, code files, images, and more.',
       subtitle: `${agentName} can use them as references when you chat.`
@@ -926,7 +931,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
               className="select-path-btn"
               onClick={handleSelectWorkspace}
               disabled={isWorkspacePathDisabled}
-              title="Select knowledge base folder"
+              title={isFromLibrary ? "Library Agent's knowledge base path cannot be modified" : "Select knowledge base folder"}
             >
               <FolderOpen size={16} />
               <span>Select Path</span>

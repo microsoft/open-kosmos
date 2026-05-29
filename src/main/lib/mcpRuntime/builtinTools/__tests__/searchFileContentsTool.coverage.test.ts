@@ -13,7 +13,7 @@ import { SearchFileContentsTool } from '../searchFileContentsTool';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function makeTmpDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-cov-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-cov-'));
 }
 
 async function cleanTmpDir(dir: string) {

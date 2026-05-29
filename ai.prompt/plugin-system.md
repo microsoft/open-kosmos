@@ -1,11 +1,11 @@
 <!-- Last verified: 2026-04-16 -->
 # Plugin System
 
-> Claude Code-compatible plugin platform for extending Kosmos agents with MCP servers, skills, hooks, commands, and agents from external packages.
+> Claude Code-compatible plugin platform for extending OpenKosmos agents with MCP servers, skills, hooks, commands, and agents from external packages.
 
 ## Overview
 
-The plugin system lets users install third-party extension packages (compatible with the Claude Code plugin format) to add MCP tools, prompt skills, lifecycle hooks, slash commands, and agent templates to any Kosmos agent. Plugins are per-user, globally installed, and selectively enabled per agent.
+The plugin system lets users install third-party extension packages (compatible with the Claude Code plugin format) to add MCP tools, prompt skills, lifecycle hooks, slash commands, and agent templates to any OpenKosmos agent. Plugins are per-user, globally installed, and selectively enabled per agent.
 
 ## Architecture
 

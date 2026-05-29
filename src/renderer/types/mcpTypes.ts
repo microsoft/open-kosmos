@@ -79,7 +79,7 @@ export interface ConfigState {
   previewConfig?: OpenKosmosAppMCPServerConfig
 }
 
-// OpenKosmos internal MCP server configuration format
+// OpenKosmos.app internal MCP server configuration format
 export interface OpenKosmosAppMCPServerConfig {
   name: string
   transport: 'stdio' | 'sse' | 'StreamableHttp'
@@ -89,7 +89,9 @@ export interface OpenKosmosAppMCPServerConfig {
   url: string
   in_use: boolean
   version?: string
-  source?: 'ON-DEVICE' | 'PLUGIN'
+  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
+  /** 🆕 Remote CDN version number; equals version when source is IN-LIBRARY, empty string when source is ON-DEVICE */
+  remoteVersion?: string
 }
 
 // Import dialog state
@@ -105,7 +107,7 @@ export interface VscodeImporterState {
 export interface TransportMapping {
   vscodeType?: string
   vscodeUrl?: string
-  openkosmosTransport: 'stdio' | 'sse' | 'StreamableHttp'
+  kosmosTransport: 'stdio' | 'sse' | 'StreamableHttp'
 }
 
 // Conflict resolution strategies

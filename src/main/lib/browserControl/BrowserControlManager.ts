@@ -634,7 +634,7 @@ export class BrowserControlManager {
     if (!alias) return;
 
     const pcManager = await this.deps.getProfileCacheManager();
-    const mcpServerName = 'openkosmos-chrome-extension';
+    const mcpServerName = 'kosmos-chrome-extension';
     const existingServer = pcManager.getMcpServerInfo(alias, mcpServerName);
 
     if (!existingServer.config) {
@@ -778,7 +778,7 @@ export class BrowserControlManager {
 
       const alias = this.deps.getAlias();
       if (alias) {
-        const mcpServerName = 'openkosmos-chrome-extension';
+        const mcpServerName = 'kosmos-chrome-extension';
         try { await mcpClientManager.disconnect(mcpServerName); logger.debug(`[BrowserControl] MCP server disconnected: ${mcpServerName}`); }
         catch (e) { logger.debug(`[BrowserControl] MCP server disconnect attempt: ${e instanceof Error ? e.message : String(e)}`); }
         try { await mcpClientManager.delete(mcpServerName); logger.debug(`[BrowserControl] MCP server config removed: ${mcpServerName}`); }
@@ -909,10 +909,10 @@ export class BrowserControlManager {
             });
           });
 
-          const openkosmosBounds = mainWindow?.getBounds() || { x: 0, y: 0, width: 960, height: 540 };
-          const targetX = openkosmosBounds.x + openkosmosBounds.width;
-          const targetY = openkosmosBounds.y;
-          logger.debug(`[BrowserControl] OpenKosmos bounds: x=${openkosmosBounds.x}, y=${openkosmosBounds.y}, width=${openkosmosBounds.width}, height=${openkosmosBounds.height}`);
+          const kosmosBounds = mainWindow?.getBounds() || { x: 0, y: 0, width: 960, height: 540 };
+          const targetX = kosmosBounds.x + kosmosBounds.width;
+          const targetY = kosmosBounds.y;
+          logger.debug(`[BrowserControl] OpenKosmos bounds: x=${kosmosBounds.x}, y=${kosmosBounds.y}, width=${kosmosBounds.width}, height=${kosmosBounds.height}`);
 
           if (isBrowserRunning) {
             logger.debug(`[BrowserControl] ${browserConfig.exe} is already running, skipping launch`);

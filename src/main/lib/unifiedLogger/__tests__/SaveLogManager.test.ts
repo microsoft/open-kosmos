@@ -29,7 +29,7 @@ describe('SaveLogManager', () => {
 
   beforeEach(async () => {
     SaveLogManager.resetInstance();
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-save-mgr-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-save-mgr-test-'));
   });
 
   afterEach(async () => {
@@ -262,14 +262,14 @@ describe('SaveLogManager', () => {
     // Create an old production log file to trigger cleanup branch 129-130
     process.env.NODE_ENV = 'production';
     const { FileOperations: FO, resetDevStartupLogFileNameForTest } = await import('../FileOperations');
-    await fs.writeFile(path.join(tempDir, 'openkosmos-1999-01-01.log'), 'old');
+    await fs.writeFile(path.join(tempDir, 'kosmos-1999-01-01.log'), 'old');
     const q = new PendingSaveQueue();
     const config = { ...TEST_CONFIG, LOGGER_DIRECTORY: tempDir };
     const mgr = SaveLogManager.getInstance(config, q);
     // Trigger cleanup directly
     await (mgr as any).cleanupOldLogFiles();
     // Old file should be deleted
-    await expect(fs.access(path.join(tempDir, 'openkosmos-1999-01-01.log'))).rejects.toThrow();
+    await expect(fs.access(path.join(tempDir, 'kosmos-1999-01-01.log'))).rejects.toThrow();
   });
 
   it('performInitialCleanup setTimeout callback runs after delay', async () => {

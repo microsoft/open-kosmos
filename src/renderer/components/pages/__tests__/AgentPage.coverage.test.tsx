@@ -15,7 +15,6 @@ const {
   mockGetChatConfigs,
   mockGetCurrentUserAlias,
   mockStartNewChatFor,
-  mockGetPmAgentSayHiMessageConfig,
   mockNavigate,
   mockUpdateFreDone,
 } = vi.hoisted(() => {
@@ -28,7 +27,6 @@ const {
   ]);
   const mockGetCurrentUserAlias = vi.fn(() => 'user1');
   const mockStartNewChatFor = vi.fn(async () => ({ success: true, chatSessionId: 'session-1' }));
-  const mockGetPmAgentSayHiMessageConfig = vi.fn(() => ({ type: 'hi' }));
   const mockNavigate = vi.fn();
   const mockUpdateFreDone = vi.fn(async () => {});
   return {
@@ -39,7 +37,6 @@ const {
     mockGetChatConfigs,
     mockGetCurrentUserAlias,
     mockStartNewChatFor,
-    mockGetPmAgentSayHiMessageConfig,
     mockNavigate,
     mockUpdateFreDone,
   };
@@ -84,10 +81,6 @@ vi.mock('../../../lib/userData', () => ({
 
 vi.mock('../../../lib/chat/startNewChatFor', () => ({
   startNewChatFor: mockStartNewChatFor,
-}));
-
-vi.mock('../../../lib/chat/pmAgentSayHi', () => ({
-  getPmAgentSayHiMessageConfig: mockGetPmAgentSayHiMessageConfig,
 }));
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({

@@ -1,12 +1,12 @@
 ---
 name: sub-agent-creator
-description: Guide for creating effective KOSMOS sub-agents. Use when users want to create a new sub-agent (or update an existing sub-agent) that can be delegated specialized tasks by a parent agent. Covers AGENT.md file format, YAML front-matter configuration, system prompt writing, tool/MCP/skill configuration, context access modes, and Claude Code compatibility.
+description: Guide for creating effective OpenKosmos sub-agents. Use when users want to create a new sub-agent (or update an existing sub-agent) that can be delegated specialized tasks by a parent agent. Covers AGENT.md file format, YAML front-matter configuration, system prompt writing, tool/MCP/skill configuration, context access modes, and Claude Code compatibility.
 license: Complete terms in LICENSE.txt
 ---
 
 # Sub-Agent Creator
 
-This skill provides guidance for creating effective KOSMOS sub-agents using the AGENT.md file format.
+This skill provides guidance for creating effective OpenKosmos sub-agents using the AGENT.md file format.
 
 ## About Sub-Agents
 
@@ -60,7 +60,7 @@ description: What this sub-agent does and when to delegate to it.
 model: inherit
 maxTurns: 25
 
-# KOSMOS extension fields (under x-kosmos namespace)
+# OpenKosmos extension fields (under x-kosmos namespace)
 x-kosmos:
   display_name: My Agent
   emoji: "🤖"
@@ -92,15 +92,15 @@ System prompt goes here as Markdown body...
 | `skills` | string[] | [] | Skill names to preload |
 | `mcpServers` | array | [] | MCP server references or inline configs |
 
-### KOSMOS Extension Fields (under `x-kosmos`)
+### OpenKosmos Extension Fields (under `x-kosmos`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `display_name` | string | (from name) | Human-readable display name |
 | `emoji` | string | 🤖 | Icon emoji |
 | `version` | string | 1.0.0 | Semantic version |
-| `builtin_tools` | string[] | [] | KOSMOS built-in tool whitelist (e.g., `read_file`, `write_file`, `execute_command`) |
-| `disallow_builtin_tools` | string[] | [] | KOSMOS built-in tool blacklist |
+| `builtin_tools` | string[] | [] | OpenKosmos built-in tool whitelist (e.g., `read_file`, `write_file`, `execute_command`) |
+| `disallow_builtin_tools` | string[] | [] | OpenKosmos built-in tool blacklist |
 | `context_access` | string | isolated | `isolated` / `parent_summary` / `full_history` |
 | `workspace` | string | "" | Independent workspace path (empty = inherit parent) |
 | `knowledgeBase` | string | "" | Knowledge base path |
@@ -127,7 +127,7 @@ The Markdown body of AGENT.md becomes the sub-agent's system prompt. Follow thes
 - **Principle of least privilege**: Only grant tools the sub-agent actually needs.
 - **`builtin_tools` whitelist**: When set (non-empty), the sub-agent can ONLY use listed tools. Prefer this for security-sensitive tasks.
 - **`inherit_mcp_servers: true`**: Convenient for sub-agents that need the same external services as the parent. Set to `false` if the sub-agent should be sandboxed.
-- **Claude Code `tools` field**: Maps to KOSMOS built-in tools automatically on import (e.g., `Read` → `read_file`, `Bash` → `execute_command`).
+- **Claude Code `tools` field**: Maps to OpenKosmos built-in tools automatically on import (e.g., `Read` → `read_file`, `Bash` → `execute_command`).
 
 ### Context Access Selection Guide
 
@@ -181,24 +181,24 @@ python scripts/init_agent.py <agent-name> --path <output-directory>
 
 ### Step 4: Move to Profile Agents Directory
 
-**⚠️ IMPORTANT**: The AGENT.md file created in Step 3 is in the chat workspace directory, but KOSMOS reads sub-agents from the **profile-level agents directory**. You must move the file to the correct location.
+**⚠️ IMPORTANT**: The AGENT.md file created in Step 3 is in the chat workspace directory, but OpenKosmos reads sub-agents from the **profile-level agents directory**. You must move the file to the correct location.
 
 ```
 Source:      {workspace}/agents/{agent-name}/AGENT.md
-Destination: C:/Users/<username>/AppData/Roaming/kosmos-app/profiles/<user_alias>/agents/{agent-name}/AGENT.md
+Destination: C:/Users/<username>/AppData/Roaming/open-kosmos-app/profiles/<user_alias>/agents/{agent-name}/AGENT.md
 ```
 
 Steps:
-1. Ask the user for their KOSMOS profile alias, or help them find it
+1. Ask the user for their OpenKosmos profile alias (typically in format `username_org`, e.g. `username_org`), or help them find it
 2. Use `execute_command` to move the entire `agents/{agent-name}/` folder to the profile agents directory
 
 Example:
 ```bash
 # Windows
-move "{workspace}\agents\{agent-name}" "C:\Users\<username>\AppData\Roaming\kosmos-app\profiles\<user_alias>\agents\{agent-name}"
+move "{workspace}\agents\{agent-name}" "C:\Users\<username>\AppData\Roaming\open-kosmos-app\profiles\<user_alias>\agents\{agent-name}"
 
 # macOS / Linux
-mv "{workspace}/agents/{agent-name}" "~/Library/Application Support/kosmos-app/profiles/<user_alias>/agents/{agent-name}"
+mv "{workspace}/agents/{agent-name}" "~/Library/Application Support/open-kosmos-app/profiles/<user_alias>/agents/{agent-name}"
 ```
 
 ### Step 5: Sync and Test
@@ -282,4 +282,4 @@ Return findings in this structure:
 - **scripts/init_agent.py**: Generate a starter AGENT.md template with proper structure
 - **scripts/quick_validate.py**: Validate AGENT.md format and required fields
 - **references/agent-patterns.md**: Four common sub-agent design patterns with complete examples
-- **references/kosmos-extensions.md**: Complete reference for all KOSMOS `x-kosmos` extension fields
+- **references/kosmos-extensions.md**: Complete reference for all OpenKosmos `x-kosmos` extension fields

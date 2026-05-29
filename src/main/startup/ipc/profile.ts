@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 
 import { safeConsole } from '../../lib/utilities/safeConsole';
-import { getProfileCacheManager } from '../lazy';
+import { getProfileCacheManager, useRemoteChannelManager } from '../lazy';
 import type { Context } from './shared';
 import { mcpClientManager } from "../../lib/mcpRuntime/mcpClientManager";
 import { chatSessionStore } from "../../lib/chat/chatSessionStore";
@@ -136,10 +136,6 @@ export default function(ctx: Context) {
       const result = await duplicateAgent(pcManager, ctx.currentUserAlias, sourceChatId.trim(), newAgentName.trim());
 
       if (result.success) {
-        // Notify memex manager of new agent (fire-and-forget)
-        if (ctx._memexManager && result.newChatId) {
-          ctx._memexManager.onAgentCreated(result.newChatId).catch(() => {});
-        }
       }
 
       return result;
@@ -156,11 +152,8 @@ export default function(ctx: Context) {
       const pcManager = await getProfileCacheManager();
       const success = await pcManager.addChatConfig(ctx.currentUserAlias, chatConfig);
 
+      // Record agent created analytics (fire-and-forget)
       if (success) {
-        // Notify memex manager of new agent (fire-and-forget)
-        if (ctx._memexManager) {
-          ctx._memexManager.onAgentCreated(chatConfig.chat_id).catch(() => {});
-        }
       }
 
       return { success };
@@ -189,11 +182,6 @@ export default function(ctx: Context) {
       }
       const pcManager = await getProfileCacheManager();
       const success = await pcManager.deleteChatConfig(ctx.currentUserAlias, chatId);
-
-      // Notify memex manager of agent deletion (fire-and-forget)
-      if (success && ctx._memexManager) {
-        ctx._memexManager.onAgentDeleted(chatId).catch(() => {});
-      }
 
       return { success };
     } catch (error) {
@@ -347,7 +335,12 @@ export default function(ctx: Context) {
         return { success: false, error: 'Failed to delete chat session' };
       }
 
-      // Remote channel notification removed (integration deleted)
+      // Clean up remote channel mappings and notify remote users (non-fatal)
+      try {
+        await useRemoteChannelManager(m => m.notifySessionDeleted(sessionId));
+      } catch (rcErr) {
+        safeConsole.warn('[main] Failed to notify remote channel about session deletion (non-fatal):', String(rcErr));
+      }
 
       return { success: true };
     } catch (error) {

@@ -50,7 +50,7 @@ export interface ParseUserInputResult {
  */
 export async function parseUserInputPlaceholders(config: any): Promise<ParseUserInputResult> {
   try {
-    const result = await window.electronAPI.openkosmos.parseUserInputPlaceholders(config);
+    const result = await window.electronAPI.kosmos.parseUserInputPlaceholders(config);
 
     if (!result.success) {
       logger.error('[UserInputPlaceholderParser] Failed to parse:', result.error);

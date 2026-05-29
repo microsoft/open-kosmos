@@ -28,7 +28,7 @@ function isVirtualNetworkAddress(address: string): boolean {
   return false;
 }
 
-const DEFAULT_EXTERNAL_AGENT_PORT = 51927;
+const DEFAULT_EXTERNAL_AGENT_PORT = 19527;
 
 /**
  * Register External Agent IPC handlers.

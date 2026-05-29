@@ -5,7 +5,7 @@ const { testUserData, mockLogger, mockExecuteCommand } = vi.hoisted(() => {
   const p = require('path');
   const o = require('os');
   return {
-    testUserData: p.join(o.tmpdir(), 'openkosmos-test-recreateVenv'),
+    testUserData: p.join(o.tmpdir(), 'kosmos-test-recreateVenv'),
     mockLogger: {
       info: vi.fn(),
       warn: vi.fn(),

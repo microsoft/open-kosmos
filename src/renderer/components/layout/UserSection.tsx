@@ -1,7 +1,11 @@
 import React from 'react';
+import { RotateCw } from 'lucide-react';
 import { userMenuVisibleAtom } from './UserMenu';
+import DoctorStatusIndicator from '../doctor/DoctorStatusIndicator';
+import DoctorInquiry from '../doctor/DoctorInquiry';
 import '../../styles/UserSection.css';
 import { BuddyEntryButton } from '../buddy';
+import { useUpdate } from '../autoUpdate/UpdateProvider';
 import { useAuthContext } from '../auth/AuthProvider';
 
 
@@ -11,6 +15,14 @@ const UserSection: React.FC = () => {
   const userDisplayName = user?.name || user?.login || authData?.ghcAuth?.alias || 'Unknown User';
   const userAvatarUrl = user?.avatarUrl;
   const setUserMenuVisible = userMenuVisibleAtom.useChange();
+  const { status, installUpdate, isDialogOpen } = useUpdate();
+
+  const showUpdateButton = status === 'downloaded' && !isDialogOpen;
+  const onInstallUpdate = async () => {
+    try {
+      await installUpdate();
+    } catch (error) {}
+  };
 
   return (
     <div className="user-section">
@@ -40,6 +52,28 @@ const UserSection: React.FC = () => {
 
       {/* Buddy Egg Icon */}
       <BuddyEntryButton />
+
+      {/* Install Update Button */}
+      {showUpdateButton && (
+        <button
+          className="restart-update-button"
+          onClick={onInstallUpdate}
+          title="Click to install the latest update"
+          aria-label="Install Update Now"
+          type="button"
+        >
+          <RotateCw className="restart-update-icon" />
+          <span className="restart-update-text">Install Update Now</span>
+        </button>
+      )}
+
+      {/* Doctor Status Indicator — right-aligned */}
+      <div style={{ marginLeft: 'auto', display: 'inline-flex' }}>
+        <DoctorStatusIndicator />
+      </div>
+
+      {/* Doctor inquiry dialog (mounted globally so state survives menu close) */}
+      <DoctorInquiry />
     </div>
   );
 };

@@ -793,7 +793,5 @@ export function estimateBase64Size(fileSizeBytes: number): number {
   return Math.round(fileSizeBytes * 1.33);
 }
 
-// Backwards-compatible exports
-export const GITHUB_COPILOT_IMAGE_LIMITS = VSCODE_IMAGE_LIMITS;
 export const smartCompressImage = smartCompressImageVSCodeStyle;
 export const shouldCompressImageAdvanced = shouldCompressImageVSCodeStyle;

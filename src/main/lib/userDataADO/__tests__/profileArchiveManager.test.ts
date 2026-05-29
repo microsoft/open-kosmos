@@ -22,7 +22,7 @@ vi.mock('../unifiedLogger', () => ({
 }));
 
 vi.mock('@shared/constants/branding', () => ({
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }));
 
 vi.mock('../types/profile', async (importOriginal) => {

@@ -7,8 +7,7 @@ import type { SchedulerJob, SchedulerSessionInfo } from '@shared/ipc/scheduler'
 import { schedulerApi } from '../../ipc/scheduler'
 import { describeCronExpression } from '../../lib/scheduler/cronDescriptions'
 import '../../styles/ContentView.css'
-import '../../styles/SettingsComponents.css'
-import '../../styles/ToolbarSettings.css'
+import '../../styles/SettingsShared.css'
 
 const RUN_NOW_DEBOUNCE_MS = 1200
 

@@ -23,7 +23,7 @@ async function getSettings(): Promise<ScreenshotSettings> {
   const acManager = await getAppCacheManager();
   const settings = acManager.getScreenshotSettings();
   // When the feature flag is disabled, force enabled=false
-  if (!isFeatureEnabled('openkosmosFeatureScreenshot')) {
+  if (!isFeatureEnabled('kosmosFeatureScreenshot')) {
     return { ...settings, enabled: false };
   }
   return settings;

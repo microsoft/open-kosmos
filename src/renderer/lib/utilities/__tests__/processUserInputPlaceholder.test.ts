@@ -30,10 +30,10 @@ describe('applyUserInputsToArgs', () => {
     ];
     const result = applyUserInputsToArgs(
       ['mcp', 'bluebird', '--organization', '@USER_INPUT_ORG'],
-      { org: 'acme' },
+      { org: 'myorg' },
       fields,
     );
-    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'acme']);
+    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'myorg']);
   });
 
   it('removes --flag and placeholder for optional empty input', () => {
@@ -56,10 +56,10 @@ describe('applyUserInputsToArgs', () => {
     ];
     const result = applyUserInputsToArgs(
       ['mcp', 'bluebird', '--organization', '@USER_INPUT_ORG', '--project', '@USER_INPUT_PROJ'],
-      { org: 'acme', proj: '' },
+      { org: 'myorg', proj: '' },
       fields,
     );
-    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'acme']);
+    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'myorg']);
   });
 
   it('keeps required field placeholder when input is empty', () => {
@@ -311,7 +311,7 @@ describe('parseUserInputPlaceholders', () => {
     // @ts-ignore
     global.window = {
       electronAPI: {
-        openkosmos: {
+        kosmos: {
           parseUserInputPlaceholders: vi.fn(),
         },
       },
@@ -325,7 +325,7 @@ describe('parseUserInputPlaceholders', () => {
   it('returns parsed fields on success', async () => {
     const mockResult = { fields: [{ key: 'k' }], hasUserInputFields: true };
     // @ts-ignore
-    window.electronAPI.openkosmos.parseUserInputPlaceholders.mockResolvedValue({
+    window.electronAPI.kosmos.parseUserInputPlaceholders.mockResolvedValue({
       success: true,
       data: mockResult,
     });
@@ -335,7 +335,7 @@ describe('parseUserInputPlaceholders', () => {
 
   it('returns empty result on failure response', async () => {
     // @ts-ignore
-    window.electronAPI.openkosmos.parseUserInputPlaceholders.mockResolvedValue({
+    window.electronAPI.kosmos.parseUserInputPlaceholders.mockResolvedValue({
       success: false,
       error: 'some error',
     });
@@ -345,7 +345,7 @@ describe('parseUserInputPlaceholders', () => {
 
   it('returns empty result on thrown error', async () => {
     // @ts-ignore
-    window.electronAPI.openkosmos.parseUserInputPlaceholders.mockRejectedValue(new Error('IPC fail'));
+    window.electronAPI.kosmos.parseUserInputPlaceholders.mockRejectedValue(new Error('IPC fail'));
     const result = await parseUserInputPlaceholders({});
     expect(result).toEqual({ fields: [], hasUserInputFields: false });
   });

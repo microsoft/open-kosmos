@@ -17,9 +17,9 @@ export type {
   ChatAgent,
   ChatSession,
   StarredChatSessionIndexItem,
+  ContextEnhancement,
   SkillConfig,
   SubAgentConfig,
-  SubAgentContextAccess,
   ZeroStates,
   QuickStartItem
 } from '../../../../main/lib/userDataADO/types/profile'
@@ -42,13 +42,11 @@ export type { GhcModel }
 
 /**
  * MCP Server status enumeration - matches backend
- * @deprecated Please import this type from mcpClientCacheManager
  */
 export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting' | 'needs-user-interaction'
 
 /**
  * MCP Tool interface - consistent with backend runtime state
- * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPTool {
   name: string
@@ -59,7 +57,6 @@ export interface MCPTool {
 
 /**
  * Runtime state for MCP servers - matches backend exactly
- * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPServerRuntimeState {
   serverName: string
@@ -71,7 +68,6 @@ export interface MCPServerRuntimeState {
 /**
  * Extended MCP server data that includes runtime information
  * Extends backend McpServerConfig with runtime state
- * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPServerExtended {
   // Base config fields from McpServerConfig
@@ -84,8 +80,10 @@ export interface MCPServerExtended {
   in_use: boolean
   /** MCP server version */
   version?: string
-  /** MCP server source: ON-DEVICE (from local machine), or PLUGIN (from plugin) */
-  source?: 'ON-DEVICE' | 'PLUGIN'
+  /** MCP server source: IN-LIBRARY (from MCP library), ON-DEVICE (from local machine), or PLUGIN (from plugin) */
+  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
+  /** Remote CDN version for IN-LIBRARY servers, empty string for ON-DEVICE servers */
+  remoteVersion?: string
   /** If true, server is managed by the system and hidden from user-facing UI */
   hidden?: boolean
 
@@ -130,7 +128,6 @@ export type ProfileDataListener = (data: ProfileCacheData) => void
 
 /**
  * MCP Stats interface
- * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPStats {
   totalServers: number
@@ -138,6 +135,15 @@ export interface MCPStats {
   disconnectedServers: number
   errorServers: number
   totalTools: number
+}
+
+/**
+ * Profile data sync response
+ */
+export interface ProfileSyncResponse<T = any> {
+  success: boolean
+  data?: T
+  error?: string
 }
 
 /**

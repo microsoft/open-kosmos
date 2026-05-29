@@ -34,7 +34,7 @@ vi.mock('../chatSessionManager', async () => ({
 }));
 
 vi.mock('../../../../shared/constants/branding', async () => ({
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }));
 
 vi.mock('../../../../shared/constants/builtinSkills', async () => ({
@@ -74,8 +74,9 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent One',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledgeBase: '',
+          knowledge: { knowledgeBase: '' },
           version: '1.0.0',
+          remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
           system_prompt: 'test',
@@ -190,7 +191,7 @@ describe('ProfileCacheManager starred session index sync', () => {
           title: 'Old Title',
           lastUpdated: '2026-03-19T10:00:00.000Z',
           readStatus: 'unread',
-          source: { type: 'local' },
+          source: { type: 'remote', channel: 'teams' },
           agentName: 'Agent One',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -215,7 +216,7 @@ describe('ProfileCacheManager starred session index sync', () => {
 
     const items = ((manager as any).cache.get('testUser') as ProfileV2)['starred-chat-sessions'] || [];
     expect(items[0].readStatus).toBe('unread');
-    expect(items[0].source).toEqual({ type: 'local' });
+    expect(items[0].source).toEqual({ type: 'remote', channel: 'teams' });
   });
 
   it('removes an index entry when a session is unstarred', async () => {

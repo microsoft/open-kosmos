@@ -35,7 +35,7 @@ vi.mock('../chatSessionManager', async () => ({
 }));
 
 vi.mock('../../../../shared/constants/branding', async () => ({
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }));
 
 vi.mock('../../../../shared/constants/builtinSkills', async () => ({
@@ -86,6 +86,7 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
         name: 'pptx',
         description: 'Create slides',
         version: '1.0.0',
+        remoteVersion: '',
         source: 'ON-DEVICE',
       },
     ],
@@ -100,8 +101,9 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent One',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledgeBase: '',
+          knowledge: { knowledgeBase: '' },
           version: '1.0.0',
+          remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
           system_prompt: 'test',
@@ -120,8 +122,9 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent Two',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledgeBase: '',
+          knowledge: { knowledgeBase: '' },
           version: '1.0.0',
+          remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
           system_prompt: 'test',
@@ -171,6 +174,7 @@ describe('ProfileCacheManager skill snapshot invalidation', () => {
       name: 'pptx',
       description: 'Updated slides skill',
       version: '1.1.0',
+      remoteVersion: '',
       source: 'ON-DEVICE',
     });
 

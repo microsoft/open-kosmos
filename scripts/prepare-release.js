@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-console.log('🚀 OpenKosmos release preparation tool');
+console.log('🚀 OpenKosmos.app release preparation tool');
 console.log('=====================================\n');
 
 // Read command line arguments.

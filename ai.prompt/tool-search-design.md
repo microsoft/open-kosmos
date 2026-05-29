@@ -2,7 +2,7 @@
 
 ## Problem
 
-When many MCP servers are connected, every LLM request includes all tool definitions. With 30–50+ tools this leads to:
+When Agency CLI and many MCP servers are connected, every LLM request includes all tool definitions. With 30–50+ tools this leads to:
 - Token overhead from tool schemas in every request
 - Degraded model tool-selection quality (too many choices)
 - Risk of hitting the 128-tool API limit
@@ -56,14 +56,14 @@ LLM can call the discovered tools directly
 ### Tool Filtering Detail
 
 ```
-getCurrentAvailableTools() for Agent A (GitHub + Slack + Kusto)
+getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
     │
     ▼
 ┌──────────────────┬──────────────────────────────┐
 │   Inline (sent)  │   Deferred (NOT sent)        │
 ├──────────────────┼──────────────────────────────┤
-│ read_file        │ github_pr_list               │
-│ write_file       │ github_create_issue          │
+│ read_file        │ ado_query                    │
+│ write_file       │ ado_create_work_item         │
 │ execute_command  │ slack_send_message            │
 │ tool_search      │ slack_list_channels           │
 │ ...builtin       │ kusto_query                  │
@@ -79,8 +79,8 @@ getCurrentAvailableTools() for Agent A (GitHub + Slack + Kusto)
 │ LLM                                                       │
 │                                                           │
 │ Sees: tool_search + <available-deferred-tools> list      │
-│ Wants to query GitHub                                     │
-│ → calls tool_search({ query: "github pull request" })    │
+│ Wants to query ADO                                        │
+│ → calls tool_search({ query: "ado work item" })          │
 └───────────────────────┬───────────────────────────────────┘
                         ▼
 ┌───────────────────────────────────────────────────────────┐
@@ -91,9 +91,9 @@ getCurrentAvailableTools() for Agent A (GitHub + Slack + Kusto)
 │ 3. Match query:                                           │
 │    ┌───────────────────┬────────────────────────────┐    │
 │    │ "select:a,b"      │ Exact name match           │    │
-│    │ "github_pr_list"   │ Fast path: exact name      │    │
-│    │ "github pr"        │ Keyword scored search      │    │
-│    │ "+github pr"       │ Require server prefix      │    │
+│    │ "ado_query"       │ Fast path: exact name      │    │
+│    │ "ado work item"   │ Keyword scored search      │    │
+│    │ "+ado query"      │ Require server prefix      │    │
 │    └───────────────────┴────────────────────────────┘    │
 │ 4. Return full schemas as JSON                            │
 │    { matches: [{ name, description, inputSchema }] }     │
@@ -104,10 +104,10 @@ getCurrentAvailableTools() for Agent A (GitHub + Slack + Kusto)
 │                                                           │
 │ extractDiscoveredToolNames(messages)                      │
 │   → scans tool_search results in history                 │
-│   → returns Set { "github_pr_list", "github_create_issue" } │
+│   → returns Set { "ado_query", "ado_create_work_item" }  │
 │                                                           │
 │ filterToolsForRequest includes discovered tools inline   │
-│ → LLM can now call github_pr_list directly               │
+│ → LLM can now call ado_query directly                    │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -115,10 +115,10 @@ getCurrentAvailableTools() for Agent A (GitHub + Slack + Kusto)
 
 ```
 Before compress:
-  extractDiscoveredToolNames() → { "github_pr_list", "slack_send" }
+  extractDiscoveredToolNames() → { "ado_query", "slack_send" }
 
 After compress (injected into summary message):
-  <discovered-tools>github_pr_list,slack_send</discovered-tools>
+  <discovered-tools>ado_query,slack_send</discovered-tools>
 
 Next turn: extractDiscoveredToolNames reads BOTH sources:
   1. tool_search result messages (if still in history)
@@ -133,7 +133,7 @@ BuiltinToolsManager.deferredToolsContextMap:
   ┌────────────────┬──────────────────────────────┐
   │ chatSessionId  │ McpTool[]                    │
   ├────────────────┼──────────────────────────────┤
-  │ session-abc    │ [github_pr_list, slack_send, ...]  │  ← Agent A
+  │ session-abc    │ [ado_query, slack_send, ...]  │  ← Agent A
   │ session-xyz    │ [github_pr, github_issue]     │  ← Agent B
   └────────────────┴──────────────────────────────┘
 
@@ -181,10 +181,10 @@ When context is compressed, tool_search result messages get discarded. Without p
 
 | Query | Behavior | Example |
 |-------|----------|---------|
-| `select:name1,name2` | Exact name match (comma-separated) | `select:github_pr_list,github_create_issue` |
-| Exact tool name | Fast path: if query matches a tool name (case-insensitive), return immediately | `github_pr_list` |
-| `keywords` | Fuzzy search by name/description/serverName/searchHint | `github pull request` |
-| `+prefix keywords` | Require server name match, rank by remaining terms | `+github pr` |
+| `select:name1,name2` | Exact name match (comma-separated) | `select:ado_query,ado_create_work_item` |
+| Exact tool name | Fast path: if query matches a tool name (case-insensitive), return immediately | `ListCalendarView` |
+| `keywords` | Fuzzy search by name/description/serverName/searchHint | `github issue query` |
+| `+prefix keywords` | Require server name match, rank by remaining terms | `+ado query` |
 
 Scoring: name exact match (10) > name contains (5) > server contains (3) > description/searchHint contains (2) > all-terms bonus (5).
 
@@ -211,7 +211,7 @@ When no matches found and MCP servers are still connecting, `pending_mcp_servers
 
 ### Different (API limitation)
 
-| Aspect | Claude Code | Kosmos | Impact |
+| Aspect | Claude Code | OpenKosmos | Impact |
 |--------|------------|--------|--------|
 | `defer_loading: true` | Anthropic API native — deferred tools sent as name-only stubs | Tools fully filtered out of request | Equivalent token savings; we just remove rather than stub |
 | `tool_reference` blocks | ToolSearchTool returns `{ type: 'tool_reference', tool_name }`, API auto-expands schema | Returns JSON text with full schema; `extractDiscoveredToolNames` parses from message history | Equivalent behavior; we parse ourselves instead of relying on API |
@@ -221,7 +221,7 @@ These are Anthropic API features unavailable through the OpenAI-compatible GitHu
 
 ### Different (not yet implemented)
 
-| Aspect | Claude Code | Kosmos | Priority |
+| Aspect | Claude Code | OpenKosmos | Priority |
 |--------|------------|--------|----------|
 | Deferred Tools Delta | Tracks tool list changes, notifies model of diff only | Resends full `<available-deferred-tools>` each turn | Low — optimization for frequent MCP server connect/disconnect |
 | Multi-mode switch | `tst` / `tst-auto` / `standard` via env var | Feature flag on/off + `shouldEnableToolSearch()` auto | Low — our approach is sufficient |

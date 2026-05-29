@@ -281,9 +281,6 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
             <span>{currentMilestone?.name ?? 'Start'}</span>
             <span>{nextMilestone ? `${nextMilestone.threshold.toLocaleString()} tokens` : 'Complete!'}</span>
           </div>
-          <div className="buddy-main-coming-soon">
-            📊 Usage Analytics — Coming Soon
-          </div>
         </div>
       </div>
 

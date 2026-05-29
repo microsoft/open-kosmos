@@ -24,7 +24,7 @@ const RuntimeSettingsView: React.FC = () => {
   const [newPythonVersion, setNewPythonVersion] = useState<string>(DEFAULT_PYTHON_VERSION);
   const [isPythonLoading, setIsPythonLoading] = useState(false);
   const { showSuccess, showError } = useToast();
-  const isGitEnabled = useFeatureFlag('openkosmosUseGit');
+  const isGitEnabled = useFeatureFlag('kosmosUseGit');
 
   // Subscribe to AppDataManager, receive runtimeEnvironment changes in real time
   useEffect(() => {

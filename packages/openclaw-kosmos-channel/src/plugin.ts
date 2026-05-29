@@ -1,7 +1,7 @@
 import type { ChannelPlugin, OpenClawConfig } from 'openclaw/plugin-sdk/channel-core';
 import { WebSocket } from 'ws';
-import { handleKosmosInbound } from './inbound';
-import type { ResolvedKosmosAccount, KosmosAccountEntry, ServerMessage, ClientMessage } from './types';
+import { handleOpenKosmosInbound } from './inbound';
+import type { ResolvedOpenKosmosAccount, OpenKosmosAccountEntry, ServerMessage, ClientMessage } from './types';
 
 const CHANNEL_ID = 'kosmos';
 const RECONNECT_BASE_MS = 1000;
@@ -28,25 +28,25 @@ function getPluginConfig(cfg: OpenClawConfig): Record<string, any> {
   return (cfg as any).plugins?.entries?.kosmos?.config ?? {};
 }
 
-function getAccountEntries(cfg: OpenClawConfig): Record<string, KosmosAccountEntry> {
+function getAccountEntries(cfg: OpenClawConfig): Record<string, OpenKosmosAccountEntry> {
   return getPluginConfig(cfg).accounts ?? {};
 }
 
-function resolveKosmosAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedKosmosAccount {
+function resolveOpenKosmosAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedOpenKosmosAccount {
   const accounts = getAccountEntries(cfg);
   const id = accountId ?? 'default';
-  const entry: KosmosAccountEntry = accounts[id] ?? {};
+  const entry: OpenKosmosAccountEntry = accounts[id] ?? {};
   return { accountId: id, token: entry.token ?? '', configured: !!entry.token };
 }
 
-export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
+export const kosmosPlugin: ChannelPlugin<ResolvedOpenKosmosAccount> = {
   id: CHANNEL_ID,
-  meta: { id: 'kosmos' as any, label: 'Kosmos', selectionLabel: 'Kosmos Desktop', docsPath: '/plugins/kosmos', blurb: 'Connect Kosmos desktop app to OpenClaw' },
+  meta: { id: 'kosmos' as any, label: 'OpenKosmos', selectionLabel: 'OpenKosmos Desktop', docsPath: '/plugins/kosmos', blurb: 'Connect OpenKosmos desktop app to OpenClaw' },
   capabilities: { chatTypes: ['direct'] },
 
   config: {
     listAccountIds: (cfg) => Object.keys(getAccountEntries(cfg)),
-    resolveAccount: (cfg, accountId) => resolveKosmosAccount(cfg, accountId),
+    resolveAccount: (cfg, accountId) => resolveOpenKosmosAccount(cfg, accountId),
     isConfigured: (account) => account.configured,
   },
 
@@ -69,7 +69,7 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
       const url = pluginConfig.url;
 
       if (!url) {
-        log?.error?.(`[KosmosPlugin] No url configured for account: ${accountId}`);
+        log?.error?.(`[OpenKosmosPlugin] No url configured for account: ${accountId}`);
         setStatus({ accountId, configured: false, enabled: true });
         return;
       }
@@ -84,11 +84,11 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
       function connect() {
         if (aborted.has(accountId)) return;
 
-        log?.info?.(`[KosmosPlugin] Connecting to Kosmos at ${url} (account: ${accountId})`);
+        log?.info?.(`[OpenKosmosPlugin] Connecting to OpenKosmos at ${url} (account: ${accountId})`);
         const ws = new WebSocket(url);
 
         ws.on('open', () => {
-          log?.info?.(`[KosmosPlugin] Connected to Kosmos, sending auth`);
+          log?.info?.(`[OpenKosmosPlugin] Connected to OpenKosmos, sending auth`);
           reconnectAttempts = 0;
           const authMsg: ClientMessage = { type: 'auth', token: account.token };
           ws.send(JSON.stringify(authMsg));
@@ -98,20 +98,20 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
           try {
             const msg = JSON.parse(data.toString()) as ServerMessage;
             if (msg.type === 'auth_success') {
-              log?.info?.(`[KosmosPlugin] Authenticated with Kosmos`);
+              log?.info?.(`[OpenKosmosPlugin] Authenticated with OpenKosmos`);
               activeClients.set(accountId, ws);
               setStatus({ accountId, configured: true, enabled: true, connected: true, running: true });
             } else if (msg.type === 'auth_error') {
-              log?.warn?.(`[KosmosPlugin] Auth rejected: ${msg.error}`);
+              log?.warn?.(`[OpenKosmosPlugin] Auth rejected: ${msg.error}`);
             } else if (msg.type === 'message') {
-              log?.info?.(`[KosmosPlugin] Received message from Kosmos (account: ${accountId}, conv: ${msg.conversationId}, text length: ${msg.text?.length ?? 0})`);
+              log?.info?.(`[OpenKosmosPlugin] Received message from OpenKosmos (account: ${accountId}, conv: ${msg.conversationId}, text length: ${msg.text?.length ?? 0})`);
               if (!channelRuntime) {
-                log?.warn?.(`[KosmosPlugin] channelRuntime not available`);
+                log?.warn?.(`[OpenKosmosPlugin] channelRuntime not available`);
                 return;
               }
-              await handleKosmosInbound({
+              await handleOpenKosmosInbound({
                 cfg,
-                account: resolveKosmosAccount(cfg, accountId),
+                account: resolveOpenKosmosAccount(cfg, accountId),
                 text: msg.text,
                 conversationId: msg.conversationId,
                 channelRuntime,
@@ -121,7 +121,7 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
                     if (activeWs.readyState !== WebSocket.OPEN) {
                       throw new Error(`Cannot send push — WebSocket not open (readyState: ${activeWs.readyState}, account: ${accountId}, conv: ${convId})`);
                     }
-                    log?.info?.(`[KosmosPlugin] Sending push to Kosmos (account: ${accountId}, conv: ${convId}, text length: ${text?.length ?? 0})`);
+                    log?.info?.(`[OpenKosmosPlugin] Sending push to OpenKosmos (account: ${accountId}, conv: ${convId}, text length: ${text?.length ?? 0})`);
                     const push: ClientMessage = { type: 'push', text, conversationId: convId };
                     activeWs.send(JSON.stringify(push));
                   },
@@ -130,34 +130,34 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
                     if (activeWs.readyState !== WebSocket.OPEN) {
                       throw new Error(`Cannot send push_end — WebSocket not open (readyState: ${activeWs.readyState}, account: ${accountId}, conv: ${convId})`);
                     }
-                    log?.info?.(`[KosmosPlugin] Sending push_end to Kosmos (account: ${accountId}, conv: ${convId})`);
+                    log?.info?.(`[OpenKosmosPlugin] Sending push_end to OpenKosmos (account: ${accountId}, conv: ${convId})`);
                     const end: ClientMessage = { type: 'push_end', conversationId: convId };
                     activeWs.send(JSON.stringify(end));
                   },
                   sendError: (error: string, convId: string) => {
                     const activeWs = activeClients.get(accountId) ?? ws;
                     if (activeWs.readyState !== WebSocket.OPEN) {
-                      log?.warn?.(`[KosmosPlugin] Cannot send error — WebSocket not open (readyState: ${activeWs.readyState}, account: ${accountId}, conv: ${convId})`);
+                      log?.warn?.(`[OpenKosmosPlugin] Cannot send error — WebSocket not open (readyState: ${activeWs.readyState}, account: ${accountId}, conv: ${convId})`);
                       return; // error delivery is best-effort, don't throw
                     }
-                    log?.warn?.(`[KosmosPlugin] Sending error to Kosmos (account: ${accountId}, conv: ${convId}, error: ${error})`);
+                    log?.warn?.(`[OpenKosmosPlugin] Sending error to OpenKosmos (account: ${accountId}, conv: ${convId}, error: ${error})`);
                     activeWs.send(JSON.stringify({ type: 'error', error, conversationId: convId }));
                   },
                 },
               });
             } else if (msg.type === 'error') {
-              log?.warn?.(`[KosmosPlugin] Error from Kosmos: ${msg.error}`);
+              log?.warn?.(`[OpenKosmosPlugin] Error from OpenKosmos: ${msg.error}`);
             }
           } catch (err) {
-            log?.error?.(`[KosmosPlugin] Failed to parse message: ${err}`);
+            log?.error?.(`[OpenKosmosPlugin] Failed to parse message: ${err}`);
           }
         });
 
         ws.on('close', (code) => {
-          log?.info?.(`[KosmosPlugin] Disconnected from Kosmos (code: ${code})`);
+          log?.info?.(`[OpenKosmosPlugin] Disconnected from OpenKosmos (code: ${code})`);
           // Stale close handler from a previous generation — ignore entirely
           if (generation.get(accountId) !== gen) {
-            log?.info?.(`[KosmosPlugin] Stale close handler (gen ${gen} vs current ${generation.get(accountId)}), ignoring`);
+            log?.info?.(`[OpenKosmosPlugin] Stale close handler (gen ${gen} vs current ${generation.get(accountId)}), ignoring`);
             return;
           }
           // Only remove from activeClients if this ws is still the active one
@@ -170,23 +170,23 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
           // 4009 = replaced by newer connection — do not reconnect (the new one is active)
           // 4010 = rate limited — delay before reconnecting
           if (code === 4004) {
-            log?.error?.(`[KosmosPlugin] Auth token rejected by Kosmos, stopping reconnect for account: ${accountId}`);
+            log?.error?.(`[OpenKosmosPlugin] Auth token rejected by OpenKosmos, stopping reconnect for account: ${accountId}`);
             aborted.add(accountId);
             return;
           }
           if (code === 4009) {
-            log?.info?.(`[KosmosPlugin] Connection replaced by newer session, not reconnecting (account: ${accountId})`);
+            log?.info?.(`[OpenKosmosPlugin] Connection replaced by newer session, not reconnecting (account: ${accountId})`);
             return;
           }
           if (code === 4010) {
-            log?.warn?.(`[KosmosPlugin] Rate limited by Kosmos, backing off (account: ${accountId})`);
+            log?.warn?.(`[OpenKosmosPlugin] Rate limited by OpenKosmos, backing off (account: ${accountId})`);
             reconnectAttempts = Math.max(reconnectAttempts, 5); // force long backoff
           }
           scheduleReconnect();
         });
 
         ws.on('error', (err) => {
-          log?.error?.(`[KosmosPlugin] WebSocket error: ${err.message}`);
+          log?.error?.(`[OpenKosmosPlugin] WebSocket error: ${err.message}`);
         });
       }
 
@@ -195,7 +195,7 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
         reconnectAttempts++;
         const base = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
         const delay = Math.round(base * (0.5 + Math.random() * 0.5));
-        log?.info?.(`[KosmosPlugin] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+        log?.info?.(`[OpenKosmosPlugin] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
         const timer = setTimeout(connect, delay);
         reconnectTimers.set(accountId, timer);
       }
@@ -215,7 +215,7 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
 
     stopAccount: async (ctx) => {
       cleanupAccount(ctx.accountId);
-      ctx.log?.info?.(`[KosmosPlugin] Stopped account: ${ctx.accountId}`);
+      ctx.log?.info?.(`[OpenKosmosPlugin] Stopped account: ${ctx.accountId}`);
     },
   },
 
@@ -228,7 +228,7 @@ export const kosmosPlugin: ChannelPlugin<ResolvedKosmosAccount> = {
       const conversationId = to ?? threadId?.toString() ?? 'default';
       const ws = activeClients.get(accountId ?? 'default');
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        throw new Error(`No connected Kosmos client for account: ${accountId}`);
+        throw new Error(`No connected OpenKosmos client for account: ${accountId}`);
       }
       const push: ClientMessage = { type: 'push', text, conversationId };
       ws.send(JSON.stringify(push));

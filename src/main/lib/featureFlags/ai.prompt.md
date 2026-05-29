@@ -27,7 +27,7 @@
 ## Common Changes
 | Scenario | Files to Modify | Notes |
 |----------|----------------|-------|
-| Add a new flag | 1. `types.ts` (`FeatureFlagName` union) → 2. `featureFlagDefinitions.ts` (add `FeatureFlagConfig` entry) | Naming convention: `openkosmosFeatureXXXXX`; exception: `browserControl` (legacy) |
+| Add a new flag | 1. `types.ts` (`FeatureFlagName` union) → 2. `featureFlagDefinitions.ts` (add `FeatureFlagConfig` entry) | Naming convention: `kosmosFeatureXXXXX`; exception: `browserControl` (legacy) |
 | Change a flag's default logic | `featureFlagDefinitions.ts` — edit `defaultValue` | Use `(ctx) => ...` for env/brand/platform conditions |
 | Enable a flag for testing | Launch with `--enable-features=flagName`; no code change needed | CLI source overrides any `defaultValue` |
 | Consume a flag in main process | `import { isFeatureEnabled } from './lib/featureFlags'` | Manager must be initialized first |
@@ -50,11 +50,11 @@
 1. Add flag name to `FeatureFlagName` in `types.ts` and entry to `FEATURE_FLAG_DEFINITIONS` in `featureFlagDefinitions.ts`.
 2. Run `npm test` — `featureFlagDefinitions.test.ts` validates that every `FeatureFlagName` has a matching definition and that `resolveDefaultValue` works for both static and dynamic defaults.
 3. Launch in dev mode; check the console for `[FeatureFlags] Current state:` log output confirming the new flag appears.
-4. Verify renderer consumption: open DevTools → Application → Local Storage → look for `openkosmos_feature_flags_cache` key and confirm the new flag is present.
+4. Verify renderer consumption: open DevTools → Application → Local Storage → look for `kosmos_feature_flags_cache` key and confirm the new flag is present.
 
 ## Gotchas
 - ⚠️ `isDev` is resolved once at `initialize()` time. If `--dev` is not in `process.argv` and `NODE_ENV` is not `'development'`, all `(ctx) => ctx.isDev` flags default to `false` in production builds.
-- ⚠️ `browserControl` does not follow the `openkosmosFeature` naming convention — it is a legacy name; do not use it as a template.
+- ⚠️ `browserControl` does not follow the `kosmosFeature` naming convention — it is a legacy name; do not use it as a template.
 - ⚠️ If the renderer's IPC call fails (e.g., during cold start), `featureFlagCacheManager` silently falls back to `localStorage`. A stale cache could serve outdated values until the next successful sync.
 - ⚠️ `CURRENT_CACHE_VERSION` in the renderer cache manager is hardcoded to `'1.0'`. If you add flags that change the shape of `FeatureFlagsValues`, bump this constant to force a cache refresh.
 

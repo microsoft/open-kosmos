@@ -2,7 +2,7 @@
  * SubAgentFileManager unit tests
  *
  * Coverage:
- * - parseAgentMarkdown: YAML parsing, standard fields, x-openkosmos extensions, plain Claude Code format, error handling
+ * - parseAgentMarkdown: YAML parsing, standard fields, x-kosmos extensions, plain Claude Code format, error handling
  * - serializeToAgentMarkdown: serialization output correctness, special characters
  * - CRUD: create/read/update/delete directories and files
  * - Validation: validateAgentName, validateAgentConfig
@@ -44,7 +44,7 @@ skills:
 mcpServers:
   - github-server
 
-x-openkosmos:
+x-kosmos:
   display_name: Code Reviewer
   emoji: "🔍"
   version: "1.2.0"
@@ -120,7 +120,7 @@ describe('SubAgentFileManager', () => {
   // ========================================================================
 
   describe('parseAgentMarkdown', () => {
-    it('should parse full OpenKosmos AGENT.md with x-openkosmos fields', () => {
+    it('should parse full OpenKosmos AGENT.md with x-kosmos fields', () => {
       const result = manager.parseAgentMarkdown(FULL_AGENT_MD);
 
       expect(result.error).toBeUndefined();
@@ -136,7 +136,7 @@ describe('SubAgentFileManager', () => {
       expect(config.skills).toEqual(['api-conventions']);
       expect(config.mcpServers).toEqual(['github-server']);
 
-      // x-openkosmos fields
+      // x-kosmos fields
       expect(config.builtin_tools).toEqual(['read_file', 'search_file_contents']);
       expect(config.inherit_mcp_servers).toBe(true);
       expect(config.inherit_skills).toBe(true);
@@ -188,12 +188,6 @@ describe('SubAgentFileManager', () => {
       expect(config.mcpServers).toEqual([
         { name: 'database-server', tools: ['query', 'schema'] },
         'redis-cache',
-      ]);
-
-      // Legacy mcp_servers should be populated
-      expect(config.mcp_servers).toEqual([
-        { name: 'database-server', tools: ['query', 'schema'] },
-        { name: 'redis-cache', tools: [] },
       ]);
     });
 
@@ -254,10 +248,10 @@ Forward compatible content.
       expect(result.data!.system_prompt).toContain('Forward compatible content');
     });
 
-    it('should parse maxTurns from max_turns (backward compat)', () => {
+    it('should ignore unknown max_turns field in YAML', () => {
       const content = `---
 name: compat-agent
-description: Test backward compat
+description: Test unknown fields
 max_turns: 15
 ---
 
@@ -287,12 +281,12 @@ Content.
       expect(result.data!.disallowedTools).toEqual(['Write', 'Execute']);
     });
 
-    it('should handle x-openkosmos.inherit flags set to false', () => {
+    it('should handle x-kosmos.inherit flags set to false', () => {
       const content = `---
 name: no-inherit
 description: Independent agent
 
-x-openkosmos:
+x-kosmos:
   inherit_mcp_servers: false
   inherit_skills: false
 ---
@@ -340,8 +334,8 @@ Content.
       expect(md).toContain('model: sonnet');
       expect(md).not.toContain('maxTurns');
 
-      // Verify x-openkosmos fields
-      expect(md).toContain('x-openkosmos:');
+      // Verify x-kosmos fields
+      expect(md).toContain('x-kosmos:');
       expect(md).toContain('inherit_mcp_servers: false');
 
       // Verify system_prompt as body
@@ -470,7 +464,7 @@ Content.
   // ========================================================================
 
   describe('exportAsClaudeCodeFormat', () => {
-    it('should strip x-openkosmos namespace fields', () => {
+    it('should strip x-kosmos namespace fields', () => {
       const config: SubAgentConfig = {
         name: 'test-agent',
         description: 'Export test',
@@ -487,8 +481,8 @@ Content.
       expect(md).toContain('description: Export test');
       expect(md).toContain('model: sonnet');
 
-      // Should NOT contain x-openkosmos fields
-      expect(md).not.toContain('x-openkosmos');
+      // Should NOT contain x-kosmos fields
+      expect(md).not.toContain('x-kosmos');
       expect(md).not.toContain('display_name');
       expect(md).not.toContain('emoji');
       expect(md).not.toContain('builtin_tools');
@@ -525,7 +519,7 @@ Content.
     beforeEach(() => {
       tmpDir = path.join(
         process.env.TEMP || process.env.TMP || '/tmp',
-        `openkosmos-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        `kosmos-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       fs.mkdirSync(tmpDir, { recursive: true });
     });

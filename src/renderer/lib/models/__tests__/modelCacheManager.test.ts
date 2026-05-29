@@ -121,7 +121,7 @@ describe('ModelCacheManager', () => {
 
   // ── syncFromBackend ────────────────────────────────────────────────────────
   describe('syncFromBackend', () => {
-    it('populates allModels and openkosmosModels from backend', async () => {
+    it('populates allModels and kosmosModels from backend', async () => {
       const models = [makeModel({ id: 'model-a' }), makeModel({ id: 'model-b' })];
       (window as any).electronAPI.models.getAllModels.mockResolvedValue({ success: true, data: models });
       (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [models[0]] });
@@ -318,7 +318,7 @@ describe('ModelCacheManager', () => {
       const info = manager.getCacheInfo();
       expect(info.initialized).toBe(false);
       expect(info.allModelsCount).toBe(0);
-      expect(info.openkosmosModelsCount).toBe(0);
+      expect(info.kosmosModelsCount).toBe(0);
       expect(info.defaultModel).toBe('claude-opus-4.6');
     });
   });
@@ -351,7 +351,7 @@ describe('ModelCacheManager', () => {
       const info = manager.getCacheInfo();
       expect(info.initialized).toBe(true);
       expect(info.allModelsCount).toBe(2);
-      expect(info.openkosmosModelsCount).toBe(1);
+      expect(info.kosmosModelsCount).toBe(1);
     });
   });
 });

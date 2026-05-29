@@ -1,7 +1,8 @@
 const path = require('path');
 const webpack = require('webpack');
 
-const appConfig = require('./brands/openkosmos/config.json');
+const brandConfig = require('./scripts/brand-config');
+const { config: appConfig } = brandConfig;
 
 // Load environment variables from .env.local (or DOTENV_CONFIG_PATH for E2E test builds)
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' });
@@ -75,29 +76,23 @@ module.exports = (env, argv) => {
       // Expose environment variables to main process
       // Use webpack's mode as fallback to ensure development mode is properly detected for electron-reload
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
-      'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(process.env.DEVELOPMENT_BASE_CDN_URL),
-      'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(process.env.PRODUCTION_BASE_CDN_URL),
-      'process.env.RELEASE_CDN_URL': JSON.stringify(process.env.RELEASE_CDN_URL),
+      'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(process.env.DEVELOPMENT_BASE_CDN_URL || ''),
+      'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(process.env.PRODUCTION_BASE_CDN_URL || ''),
+      'process.env.RELEASE_CDN_URL': JSON.stringify(process.env.RELEASE_CDN_URL || ''),
       'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
-      'process.env.BRAND_NAME': JSON.stringify('openkosmos'),
+      'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
       'process.env.APP_NAME': JSON.stringify(appConfig.productName),
       'process.env.APP_ID': JSON.stringify(appConfig.appId),
       'process.env.DEVELOPMENT_RELAY_SERVICE_URL': JSON.stringify(process.env.DEVELOPMENT_RELAY_SERVICE_URL || ''),
       'process.env.PRODUCTION_RELAY_SERVICE_URL': JSON.stringify(process.env.PRODUCTION_RELAY_SERVICE_URL || ''),
       'process.env.USER_DATA_NAME': JSON.stringify(appConfig.userDataName || appConfig.productName),
-      'process.env.PRESET_MODEL_GPT4O_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT4O_NAME),
-      'process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME),
-      'process.env.PRESET_MODEL_GPT4O_ENDPOINT': JSON.stringify(process.env.PRESET_MODEL_GPT4O_ENDPOINT),
-      'process.env.PRESET_MODEL_GPT4O_API_KEY': JSON.stringify(process.env.PRESET_MODEL_GPT4O_API_KEY),
-      'process.env.PRESET_MODEL_GPT4O_API_VERSION': JSON.stringify(process.env.PRESET_MODEL_GPT4O_API_VERSION),
-      'process.env.PRESET_MODEL_GPT41_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT41_NAME),
-      'process.env.PRESET_MODEL_GPT41_DEPLOYMENT_NAME': JSON.stringify(process.env.PRESET_MODEL_GPT41_DEPLOYMENT_NAME),
-      'process.env.PRESET_MODEL_GPT41_ENDPOINT': JSON.stringify(process.env.PRESET_MODEL_GPT41_ENDPOINT),
-      'process.env.PRESET_MODEL_GPT41_API_KEY': JSON.stringify(process.env.PRESET_MODEL_GPT41_API_KEY),
-      'process.env.PRESET_MODEL_GPT41_API_VERSION': JSON.stringify(process.env.PRESET_MODEL_GPT41_API_VERSION),
       'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(process.env.HISTORY_PROMPT_QUEUE_SIZE),
-      // Active User tracking threshold (minutes), default 5 min
-      'process.env.ACTIVE_USER_THRESHOLD_MIN': JSON.stringify(process.env.ACTIVE_USER_THRESHOLD_MIN || ''),
+      // Additional environment variables
+      'process.env.REDDIT_CLIENT_ID': JSON.stringify(process.env.REDDIT_CLIENT_ID),
+      'process.env.REDDIT_CLIENT_SECRET': JSON.stringify(process.env.REDDIT_CLIENT_SECRET),
+      'process.env.DATA_AI_API_KEY': JSON.stringify(process.env.DATA_AI_API_KEY),
+      'process.env.UNWRAP_ACCESS_TOKEN': JSON.stringify(process.env.UNWRAP_ACCESS_TOKEN),
+      'process.env.TAVILY_API_KEY': JSON.stringify(process.env.TAVILY_API_KEY),
     })
   ],
   node: {
@@ -118,6 +113,8 @@ module.exports = (env, argv) => {
       const nativeModules = [
         'sharp',
         'onnxruntime-node',
+        'better-sqlite3',
+        'sqlite-vec',
         '@xenova/transformers',
         'fsevents',
         'cpu-features',
@@ -134,13 +131,10 @@ module.exports = (env, argv) => {
         'selection-hook', // Add selection-hook to native modules
         // node-screenshots window detection native addon
         'node-screenshots',
-        // Whisper speech-to-text native addon
-        '@kutalia/whisper-node-addon',
         // Additional AI/ML modules that may contain native bindings
         '@google/generative-ai',
         'cohere-ai',
         'ollama',
-        'neo4j-driver',
       ];
 
       if (nativeModules.some((mod) => request.startsWith(mod))) {

@@ -115,7 +115,7 @@ describe('AgentDropdownMenu', () => {
           chat_id: 'chat-builtin',
           agent: {
             name: 'Kobi',
-            source: 'ON-DEVICE',
+            source: 'IN-LIBRARY',
           },
         },
       ],

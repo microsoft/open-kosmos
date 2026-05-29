@@ -1,8 +1,8 @@
-# Kosmos CancellationToken Migration Plan
+# OpenKosmos CancellationToken Migration Plan
 
 ## 📋 Executive Summary
 
-Based on research into Roo-Code and vscode-copilot-chat, we recommend implementing the standard **CancellationToken pattern** for Kosmos to provide a unified, reliable conversation cancel/pause feature.
+Based on research into Roo-Code and vscode-copilot-chat, we recommend implementing the standard **CancellationToken pattern** for OpenKosmos to provide a unified, reliable conversation cancel/pause feature.
 
 ## 🎯 Goals
 

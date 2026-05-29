@@ -13,10 +13,6 @@ vi.mock('../ghcConfig', () => ({
   },
 }));
 
-vi.mock('../aliasUtils', () => ({
-  aliasToAadAccount: vi.fn((login: string) => `${login}@github.com`),
-}));
-
 // We need to import after mocks are set up
 import { GhcAuthManager } from '../ghcAuth';
 

@@ -8,14 +8,15 @@
  * - localStorage cache is used as a fallback
  */
 
+import { BRAND_NAME } from '@shared/constants/branding';
 import { createLogger } from '../utilities/logger';
 const logger = createLogger('[FeatureFlagCacheManager]');
 
 type FeatureFlagName = string;
 type FeatureFlagsValues = Record<FeatureFlagName, boolean>;
 
-const STORAGE_KEY = 'openkosmos_feature_flags_cache';
-const CACHE_VERSION_KEY = 'openkosmos_feature_flags_cache_version';
+const STORAGE_KEY = `${BRAND_NAME}_feature_flags_cache`;
+const CACHE_VERSION_KEY = `${BRAND_NAME}_feature_flags_cache_version`;
 const CURRENT_CACHE_VERSION = '1.0';
 
 class FeatureFlagCacheManager {

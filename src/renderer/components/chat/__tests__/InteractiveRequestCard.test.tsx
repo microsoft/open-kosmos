@@ -352,6 +352,7 @@ describe('InteractiveRequestCard', () => {
           control: 'select',
           required: true,
           options: [
+            { value: 'teams', label: 'Teams' },
             { value: 'email', label: 'Email' },
           ],
         },
@@ -394,7 +395,7 @@ describe('InteractiveRequestCard', () => {
           control: 'select',
           required: true,
           options: [
-            { value: 'email', label: 'Email' },
+            { value: 'teams', label: 'Teams' },
           ],
         },
       ],

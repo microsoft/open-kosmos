@@ -87,9 +87,9 @@ export const test = base.extend<ElectronFixtures>({
         ...process.env,
         NODE_ENV: 'test',
         // Specify the full userData path directly, bypassing webpack DefinePlugin compile-time substitution.
-        // bootstrap.ts reads this value at runtime via process['env']['KOSMOS_TEST_USER_DATA_PATH'],
+        // bootstrap.ts reads this value at runtime via process['env']['OpenKosmos_TEST_USER_DATA_PATH'],
         // which takes priority over the USER_DATA_NAME injected by DefinePlugin.
-        KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
+        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
       },
       // Electron launch timeout
       timeout: 30_000,

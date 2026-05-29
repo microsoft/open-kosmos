@@ -180,9 +180,6 @@ export const AppLayoutContent: React.FC<AppLayoutContentProps> = ({
 
         <ContentContainer sidebarVisible={isSidebarVisible} />
 
-        {/* Right global sidepane for UserTask */}
-
-
         {/* Global Agent dropdown menu - state managed via atom */}
         {!isMinimalMode && <AgentDropdownMenu />}
 

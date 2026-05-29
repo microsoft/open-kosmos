@@ -17,11 +17,11 @@ import * as path from 'path';
 // Determine the mock profile path based on actual test runner platform
 function getMockProfilePath(alias: string): string {
   if (process.platform === 'win32') {
-    return `C:\\Users\\testuser\\AppData\\Roaming\\openkosmos-app\\profiles\\${alias}`;
+    return `C:\\Users\\testuser\\AppData\\Roaming\\open-kosmos-app\\profiles\\${alias}`;
   } else if (process.platform === 'darwin') {
-    return `/Users/testuser/Library/Application Support/openkosmos-app/profiles/${alias}`;
+    return `/Users/testuser/Library/Application Support/open-kosmos-app/profiles/${alias}`;
   } else {
-    return `/home/testuser/.config/openkosmos-app/profiles/${alias}`;
+    return `/home/testuser/.config/open-kosmos-app/profiles/${alias}`;
   }
 }
 
@@ -31,11 +31,11 @@ vi.mock('../pathUtils', async () => ({
     // Dynamic mock based on actual platform (evaluated at call time, not mock definition time)
     const platform = process.platform;
     if (platform === 'win32') {
-      return `C:\\Users\\testuser\\AppData\\Roaming\\openkosmos-app\\profiles\\${alias}`;
+      return `C:\\Users\\testuser\\AppData\\Roaming\\open-kosmos-app\\profiles\\${alias}`;
     } else if (platform === 'darwin') {
-      return `/Users/testuser/Library/Application Support/openkosmos-app/profiles/${alias}`;
+      return `/Users/testuser/Library/Application Support/open-kosmos-app/profiles/${alias}`;
     } else {
-      return `/home/testuser/.config/openkosmos-app/profiles/${alias}`;
+      return `/home/testuser/.config/open-kosmos-app/profiles/${alias}`;
     }
   }),
 }));
@@ -74,12 +74,12 @@ describe('needsPathConversion', () => {
     beforeEach(() => mockPlatform('win32'));
 
     it('should return true for Unix profile path on Windows', () => {
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
+      const unixPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123';
       expect(needsPathConversion(unixPath)).toBe(true);
     });
 
     it('should return false for Windows path on Windows', () => {
-      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
+      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\open-kosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       expect(needsPathConversion(winPath)).toBe(false);
     });
 
@@ -93,12 +93,12 @@ describe('needsPathConversion', () => {
     beforeEach(() => mockPlatform('darwin'));
 
     it('should return true for Windows profile path on macOS', () => {
-      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
+      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\open-kosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       expect(needsPathConversion(winPath)).toBe(true);
     });
 
     it('should return false for Unix path on macOS', () => {
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
+      const unixPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123';
       expect(needsPathConversion(unixPath)).toBe(false);
     });
 
@@ -138,7 +138,7 @@ describe('convertToLocalPath', () => {
     beforeEach(() => mockPlatform('win32'));
 
     it('should convert macOS profile path to local path', () => {
-      const macPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
+      const macPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123';
       const result = convertToLocalPath(macPath, 'john_ms');
       
       // Should contain the local profile dir and relative path
@@ -151,7 +151,7 @@ describe('convertToLocalPath', () => {
     });
 
     it('should convert Linux profile path to local path', () => {
-      const linuxPath = '/home/john/.config/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge';
+      const linuxPath = '/home/john/.config/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge';
       const result = convertToLocalPath(linuxPath, 'john_ms');
       
       expect(result).toContain('testuser');
@@ -162,7 +162,7 @@ describe('convertToLocalPath', () => {
     });
 
     it('should return native Windows path unchanged', () => {
-      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
+      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\open-kosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       const result = convertToLocalPath(winPath, 'john_ms');
       
       expect(result).toBe(winPath);
@@ -179,7 +179,7 @@ describe('convertToLocalPath', () => {
   describe('when platform is macOS/Linux', () => {
     it('should detect Windows path as foreign when platform is darwin', () => {
       mockPlatform('darwin');
-      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
+      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\open-kosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       
       // Should convert because it's detected as foreign
       const result = convertToLocalPath(winPath, 'john_ms');
@@ -193,7 +193,7 @@ describe('convertToLocalPath', () => {
 
     it('should detect Windows path as foreign when platform is linux', () => {
       mockPlatform('linux');
-      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
+      const winPath = 'C:\\Users\\john\\AppData\\Roaming\\open-kosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       
       const result = convertToLocalPath(winPath, 'john_ms');
       
@@ -204,7 +204,7 @@ describe('convertToLocalPath', () => {
 
     it('should NOT detect Unix path as foreign when platform is darwin', () => {
       mockPlatform('darwin');
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
+      const unixPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123';
       
       // Should NOT convert because Unix path is native on darwin
       const result = convertToLocalPath(unixPath, 'john_ms');
@@ -228,7 +228,7 @@ describe('convertToLocalPath', () => {
 
     it('should return path unchanged when alias does not match expectedAlias', () => {
       // Path contains different alias than expectedAlias
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/old_alias/chat_workspaces/chat_123';
+      const unixPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/old_alias/chat_workspaces/chat_123';
       const result = convertToLocalPath(unixPath, 'new_alias');
       
       // Should return unchanged because alias mismatch
@@ -236,10 +236,10 @@ describe('convertToLocalPath', () => {
     });
 
     it('should handle alias with underscores', () => {
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_org/chat_workspaces/chat_123';
-      const result = convertToLocalPath(unixPath, 'john_org');
-
-      expect(result).toContain('john_org');
+      const unixPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john/chat_workspaces/chat_123';
+      const result = convertToLocalPath(unixPath, 'john');
+      
+      expect(result).toContain('john');
       expect(result).toContain('chat_workspaces');
       expect(result).toContain('chat_123');
     });
@@ -261,7 +261,7 @@ describe('convertToLocalPath', () => {
     });
 
     it('should handle deeply nested paths', () => {
-      const macPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge/subdir/file.txt';
+      const macPath = '/Users/john/Library/Application Support/open-kosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge/subdir/file.txt';
       const result = convertToLocalPath(macPath, 'john_ms');
       
       expect(result).toContain('testuser');

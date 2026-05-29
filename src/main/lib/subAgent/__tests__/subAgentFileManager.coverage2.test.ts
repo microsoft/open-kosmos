@@ -188,7 +188,7 @@ mcpServers:
   - name: inline-srv
     tools:
       - tool1
-x-openkosmos:
+x-kosmos:
   version: "2.0.0"
   builtin_tools:
     - read_file
@@ -244,7 +244,7 @@ You are a helpful agent.
     expect(result.error).toContain('description');
   });
 
-  it('auto-maps Claude tools to openkosmos builtin_tools', () => {
+  it('auto-maps Claude tools to kosmos builtin_tools', () => {
     const content = `---
 name: claude-agent
 description: "imported"
@@ -274,19 +274,19 @@ disallowedTools:
     expect(result.data?.disallow_builtin_tools).toContain('fetch_web_content');
   });
 
-  it('does not overwrite explicitly set builtin_tools from x-openkosmos', () => {
+  it('does not overwrite explicitly set builtin_tools from x-kosmos', () => {
     const content = `---
 name: explicit-tools
 description: "explicit"
 tools:
   - Read
-x-openkosmos:
+x-kosmos:
   builtin_tools:
     - execute_command
 ---
 `;
     const result = manager.parseAgentMarkdown(content);
-    // builtin_tools was already set from x-openkosmos, so no auto-mapping
+    // builtin_tools was already set from x-kosmos, so no auto-mapping
     expect(result.data?.builtin_tools).toContain('execute_command');
     expect(result.data?.builtin_tools).not.toContain('read_file');
   });
@@ -313,23 +313,13 @@ description: "snake"
     expect(result.data?.maxTurns).toBeUndefined();
   });
 
-  it('handles mcp_servers (snake_case) fallback', () => {
-    const content = `---
-name: snake-mcp-agent
-description: "has mcp"
-mcp_servers:
-  - srv1
----
-`;
-    const result = manager.parseAgentMarkdown(content);
-    expect(result.data?.mcpServers).toHaveLength(1);
-  });
+  // ── exportAsClaudeCodeFormat ──────────────────────────────────────────────
 
   it('parses agent without context_access (field removed)', () => {
     const content = `---
 name: ctx-agent
 description: "ctx"
-x-openkosmos:
+x-kosmos:
 ---
 `;
     const result = manager.parseAgentMarkdown(content);
@@ -379,27 +369,18 @@ description: "no emoji"
     expect(output).not.toContain('model: inherit');
   });
 
-  it('does not include x-openkosmos section (display_name removed)', () => {
+  it('does not include x-kosmos section (display_name removed)', () => {
     const config = makeMinimalConfig({
       version: '1.0.0',
     });
     const output = manager.serializeToAgentMarkdown(config);
-    // display_name removed, so x-openkosmos section may not be included
+    // display_name removed, so x-kosmos section may not be included
     expect(output).not.toContain('display_name');
-  });
-
-  it('uses legacy mcp_servers when mcpServers undefined', () => {
-    const config = makeMinimalConfig({
-      mcpServers: undefined as any,
-      mcp_servers: [{ name: 'legacy-srv', tools: ['t1'] }],
-    });
-    const output = manager.serializeToAgentMarkdown(config);
-    expect(output).toContain('legacy-srv');
   });
 
   // ── exportAsClaudeCodeFormat ──────────────────────────────────────────────
 
-  it('exports Claude Code format without x-openkosmos fields', () => {
+  it('exports Claude Code format without x-kosmos fields', () => {
     const config = makeMinimalConfig({
       tools: ['Read'],
       model: 'gpt-4',
@@ -407,7 +388,7 @@ description: "no emoji"
       mcpServers: [{ name: 'srv', tools: [] }],
     });
     const output = manager.exportAsClaudeCodeFormat(config);
-    expect(output).not.toContain('x-openkosmos');
+    expect(output).not.toContain('x-kosmos');
     expect(output).toContain('Read');
     expect(output).toContain('model: gpt-4');
     expect(output).toContain('Be helpful');

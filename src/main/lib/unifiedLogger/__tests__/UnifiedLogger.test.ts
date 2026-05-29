@@ -11,7 +11,7 @@ describe('UnifiedLogger manual flush', () => {
   beforeEach(async () => {
     process.env.NODE_ENV = 'production';
     resetGlobalLogger();
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-unified-logger-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-unified-logger-test-'));
   });
 
   afterEach(async () => {
@@ -44,8 +44,8 @@ describe('UnifiedLogger manual flush', () => {
   });
 
   it('keeps existing logger references valid when config is updated later', async () => {
-    const firstDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-unified-logger-first-'));
-    const secondDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-unified-logger-second-'));
+    const firstDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-unified-logger-first-'));
+    const secondDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-unified-logger-second-'));
 
     try {
       const earlyLogger = createLogger({

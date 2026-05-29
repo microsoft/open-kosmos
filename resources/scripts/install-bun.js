@@ -56,7 +56,7 @@ async function main() {
   // The documentation says: path.join(app.getPath('userData'), 'bin')
   // Since this script runs in a spawned process, we might not have 'app'.
   // We can pass the install directory as an argument or default to a standard location relative to home.
-  // Docs say: %AppData%\Kosmos\bin or ~/.config/Kosmos/bin
+  // Docs say: %AppData%\OpenKosmos\bin or ~/.config/OpenKosmos/bin
   // But passing it as an arg is safer.
   
   // Let's assume arg 3 is the install directory if provided

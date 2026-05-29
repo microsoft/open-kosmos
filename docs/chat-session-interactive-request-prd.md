@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos chat sessions already support two limited forms of user interaction during an agent run:
+OpenKosmos chat sessions already support two limited forms of user interaction during an agent run:
 
 1. Tool approval requests for security-sensitive operations.
 2. Info collection requests for selected setup flows.
@@ -25,7 +25,7 @@ The design explicitly does not require backward compatibility with the current s
 
 ## 2. Problem Statement
 
-Kosmos lacks a unified product model for assistant-driven interaction during a chat turn.
+OpenKosmos lacks a unified product model for assistant-driven interaction during a chat turn.
 
 Current issues:
 
@@ -37,7 +37,7 @@ Current issues:
 
 ## 3. Product Decision
 
-Kosmos will introduce a unified Chat Session Interactive Request model.
+OpenKosmos will introduce a unified Chat Session Interactive Request model.
 
 Product rules:
 
@@ -208,7 +208,7 @@ Required behaviors:
 
 1. Parallel pending interactions in one session.
 2. Backward compatibility with old split interaction APIs.
-3. Direct third-party external protocol support beyond the Kosmos runtime migration path.
+3. Direct third-party external protocol support beyond the OpenKosmos runtime migration path.
 
 ## 10. Migration Requirements
 

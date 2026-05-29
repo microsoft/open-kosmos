@@ -35,7 +35,7 @@ vi.mock('../chatSessionManager', async () => ({
 }));
 
 vi.mock('../../../../shared/constants/branding', async () => ({
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }));
 
 vi.mock('../../../../shared/constants/builtinSkills', async () => ({

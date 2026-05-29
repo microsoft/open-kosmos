@@ -2,21 +2,20 @@ import { BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
-import type { MemexManager } from '../../lib/memex/MemexManager';
+import type { UpdateManager } from '../../lib/autoUpdate/updateManager';
 
 export interface Context {
-  _memexManager?: MemexManager;
   _schedulerInitPromise?: Promise<void>;
   _buddyInitPromise?: Promise<void>;
   currentUserAlias: string | null;
   readonly mainWindow: BrowserWindow | null;
   readonly debugWindow: BrowserWindow | null;
+  readonly updateManager: Promise<UpdateManager>;
   readonly isDev: boolean;
   readonly isAnalyticsReady: boolean;
   readonly isAgentChatReady: boolean;
   readonly selectedText: string;
 
-  readonly cleanupSelectionHook: () => void;
   readonly onBeforeQuit: (event: Electron.Event) => Promise<void>
   readonly registerGlobalShortcuts: () => Promise<void>;
   readonly getPersistedWindowZoomLevel: () => Promise<number>;

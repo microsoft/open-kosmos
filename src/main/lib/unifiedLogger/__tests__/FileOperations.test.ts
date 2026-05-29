@@ -38,7 +38,7 @@ describe('FileOperations log file selection', () => {
   });
 
   async function makeTempDir(): Promise<string> {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-log-test-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-log-test-'));
     tempDirs.push(dir);
     return dir;
   }
@@ -65,7 +65,7 @@ describe('FileOperations log file selection', () => {
   it('uses one timestamped dev log file for a dev process', () => {
     const startupTime = new Date(2026, 3, 25, 13, 6, 7);
     const laterTime = new Date(2026, 3, 25, 13, 7, 8);
-    const expected = 'openkosmos-dev-2026-04-25-13-06-07.log';
+    const expected = 'kosmos-dev-2026-04-25-13-06-07.log';
 
     expect(getDevLogFileName(startupTime)).toBe(expected);
     expect(getDevStartupLogFileName(startupTime)).toBe(expected);
@@ -94,8 +94,8 @@ describe('FileOperations log file selection', () => {
   it('cleans only old dev logs during dev startup', async () => {
     const logDirectory = await makeTempDir();
     const currentDevFile = getDevStartupLogFileName(new Date(2026, 3, 25, 13, 6, 7));
-    const oldDevFile = 'openkosmos-dev-2026-04-24-11-22-33.log';
-    const productionFile = 'openkosmos-2026-04-24.log';
+    const oldDevFile = 'kosmos-dev-2026-04-24-11-22-33.log';
+    const productionFile = 'kosmos-2026-04-24.log';
     const unrelatedFile = 'notes.log';
 
     await Promise.all([
@@ -120,8 +120,8 @@ describe('FileOperations log file selection', () => {
   it('keeps dev logs when production cleanup removes old production logs', async () => {
     const logDirectory = await makeTempDir();
     const currentProductionFile = getTodayLogFileName();
-    const oldProductionFile = 'openkosmos-1999-01-01.log';
-    const devFile = 'openkosmos-dev-2026-04-25-13-06-07.log';
+    const oldProductionFile = 'kosmos-1999-01-01.log';
+    const devFile = 'kosmos-dev-2026-04-25-13-06-07.log';
 
     await Promise.all([
       writeLogFile(logDirectory, currentProductionFile),
@@ -148,8 +148,8 @@ describe('FileOperations log file selection', () => {
       String(today.getMonth() + 1).padStart(2, '0'),
       String(today.getDate()).padStart(2, '0'),
     ].join('-');
-    const devFile = `openkosmos-dev-${todayStr}-09-00-00.log`;
-    const productionFile = `openkosmos-${todayStr}.log`;
+    const devFile = `kosmos-dev-${todayStr}-09-00-00.log`;
+    const productionFile = `kosmos-${todayStr}.log`;
 
     await Promise.all([
       writeLogFile(logDirectory, devFile),

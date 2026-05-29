@@ -49,33 +49,6 @@ export const DEFAULT_RUNTIME_ENVIRONMENT: RuntimeEnvironment = {
   pinnedPythonVersion: '3.10.12',
 };
 
-// ─── Voice Input ─────────────────────────────────────────────────────────────
-
-/**
- * App-level Voice Input configuration (stored in app.json).
- * This is a global feature switch — not tied to any user profile.
- */
-export interface VoiceInputConfig {
-  /** Master switch: whether voice input is enabled */
-  voiceInputEnabled: boolean;
-  /** Selected Whisper model size ('tiny'|'base'|'small'|'medium'|'turbo') or '' for none */
-  whisperModelSelected: string;
-  /**
-   * Speech recognition language code ('auto' | 'en' | 'zh' | ...)
-   * Empty string maps to 'auto' (Auto-Detect).
-   */
-  recognitionLanguage: string;
-  /** Enable GPU acceleration (Metal on macOS, Vulkan on Windows/Linux) */
-  gpuAcceleration: boolean;
-}
-
-export const DEFAULT_VOICE_INPUT_CONFIG: VoiceInputConfig = {
-  voiceInputEnabled: false,
-  whisperModelSelected: '',
-  recognitionLanguage: 'auto',
-  gpuAcceleration: false,
-};
-
 // ─── Screenshot ──────────────────────────────────────────────────────────────
 
 /**
@@ -117,11 +90,6 @@ export interface AppConfig {
   runtimeEnvironment?: RuntimeEnvironment;
 
   /**
-   * Voice Input feature configuration (global, unrelated to user profile)
-   */
-  voiceInput?: Partial<VoiceInputConfig>;
-
-  /**
    * Screenshot feature configuration (global, unrelated to user profile).
    * On first read, if missing, AppCacheManager will migrate from the first profile's profile.json; otherwise uses defaults.
    */
@@ -137,6 +105,20 @@ export interface AppConfig {
    * Range 288 ~ 576, default 288
    */
   leftSidebarWidth?: number;
+
+  /**
+   * Whether the right sidebar is collapsed (global application-level layout preference)
+   */
+  rightSidebarCollapsed?: boolean;
+
+  /**
+   * Right sidebar width (CSS pixels, global application-level layout preference)
+   * Range 280 ~ 520, default 360
+   */
+  rightSidebarWidth?: number;
+
+  /** Last archived year-month (YYYYMM format). */
+  lastArchiveYearMonth?: string;
 
   /**
    * Page zoom level (global, unrelated to user profile)
@@ -155,10 +137,11 @@ export interface AppConfig {
  */
 export const DEFAULT_APP_CONFIG: AppConfig = {
   runtimeEnvironment: { ...DEFAULT_RUNTIME_ENVIRONMENT },
-  voiceInput: { ...DEFAULT_VOICE_INPUT_CONFIG },
   screenshotSettings: { ...DEFAULT_SCREENSHOT_SETTINGS },
   leftSidebarCollapsed: false,
   leftSidebarWidth: 288,
+  rightSidebarCollapsed: true,
+  rightSidebarWidth: 360,
   zoomLevel: 0,
   mainWindowMaximized: false,
 };
@@ -197,6 +180,8 @@ export function isAppConfig(obj: any): obj is AppConfig {
   if (obj.nativeServerVersion !== undefined && typeof obj.nativeServerVersion !== 'string') return false;
   if (obj.runtimeEnvironment !== undefined && !isRuntimeEnvironment(obj.runtimeEnvironment)) return false;
   if (obj.leftSidebarCollapsed !== undefined && typeof obj.leftSidebarCollapsed !== 'boolean') return false;
+  if (obj.rightSidebarCollapsed !== undefined && typeof obj.rightSidebarCollapsed !== 'boolean') return false;
+  if (obj.rightSidebarWidth !== undefined && (!Number.isFinite(obj.rightSidebarWidth) || typeof obj.rightSidebarWidth !== 'number')) return false;
   if (obj.zoomLevel !== undefined && (!Number.isFinite(obj.zoomLevel) || typeof obj.zoomLevel !== 'number')) return false;
   if (obj.mainWindowMaximized !== undefined && typeof obj.mainWindowMaximized !== 'boolean') return false;
   return true;

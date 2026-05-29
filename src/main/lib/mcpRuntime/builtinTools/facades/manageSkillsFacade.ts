@@ -27,7 +27,7 @@ export class ManageSkillsFacade {
       name: 'manage_skills',
       description:
         'Install, uninstall, bind, or unbind skills. ' +
-        '"install" downloads a skill to the device from the local device. ' +
+        '"install" downloads a skill to the device from library/device/clawhub/github. ' +
         '"uninstall" removes a skill from the device. ' +
         '"bind" attaches an installed skill to one or more agents. ' +
         '"unbind" detaches a skill from agents without uninstalling it. ' +
@@ -48,13 +48,13 @@ export class ManageSkillsFacade {
           },
           source: {
             type: 'string',
-            enum: ['device'],
-            description: 'Install source (only for action=install, default=device)',
+            enum: ['library', 'device', 'clawhub', 'github'],
+            description: 'Install source (only for action=install, default=library)',
           },
           path: {
             type: 'string',
             description:
-              'Local absolute path to skill artifact (required when source=device)',
+              'Local absolute path to skill artifact (required when source=device/clawhub/github)',
           },
           agent_names: {
             type: 'array',
@@ -107,11 +107,12 @@ export class ManageSkillsFacade {
     skillNames: string[],
     args: ManageSkillsInput,
   ): Promise<FacadeResult> {
-    const source = args.source || 'device';
+    const source = args.source || 'library';
+    const needsPath = source === 'device' || source === 'clawhub' || source === 'github';
 
-    if (!args.path || !args.path.trim()) {
+    if (needsPath && (!args.path || !args.path.trim())) {
       return errorResult(
-        `"path" is required to install skills from device.`,
+        `"path" is required when source=${source}.`,
         'Provide the local absolute path to the skill artifact.',
       );
     }
@@ -120,7 +121,10 @@ export class ManageSkillsFacade {
 
     for (const skillName of skillNames) {
       try {
-        const installSource = { type: 'device-path' as const, value: args.path!.trim() };
+        const installSource =
+          source === 'library'
+            ? { type: 'library-name' as const, value: skillName }
+            : { type: 'device-path' as const, value: args.path!.trim() };
 
         const result = await installAndActivateSkill({
           userAlias: ManageSkillsFacade.getCurrentUserAlias(),

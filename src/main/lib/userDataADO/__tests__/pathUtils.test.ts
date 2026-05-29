@@ -31,6 +31,7 @@ import {
   removeDirectoryRecursively,
   removeChatSessionsDirectory,
   removeDefaultWorkspaceDirectory,
+  ensureMem0StoragePaths,
 } from '../pathUtils';
 
 describe('pathUtils', () => {
@@ -306,4 +307,16 @@ describe('pathUtils', () => {
     });
   });
 
+  describe('ensureMem0StoragePaths', () => {
+    it('creates rag directory structure and returns correct paths', () => {
+      const baseDir = path.join(tmpDir, 'test-data');
+      const result = ensureMem0StoragePaths('alice', baseDir);
+
+      expect(result.basePath).toContain('rag');
+      expect(result.historyDirectory).toContain('history');
+      expect(result.historyDbPath).toMatch(/\.db$/);
+      expect(fs.existsSync(result.basePath)).toBe(true);
+      expect(fs.existsSync(result.historyDirectory)).toBe(true);
+    });
+  });
 });

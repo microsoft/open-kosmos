@@ -2,7 +2,7 @@
  * Full coverage tests for mcpBridge.ts.
  *
  * Covers: removePluginMcpServers, isPluginMcpServer, "already exists" error
- * path, generic error path, OPENKOSMOS_PLUGIN_ROOT / CLAUDE_PLUGIN_ROOT
+ * path, generic error path, OpenKosmos_PLUGIN_ROOT / CLAUDE_PLUGIN_ROOT
  * substitution, stdio transport (no headers applied), and env var expansion.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -107,9 +107,9 @@ describe('injectPluginMcpServers — edge cases', () => {
     expect(result).toEqual([]);
   });
 
-  it('substitutes ${OPENKOSMOS_PLUGIN_ROOT} in command', async () => {
+  it('substitutes ${OpenKosmos_PLUGIN_ROOT} in command', async () => {
     const plugin = makePlugin({
-      server: { type: 'stdio', command: '${OPENKOSMOS_PLUGIN_ROOT}/bin/server', args: [] },
+      server: { type: 'stdio', command: '${OpenKosmos_PLUGIN_ROOT}/bin/server', args: [] },
     });
     await injectPluginMcpServers(plugin);
     const config = addMock.mock.calls[0][1];

@@ -261,9 +261,6 @@ export function useRenderItems(
       } else if (message.role === 'user') {
         // Skip synthetic messages (e.g. sub-agent task-notification triggers)
         if ((message as any).metadata?.synthetic) return;
-        // Fallback: also skip messages whose only text is the trigger tag (legacy sessions without metadata)
-        const textParts = message.content.filter(p => p.type === 'text').map(p => (p.text || '').trim()).join('');
-        if (textParts === '<task-notification-trigger/>') return;
         // Flush pending tool calls and presented files before a user message
         flushPendingItems();
         items.push({ type: 'user', message, index: sourceMessageIndex });

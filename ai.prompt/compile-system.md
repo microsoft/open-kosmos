@@ -61,7 +61,9 @@ Based on **electron-vite 5.x** (vite 7 + esbuild + rollup). Future smooth migrat
 |---|---------|------|-------|
 | main.js | 9.8 MB (single file) | 1.2 MB + multiple chunks | Vite externalizes node_modules |
 | preload.js | 62 KB | 101 KB | |
+| preload.toolbar.js | 63 KB | 2.2 KB | |
 | preload.screenshot.js | 2.1 KB | 311 B | |
+| ttsWorker.js | 4.4 KB | (same) | |
 | **Directory total** | **10 MB** | **3.3 MB** | **67% reduction with Vite** |
 
 > The core reason Vite main output is much smaller: `externalizeDeps` excludes all node_modules from the bundle (resolved at runtime by Node.js `require`), whereas Webpack bundled them into a single main.js.
@@ -112,7 +114,7 @@ npm run start:vite         # Vite build and run
 npm run pack:vite          # Run electron-builder --dir packaging on the Vite output (bun script)
 ```
 
-All scripts support brand selection via the `--brand` flag. `npm run dev` specifies the entry via `ELECTRON_ENTRY=dist-vite/main/main.js`.
+`npm run dev` specifies the entry via `ELECTRON_ENTRY=dist-vite/main/main.js`.
 
 
 ---
@@ -122,7 +124,7 @@ All scripts support brand selection via the `--brand` flag. `npm run dev` specif
 
 ### 1. Unified HTML Templates (compatible with Webpack + Vite)
 
-The two HTML entries (`index.html`, `screenshot.html`) have been updated to use EJS template syntax:
+The three HTML entries (`index.html`, `toolbar.html`, `screenshot.html`) have been updated to use EJS template syntax:
 - `<%= connectSrcExtra %>` — Injects `ws: wss:` into CSP in dev mode (required by Vite HMR WebSocket)
 - `<%- entryScript %>` — In Vite mode, injects a `<script type="module">` entry; in Webpack mode outputs an empty string
 
@@ -132,7 +134,7 @@ The Webpack side passes empty values in `HtmlWebpackPlugin`'s `templateParameter
 
 Vite does not support runtime `require()`, so the following patterns were unified to ES Module static imports:
 
-- **Brand icon loading**: The previous `` require(`../../assets/${BRAND_NAME}/app.svg`) `` pattern was replaced with a new module `src/renderer/lib/brandIcon.ts` that statically imports both brand SVGs and selects at runtime by `BRAND_NAME`. Related components (WindowsTitleBar, StartupPage, FreFirstAgentTutorialView, AboutAppContentView) all reference this module.
+- **Brand icon loading**: The previous `` require(`../../assets/${BRAND_NAME}/app.svg`) `` pattern was replaced with a new module `src/renderer/lib/brandIcon.ts` that statically imports both brand SVGs and selects at runtime by `BRAND_NAME`. Related components (WindowsTitleBar, StartupPage, ToolBarPage, FreFirstAgentTutorialView, AboutAppContentView) all reference this module.
 - **agentChatSessionCacheManager**: Multiple `require('...')` calls were replaced with a top-level `import { agentChatSessionCacheManager }` static import (AppLayout, ContentContainer, profileDataManager).
 - **SchedulerIPC**: The `require('./lib/scheduler/SchedulerIPC')` in `main.ts` was changed to a top-level static import.
 

@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import '../../styles/ContentView.css';
-import '../../styles/SettingsComponents.css';
-import '../../styles/ToolbarSettings.css';
+import '../../styles/SettingsShared.css';
 import '../../styles/RuntimeSettings.css';
 import { BUN_VERSIONS, UV_VERSIONS, PYTHON_VERSIONS } from '../../lib/runtime/runtimeVersions';
 import type { RuntimeEnvironment } from '../../lib/userData/types';
@@ -316,6 +315,7 @@ const RuntimeSettingsContentView: React.FC<RuntimeSettingsContentViewProps> = ({
               </div>
             )}
             </>)}
+
 
             <RuntimeSystemDependenciesCard
               status={status}

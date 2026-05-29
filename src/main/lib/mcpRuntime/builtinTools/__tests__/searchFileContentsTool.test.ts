@@ -12,7 +12,7 @@ vi.mock('../../unifiedLogger', () => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/tmp/openkosmos-test') },
+  app: { getPath: vi.fn(() => '/tmp/kosmos-test') },
 }));
 
 describe('SearchFileContentsTool — validateArgs', () => {
@@ -41,7 +41,7 @@ describe('SearchFileContentsTool — context handling', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-ctx-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-ctx-'));
   });
 
   afterEach(async () => {
@@ -84,7 +84,7 @@ describe('SearchFileContentsTool — duplicate patterns removed', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-dup-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-dup-'));
   });
 
   afterEach(async () => {
@@ -103,7 +103,7 @@ describe('SearchFileContentsTool — path resolution', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-paths-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-paths-'));
   });
 
   afterEach(async () => {
@@ -180,7 +180,7 @@ describe('SearchFileContentsTool — fileGlob filtering', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-glob-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-glob-'));
   });
 
   afterEach(async () => {
@@ -239,7 +239,7 @@ describe('SearchFileContentsTool — regex patterns', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-regex-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-regex-'));
   });
 
   afterEach(async () => {
@@ -270,7 +270,7 @@ describe('SearchFileContentsTool — binary file skipping', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-binary-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-binary-'));
   });
 
   afterEach(async () => {
@@ -292,7 +292,7 @@ describe('SearchFileContentsTool — ignored directories', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-ignored-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-ignored-'));
   });
 
   afterEach(async () => {
@@ -326,7 +326,7 @@ describe('SearchFileContentsTool — multiple patterns', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-multi-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-multi-'));
   });
 
   afterEach(async () => {
@@ -349,7 +349,7 @@ describe('SearchFileContentsTool — line truncation', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-trunc-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-trunc-'));
   });
 
   afterEach(async () => {
@@ -372,7 +372,7 @@ describe('SearchFileContentsTool — block grouping', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-block-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-block-'));
   });
 
   afterEach(async () => {
@@ -415,7 +415,7 @@ describe('SearchFileContentsTool — output shape', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-out-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-out-'));
   });
 
   afterEach(async () => {
@@ -464,7 +464,7 @@ describe('SearchFileContentsTool — file size limit', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openkosmos-sfc-size-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kosmos-sfc-size-'));
   });
 
   afterEach(async () => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import FreWelcomeView, { FrePromotedAgent } from './FreWelcomeView';
 import FreSettingUpView, { SetupFlowType } from './FreSettingUpView';
+import { isCdnConfigured } from '@shared/utils/cdn';
 import { createLogger } from '../../lib/utilities/logger';
 const logger = createLogger('[FreOverlay]');
 
@@ -15,15 +16,20 @@ type FreView = 'welcome' | 'setup';
  * FRE (First Run Experience) Overlay Component
  * Coordinator component that manages view switching between Welcome and Setting Up views
  *
- * Flow:
+ * For OpenKosmos brand:
  *   1. Shows Welcome View first (agent selection)
  *   2. Then shows Setting Up View
  *   3. Completes FRE
  */
 const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
-
-  // Skip welcome view (agent library removed), go directly to basic setup
-  const [currentView, setCurrentView] = useState<FreView>('setup');
+  // The Welcome View only exists to present CDN-backed promoted agents. When no
+  // CDN is configured there can never be any promoted agents, so skip the
+  // Welcome View entirely and go straight to basic setup — avoids showing an
+  // empty "No agents available" screen the user has to dismiss manually.
+  const welcomeAvailable = isCdnConfigured();
+  const [currentView, setCurrentView] = useState<FreView>(
+    welcomeAvailable ? 'welcome' : 'setup'
+  );
 
   // Selected agent from welcome view (null = skip/basic setup)
   const [selectedAgent, setSelectedAgent] = useState<FrePromotedAgent | null>(null);
@@ -55,7 +61,7 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
 
   /**
    * Handle agent selection from Welcome View
-   * Sets the setup flow type based on selected agent and transitions to setup view
+   * Transitions to the setup view with the selected agent
    */
   const handleSelectAgent = (agent: FrePromotedAgent) => {
     logger.debug('[FRE] Agent selected from Welcome View:', agent.name);
@@ -63,13 +69,12 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
 
     // Determine setup flow type based on agent name
     const agentNameLower = agent.name.toLowerCase();
-    if (agentNameLower.includes('pm agent')) {
-      setSetupFlowType('pm-agent');
-    } else if (agentNameLower.includes('design')) {
-      setSetupFlowType('design-agent');
+    if (agentNameLower.includes('design')) {
+      setSetupFlowType('basic');
+    } else if (!agentNameLower.includes('basic')) {
+      setSetupFlowType('basic');
     } else {
-      // Default to pm-agent flow for promoted agents
-      setSetupFlowType('pm-agent');
+      setSetupFlowType('basic');
     }
 
     // Transition to setup view
@@ -89,14 +94,14 @@ const FreOverlay: React.FC<FreOverlayProps> = ({ onSkip }) => {
 
   /**
    * Handle setup completion from Setting Up View
-   * Completes FRE (freDone already set in FreSettingUpView)
+   * For OpenKosmos: complete FRE (freDone already set in FreSettingUpView)
    */
   const handleSetupComplete = () => {
-    logger.debug('[FRE] Setup complete, closing FRE overlay');
+    logger.debug('[FRE] OpenKosmos setup complete, closing FRE overlay');
     onSkip();
   };
 
-  // Render Welcome View first
+  // Render Welcome View for OpenKosmos brand first
   if (currentView === 'welcome') {
     return (
       <FreWelcomeView

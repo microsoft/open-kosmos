@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
 import { profileDataManager } from '@renderer/lib/userData';
-import { getPmAgentSayHiMessageConfig } from '@renderer/lib/chat/pmAgentSayHi';
 import { startNewChatFor } from '@renderer/lib/chat/startNewChatFor';
 import { FrePromotedAgent } from './FreWelcomeView';
 
@@ -26,7 +25,7 @@ const isVersionCompatible = (versionStr: string): boolean => {
 };
 
 // Setup flow types based on agent selection
-export type SetupFlowType = 'basic' | 'pm-agent' | 'design-agent';
+export type SetupFlowType = 'basic';
 
 type SetupStep = 'bun' | 'uv' | 'python' | 'assets' | 'builtin-assets' | 'mcp-server' | 'skills' | 'agent' | 'done';
 
@@ -36,7 +35,7 @@ const logger = createLogger('[FreSettingUpView]');
 
 /**
  * Built-in skills that must be installed during FRE.
- * These are installed as a common step for all setup flows (basic/pm-agent/design-agent).
+ * These are installed as a common step for setup.
  */
 const BUILTIN_SKILLS: string[] = BUILTIN_SKILL_NAMES;
 
@@ -218,71 +217,15 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
       logger.debug(`[FRE][SettingUp] Step 3.6: Built-in assets installation completed in ${Date.now() - builtinAssetsStartTime}ms`);
 
       // Steps 4-6 depend on setupFlowType
-      let agentResult: { chatId?: string; chatSessionId?: string } = { chatId: '', chatSessionId: '' };
-
-      const needsAgentSetup = setupFlowType === 'pm-agent' || setupFlowType === 'design-agent';
-
-      if (needsAgentSetup) {
-        const agentName = setupFlowType === 'pm-agent' ? 'PM Agent' : 'Design Agent';
-        logger.debug(`[FRE][SettingUp] Step 4: Fetching ${agentName} config and installing MCP Servers...`);
-        const mcpStartTime = Date.now();
-        setSetupStatus({
-          step: 'mcp-server',
-          message: 'Installing MCP Servers...',
-          progress: 55,
-        });
-
-        let agentLibConfig = selectedAgent;
-        if (!agentLibConfig) {
-          agentLibConfig = await fetchAgentConfigByName(agentName);
-        }
-
-        if (!agentLibConfig) {
-          throw new Error(`Failed to fetch ${agentName} configuration`);
-        }
-
-        await installRequiredMcpServers(agentLibConfig);
-        logger.debug(`[FRE][SettingUp] Step 4: MCP Servers installation completed in ${Date.now() - mcpStartTime}ms`);
-
-        // Step 5: Install required Skills (75%)
-        logger.debug('[FRE][SettingUp] Step 5: Installing required Skills...');
-        const skillsStartTime = Date.now();
-        setSetupStatus({
-          step: 'skills',
-          message: 'Installing Skills...',
-          progress: 70,
-        });
-
-        await installRequiredSkills(agentLibConfig);
-        logger.debug(`[FRE][SettingUp] Step 5: Skills installation completed in ${Date.now() - skillsStartTime}ms`);
-
-        // Step 6: Install the Agent (80%)
-        logger.debug(`[FRE][SettingUp] Step 6: Starting ${agentName} installation...`);
-        const agentStartTime = Date.now();
-        setSetupStatus({
-          step: 'agent',
-          message: `Installing ${agentName}...`,
-          progress: 75,
-        });
-
-        agentResult = await installAgentFromConfig(agentLibConfig);
-        logger.debug(`[FRE][SettingUp] Step 6: ${agentName} installation completed in ${Date.now() - agentStartTime}ms`);
-
-        logger.debug('[FRE][SettingUp] Step 7: Selecting installed agent as primary...');
-        agentResult = await selectPrimaryAgentForOpenKosmos();
-        logger.debug('[FRE][SettingUp] Step 7b: Primary agent selected:', agentResult);
-      } else {
-        logger.debug('[FRE][SettingUp] Steps 4-7: Skipping MCP/Skills/Agent installation (basic setup)');
-
-        logger.debug('[FRE][SettingUp] Step 4 (Basic): Selecting primary agent...');
-        setSetupStatus({
-          step: 'done',
-          message: 'Selecting primary agent...',
-          progress: 90,
-        });
-        agentResult = await selectPrimaryAgentForOpenKosmos();
-        logger.debug('[FRE][SettingUp] Step 4 (Basic): Primary agent selected:', agentResult);
-      }
+      // Step 4: Select primary agent
+      logger.debug('[FRE][SettingUp] Step 4: Selecting primary agent...');
+      setSetupStatus({
+        step: 'done',
+        message: 'Selecting primary agent...',
+        progress: 90,
+      });
+      const agentResult = await selectPrimaryAgentForOpenKosmos();
+      logger.debug('[FRE][SettingUp] Step 4: Primary agent selected:', agentResult);
 
       // Step 8: Complete (100%)
       logger.debug('[FRE][SettingUp] Step 8: Setup completing...');
@@ -331,11 +274,42 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
   };
 
   /**
-   * Fetch agent configuration by name — currently returns null (library fetch removed).
-   * Callers must pass the agent config via selectedAgent prop instead.
+   * Fetch agent configuration from CDN library by name
    */
-  const fetchAgentConfigByName = async (_agentName: string): Promise<any | null> => {
-    return null;
+  const fetchAgentConfigByName = async (agentName: string): Promise<any | null> => {
+    logger.debug(`[FRE][SettingUp] Fetching ${agentName} config from library...`);
+    const startTime = Date.now();
+
+    try {
+      const agentConfigResult = await window.electronAPI.builtinTools.execute('get_agent_template_from_library', {
+        agent_name: agentName,
+      });
+
+      if (!agentConfigResult.success) {
+        throw new Error(`Failed to get ${agentName} config: ` + (agentConfigResult.error || 'Unknown error'));
+      }
+
+      let parsedData = agentConfigResult.data;
+      if (typeof parsedData === 'string') {
+        try {
+          parsedData = JSON.parse(parsedData);
+        } catch (parseError) {
+          throw new Error('Failed to parse agent config data');
+        }
+      }
+
+      if (!parsedData?.config) {
+        throw new Error(`Failed to get ${agentName} config: No config in response`);
+      }
+
+      const duration = Date.now() - startTime;
+      logger.debug(`[FRE][SettingUp] ${agentName} config fetched successfully in ${duration}ms`);
+
+      return parsedData.config;
+    } catch (error) {
+      logger.error(`[FRE][SettingUp] Failed to fetch ${agentName} config:`, error);
+      return null;
+    }
   };
 
   /**
@@ -354,8 +328,71 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
         return;
       }
 
+      const libraryResult = await window.electronAPI.mcpLibrary.fetchAndUpdate();
+
+      if (!libraryResult.success || !libraryResult.data) {
+        throw new Error('Failed to fetch MCP library: ' + (libraryResult.error || 'Unknown error'));
+      }
+
+      const mcpServers = libraryResult.data.mcp_servers || [];
+
       for (const mcpName of mcpToInstall) {
-        logger.warn(`[FRE][SettingUp] MCP server "${mcpName}" cannot be auto-installed (library fetch removed), skipping...`);
+        logger.debug(`[FRE][SettingUp] Installing MCP server: ${mcpName}...`);
+
+        const mcpConfig = mcpServers.find((server: any) => server.name === mcpName);
+        if (!mcpConfig) {
+          logger.warn(`[FRE][SettingUp] MCP server "${mcpName}" not found in library, skipping...`);
+          continue;
+        }
+
+        let processedEnv = mcpConfig.env || {};
+        if (Object.keys(processedEnv).length > 0) {
+          const placeholderResult = await window.electronAPI.kosmos.replacePlaceholders(processedEnv);
+          if (placeholderResult.success && placeholderResult.data) {
+            processedEnv = placeholderResult.data;
+          }
+        }
+
+        // 🔥 Process OpenKosmos placeholders in URL field
+        let processedUrl = mcpConfig.url || '';
+        if (processedUrl) {
+          const urlPlaceholderResult = await window.electronAPI.kosmos.replacePlaceholders({ _url: processedUrl });
+          if (urlPlaceholderResult.success && urlPlaceholderResult.data) {
+            processedUrl = urlPlaceholderResult.data._url || processedUrl;
+          }
+        }
+
+        const configToAdd = {
+          name: mcpConfig.name,
+          transport: mcpConfig.transport,
+          command: mcpConfig.command,
+          args: mcpConfig.args || [],
+          env: processedEnv,
+          url: processedUrl,
+          version: mcpConfig.version || '1.0.0',
+          source: 'IN-LIBRARY' as const,
+          remoteVersion: mcpConfig.version || '1.0.0',
+        };
+
+        const result = await window.electronAPI.builtinTools.execute('create_mcp_server_from_config', {
+          mcp_config: configToAdd,
+        });
+
+        let resultData = result.data;
+        if (typeof resultData === 'string') {
+          try { resultData = JSON.parse(resultData); } catch (e) { /* ignore */ }
+        }
+
+        // Check both outer IPC success AND inner tool result success
+        const toolSuccess = result.success && (resultData?.success !== false);
+        if (!toolSuccess) {
+          const errorMsg = result.error || resultData?.error || resultData?.message || '';
+          if (errorMsg.includes('already exists')) {
+            logger.debug(`[FRE][SettingUp] MCP server "${mcpName}" already installed, skipping...`);
+            continue;
+          }
+          logger.warn(`[FRE][SettingUp] Failed to install MCP server "${mcpName}":`, errorMsg);
+        }
       }
 
       logger.debug(`[FRE][SettingUp] Required MCP Servers installed in ${Date.now() - startTime}ms`);
@@ -384,13 +421,39 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
       const installedSkills = profileDataManager.getSkills();
       const installedSkillNames = new Set(installedSkills.map((s: any) => s.name));
 
+      const libraryResult = await window.electronAPI.skillLibrary.getLibraryData();
+
+      if (!libraryResult.success || !libraryResult.data) {
+        throw new Error('Failed to fetch Skills library: ' + (libraryResult.error || 'Unknown error'));
+      }
+
+      const skills = libraryResult.data.skills || [];
+
       for (const skillName of skillsRequirements) {
+        // Check if skill is already installed — skip if so
         if (installedSkillNames.has(skillName)) {
           logger.debug(`[FRE][SettingUp] Skill "${skillName}" already installed, skipping...`);
           continue;
         }
 
-        logger.debug(`[FRE][SettingUp] Skill "${skillName}" not found locally, skipping (CDN install removed)...`);
+        logger.debug(`[FRE][SettingUp] Installing skill: ${skillName}...`);
+
+        const skillConfig = skills.find((skill: any) => skill.name === skillName);
+        if (!skillConfig) {
+          logger.warn(`[FRE][SettingUp] Skill "${skillName}" not found in library, skipping...`);
+          continue;
+        }
+
+        const result = await window.electronAPI.skillLibrary.addSkill(skillName);
+
+        if (!result.success) {
+          const errorMsg = result.error || result.message || '';
+          if (errorMsg.includes('already exists')) {
+            logger.debug(`[FRE][SettingUp] Skill "${skillName}" already exists (race condition), skipping...`);
+            continue;
+          }
+          logger.warn(`[FRE][SettingUp] Failed to install skill "${skillName}":`, errorMsg);
+        }
       }
 
       logger.debug(`[FRE][SettingUp] Required Skills installed in ${Date.now() - startTime}ms`);
@@ -401,8 +464,9 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
 
   /**
    * Install built-in assets (skills from BUILTIN_SKILLS list).
-   * This is a common step for all setup flows (basic/pm-agent/design-agent).
-   * Built-in skills are installed from the local device; CDN install is not used.
+   * This is a common step for setup.
+   * Fetches skills_lib.json from remote and installs each built-in skill.
+   * Skips skills that are already installed.
    */
   const installBuiltinAssets = async () => {
     logger.debug('[FRE][SettingUp] Starting built-in assets installation...', { builtinSkills: BUILTIN_SKILLS });
@@ -414,11 +478,51 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
         return;
       }
 
-      // Built-in skills are bundled on-device — CDN library fetch removed.
-      // Skills will be auto-installed via the on-device path when needed.
-      logger.debug('[FRE][SettingUp] Built-in skills are managed on-device, skipping CDN install.');
+      // Fetch skills library data
+      const libraryResult = await window.electronAPI.skillLibrary.getLibraryData();
 
-      logger.debug(`[FRE][SettingUp] Built-in assets step completed in ${Date.now() - startTime}ms`);
+      if (!libraryResult.success || !libraryResult.data) {
+        logger.warn('[FRE][SettingUp] Failed to fetch Skills library for built-in assets:', libraryResult.error);
+        return;
+      }
+
+      const remoteSkills = libraryResult.data.skills || [];
+
+      // Get currently installed skills to check for duplicates
+      const installedSkills = profileDataManager.getSkills();
+      const installedSkillNames = new Set(installedSkills.map((s: any) => s.name));
+
+      for (const skillName of BUILTIN_SKILLS) {
+        // Check if already installed
+        if (installedSkillNames.has(skillName)) {
+          logger.debug(`[FRE][SettingUp] Built-in skill "${skillName}" already installed, skipping...`);
+          continue;
+        }
+
+        // Check if skill exists in remote library
+        const skillConfig = remoteSkills.find((skill: any) => skill.name === skillName);
+        if (!skillConfig) {
+          logger.warn(`[FRE][SettingUp] Built-in skill "${skillName}" not found in remote library, skipping...`);
+          continue;
+        }
+
+        logger.debug(`[FRE][SettingUp] Installing built-in skill: ${skillName}...`);
+
+        const result = await window.electronAPI.skillLibrary.addSkill(skillName);
+
+        if (result.success) {
+          logger.debug(`[FRE][SettingUp] Built-in skill "${skillName}" installed successfully`);
+        } else {
+          const errorMsg = result.error || result.message || '';
+          if (errorMsg.includes('already exists')) {
+            logger.debug(`[FRE][SettingUp] Built-in skill "${skillName}" already exists, skipping...`);
+          } else {
+            logger.warn(`[FRE][SettingUp] Failed to install built-in skill "${skillName}":`, errorMsg);
+          }
+        }
+      }
+
+      logger.debug(`[FRE][SettingUp] Built-in assets installed in ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[FRE][SettingUp] Failed to install built-in assets (non-fatal):', error);
       // Non-fatal: continue with setup even if built-in assets fail
@@ -437,8 +541,8 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
       const configuration = agentLibConfig.configuration || {};
 
       let workspace = configuration.workspace || '';
-      if (workspace.includes('@OPENKOSMOS_')) {
-        const placeholderResult = await window.electronAPI.openkosmos.replacePlaceholders({ workspace });
+      if (workspace.includes('@OpenKosmos_')) {
+        const placeholderResult = await window.electronAPI.kosmos.replacePlaceholders({ workspace });
         if (placeholderResult.success && placeholderResult.data) {
           workspace = placeholderResult.data.workspace || workspace;
         }
@@ -455,6 +559,8 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
         skills: configuration.skills || [],
         workspace: workspace,
         version: agentLibConfig.version || '1.0.0',
+        source: 'IN-LIBRARY' as const,
+        remoteVersion: agentLibConfig.version || '1.0.0',
         zero_states: configuration.zero_states,
       };
 
@@ -519,7 +625,7 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
       if (targetChatId) {
         const switchResult = await startNewChatFor(
           targetChatId,
-          getPmAgentSayHiMessageConfig(targetChatId),
+          undefined,
         );
         if (switchResult?.success) {
           return { chatId: targetChatId, chatSessionId: switchResult.chatSessionId };
@@ -572,7 +678,7 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
 
       const switchResult = await startNewChatFor(
         targetChatId,
-        getPmAgentSayHiMessageConfig(targetChatId),
+        undefined,
       );
       if (switchResult?.success) {
         return { chatId: targetChatId, chatSessionId: switchResult.chatSessionId };
@@ -616,25 +722,6 @@ const FreSettingUpView: React.FC<FreSettingUpViewProps> = ({
       { step: 'builtin-assets', label: 'Installing Built-in Skills' },
     ];
 
-    if (setupFlowType === 'pm-agent') {
-      return [
-        ...basicSteps,
-        ...builtinAssetsStep,
-        { step: 'mcp-server', label: 'Installing MCP Servers' },
-        { step: 'skills', label: 'Installing Skills' },
-        { step: 'agent', label: 'Installing PM Agent' },
-      ];
-    } else if (setupFlowType === 'design-agent') {
-      return [
-        ...basicSteps,
-        ...builtinAssetsStep,
-        { step: 'mcp-server', label: 'Installing MCP Servers' },
-        { step: 'skills', label: 'Installing Skills' },
-        { step: 'agent', label: 'Installing Design Agent' },
-      ];
-    }
-
-    // Basic flow
     return [
       ...basicSteps,
       ...builtinAssetsStep,

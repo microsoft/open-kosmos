@@ -24,14 +24,16 @@ export default function(ctx: Context) {
 
   // �🔥 New: platform detection IPC handler - for detecting Windows ARM and disabling Memory feature
   ipcMain.handle('app:getPlatformInfo', () => {
-    const platform = process.platform;
-    const arch = process.arch;
+    const platform = process.platform; // 'win32', 'darwin', 'linux'
+    const arch = process.arch; // 'arm64', 'x64', 'ia32'
     const isWindowsArm = platform === 'win32' && arch === 'arm64';
 
     return {
       platform,
       arch,
       isWindowsArm,
+      // 🔥 Memory feature is disabled on Windows ARM (because better-sqlite3 and sqlite-vec are not supported)
+      memoryEnabled: !isWindowsArm
     };
   });
 

@@ -23,7 +23,7 @@ vi.mock('../builtinToolsManager', async () => ({
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue('/tmp/mock-user-data'),
-    getName: vi.fn().mockReturnValue('openkosmos'),
+    getName: vi.fn().mockReturnValue('kosmos'),
   },
 }));
 

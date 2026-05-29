@@ -1294,7 +1294,7 @@
   top: -0.25em;
 }
 
-/* Built-in Agent Badge - used in AgentList (for built-in agents like Kobi, PM Agent) */
+/* Built-in Agent Badge - used in AgentList (for built-in agents like Kobi) */
 .kobi-builtin-badge {
   display: inline-flex;
   align-items: center;

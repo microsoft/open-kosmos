@@ -1,8 +1,8 @@
 # Local test configuration - skip notarization, test signing and packaging only
 # Usage: electron-builder --mac --config electron-builder.test.yml
 
-appId: com.kosmos.app
-productName: KOSMOS
+appId: com.open-kosmos-ai-studio
+productName: OpenKosmos
 directories:
   output: release-test
   buildResources: build

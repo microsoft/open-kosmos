@@ -12,7 +12,7 @@ const path = require('path');
 const packageJson = require(path.join(__dirname, '..', 'package.json'));
 const electronVersion = packageJson.devDependencies.electron?.replace(/[\^~>=<]/g, '') || '';
 const nativeModulesToRebuild = [
-  'keytar',
+  'better-sqlite3',
 ];
 
 if (!electronVersion) {

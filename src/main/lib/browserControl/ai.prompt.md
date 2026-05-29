@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-09 -->
+<!-- Last verified: 2026-05-29 -->
 # Browser Control
 
 > Manages browser installation, Chrome extension registration, Native Server lifecycle, and MCP connectivity for browser automation; also exposes a secondary CDP (DevTools) MCP path.
@@ -21,12 +21,12 @@
 3. `registerExtensions` — run `register-all.ps1` (Windows, via `sudo-prompt`) or `register-all-mac.sh` (macOS) to write extension policy registry keys / manifests.
 4. `ensureNativeServer` — check local binary; prompt user then download from CDN via `NativeServerFetcher` if missing.
 5. `registerNativeServer` — write `com.chromemcp.nativehost.json` NativeMessagingHost manifest (macOS: written directly; Windows: PowerShell script).
-6. `addMcpConfig` — add `openkosmos-chrome-extension` MCP server entry (`StreamableHttp`, `http://127.0.0.1:12306/mcp`) to profile if not present.
+6. `addMcpConfig` — add `kosmos-chrome-extension` MCP server entry (`StreamableHttp`, `http://127.0.0.1:12306/mcp`) to profile if not present.
 7. `checkAndRestartBrowser` — detect if browser is running and optionally restart it so new policies take effect.
 8. `launchBrowserWithSnap` — open browser and snap to the right half of screen via platform script.
 
 **Native Server ↔ HTTP server signaling:**
-- Native Server POSTs to `/api/server-up` when it starts → `handleServerUp` triggers `mcpClientManager.connect('openkosmos-chrome-extension')`.
+- Native Server POSTs to `/api/server-up` when it starts → `handleServerUp` triggers `mcpClientManager.connect('kosmos-chrome-extension')`.
 - Native Server POSTs to `/api/server-down` when it stops → `handleServerDown` triggers `mcpClientManager.disconnect`.
 
 **Confirmation dialog pattern:** Async user confirmations (browser install, native server download, browser restart) use a `Map<requestId, resolve>`. The manager sends a renderer event, then awaits a promise; the IPC handler for `respondXxxConfirm` resolves the promise.
@@ -39,7 +39,7 @@
 | Scenario | Files to Modify | Notes |
 |----------|----------------|-------|
 | Add a new supported browser | `browserConfig.ts` (new entry) + `browserControlStatus.ts` + scripts in `resources/browser-control/` | `BrowserType` is derived from `BROWSER_CONFIG` keys |
-| Change Native Server CDN URL | `nativeServerFetcher.ts` constructor | Reads `DEVELOPMENT_BASE_CDN_URL` / `PRODUCTION_BASE_CDN_URL` env vars |
+| Change Native Server CDN URL | `nativeServerFetcher.ts` constructor | Resolves via `getCdnBaseUrl()` from `@shared/utils/cdn` (no built-in default; unset disables the download) |
 | Add a new enable sub-step | `BrowserControlManager.ts` `enable()` + add a `sendPhaseChange` call | Renderer `browserControl:phaseChange` events drive the UI progress stepper |
 | Change NativeMessagingHost name or extension ID | `browserControlStatus.ts` (`NATIVE_HOST_NAME`) + `BrowserControlManager.ts` `registerNativeServer` + PowerShell/bash scripts | Must stay in sync across all four locations |
 | Change HTTP server port | `browserControlHttpServer.ts` (`HTTP_PORT`) + Native Server config | Native Server hardcodes the callback URL on its side |
@@ -48,7 +48,7 @@
 | When you change | Also check/update |
 |----------------|-------------------|
 | `BROWSER_CONFIG` keys | `browserControlStatus.ts`, `BrowserControlManager.ts`, `resources/browser-control/` scripts |
-| MCP server name (`openkosmos-chrome-extension`) | `browserControlStatus.ts` (`MCP_SERVER_NAME`), `browserControlHttpServer.ts` (`MCP_SERVER_NAME`), `addMcpConfig()` |
+| MCP server name (`kosmos-chrome-extension`) | `browserControlStatus.ts` (`MCP_SERVER_NAME`), `browserControlHttpServer.ts` (`MCP_SERVER_NAME`), `addMcpConfig()` |
 | Extension ID (`oopmjmifghgbliienphmofbfffhhgcjl`) | `registerNativeServer` in `BrowserControlManager.ts`, all PowerShell/bash registration scripts |
 | `renderToMain` IPC contract (`@shared/ipc/browserControl`) | `browserControlIPC.ts` handler list |
 

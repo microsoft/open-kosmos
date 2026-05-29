@@ -3,15 +3,15 @@
 
 ## Overview
 
-Kosmos logs are written by the main process UnifiedLogger in the user's app data directory. Production runs write to daily files; dev runs write to a per-launch file whose name includes the dev startup timestamp. Use the `log-query.ts` script to search, filter, and analyze logs efficiently.
+OpenKosmos logs are written by the main process UnifiedLogger in the user's app data directory. Production runs write to daily files; dev runs write to a per-launch file whose name includes the dev startup timestamp. Use the `log-query.ts` script to search, filter, and analyze logs efficiently.
 
 ## Log Location
 
 | Platform | Path |
 |----------|------|
-| macOS | `~/Library/Application Support/openkosmos-app/logs/kosmos-YYYY-MM-DD.log` |
-| Windows | `%APPDATA%/openkosmos-app/logs/kosmos-YYYY-MM-DD.log` |
-| Linux | `~/.local/share/openkosmos-app/logs/kosmos-YYYY-MM-DD.log` |
+| macOS | `~/Library/Application Support/open-kosmos-app/logs/kosmos-YYYY-MM-DD.log` |
+| Windows | `%APPDATA%/open-kosmos-app/logs/kosmos-YYYY-MM-DD.log` |
+| Linux | `~/.local/share/open-kosmos-app/logs/kosmos-YYYY-MM-DD.log` |
 
 Dev mode (`NODE_ENV=development` or `--dev`) writes to `kosmos-dev-YYYY-MM-DD-HH-mm-ss.log` in the same `logs/` directory. On each dev startup, old `kosmos-dev-*.log` files are removed and a new dev file is used for that launch; production `kosmos-YYYY-MM-DD.log` files are not deleted by dev cleanup.
 
@@ -121,6 +121,7 @@ Common source prefixes in the codebase (run `--sources` for the live list):
 - `main` — Main process lifecycle, startup
 - `chat` / `chat:*` — Chat engine, agent loop
 - `mcp` / `mcp:*` — MCP runtime, tool execution
+- `Analytics` — App Insights telemetry
 - `AppCacheManager` — Profile/config persistence
 - `scheduler` / `scheduler:*` — Scheduled jobs
 - `R:Renderer` — Renderer process logs forwarded via IPC

@@ -81,10 +81,6 @@ vi.mock('../PasteToWorkspaceProvider', () => ({
   usePasteToWorkspace: () => ({ openPasteDialog: vi.fn() }),
 }));
 
-vi.mock('../SharePointSearchProvider', () => ({
-  useSharePointSearch: () => ({ openSharePointSearch: vi.fn() }),
-}));
-
 // ── set up electronAPI ────────────────────────────────────────────────────
 beforeAll(() => {
   (window as any).electronAPI = {

@@ -79,7 +79,7 @@ const existingSubAgent = {
   name: 'web-researcher',
   description: 'Searches the web',
   version: '1.0.0',
-  source: 'ON-DEVICE',
+  source: 'IN-LIBRARY',
   model: 'claude-sonnet-4.5',
   system_prompt: 'You are a web researcher.',
   mcp_servers: [],

@@ -23,7 +23,7 @@ describe('BrowserProfileManager', () => {
     tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'bpm-test-'));
     // Monkey-patch the baseDir to our temp directory
     manager = new BrowserProfileManager();
-    (manager as any).baseDir = path.join(tmpBase, 'openkosmos-playwright-profiles');
+    (manager as any).baseDir = path.join(tmpBase, 'kosmos-playwright-profiles');
   });
 
   afterEach(() => {
@@ -33,7 +33,7 @@ describe('BrowserProfileManager', () => {
   it('getProfilePath returns a path under baseDir', () => {
     const p = manager.getProfilePath('teams-auth');
     expect(p).toContain('teams-auth');
-    expect(p).toContain('openkosmos-playwright-profiles');
+    expect(p).toContain('kosmos-playwright-profiles');
   });
 
   it('profileExists returns false when profile directory does not exist', () => {

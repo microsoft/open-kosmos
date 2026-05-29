@@ -148,7 +148,7 @@ export class SubAgentToolExecutor {
           const subAgent = this.options.subAgent;
           const agentMcpServerNames = (subAgent.resolvedMcpServers.length > 0
             ? subAgent.resolvedMcpServers
-            : subAgent.config.mcp_servers || []
+            : subAgent.config.mcpServers || []
           ).map((s: any) => s.name);
           const toolResult = await mcpClientManager.executeTool({
             toolName: toolCall.function.name,

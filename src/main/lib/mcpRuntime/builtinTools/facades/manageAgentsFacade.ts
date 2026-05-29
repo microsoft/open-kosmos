@@ -2,7 +2,7 @@
  * manage_agents facade — unified agent management tool.
  *
  * Merges the legacy tools:
- *   create_agent_from_config, update_agent,
+ *   get_agent_template_from_library, create_agent_from_config, update_agent,
  *   get_agent_status, list_agents, set_primary_agent
  * into a single action-based interface.
  *
@@ -11,7 +11,7 @@
  * - mcp_servers as string[] (not [{name, tools}])
  * - memory_enabled boolean (not nested context_enhancement)
  * - knowledge_base unified field (not dual knowledgeBase / knowledge.knowledgeBase)
- * - source/version managed internally
+ * - source/version/remoteVersion managed internally
  */
 
 import {
@@ -20,6 +20,7 @@ import {
   FacadeResult,
   errorResult,
 } from './types';
+import { GetAgentTemplateFromLibraryTool } from '../getAgentTemplateFromLibraryTool';
 import { CreateAgentFromConfigTool } from '../createAgentFromConfigTool';
 import { UpdateAgentTool } from '../updateAgentTool';
 import { GetAgentStatusTool } from '../getAgentStatusTool';
@@ -35,6 +36,9 @@ export class ManageAgentsFacade {
       name: 'manage_agents',
       description:
         'Create, update, remove, list, set_primary, or check status of agents. ' +
+        'Use "from_library: true" with a library agent name to auto-fetch base config. ' +
+        'Library agents have read-only fields: name, avatar (emoji), and system_prompt. ' +
+        'You can edit model, mcp_servers, skills, knowledge_base, workspace, greeting, quick_starts. ' +
         'MCP servers can be specified as a simple name list; memory is a single boolean toggle.',
       inputSchema: {
         type: 'object',
@@ -91,6 +95,11 @@ export class ManageAgentsFacade {
             items: { type: 'string' },
             description: 'Skill names to attach to this agent',
           },
+          from_library: {
+            type: 'boolean',
+            description:
+              'true = fetch base config from Agent Library by name, then apply overrides',
+          },
           greeting: {
             type: 'string',
             description: 'Welcome message shown when chat starts',
@@ -137,7 +146,9 @@ export class ManageAgentsFacade {
 
     switch (args.action) {
       case 'create':
-        return ManageAgentsFacade.createDirect(name, args);
+        return args.from_library
+          ? ManageAgentsFacade.createFromLibrary(name, args)
+          : ManageAgentsFacade.createDirect(name, args);
       case 'update':
         return ManageAgentsFacade.update(name, args);
       case 'remove':
@@ -153,6 +164,85 @@ export class ManageAgentsFacade {
 
   // ---- Action handlers ----
 
+  private static async createFromLibrary(
+    name: string,
+    args: ManageAgentsInput,
+  ): Promise<FacadeResult> {
+    // 1. Fetch template
+    const templateResult = await GetAgentTemplateFromLibraryTool.execute({
+      agent_name: name,
+    });
+
+    if (!templateResult.success || !templateResult.config) {
+      return {
+        success: false,
+        message: templateResult.message || `Agent "${name}" not found in library.`,
+        error: 'LIBRARY_FETCH_FAILED',
+        hint: 'Use search_agents to browse available agents, or create a custom agent without from_library.',
+      };
+    }
+
+    const template = templateResult.config;
+    const config = template.configuration || {};
+
+    // 2. Build create params: start from template, apply user overrides
+    const createArgs: any = {
+      name: config.name || template.name || name,
+      emoji: args.emoji || config.emoji,
+      role: args.role || (config as any).role,
+      model: args.model || config.model,
+      system_prompt: args.system_prompt || config.system_prompt,
+      workspace: args.workspace || config.workspace,
+      skills: args.skills || config.skills,
+      source: 'IN-LIBRARY',
+      version: template.version || '1.0.0',
+      remoteVersion: template.version || '1.0.0',
+    };
+
+    // MCP servers: user override wins, else template
+    if (args.mcp_servers) {
+      createArgs.mcp_servers = ManageAgentsFacade.buildMcpServersArray(
+        args.mcp_servers,
+        args.mcp_tool_filter,
+      );
+    } else if (config.mcp_servers) {
+      createArgs.mcp_servers = config.mcp_servers;
+    }
+
+    // Context enhancement: user override wins, else template
+    if (args.memory_enabled !== undefined) {
+      createArgs.context_enhancement = ManageAgentsFacade.buildContextEnhancement(
+        args.memory_enabled,
+      );
+    } else if (config.context_enhancement) {
+      createArgs.context_enhancement = config.context_enhancement;
+    }
+
+    // Knowledge base
+    if (args.knowledge_base) {
+      createArgs.knowledgeBase = args.knowledge_base;
+    }
+
+    // Zero states
+    if (args.greeting || args.quick_starts) {
+      createArgs.zero_states = ManageAgentsFacade.buildZeroStates(
+        args.greeting,
+        args.quick_starts,
+        config.zero_states,
+      );
+    } else if (config.zero_states) {
+      createArgs.zero_states = config.zero_states;
+    }
+
+    // Avatar from template
+    if ((config as any).avatar) {
+      createArgs.avatar = (config as any).avatar;
+    }
+
+    const result = await CreateAgentFromConfigTool.execute(createArgs);
+    return result as unknown as FacadeResult;
+  }
+
   private static async createDirect(
     name: string,
     args: ManageAgentsInput,
@@ -161,6 +251,7 @@ export class ManageAgentsFacade {
       name,
       source: 'ON-DEVICE',
       version: '1.0.0',
+      remoteVersion: '',
     };
 
     if (args.emoji) createArgs.emoji = args.emoji;
@@ -223,6 +314,19 @@ export class ManageAgentsFacade {
     const existingSource = (existing as any).source || 'ON-DEVICE';
     const existingVersion = (existing as any).version || '1.0.0';
 
+    // Library agents: name, avatar (emoji), and system_prompt are read-only
+    if (existingSource === 'IN-LIBRARY') {
+      const readOnlyViolations: string[] = [];
+      if (args.emoji !== undefined) readOnlyViolations.push('emoji (avatar)');
+      if (args.system_prompt !== undefined) readOnlyViolations.push('system_prompt');
+      if (readOnlyViolations.length > 0) {
+        return errorResult(
+          `Cannot modify read-only fields on a Library agent: ${readOnlyViolations.join(', ')}.`,
+          'Library agents only allow editing: model, mcp_servers, skills, knowledge_base, workspace, greeting, quick_starts.',
+        );
+      }
+    }
+
     // Build update payload
     const agentConfig: any = { name };
 
@@ -259,7 +363,11 @@ export class ManageAgentsFacade {
 
     // Auto-manage version/source
     agentConfig.source = existingSource;
-    agentConfig.version = ManageAgentsFacade.incrementPatch(existingVersion);
+    if (existingSource === 'ON-DEVICE') {
+      agentConfig.version = ManageAgentsFacade.incrementPatch(existingVersion);
+    } else {
+      agentConfig.version = existingVersion;
+    }
 
     const result = await UpdateAgentTool.execute({ agent_config: agentConfig });
     return result as unknown as FacadeResult;

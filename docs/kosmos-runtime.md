@@ -1,11 +1,10 @@
-# Kosmos Built-in Runtime Environment Technical Plan
+# OpenKosmos Built-in Runtime Environment Technical Plan
 
 ## 1. Overview
-To enhance the availability and stability of Kosmos services (including MCP services and general command execution) across different user environments, we will implement a runtime environment management solution. This solution allows users to switch between "use system environment" and "use built-in environment", and supports managing the versions of built-in environments (Bun and uv), **as well as managing Python virtual environment/interpreter versions via uv**.
+To enhance the availability and stability of OpenKosmos services (including MCP services and general command execution) across different user environments, we will implement a runtime environment management solution. This solution allows users to switch between "use system environment" and "use built-in environment", and supports managing the versions of built-in environments (Bun and uv), **as well as managing Python virtual environment/interpreter versions via uv**.
 
 This plan is inspired by Cherry Studio's implementation, introducing Bun as a lightweight alternative to Node.js/npx, and uv as a Python environment management tool.
 Since this environment is used not only for MCP services but also for general command execution (Execute Command), it is named Runtime Environment.
-
 ## 2. Core Strategy
 
 The system adopts a **"use system environment by default, intelligent fallback, optional forced built-in environment"** strategy.
@@ -13,7 +12,7 @@ The system adopts a **"use system environment by default, intelligent fallback, 
 ### 2.1 Runtime Modes
 The app settings include a "Runtime Environment" configuration item with the following options:
 1.  **System (Default)**: Preferentially uses `node/npx` and `python/pip/uv` from the user's environment variables.
-2.  **Internal**: Forces use of the `bun` and `uv` binaries managed by Kosmos.
+2.  **Internal**: Forces use of the `bun` and `uv` binaries managed by OpenKosmos.
 
 ### 2.2 Environment Adaptation and Smart Fallback
 *   **Node.js / npx**:
@@ -35,16 +34,15 @@ The app settings include a "Runtime Environment" configuration item with the fol
 ## 3. Technical Architecture
 
 ### 3.1 Directory Structure
-Built-in binaries will be stored in the `bin` subdirectory under the application's user data directory (`userData`). This path is determined by the packaged application name (`AppName`) and is **not hardcoded**.
-
+Built-in binaries will be stored in the `bin` subdirectory under the application's user data directory (`userData`).
 *   **Path rule**: `path.join(app.getPath('userData'), 'bin')`
-*   **Windows**: `%AppData%\{AppName}\bin\` (e.g., `%AppData%\Kosmos\bin`)
-*   **macOS**: `~/Library/Application Support/{AppName}/bin/`
-*   **Linux**: `~/.config/{AppName}/bin/`
+*   **Windows**: `%AppData%\OpenKosmos\bin\`
+*   **macOS**: `~/Library/Application Support/OpenKosmos/bin/`
+*   **Linux**: `~/.config/OpenKosmos/bin/`
 
-Directory structure example (using Kosmos as example):
+Directory structure example (using OpenKosmos as example):
 ```
-%AppData%\Kosmos\
+%AppData%\OpenKosmos\
   bin\
     bun         # Bun runtime
     node        # Node.js compatibility

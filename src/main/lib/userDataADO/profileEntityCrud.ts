@@ -7,7 +7,6 @@ import { createConsoleLogger } from '../unifiedLogger';
 import {
   ProfileV2,
   McpServerConfig,
-  SkillConfig,
   SubAgentConfig,
   SubAgentIndex,
   isProfileV2,
@@ -123,7 +122,7 @@ export async function deleteMcpServerConfig(ctx: EntityCrudContext, alias: strin
 
 // ═══════ Skill CRUD ═══════
 
-export async function addSkill(ctx: EntityCrudContext, alias: string, skillConfig: SkillConfig): Promise<boolean> {
+export async function addSkill(ctx: EntityCrudContext, alias: string, skillConfig: { name: string; description: string; version: string; remoteVersion?: string; source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN' }): Promise<boolean> {
   try {
     let profile = ctx.cache.get(alias);
     if (!profile) {
@@ -175,7 +174,7 @@ export async function addSkill(ctx: EntityCrudContext, alias: string, skillConfi
   }
 }
 
-export async function updateSkill(ctx: EntityCrudContext, alias: string, skillName: string, updates: { description?: string; version?: string }): Promise<boolean> {
+export async function updateSkill(ctx: EntityCrudContext, alias: string, skillName: string, updates: { description?: string; version?: string; remoteVersion?: string }): Promise<boolean> {
   try {
     let profile = ctx.cache.get(alias);
     if (!profile) {
@@ -274,7 +273,7 @@ export async function deleteSkill(ctx: EntityCrudContext, alias: string, skillNa
 
 // ═══════ Sub-Agent CRUD ═══════
 
-export async function getSubAgents(ctx: EntityCrudContext): Promise<SubAgentConfig[]> {
+export async function getSubAgents(ctx: EntityCrudContext): Promise<SubAgentConfig[] | SubAgentIndex[]> {
   try {
     const fileManager = SubAgentFileManager.getInstance();
 
@@ -291,7 +290,7 @@ export async function getSubAgents(ctx: EntityCrudContext): Promise<SubAgentConf
         if (Array.isArray(profile.sub_agents) && profile.sub_agents.length > 0) {
           const first = profile.sub_agents[0] as any;
           if ('system_prompt' in first) {
-            return profile.sub_agents as SubAgentConfig[];
+            return profile.sub_agents as SubAgentIndex[];
           }
         }
         return [];
@@ -312,7 +311,7 @@ export async function getSubAgents(ctx: EntityCrudContext): Promise<SubAgentConf
     logger.error(`[ProfileCacheManager] getSubAgents error:`, error instanceof Error ? error.message : String(error));
     for (const [, profile] of ctx.cache) {
       if (isProfileV2(profile) && Array.isArray(profile.sub_agents)) {
-        return profile.sub_agents as SubAgentConfig[];
+        return profile.sub_agents as SubAgentIndex[];
       }
     }
     return [];
@@ -362,8 +361,8 @@ export async function addSubAgent(ctx: EntityCrudContext, alias: string, config:
 
     const newIndex: SubAgentIndex = {
       name: config.name,
-      version: config.version || '1.0.0',
-      source: config.source || 'ON-DEVICE',
+      version: '1.0.0',
+      source: 'ON-DEVICE',
     };
 
     const existingIdx = (profile.sub_agents as SubAgentIndex[]).findIndex(sa => sa.name === config.name);
@@ -420,22 +419,19 @@ export async function updateSubAgent(ctx: EntityCrudContext, alias: string, name
     if (!currentConfig) {
       currentConfig = {
         name,
-        display_name: name,
         description: '',
-        emoji: '🤖',
-        version: indexArr[idxPos].version || '1.0.0',
-        context_access: 'isolated',
         system_prompt: '',
       };
     }
 
-    const mergedConfig = { ...currentConfig, ...updates } as SubAgentConfig;
+    const mergedConfig: SubAgentConfig = { ...currentConfig, ...updates } as SubAgentConfig;
     await fileManager.writeAgentConfig(profileDir, mergedConfig);
 
     indexArr[idxPos] = {
       name,
-      version: mergedConfig.version || indexArr[idxPos].version || '1.0.0',
-      source: (updates.source ?? indexArr[idxPos].source ?? 'ON-DEVICE') as 'ON-DEVICE',
+      version: indexArr[idxPos].version || '1.0.0',
+      remoteVersion: indexArr[idxPos].remoteVersion,
+      source: (indexArr[idxPos].source ?? 'ON-DEVICE') as 'IN-LIBRARY' | 'ON-DEVICE',
     };
 
     ctx.cache.set(alias, profile);
@@ -530,7 +526,7 @@ export async function syncSubAgentIndex(ctx: EntityCrudContext, alias: string): 
       if (!indexNames.has(config.name)) {
         currentIndex.push({
           name: config.name,
-          version: config.version || '1.0.0',
+          version: '1.0.0',
           source: 'ON-DEVICE',
         });
         changed = true;

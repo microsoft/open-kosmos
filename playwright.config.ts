@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Kosmos E2E Test Playwright Configuration
+ * OpenKosmos E2E Test Playwright Configuration
  *
  * Uses the Playwright Electron API for end-to-end testing.
  * Test files are located in tests/e2e/ and follow the *.e2e.ts naming convention.

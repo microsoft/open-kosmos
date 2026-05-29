@@ -26,7 +26,9 @@ export interface SkillConfig {
   name: string;
   description: string;
   version: string;
-  source: 'ON-DEVICE' | 'PLUGIN';
+  /** Remote CDN version for IN-LIBRARY skills, empty string for ON-DEVICE skills */
+  remoteVersion?: string;
+  source: 'ON-DEVICE' | 'IN-LIBRARY' | 'PLUGIN';
 }
 
 export interface SkillValidationResult {
@@ -498,7 +500,7 @@ export class SkillManager {
   /**
    * Create a temporary directory
    */
-  public createTempDirectory(prefix: string = 'openkosmos-skill'): string {
+  public createTempDirectory(prefix: string = 'kosmos-skill'): string {
     const tempDir = path.join(app.getPath('userData'), 'tmp', `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });

@@ -445,8 +445,8 @@ describe('BrowserControlManager.disable — darwin platform', () => {
   it('disconnects and deletes MCP server when alias exists', async () => {
     const mgr = new BrowserControlManager(makeDeps());
     await mgr.disable();
-    expect(mockMcpDisconnect).toHaveBeenCalledWith('openkosmos-chrome-extension');
-    expect(mockMcpDelete).toHaveBeenCalledWith('openkosmos-chrome-extension');
+    expect(mockMcpDisconnect).toHaveBeenCalledWith('kosmos-chrome-extension');
+    expect(mockMcpDelete).toHaveBeenCalledWith('kosmos-chrome-extension');
   });
 
   it('skips MCP cleanup when alias is null', async () => {

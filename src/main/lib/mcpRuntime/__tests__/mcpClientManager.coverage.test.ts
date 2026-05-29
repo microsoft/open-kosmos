@@ -122,9 +122,9 @@ vi.mock('../auth/McpAuthService', () => ({
   },
 }));
 
-vi.mock('../../userDataADO/openkosmosPlaceholders', () => ({
+vi.mock('../../userDataADO/kosmosPlaceholders', () => ({
   containsOpenKosmosPlaceholder: (...a: any[]) => mockContainsOpenKosmosPlaceholder(...a),
-  openkosmosPlaceholderManager: {
+  kosmosPlaceholderManager: {
     replacePlaceholders: (...a: any[]) => mockReplacePlaceholders(...a),
     replacePlaceholdersInObject: (...a: any[]) => mockReplacePlaceholdersInObject(...a),
   },
@@ -590,23 +590,12 @@ describe('MCPClientManager', () => {
       expect(result.map(t => t.name)).toContain('tool_b');
     });
 
-    it('always excludes spawn_subagent and spawn_subagents', async () => {
+    it('always excludes sub_agent', async () => {
       const mgr = getManager();
-      setupRuntimeState(mgr, 'ext-server', ['spawn_subagent', 'spawn_subagents', 'safe_tool']);
-
-      const result = await mgr.getToolsForSubAgent([{ name: 'ext-server', tools: [] }]);
-      expect(result.some(t => t.name === 'spawn_subagent')).toBe(false);
-      expect(result.some(t => t.name === 'spawn_subagents')).toBe(false);
-      expect(result.some(t => t.name === 'safe_tool')).toBe(true);
-    });
-
-    it('always excludes sub_agent and send_to_subagent (unified tool names)', async () => {
-      const mgr = getManager();
-      setupRuntimeState(mgr, 'ext-server', ['sub_agent', 'send_to_subagent', 'safe_tool']);
+      setupRuntimeState(mgr, 'ext-server', ['sub_agent', 'safe_tool']);
 
       const result = await mgr.getToolsForSubAgent([{ name: 'ext-server', tools: [] }]);
       expect(result.some(t => t.name === 'sub_agent')).toBe(false);
-      expect(result.some(t => t.name === 'send_to_subagent')).toBe(false);
       expect(result.some(t => t.name === 'safe_tool')).toBe(true);
     });
 
@@ -878,18 +867,6 @@ describe('MCPClientManager', () => {
 
       await mgr.delete('test-server');
       expect(mockDeleteMcpServerConfig).toHaveBeenCalledWith('alice', 'test-server');
-    });
-
-    it('clears OAuth credentials for non-stdio servers on delete', async () => {
-      const mgr = getManager();
-      await mgr.initialize('alice');
-      mockGetMcpServerInfo.mockReturnValue({
-        config: makeServerConfig({ transport: 'sse', url: 'http://example.com' }),
-        runtime: { status: 'disconnected' },
-      });
-
-      await mgr.delete('test-server');
-      expect(mockClearOAuthForServer).toHaveBeenCalledWith('test-server', expect.any(Object), 'all');
     });
 
     it('does not clear OAuth for stdio servers', async () => {

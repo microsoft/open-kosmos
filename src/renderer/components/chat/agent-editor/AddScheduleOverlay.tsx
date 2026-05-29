@@ -345,6 +345,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
   const [showAgentDropdown, setShowAgentDropdown] = useState(false)
   const agentDropdownRef = React.useRef<HTMLDivElement>(null)
 
+
   useEffect(() => {
     if (!open) return
 
@@ -387,6 +388,8 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
     setShowAgentDropdown(false)
     setMultiDailyDraftMessage(null)
   }, [open, editingJob, defaultAgentId, agents, initialValues])
+
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

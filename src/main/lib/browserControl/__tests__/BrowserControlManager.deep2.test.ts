@@ -210,7 +210,7 @@ describe('BrowserControlManager.enable() — darwin full flow (browser installed
       getProfileCacheManager: vi.fn().mockResolvedValue({
         getBrowserControlSettings: vi.fn(() => ({ browser: 'chrome' })),
         updateBrowserControlSettings: vi.fn().mockResolvedValue(true),
-        getMcpServerInfo: vi.fn(() => ({ config: { name: 'openkosmos-chrome-extension' } })),
+        getMcpServerInfo: vi.fn(() => ({ config: { name: 'kosmos-chrome-extension' } })),
         addMcpServerConfig,
       }),
     });

@@ -3,10 +3,9 @@ import { VscMcpClient } from './vscMcpClient';
 import { BuiltinMcpClient, BUILTIN_SERVER_NAME } from './builtinMcpClient';
 import { McpServerConfig } from '../userDataADO/types';
 import { createConsoleLogger } from '../unifiedLogger';
-import { McpAuthService } from './auth/McpAuthService';
 import { BrowserWindow, ipcMain } from 'electron';
 import { execSync } from 'child_process';
-import { openkosmosPlaceholderManager, containsOpenKosmosPlaceholder } from '../userDataADO/openkosmosPlaceholders';
+import { kosmosPlaceholderManager, containsOpenKosmosPlaceholder } from '../userDataADO/kosmosPlaceholders';
 import { isPluginMcpServer } from '../plugin/bridges/mcpBridge';
 import { profileCacheManager } from "../userDataADO";
 
@@ -110,11 +109,6 @@ export class MCPClientManager {
   private pendingNotification = false;
 
   private constructor() {
-    McpAuthService.onInteraction(({ serverName, phase }) => {
-      if (phase === 'consent-requested') {
-        this._updateServerStatus(serverName, 'needs-user-interaction');
-      }
-    });
   }
 
   // ==================== 🆕 Runtime State Management Methods ====================
@@ -539,12 +533,8 @@ export class MCPClientManager {
     const result: { name: string; description?: string; inputSchema: any; serverName: string }[] = [];
 
     // Recursion prevention: exclude sub-agent spawn/control tools
-    // 'sub_agent' is the current unified tool; legacy names kept for safety
     const BLOCKED_TOOLS = new Set([
       'sub_agent',
-      'spawn_subagent', 'spawn_subagents',
-      'spawn_adhoc_subagent', 'spawn_adhoc_subagents',
-      'send_to_subagent',
     ]);
 
     // 1. Allowed external MCP server tools
@@ -866,18 +856,7 @@ export class MCPClientManager {
       const err = error instanceof Error ? error : new Error('Failed to delete MCP server');
       throw err;
     } finally {
-      // Wipe persisted OAuth credentials so re-adding the same server
-      // later starts a clean flow. Runs in finally so a sync throw
-      // between `deleteMcpServerConfig` and any later step doesn't leave
-      // an orphan slot. Skip on stdio (no remote auth) and skip if the
-      // config wasn't actually deleted (user can retry).
-      if (configDeleted && cfgSnapshot && cfgSnapshot.transport !== 'stdio') {
-        try {
-          await McpAuthService.getInstance().clearOAuthForServer(serverName, cfgSnapshot, 'all');
-        } catch (e) {
-          advancedLogger?.warn(`[MCPClientManager] Failed to clear OAuth credentials for "${serverName}" during delete: ${e instanceof Error ? e.message : String(e)}`, 'delete', { serverName });
-        }
-      }
+      // Config was deleted — no OAuth cleanup needed (auth module removed)
     }
   }
 
@@ -1290,7 +1269,7 @@ export class MCPClientManager {
       env: serverInfo.config.env,
       in_use: serverInfo.config.in_use,
       version: serverInfo.config.version,
-      source: serverInfo.config.source as 'ON-DEVICE' | 'PLUGIN' | undefined,
+      source: serverInfo.config.source as 'IN-LIBRARY' | 'ON-DEVICE' | undefined,
       headers: serverInfo.config.headers,
     };
 
@@ -1298,7 +1277,7 @@ export class MCPClientManager {
     if (this.currentUserAlias) {
       // Replace placeholders in url
       if (serverConfig.url && typeof serverConfig.url === 'string' && containsOpenKosmosPlaceholder(serverConfig.url)) {
-        serverConfig.url = openkosmosPlaceholderManager.replacePlaceholders(serverConfig.url, { alias: this.currentUserAlias });
+        serverConfig.url = kosmosPlaceholderManager.replacePlaceholders(serverConfig.url, { alias: this.currentUserAlias });
         advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in url', '_performConnect', { serverName });
       }
 
@@ -1313,7 +1292,7 @@ export class MCPClientManager {
           }
         }
         if (hasPlaceholder) {
-          serverConfig.env = openkosmosPlaceholderManager.replacePlaceholdersInObject(serverConfig.env, { alias: this.currentUserAlias });
+          serverConfig.env = kosmosPlaceholderManager.replacePlaceholdersInObject(serverConfig.env, { alias: this.currentUserAlias });
           advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in env', '_performConnect', { serverName });
         }
       }

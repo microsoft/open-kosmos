@@ -6,6 +6,7 @@ import { Message } from '@shared/types/chatTypes';
 import { getBuddySystemPrompt } from '../buddy/prompt';
 import { BuddyManager } from '../buddy/BuddyManager';
 import { isFeatureEnabled } from '../featureFlags';
+import { getCdnBaseUrl } from '@shared/utils/cdn';
 
 
 /**
@@ -13,6 +14,11 @@ import { isFeatureEnabled } from '../featureFlags';
  * @returns {string} Global system prompt content
  */
 export function getGlobalSystemPrompt(): string {
+  // Optional CDN base URL for remote setup instructions; empty when unconfigured.
+  const cdnBaseUrl = getCdnBaseUrl();
+  const playwrightSetupInstruction = cdnBaseUrl
+    ? `Follow instructions in **${cdnBaseUrl}/setup/playwright-setup.prompt.md** to fix.`
+    : 'Reinstall or repair the Playwright browser binaries to fix.';
   let prompt = `
 
 SYSTEM NOTIFICATIONS AND REMINDERS
@@ -42,7 +48,7 @@ When using the execute_command tool:
    - Consider timeout settings for long-running operations
 
 4. **FORBIDDEN Operations — Never generate commands that:**
-   - Access OAuth logout/revoke/signout endpoints (e.g. login.microsoftonline.com/*/logout, accounts.google.com/Logout). These destroy system-wide SSO state affecting Edge and other services.
+   - Access OAuth logout/revoke/signout endpoints (e.g. login.microsoftonline.com/*/logout, accounts.google.com/Logout). These destroy system-wide SSO state affecting Edge, Teams, Windows Widgets, and other services.
    - Delete credential, token, cookie, or auth cache files outside the current workspace.
    - Use \`channel='msedge'\` or \`channel='chrome'\` in Playwright — always use the bundled Chromium to avoid polluting the user's browser profile.
    - Directly read, write, or delete files under the system browser profile directory (e.g. Microsoft\\Edge\\User Data, Google\\Chrome\\User Data).
@@ -288,7 +294,7 @@ The search tools above require Playwright to be properly installed and configure
 - Missing browser binaries
 - Browser launch failures
 
-Follow instructions in **${process.env.NODE_ENV === 'development' ? process.env.DEVELOPMENT_BASE_CDN_URL || 'https://cdn.kosmos-ai.com/dev' : process.env.PRODUCTION_BASE_CDN_URL || 'https://cdn.kosmos-ai.com'}/setup/playwright-setup.prompt.md** to fix.
+${playwrightSetupInstruction}
 
 **Tool Usage:**
 
@@ -318,12 +324,12 @@ When referring to files in the workspace in your responses:
    - Configuration files, source code, documentation, etc.
 
 **Examples (macOS/Linux):**
-- ✅ Good: \`I've analyzed /Users/pumpedgechina/repos/OpenKosmos/src/renderer/App.tsx and found...\`
+- ✅ Good: \`I've analyzed /Users/pumpedgechina/repos/OpenKosmos.app/src/renderer/App.tsx and found...\`
 - ✅ Good: \`You can configure this in /home/user/project/package.json\`
 - ✅ Good: \`The main entry point is /Users/user/repos/app/src/main/main.ts\`
 
 **Examples (Windows):**
-- ✅ Good: \`I've analyzed C:/Users/username/repos/OpenKosmos/src/renderer/App.tsx and found...\`
+- ✅ Good: \`I've analyzed C:/Users/username/repos/OpenKosmos.app/src/renderer/App.tsx and found...\`
 - ✅ Good: \`You can configure this in D:/projects/myapp/package.json\`
 - ❌ Bad: \`I've analyzed App.tsx and found...\` (missing full path)
 - ❌ Bad: \`You can configure this in src/renderer/App.tsx\` (relative path instead of absolute)
@@ -586,7 +592,7 @@ If you receive "Tool arguments were truncated" or "Invalid tool arguments":
 3. Resume from where truncation occurred`;
 
   // --- Coding agent prompt injection ---
-  if (isFeatureEnabled('openkosmosFeatureCodingAgent')) {
+  if (isFeatureEnabled('kosmosFeatureCodingAgent')) {
     prompt += `
 
 ===
@@ -710,12 +716,6 @@ When a sub-agent completes:
 ## Background Execution
 
 Sub-agents that are expected to take a long time (e.g., complex multi-file changes) can run in the background. You will be notified automatically when they complete — do NOT poll or check on them. Continue with other work or respond to the user in the meantime.`;
-
-  // --- Task management hint (always active) ---
-  // NOTE: The PM Studio "ask before creating tasks" behavior is injected at runtime
-  // by AgentChatPromptService.getCombinedSystemPromptForContext() so that scheduled
-  // briefing jobs (interactionPolicy: 'forbid') do not receive the confirmation instruction.
-  // OpenKosmos always auto-creates tasks; the instruction here is the shared baseline.
 
   // --- Buddy companion injection ---
   const buddyManager = BuddyManager.getInstance();

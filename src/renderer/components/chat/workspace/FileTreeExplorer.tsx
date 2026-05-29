@@ -24,7 +24,6 @@ interface FileTreeExplorerProps {
   className?: string;
   directoryStack?: FileTreeNode[];
   onDirectoryStackChange?: (stack: FileTreeNode[]) => void;
-  showBreadcrumb?: boolean; // Whether to show breadcrumb navigation
   /** Lazy loading callback: called when expanding directory, parent component responsible for fetching and injecting child nodes */
   onLoadChildren?: (dirPath: string) => Promise<void>;
 }
@@ -197,7 +196,6 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
   className = '',
   directoryStack: externalDirectoryStack,
   onDirectoryStackChange,
-  showBreadcrumb = true, // Keep this parameter for backward compatibility, but not used in Tree View
   onLoadChildren
 }) => {
   // Use localStorage key to save expansion state for each workspace

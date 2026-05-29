@@ -1,0 +1,9 @@
+{
+  "latest": "0.0.1",
+  "downloadUrls": {
+    "darwin-arm64": "updater-mac-arm64",
+    "darwin-x64": "updater-mac-x64",
+    "win32-arm64": "updater-win-arm64.exe",
+    "win32-x64": "updater-win-x64.exe"
+  }
+}

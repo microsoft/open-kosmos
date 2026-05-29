@@ -1,5 +1,5 @@
 import React, { useLayoutEffect } from 'react';
-import { Plus, Upload } from 'lucide-react';
+import { Plus, Store, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 
@@ -30,6 +30,13 @@ const SubAgentsAddMenuDropdown: React.FC<SubAgentsAddMenuDropdownProps> = ({
     onClose();
   };
 
+  const handleAddFromLibrary = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    navigate('/settings/sub-agents/sub-agent-library');
+    onClose();
+  };
+
   // Adjust menu position if it overflows window bottom or right edge
   useLayoutEffect(() => {
     if (subAgentsAddMenuRef.current) {
@@ -54,6 +61,14 @@ const SubAgentsAddMenuDropdown: React.FC<SubAgentsAddMenuDropdownProps> = ({
       >
         <span className="dropdown-menu-item-icon"><Plus size={16} strokeWidth={1.5} /></span>
         <span className="dropdown-menu-item-text">Create Custom</span>
+      </button>
+      <button
+        className="dropdown-menu-item"
+        onClick={handleAddFromLibrary}
+        role="menuitem"
+      >
+        <span className="dropdown-menu-item-icon"><Store size={16} strokeWidth={1.5} /></span>
+        <span className="dropdown-menu-item-text">Add from Library</span>
       </button>
       <button
         className="dropdown-menu-item"

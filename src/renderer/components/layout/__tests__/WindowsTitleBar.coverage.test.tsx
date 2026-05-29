@@ -54,7 +54,7 @@ vi.mock('../../../styles/WindowsTitleBar.css', async () => ({}));
 
 vi.mock('@shared/constants/branding', async () => ({
   APP_NAME: 'OpenKosmos',
-  BRAND_NAME: 'openkosmos',
+  BRAND_NAME: 'kosmos',
 }));
 
 vi.mock('../../../lib/brandIcon', async () => ({

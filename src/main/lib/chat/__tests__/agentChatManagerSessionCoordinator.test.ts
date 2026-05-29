@@ -102,7 +102,7 @@ describe('AgentChatManagerSessionCoordinator', () => {
 
   it('creates chat session directories under the agent workspace', async () => {
     const coordinator = createCoordinator();
-    const tmpRoot = path.join(os.tmpdir(), `openkosmos-agentchat-${Date.now()}`);
+    const tmpRoot = path.join(os.tmpdir(), `kosmos-agentchat-${Date.now()}`);
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: { workspace: tmpRoot },
     });
@@ -118,7 +118,7 @@ describe('AgentChatManagerSessionCoordinator', () => {
 
   it('forks the session workspace when the source directory exists', async () => {
     const coordinator = createCoordinator();
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-fork-'));
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-agentchat-fork-'));
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: { workspace: tmpRoot },
     });
@@ -150,7 +150,7 @@ describe('AgentChatManagerSessionCoordinator', () => {
 
   it('creates an empty target session workspace when the fork source directory is missing', async () => {
     const coordinator = createCoordinator();
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-empty-fork-'));
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-agentchat-empty-fork-'));
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: { workspace: tmpRoot },
     });
@@ -173,7 +173,7 @@ describe('AgentChatManagerSessionCoordinator', () => {
 
   it('returns null when the fork target directory already contains data', async () => {
     const coordinator = createCoordinator();
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-collision-fork-'));
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-agentchat-collision-fork-'));
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: { workspace: tmpRoot },
     });

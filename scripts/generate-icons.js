@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Icon Generation Script for OpenKosmos
+ * Icon Generation Script for OpenKosmos.app
  * Generates .ico, .svg, iconset, and .icns files from PNG sources
  */
 
@@ -9,9 +9,11 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const brandConfig = require('./brand-config');
+
 const ROOT_DIR = path.join(__dirname, '..');
-const WIN_SOURCE_DIR = path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets', 'win');
-const MAC_SOURCE_DIR = path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets', 'mac');
+const WIN_SOURCE_DIR = brandConfig.paths.assetsWin;
+const MAC_SOURCE_DIR = brandConfig.paths.assetsMac;
 
 /**
  * Helper: auto-generate PNGs at different sizes from a large master image.
@@ -60,7 +62,7 @@ async function generateIntermediatePngs(masterFile, sizes, outputDir, prefix, su
 async function generateWindowsIco() {
   console.log('📦 Generating Windows .ico file...');
 
-  const icoPath = path.join(WIN_SOURCE_DIR, 'app.ico');
+  const icoPath = brandConfig.paths.iconWin;
   const masterIcon = path.join(WIN_SOURCE_DIR, 'icon_round_1024x1024.png');
 
   // Required sizes for .ico: 16, 32, 48, 64, 128, 256
@@ -363,7 +365,7 @@ async function main() {
     console.log('🎉 All icons generated successfully!');
     console.log('');
     console.log('Icons have been generated in their respective brands directories.');
-    console.log(`   Location: ${path.join(ROOT_DIR, 'brands', 'openkosmos', 'assets')}`);
+    console.log(`   Location: ${brandConfig.paths.assets}`);
   } else {
     console.log('⚠️  Some icons failed to generate, see errors above');
     process.exit(1);

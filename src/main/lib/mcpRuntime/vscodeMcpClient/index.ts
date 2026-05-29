@@ -117,15 +117,6 @@ export { JsonRpcClient } from './core/JsonRpc';
 export { McpConnection } from './connection/McpConnection';
 export { McpRequestHandler } from './connection/McpRequestHandler';
 
-// Legacy Transport Interfaces (for backward compatibility)
-export type {
-  ITransport,
-  TransportConfig,
-  StdioTransportConfig,
-  SseTransportConfig,
-  HttpTransportConfig,
-} from './transport/ITransport';
-
 // Cache and Service Management
 export { CacheManager } from './cache/CacheManager';
 export type { CacheConfig, CacheKey } from './cache/CacheManager';
@@ -226,8 +217,6 @@ export type {
   SupportedTransportType as ConfigSupportedTransportType
 } from './config/types';
 
-// Legacy compatibility export
-export { VscodeMcpClient as MCPClient } from './VscodeMcpClient';
 import { quickConfigDetection, createDefaultConfigAdapter } from "./config";
 import { VscodeMcpClient } from "./VscodeMcpClient";
 
@@ -292,7 +281,7 @@ export const MODULE_INFO = {
     mcpVersion: '1.0.0'
   },
   configSupport: {
-    formats: ['settings.json', 'mcp.json', 'openkosmos.json'],
+    formats: ['settings.json', 'mcp.json', 'kosmos.json'],
     platforms: ['macOS', 'Windows', 'Linux'],
     autoDetection: true,
     migration: true

@@ -23,7 +23,6 @@ import { createConsoleLogger } from '../unifiedLogger';
 
 import type {
   SubAgentConfig,
-  SubAgentContextAccess,
   SubAgentMcpServerConfig,
   AgentMcpServer,
 } from '../userDataADO/types/profile';
@@ -46,8 +45,8 @@ const YAML_FRONTMATTER_REGEX = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---/;
  * Claude Code → OpenKosmos built-in tool name mapping
  *
  * Claude Code uses short names (e.g. Read, Grep), OpenKosmos uses full identifiers (e.g. read_file).
- * When importing Claude Code AGENT.md, `tools` are automatically mapped to `x-openkosmos.builtin_tools`,
- * and `disallowedTools` are mapped to `x-openkosmos.disallow_builtin_tools`, while preserving the original fields.
+ * When importing Claude Code AGENT.md, `tools` are automatically mapped to `x-kosmos.builtin_tools`,
+ * and `disallowedTools` are mapped to `x-kosmos.disallow_builtin_tools`, while preserving the original fields.
  */
 export const CLAUDE_TO_OpenKosmos_TOOL_MAP: Record<string, string> = {
   // File Operations
@@ -170,7 +169,7 @@ export class SubAgentFileManager {
    * 1. YAML front-matter: delimited by `---`, starting at the first line
    * 2. Markdown body: all content after front-matter → system_prompt
    * 3. Standard fields: name, description, tools, model, skills, mcpServers
-   * 4. OpenKosmos extension fields: placed under the x-openkosmos namespace
+   * 4. OpenKosmos extension fields: placed under the x-kosmos namespace
    * 5. Forward compatibility: unrecognized front-matter fields are ignored
    */
   parseAgentMarkdown(content: string): ParseResult<SubAgentConfig> {
@@ -214,8 +213,8 @@ export class SubAgentFileManager {
         ? content.substring(frontMatterEnd + 4).trim()
         : '';
 
-      // Extract x-openkosmos extension fields
-      const xOpenKosmos = (yamlData['x-openkosmos'] as Record<string, unknown>) || {};
+      // Extract x-kosmos extension fields
+      const xOpenKosmos = (yamlData['x-kosmos'] as Record<string, unknown>) || {};
 
       // Parse tools (supports comma-separated string or array)
       const tools = this.parseToolsList(yamlData.tools);
@@ -224,7 +223,7 @@ export class SubAgentFileManager {
       const disallowedTools = this.parseToolsList(yamlData.disallowedTools);
 
       // Parse mcpServers (supports Claude Code string references and OpenKosmos inline config)
-      const mcpServers = this.parseMcpServers(yamlData.mcpServers || yamlData.mcp_servers);
+      const mcpServers = this.parseMcpServers(yamlData.mcpServers);
 
       // Parse skills
       const skills = this.parseStringArray(yamlData.skills);
@@ -240,7 +239,7 @@ export class SubAgentFileManager {
         skills: skills.length > 0 ? skills : [],
         mcpServers: mcpServers.length > 0 ? mcpServers : [],
 
-        // OpenKosmos extension fields (read from x-openkosmos namespace, fallback to defaults)
+        // OpenKosmos extension fields (read from x-kosmos namespace, fallback to defaults)
         builtin_tools: this.parseStringArray(xOpenKosmos.builtin_tools),
         disallow_builtin_tools: this.parseStringArray(xOpenKosmos.disallow_builtin_tools),
         inherit_mcp_servers: xOpenKosmos.inherit_mcp_servers != null ? Boolean(xOpenKosmos.inherit_mcp_servers) : true,
@@ -248,9 +247,6 @@ export class SubAgentFileManager {
 
         // Runtime fields
         system_prompt: markdownBody,
-
-        // Compatibility fields (source is not set during file parsing; it belongs to SubAgentIndex)
-        mcp_servers: this.mcpServersToLegacy(mcpServers),
       };
 
       // === Claude Code tools → OpenKosmos builtin_tools auto-mapping ===
@@ -310,15 +306,14 @@ export class SubAgentFileManager {
       standardFields.skills = config.skills;
     }
 
-    // mcpServers (prefer mcpServers, fallback to converting mcp_servers)
-    const mcpServers = config.mcpServers ?? this.legacyToMcpServers(config.mcp_servers);
-    if (mcpServers && mcpServers.length > 0) {
-      standardFields.mcpServers = mcpServers.map(s =>
+    // mcpServers
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      standardFields.mcpServers = config.mcpServers.map(s =>
         typeof s === 'string' ? s : { name: s.name, tools: s.tools },
       );
     }
 
-    // Build x-openkosmos extension fields
+    // Build x-kosmos extension fields
     const xOpenKosmos: Record<string, unknown> = {};
 
     if (config.builtin_tools && config.builtin_tools.length > 0) {
@@ -337,7 +332,7 @@ export class SubAgentFileManager {
     // Merge into top-level YAML object
     const yamlObj: Record<string, unknown> = { ...standardFields };
     if (Object.keys(xOpenKosmos).length > 0) {
-      yamlObj['x-openkosmos'] = xOpenKosmos;
+      yamlObj['x-kosmos'] = xOpenKosmos;
     }
 
     // Render YAML (no flow style, for readability)
@@ -523,7 +518,7 @@ export class SubAgentFileManager {
   }
 
   /**
-   * Export as Claude Code standard format (strips x-openkosmos namespace)
+   * Export as Claude Code standard format (strips x-kosmos namespace)
    */
   exportAsClaudeCodeFormat(config: SubAgentConfig): string {
     // Keep only Claude Code standard fields
@@ -545,9 +540,8 @@ export class SubAgentFileManager {
       standardFields.skills = config.skills;
     }
     // mcpServers → export as string reference names
-    const mcpServers = config.mcpServers ?? this.legacyToMcpServers(config.mcp_servers);
-    if (mcpServers && mcpServers.length > 0) {
-      standardFields.mcpServers = mcpServers.map(s =>
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      standardFields.mcpServers = config.mcpServers.map(s =>
         typeof s === 'string' ? s : s.name,
       );
     }
@@ -720,36 +714,12 @@ export class SubAgentFileManager {
     const mapped: string[] = [];
     const seen = new Set<string>();
     for (const tool of claudeTools) {
-      const openkosmosName = CLAUDE_TO_OpenKosmos_TOOL_MAP[tool];
-      if (openkosmosName && !seen.has(openkosmosName)) {
-        seen.add(openkosmosName);
-        mapped.push(openkosmosName);
+      const kosmosName = CLAUDE_TO_OpenKosmos_TOOL_MAP[tool];
+      if (kosmosName && !seen.has(kosmosName)) {
+        seen.add(kosmosName);
+        mapped.push(kosmosName);
       }
     }
     return mapped;
-  }
-
-  /**
-   * Convert SubAgentMcpServerConfig[] to legacy AgentMcpServer[]
-   * Used for backward compatibility (mcp_servers field)
-   */
-  private mcpServersToLegacy(servers: SubAgentMcpServerConfig[]): AgentMcpServer[] {
-    return servers.map(s => {
-      if (typeof s === 'string') {
-        return { name: s, tools: [] };
-      }
-      return s;
-    });
-  }
-
-  /**
-   * Convert legacy AgentMcpServer[] to SubAgentMcpServerConfig[]
-   */
-  private legacyToMcpServers(servers?: AgentMcpServer[]): SubAgentMcpServerConfig[] {
-    if (!servers) return [];
-    return servers.map(s => ({
-      name: s.name,
-      tools: s.tools || [],
-    }));
   }
 }

@@ -84,8 +84,7 @@ describe('ManageSkillsFacade', () => {
       const result = await ManageSkillsFacade.execute({
         action: 'install',
         skill_names: ['good-skill', 'bad-skill'],
-        source: 'device',
-        path: '/tmp/skills',
+        source: 'library',
       });
 
       // 1/2 succeeded → success=true (successCount > 0), but bad-skill has error
@@ -129,6 +128,22 @@ describe('ManageSkillsFacade', () => {
   });
 
   describe('action=install', () => {
+    it('installs from library by default', async () => {
+      const result = await ManageSkillsFacade.execute({
+        action: 'install',
+        skill_names: ['web-search'],
+        source: 'library',
+      });
+
+      expect(result.success).toBe(true);
+      expect(installAndActivateSkill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: { type: 'library-name', value: 'web-search' },
+          activation: { mode: 'install-only' },
+        }),
+      );
+    });
+
     it('installs from device with path', async () => {
       await ManageSkillsFacade.execute({
         action: 'install',
@@ -155,12 +170,11 @@ describe('ManageSkillsFacade', () => {
       expect(result.message).toContain('path');
     });
 
-    it('installs multiple skills from device', async () => {
+    it('installs multiple skills', async () => {
       await ManageSkillsFacade.execute({
         action: 'install',
         skill_names: ['a', 'b', 'c'],
-        source: 'device',
-        path: '/tmp/skills',
+        source: 'library',
       });
 
       expect(installAndActivateSkill).toHaveBeenCalledTimes(3);

@@ -192,19 +192,19 @@ function detectLogDir(): string {
 
   if (platform === "darwin") {
     candidates.push(
-      path.join(home, "Library/Application Support/openkosmos-app/logs")
+      path.join(home, "Library/Application Support/open-kosmos-app/logs"),
     );
   } else if (platform === "win32") {
     const appData = process.env.APPDATA || path.join(home, "AppData/Roaming");
     candidates.push(
-      path.join(appData, "openkosmos-app/logs")
+      path.join(appData, "open-kosmos-app/logs"),
     );
   } else {
     // Linux / XDG
     const dataDir =
       process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     candidates.push(
-      path.join(dataDir, "openkosmos-app/logs")
+      path.join(dataDir, "open-kosmos-app/logs"),
     );
   }
 

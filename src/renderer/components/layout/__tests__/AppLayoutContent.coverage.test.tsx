@@ -76,10 +76,6 @@ vi.mock('../../menu', () => ({
   TagFilterDropdown: () => <div data-testid="tag-filter-dropdown" />,
 }));
 
-vi.mock('../../msalAuth/MsalAuthProgressOverlay', () => ({
-  default: () => <div data-testid="msal-overlay" />,
-  MsalAuthConsentDialog: () => <div data-testid="msal-consent" />,
-}));
 
 vi.mock('../../buddy', () => ({
   default: () => <div data-testid="buddy" />,

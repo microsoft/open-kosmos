@@ -348,8 +348,8 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             // For overwrite, keep the original name
           }
 
-          // Convert to OpenKosmos format
-          const openkosmosConfig: OpenKosmosAppMCPServerConfig = {
+          // Convert to OpenKosmos.app format
+          const kosmosConfig: OpenKosmosAppMCPServerConfig = {
             name: finalName,
             transport: server.transport === 'StreamableHttp' ? 'StreamableHttp' as const : server.transport as 'stdio' | 'sse',
             command: server.command || '',
@@ -360,6 +360,8 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             // 🆕 Added from Import from VS Code: uniformly use 1.0.0 and ON-DEVICE
             version: '1.0.0',
             source: 'ON-DEVICE',
+            // ON-DEVICE servers do not need remoteVersion, set to empty string
+            remoteVersion: ''
           }
 
           // Validate if required
@@ -380,7 +382,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
 
           if (server.hasConflict && importOptions.conflictResolution === 'overwrite') {
             // Use McpOps.update for existing servers (overwrite mode)
-            result = await McpOps.update(server.name, openkosmosConfig)
+            result = await McpOps.update(server.name, kosmosConfig)
 
             if (result.success) {
               importedCount++
@@ -389,7 +391,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             }
           } else {
             // Use McpOps.add for new servers or renamed servers
-            result = await McpOps.add(openkosmosConfig)
+            result = await McpOps.add(kosmosConfig)
 
             if (result.success) {
               importedCount++

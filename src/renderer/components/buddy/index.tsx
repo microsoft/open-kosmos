@@ -45,7 +45,7 @@ function Buddy() {
 }
 
 export default () => {
-  const enabled = useFeatureFlag('openkosmosFeatureBuddy');
+  const enabled = useFeatureFlag('kosmosFeatureBuddy');
   return enabled ? <Buddy /> : null;
 };
 
@@ -88,6 +88,6 @@ function Entry() {
 }
 
 export function BuddyEntryButton() {
-  const enabled = useFeatureFlag('openkosmosFeatureBuddy');
+  const enabled = useFeatureFlag('kosmosFeatureBuddy');
   return enabled ? <Entry /> : null;
 }

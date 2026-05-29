@@ -72,7 +72,7 @@ base64 -i certificate.p12 > certificate.base64.txt
 
 Visit your GitHub repository settings:
 ```
-https://github.com/gim-home/Kosmos/settings/secrets/actions
+https://github.com/gim-home/OpenKosmos/settings/secrets/actions
 ```
 
 Configure the following Secrets:
@@ -90,7 +90,7 @@ Configure the following Secrets:
 1. Visit [Apple ID account page](https://appleid.apple.com/)
 2. After logging in, go to the "Security" section
 3. Click "Generate Password" under "App-Specific Passwords"
-4. Enter a label name (e.g., "Kosmos App Notarization")
+4. Enter a label name (e.g., "OpenKosmos App Notarization")
 5. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
 6. Save to GitHub Secret `APPLE_APP_SPECIFIC_PASSWORD`
 

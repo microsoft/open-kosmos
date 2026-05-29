@@ -2,7 +2,7 @@
 
 ## Background
 
-Push messages from External Agent (Bot→Kosmos) need to be persisted to `chatSessionStore`. Two components currently have persistence capability:
+Push messages from External Agent (Bot→OpenKosmos) need to be persisted to `chatSessionStore`. Two components currently have persistence capability:
 
 - **ExternalAgentService**: writes directly via `chatSessionStore.patchFile`
 - **AgentChatPushReceiver**: writes via `host.addMessageToSession` (an AgentChat internal method)

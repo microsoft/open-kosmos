@@ -189,8 +189,8 @@ export class ConfigAdapter extends EventEmitter {
   public validateConfig(config: McpServerConfig): ConfigValidationReport {
     try {
       // Convert to OpenKosmos format
-      const openkosmosConfig = this.convertToOpenKosmosFormat(config);
-      const report = validateMcpServerConfig(openkosmosConfig);
+      const kosmosConfig = this.convertToOpenKosmosFormat(config);
+      const report = validateMcpServerConfig(kosmosConfig);
 
       this.emit('config-validated', report);
       return report;
@@ -214,8 +214,8 @@ export class ConfigAdapter extends EventEmitter {
    */
   public validateBatchConfigs(configs: McpServerConfig[]) {
     try {
-      const openkosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
-      return validateBatchImport(openkosmosConfigs);
+      const kosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
+      return validateBatchImport(kosmosConfigs);
     } catch (error) {
       return {
         isValid: false,
@@ -231,7 +231,7 @@ export class ConfigAdapter extends EventEmitter {
    */
   public async migrateConfigs(
     sourceConfigs: McpServerConfig[],
-    targetFormat: 'vscode-settings' | 'vscode-mcp' | 'openkosmos'
+    targetFormat: 'vscode-settings' | 'vscode-mcp' | 'kosmos'
   ): Promise<ConfigMigrationResult> {
     const migratedConfigs: McpServerConfig[] = [];
     const errors: string[] = [];
@@ -300,12 +300,12 @@ export class ConfigAdapter extends EventEmitter {
     format: 'settings.json' | 'mcp.json'
   ): string {
     try {
-      const openkosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
+      const kosmosConfigs = configs.map(config => this.convertToOpenKosmosFormat(config));
 
       if (format === 'settings.json') {
-        return formatToVSCodeSettings(openkosmosConfigs);
+        return formatToVSCodeSettings(kosmosConfigs);
       } else {
-        return formatToVSCodeMcpJson(openkosmosConfigs);
+        return formatToVSCodeMcpJson(kosmosConfigs);
       }
     } catch (error) {
       throw new Error(`Failed to export to VSCode format: ${error instanceof Error ? error.message : String(error)}`);

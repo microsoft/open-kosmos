@@ -2,25 +2,24 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const ASSETS_WIN = path.join(__dirname, '..', 'brands', 'openkosmos', 'assets', 'win');
-const ASSETS_MAC = path.join(__dirname, '..', 'brands', 'openkosmos', 'assets', 'mac');
+const brandConfig = require('./brand-config');
 
 /**
  * Generate macOS icons with transparent padding from a Windows 1024x1024 source icon.
  * Content is scaled to 80.9%; the remaining space is transparent margin.
  */
 
-const winSource = path.join(ASSETS_WIN, 'icon_round_1024x1024.png');
-const macSource = path.join(ASSETS_MAC, 'icon_round_1024x1024.png');
+const winSource = path.join(brandConfig.paths.assetsWin, 'icon_round_1024x1024.png');
+const macSource = path.join(brandConfig.paths.assetsMac, 'icon_round_1024x1024.png');
 console.log('macSource:', macSource);
 console.log('winSource:', winSource);
 
 // Prefer the source file under the Mac directory; fall back to the Windows directory if absent.
 const sourceIcon = fs.existsSync(macSource) ? macSource : winSource;
 
-const macIconsDir = ASSETS_MAC;
+const macIconsDir = brandConfig.paths.assetsMac;
 const macIconsetDir = path.join(macIconsDir, 'app.iconset');
-const macIconPath = path.join(ASSETS_MAC, 'app.icns');
+const macIconPath = brandConfig.paths.iconMac;
 
 // macOS iconset standard sizes
 const iconSizes = [

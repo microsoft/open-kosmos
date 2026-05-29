@@ -29,7 +29,7 @@ const { spawn } = require('child_process');
 
 function parseArgs(argv) {
   const result = {
-    brand: 'openkosmos',
+    brand: 'kosmos',
     userDataDir: '',
     realInstall: false,
     strategy: 'all', // 'all' | 'bun' | 'node' | 'npx'
@@ -49,7 +49,7 @@ function parseArgs(argv) {
 }
 
 function resolveDefaultUserDataDir(brand) {
-  const appName = 'openkosmos-app';
+  const appName = 'open-kosmos-app';
   if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', appName);
   }

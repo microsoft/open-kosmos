@@ -47,7 +47,7 @@ Bot→OpenKosmos: Bot push → wsServer → ExternalAgentService.handlePushMessa
 ```
 
 ### Initialization
-Lazy-loaded via `getExternalAgentService(alias)` in `src/main/startup/lazy.ts`. Triggered by `profileCacheManager` during background service initialization (gated behind `openkosmosFeatureExternalAgent` feature flag). Must not block sign-in.
+Lazy-loaded via `getExternalAgentService(alias)` in `src/main/startup/lazy.ts`. Triggered by `profileCacheManager` during background service initialization (gated behind `kosmosFeatureExternalAgent` feature flag). Must not block sign-in.
 
 ### Token Model
 Each external agent bot has a unique `authToken` (UUID) generated at agent creation time and stored in `profile.chats[].agent.authToken`. The WS server validates incoming tokens against all `source='EXTERNAL'` agents in the cached profile.
@@ -85,7 +85,7 @@ User→Bot messages are fire-and-forget via `sendMessage()`. No pending reply li
 
 Auth failure counter has no automatic decay — blocked IPs stay blocked until server restart.
 
-### Bot-Side Plugin (`packages/openclaw-openkosmos-channel/src/plugin.ts`)
+### Bot-Side Plugin (`packages/openclaw-kosmos-channel/src/plugin.ts`)
 - Manages WebSocket lifecycle: connect → auth → receive messages → reconnect on close
 - `startAccount` holds its promise open until abort signal (prevents gateway auto-restart)
 - `sendReply/sendReplyEnd/sendError` use `activeClients.get(accountId)` (not captured `ws`) to survive reconnects
@@ -100,11 +100,11 @@ Connection/disconnection events are broadcast to all BrowserWindows via `mainToR
 | Scenario | Files to Modify | Notes |
 |----------|----------------|-------|
 | Change WS port | `index.ts` (DEFAULT_EXTERNAL_AGENT_PORT), `externalAgentIPC.ts` (DEFAULT_EXTERNAL_AGENT_PORT) | Keep both in sync |
-| Add new WS message types | `wsServer.ts` (message handler), `externalAgentService.ts` (push routing) | Update `packages/openclaw-openkosmos-channel/src/types.ts` if plugin sends them |
+| Add new WS message types | `wsServer.ts` (message handler), `externalAgentService.ts` (push routing) | Update `packages/openclaw-kosmos-channel/src/types.ts` if plugin sends them |
 | Change auth model | `wsServer.ts` (token validator), `externalAgentService.ts` (setTokenValidator callback) | Profile schema stores token in `chat.agent.authToken` |
 | Change IPC contract | `src/shared/ipc/externalAgent.ts`, `externalAgentIPC.ts`, `src/preload/externalAgent/invoke.ts` | All three must stay in sync |
 | Change push persistence | `externalAgentService.ts` (persistPushMessage) | Single owner — do NOT add persistence to AgentChatPushReceiver |
-| Change WS protection (rate limit, dedup) | `wsServer.ts` | Update `packages/openclaw-openkosmos-channel/src/plugin.ts` close code handling |
+| Change WS protection (rate limit, dedup) | `wsServer.ts` | Update `packages/openclaw-kosmos-channel/src/plugin.ts` close code handling |
 
 ## Gotchas
 - **Single persistence owner**: `ExternalAgentService` is the sole persister for push messages. `AgentChatPushReceiver.handlePushComplete(skipPersistence=true)` must always be called with `true` from the service layer. The only path where `skipPersistence=false` fires is the 2-minute timeout safety net in PushReceiver itself.
@@ -118,9 +118,9 @@ Connection/disconnection events are broadcast to all BrowserWindows via `mainToR
 ## Co-Change Map
 | When you change | Also check/update |
 |----------------|-------------------|
-| WS message protocol | `packages/openclaw-openkosmos-channel/src/types.ts`, `src/main/lib/chat/externalAgentChatHandler.ts`, `src/main/lib/chat/agentChatPushReceiver.ts` |
+| WS message protocol | `packages/openclaw-kosmos-channel/src/types.ts`, `src/main/lib/chat/externalAgentChatHandler.ts`, `src/main/lib/chat/agentChatPushReceiver.ts` |
 | Push persistence logic | `externalAgentService.ts` only — single owner. Do NOT add persistence to `agentChatPushReceiver.ts` |
-| WS close codes | `wsServer.ts`, `packages/openclaw-openkosmos-channel/src/plugin.ts` (close handler) |
+| WS close codes | `wsServer.ts`, `packages/openclaw-kosmos-channel/src/plugin.ts` (close handler) |
 | IPC contract types | `src/shared/ipc/externalAgent.ts`, `src/preload/externalAgent/invoke.ts`, `src/renderer/ipc/externalAgent.ts` |
 | Feature flag name | `src/main/lib/featureFlags/featureFlagDefinitions.ts`, `src/main/lib/userDataADO/profileCacheManager.ts` |
 | Profile schema (authToken) | `src/main/lib/userDataADO/types/profile.ts`, `src/main/lib/userDataADO/profileSanitizer.ts` |
@@ -128,4 +128,4 @@ Connection/disconnection events are broadcast to all BrowserWindows via `mainToR
 ## Related
 - Depends on: [UserDataADO](../userDataADO/), [FeatureFlags](../featureFlags/), [UnifiedLogger](../unifiedLogger/), [ChatSessionStore](../chat/chatSessionStore.ts)
 - Depended by: [Chat Engine](../chat/ai.prompt.md) (`externalAgentChatHandler.ts`, `agentChatPushReceiver.ts`), [Renderer ExternalAgentConnectionConfig](../../../renderer/components/chat/agent-editor/)
-- Bot-side plugin: [openclaw-openkosmos-channel](../../../../packages/openclaw-openkosmos-channel/)
+- Bot-side plugin: [openclaw-kosmos-channel](../../../../packages/openclaw-kosmos-channel/)

@@ -246,7 +246,7 @@ describe('ChatViewContent user-message editing', () => {
       <ChatViewContent
         chatId="chat-1"
         chatStatus="idle"
-        agentName="PM Studio"
+        agentName="Research Agent"
       />,
     );
 
@@ -258,7 +258,7 @@ describe('ChatViewContent user-message editing', () => {
       <ChatViewContent
         chatId="chat-2"
         chatStatus="idle"
-        agentName="PM Studio"
+        agentName="Research Agent"
       />,
     );
 
@@ -274,7 +274,7 @@ describe('ChatViewContent user-message editing', () => {
     render(
       <ChatViewContent
         chatStatus="idle"
-        agentName="PM Studio"
+        agentName="Research Agent"
       />,
     );
 

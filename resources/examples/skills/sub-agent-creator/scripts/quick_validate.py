@@ -214,10 +214,10 @@ def validate_agent(agent_path):
                     f"Got '{context_access}'"
                 )
     elif x_kosmos is not None:
-        warnings.append("'x-kosmos' should be a mapping — KOSMOS extension fields may not be recognized")
+        warnings.append("'x-kosmos' should be a mapping — OpenKosmos extension fields may not be recognized")
 
     # ===== x-kosmos namespace check =====
-    # Verify KOSMOS-specific fields are under x-kosmos, not at top level
+    # Verify OpenKosmos-specific fields are under x-kosmos, not at top level
     kosmos_fields = {
         'display_name', 'emoji', 'version', 'builtin_tools', 'disallow_builtin_tools',
         'context_access', 'workspace', 'knowledgeBase',
@@ -226,7 +226,7 @@ def validate_agent(agent_path):
     misplaced = kosmos_fields.intersection(frontmatter.keys())
     if misplaced:
         warnings.append(
-            f"KOSMOS extension field(s) found at top level: {', '.join(sorted(misplaced))}. "
+            f"OpenKosmos extension field(s) found at top level: {', '.join(sorted(misplaced))}. "
             "These should be nested under 'x-kosmos:' for Claude Code compatibility."
         )
 

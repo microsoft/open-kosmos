@@ -8,6 +8,8 @@ import ChatView from '../components/chat/ChatView';
 import McpView from '../components/mcp/McpView';
 import AddNewMcpServerView from '../components/mcp/AddNewMcpServerView';
 import ImportVscodeMcpServerView from '../components/mcp/ImportVscodeMcpServerView';
+import AddFromMcpLibraryView from '../components/mcp/AddFromMcpLibraryView';
+import AddFromSkillLibraryView from '../components/mcp/AddFromSkillLibraryView';
 import SkillsView from '../components/skills/SkillsView';
 import PluginManagementView from '../components/plugin/PluginManagementView';
 import SubAgentsView from '../components/subAgents/SubAgentsView';
@@ -15,16 +17,15 @@ import CreateSubAgentView from '../components/subAgents/CreateSubAgentView';
 import EditSubAgentView from '../components/subAgents/EditSubAgentView';
 import SettingsPage from '../components/pages/SettingsPage';
 import RuntimeSettingsView from '../components/settings/RuntimeSettingsView';
-import VoiceInputSettingsView from '../components/settings/VoiceInputSettingsView';
 import ScreenshotSettingsView from '../components/settings/ScreenshotSettingsView';
 import AboutAppView from '../components/settings/AboutAppView';
 import BrowserControlView from '../components/settings/BrowserControlView';
-import MemexView from '../components/settings/MemexView';
 import ArchivedAgentsView from '../components/settings/ArchivedAgentsView';
+import RemoteChannelSettingsView from '../components/settings/RemoteChannelSettingsView';
 import AgentChatEditingView from '../components/chat/agent-area/AgentChatEditingView';
 import AgentChatCreationView from '../components/chat/agent-area/AgentChatCreationView';
 import CreateCustomAgentView from '../components/chat/agent-area/CreateCustomAgentView';
-// PM Studio Project Agent Creation
+import AddFromAgentLibraryView from '../components/chat/agent-area/AddFromAgentLibraryView';
 import { RequireAuth } from './RequireAuth';
 import { useFeatureFlag } from '../lib/featureFlags';
 import {
@@ -123,15 +124,13 @@ export const AppRoutes: React.FC = () => {
   // Chrome Extension / Browser Control route (controlled by feature flag)
   const browserControlEnabled = useFeatureFlag('browserControl');
   // Remote Channel route (controlled by feature flag)
+  const remoteChannelEnabled = useFeatureFlag('kosmosFeatureRemoteChannel');
 
   // Sub-Agent route (controlled by feature flag)
-  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
+  const subAgentEnabled = useFeatureFlag('kosmosFeatureSubAgent');
 
   // Plugin route (controlled by feature flag)
-  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
-
-  // Memex Memory route controlled by feature flag
-  const memexMemoryEnabled = useFeatureFlag('openkosmosFeatureMemexMemory');
+  const pluginsEnabled = useFeatureFlag('kosmosFeaturePlugins');
 
   // Listen for navigation events from main process
   useEffect(() => {
@@ -169,7 +168,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="chat" element={<ChatView />} />
           <Route path="chat/creation" element={<AgentChatCreationView />} />
           <Route path="chat/creation/custom-agent" element={<CreateCustomAgentView />} />
-          {/* PM Studio Project Agent Creation Routes */}
+          <Route path="chat/creation/agent-library" element={<AddFromAgentLibraryView />} />
           <Route path="chat/:chatId" element={<ChatView />} />
           <Route path="chat/:chatId/:sessionId" element={<ChatView />} />
           <Route path="chat/:chatId/settings" element={<AgentChatEditingView />} />
@@ -179,14 +178,15 @@ export const AppRoutes: React.FC = () => {
         {/* Settings Routes - separate from agent */}
         <Route path="/settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="mcp" replace />} />
-          <Route path="voice-input" element={<VoiceInputSettingsView />} />
           <Route path="screenshot" element={<ScreenshotSettingsView />} />
           <Route path="mcp" element={<McpView />} />
           <Route path="mcp/new" element={<AddNewMcpServerView />} />
           <Route path="mcp/edit/:editServerName" element={<AddNewMcpServerView />} />
           <Route path="mcp/import-vscode" element={<ImportVscodeMcpServerView />} />
+          <Route path="mcp/mcp-library" element={<AddFromMcpLibraryView />} />
           <Route path="runtime" element={<RuntimeSettingsView />} />
           <Route path="skills" element={<SkillsView />} />
+          <Route path="skills/skill-library" element={<AddFromSkillLibraryView />} />
           {pluginsEnabled && (
             <Route path="plugins" element={<PluginManagementView />} />
           )}
@@ -203,10 +203,10 @@ export const AppRoutes: React.FC = () => {
           {browserControlEnabled && (
             <Route path="browser-control" element={<BrowserControlView />} />
           )}
-          {memexMemoryEnabled && (
-            <Route path="memex" element={<MemexView />} />
-          )}
           {/* Remote Channel route controlled by feature flag */}
+          {remoteChannelEnabled && (
+            <Route path="remote-channel" element={<RemoteChannelSettingsView />} />
+          )}
         </Route>
       </Route>
 

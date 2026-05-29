@@ -11,8 +11,8 @@ import { app } from 'electron';
 import { LogEntry, FileOperationResult } from './types';
 import { CacheObject } from './CacheObject';
 
-const PRODUCTION_LOG_FILE_RE = /^openkosmos-\d{4}-\d{2}-\d{2}\.log$/;
-const DEV_LOG_FILE_RE = /^openkosmos-dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.log$/;
+const PRODUCTION_LOG_FILE_RE = /^kosmos-\d{4}-\d{2}-\d{2}\.log$/;
+const DEV_LOG_FILE_RE = /^kosmos-dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.log$/;
 
 let devStartupLogFileName: string | null = null;
 
@@ -28,8 +28,8 @@ export function getDefaultLogDirectory(): string {
     // Fallback for non-electron environments
   }
   const userProfile = os.homedir();
-  // Try to get app name from environment or default to 'openkosmos-app'
-  const appName = process.env.APP_NAME || 'openkosmos-app';
+  // Try to get app name from environment or default to 'open-kosmos-app'
+  const appName = process.env.APP_NAME || 'open-kosmos-app';
 
   // Platform specific headers
   if (process.platform === 'darwin') {
@@ -82,11 +82,11 @@ export function isDevelopmentLogEnvironment(): boolean {
  * @returns Production log file name for today
  */
 export function getTodayLogFileName(date: Date = new Date()): string {
-  return `openkosmos-${formatDatePart(date)}.log`;
+  return `kosmos-${formatDatePart(date)}.log`;
 }
 
 export function getDevLogFileName(date: Date = new Date()): string {
-  return `openkosmos-dev-${formatLocalTimestampForFileName(date)}.log`;
+  return `kosmos-dev-${formatLocalTimestampForFileName(date)}.log`;
 }
 
 export function getDevStartupLogFileName(date: Date = new Date()): string {

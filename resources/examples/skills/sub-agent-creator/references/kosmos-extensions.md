@@ -1,6 +1,6 @@
-# KOSMOS Extension Fields Reference
+# OpenKosmos Extension Fields Reference
 
-All KOSMOS-specific fields are placed under the `x-kosmos` key in the YAML front-matter to ensure interoperability with the Claude Code sub-agent specification.
+All OpenKosmos-specific fields are placed under the `x-kosmos` key in the YAML front-matter to ensure interoperability with the Claude Code sub-agent specification.
 
 ```yaml
 ---
@@ -8,12 +8,12 @@ All KOSMOS-specific fields are placed under the `x-kosmos` key in the YAML front
 name: my-agent
 description: What this agent does.
 
-# KOSMOS extension fields (namespaced)
+# OpenKosmos extension fields (namespaced)
 x-kosmos:
   display_name: My Agent
   emoji: "🤖"
   version: "1.0.0"
-  # ... other KOSMOS-specific fields
+  # ... other OpenKosmos-specific fields
 ---
 ```
 
@@ -23,7 +23,7 @@ x-kosmos:
 
 - **Type**: string
 - **Default**: Auto-generated from `name` (e.g., `code-reviewer` → `Code Reviewer`)
-- **Purpose**: Human-readable name shown in the KOSMOS UI.
+- **Purpose**: Human-readable name shown in the OpenKosmos UI.
 - **Relationship to `name`**: `name` is the machine identifier (lowercase, hyphenated); `display_name` is the UI label.
 
 ```yaml
@@ -35,7 +35,7 @@ x-kosmos:
 
 - **Type**: string (single emoji character)
 - **Default**: `🤖`
-- **Purpose**: Visual icon displayed alongside the sub-agent in the KOSMOS UI.
+- **Purpose**: Visual icon displayed alongside the sub-agent in the OpenKosmos UI.
 - **Recommendation**: Choose an emoji that represents the sub-agent's function.
 
 ```yaml
@@ -62,7 +62,7 @@ x-kosmos:
 
 - **Type**: string[] (array of tool identifiers)
 - **Default**: `[]` (empty = no restriction, sub-agent can use all available tools)
-- **Purpose**: Whitelist of KOSMOS built-in tools this sub-agent is allowed to use. When non-empty, the sub-agent can ONLY use tools in this list.
+- **Purpose**: Whitelist of OpenKosmos built-in tools this sub-agent is allowed to use. When non-empty, the sub-agent can ONLY use tools in this list.
 
 **Available tools** (common subset):
 
@@ -91,9 +91,9 @@ x-kosmos:
     - execute_command
 ```
 
-**Relationship to Claude Code `tools`**: The `tools` field at the top level uses Claude Code tool names (e.g., `Read`, `Grep`, `Bash`). On import, KOSMOS automatically maps these to `builtin_tools` equivalents:
+**Relationship to Claude Code `tools`**: The `tools` field at the top level uses Claude Code tool names (e.g., `Read`, `Grep`, `Bash`). On import, OpenKosmos automatically maps these to `builtin_tools` equivalents:
 
-| Claude Code Tool | KOSMOS builtin_tool |
+| Claude Code Tool | OpenKosmos builtin_tool |
 |-----------------|-------------------|
 | Read | read_file |
 | Grep | search_text_in_files |
@@ -106,7 +106,7 @@ x-kosmos:
 
 - **Type**: string[] (array of tool identifiers)
 - **Default**: `[]`
-- **Purpose**: Blacklist of KOSMOS built-in tools. These tools are removed from the sub-agent's available tool set at runtime.
+- **Purpose**: Blacklist of OpenKosmos built-in tools. These tools are removed from the sub-agent's available tool set at runtime.
 - **Usage**: Use when you want to inherit most tools but exclude specific dangerous ones.
 
 ```yaml
@@ -201,21 +201,21 @@ x-kosmos:
   inherit_knowledge_base: true
 ```
 
-## Claude Code Standard Fields vs KOSMOS Fields
+## Claude Code Standard Fields vs OpenKosmos Fields
 
 ### Interoperability
 
-AGENT.md files are designed to be compatible with both Claude Code and KOSMOS:
+AGENT.md files are designed to be compatible with both Claude Code and OpenKosmos:
 
-| Field Location | Read by Claude Code | Read by KOSMOS | Notes |
+| Field Location | Read by Claude Code | Read by OpenKosmos | Notes |
 |---------------|-------------------|----------------|-------|
 | Top-level YAML | ✅ | ✅ | Standard fields |
-| `x-kosmos:` namespace | ❌ (ignored) | ✅ | KOSMOS extensions |
+| `x-kosmos:` namespace | ❌ (ignored) | ✅ | OpenKosmos extensions |
 | Markdown body | ✅ (as instructions) | ✅ (as system_prompt) | Universal |
 
 ### Compatibility Mappings
 
-KOSMOS handles legacy and alternative field names:
+OpenKosmos handles legacy and alternative field names:
 
 | YAML Field (alternative) | Canonical Field | Notes |
 |-------------------------|----------------|-------|
@@ -236,7 +236,7 @@ description: A simple helper for basic tasks.
 You are a helpful assistant for basic tasks.
 ```
 
-KOSMOS fills in all defaults: `model: inherit`, `maxTurns: 25`, `context_access: isolated`, all inheritance enabled.
+OpenKosmos fills in all defaults: `model: inherit`, `maxTurns: 25`, `context_access: isolated`, all inheritance enabled.
 
 **Full AGENT.md** (all fields explicitly set):
 

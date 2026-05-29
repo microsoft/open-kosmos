@@ -26,7 +26,7 @@ const { testUserData, mockLogger } = vi.hoisted(() => {
     debug: vi.fn(),
   };
   return {
-    testUserData: p.join(o.tmpdir(), 'openkosmos-test-RuntimeManager-cov2'),
+    testUserData: p.join(o.tmpdir(), 'kosmos-test-RuntimeManager-cov2'),
     mockLogger: logger,
   };
 });
@@ -99,13 +99,6 @@ vi.mock('../../featureFlags', () => ({
   isFeatureEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../../azureCli', () => ({
-  getAzureCliManager: vi.fn().mockReturnValue({
-    initialize: vi.fn().mockResolvedValue({ installed: false, loggedIn: false, version: null }),
-    ensureInstalledWithConsent: vi.fn().mockResolvedValue({ success: false }),
-  }),
-}));
-
 const { mockMirrorStart, mockMirrorStop, mockMirrorGetBaseUrl } = vi.hoisted(() => ({
   mockMirrorStart: vi.fn().mockResolvedValue(undefined),
   mockMirrorStop: vi.fn(),
@@ -117,17 +110,6 @@ vi.mock('../LocalPythonMirror', () => ({
       start: mockMirrorStart,
       stop: mockMirrorStop,
       getBaseUrlIfRunning: mockMirrorGetBaseUrl,
-    }),
-  },
-}));
-
-vi.mock('../AgencyCLIManager', () => ({
-  AgencyCLIManager: {
-    getInstance: vi.fn().mockReturnValue({
-      checkStatus: vi.fn().mockResolvedValue({ installed: false, version: null, path: null }),
-      install: vi.fn().mockResolvedValue(undefined),
-      uninstall: vi.fn().mockResolvedValue(undefined),
-      getBinDirSync: vi.fn().mockReturnValue(null),
     }),
   },
 }));

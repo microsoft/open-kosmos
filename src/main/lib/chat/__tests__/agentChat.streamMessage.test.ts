@@ -37,18 +37,14 @@ vi.mock('../../utilities/contentUtils', async () => ({
   formatFileSize: vi.fn(),
 }));
 
-vi.mock('../../userDataADO/openkosmosPlaceholders', async () => ({
-  openkosmosPlaceholderManager: {},
+vi.mock('../../userDataADO/kosmosPlaceholders', async () => ({
+  kosmosPlaceholderManager: {},
   containsOpenKosmosPlaceholder: vi.fn(() => false),
 }));
 
 vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   userInputPlaceholderParser: {},
   UserInputField: class UserInputField {},
-}));
-
-vi.mock('../../mem0/openkosmos-adapters/OpenKosmosMemoryManager', async () => ({
-  openkosmosMemoryManager: {},
 }));
 
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({

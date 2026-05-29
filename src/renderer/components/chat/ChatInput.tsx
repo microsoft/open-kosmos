@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Globe } from 'lucide-react';
 import { screenshotApi } from '../../ipc/screenshot-main';
 import { profileDataManager } from '../../lib/userData/profileDataManager';
 import { agentChatSessionCacheManager, ChatStatus, CurrentSessionError, CurrentSessionIdle } from '../../lib/chat/agentChatSessionCacheManager';
@@ -6,9 +7,6 @@ import { Message, MessageHelper, validateImageFile, UserMessage } from '@shared/
 import { FileProcessor, } from '../../lib/utilities/contentUtils';
 import { smartCompressImageVSCodeOfficial, shouldCompressImage } from '../../lib/utilities/imageCompression';
 import ErrorBar from './ErrorBar';
-import { useFeatureFlag } from '../../lib/featureFlags';
-import { VoiceInputButton } from './VoiceInputButton';
-import { useVoiceInputEnabled } from '../../lib/userData';
 import { getChatInputShortcutHint } from '../../lib/chat/chatInputKeyboard';
 import '../../styles/ChatInput.css';
 import { createLogger } from '../../lib/utilities/logger';
@@ -70,9 +68,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [isAwaitingEditConfirmation, setIsAwaitingEditConfirmation] = useState(false);
-  // Voice Input is controlled by a feature flag and must be enabled in Settings
-  const enableVoiceInput = useFeatureFlag('openkosmosFeatureVoiceInput');
-  const voiceInputUserEnabled = useVoiceInputEnabled();
   const chatInputShortcutHint = getChatInputShortcutHint(
     typeof navigator === 'undefined' ? undefined : navigator.platform,
   );
@@ -687,6 +682,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
     });
   }, []);
 
+  // Read-only mode for remote sessions
+  if (isReadOnly) {
+    return (
+      <div className="flex items-center justify-center px-4 py-3 border-t border-white/10 bg-black/20">
+        <Globe className="w-4 h-4 text-blue-400 mr-2 shrink-0" />
+        <span className="text-sm text-gray-400">
+          This conversation is from a remote channel. Please continue in the originating channel.
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`chat-input-container ${isDragOver ? 'drag-over' : ''} ${isEditMode ? 'inline-edit-mode' : ''}`}
@@ -781,32 +788,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
             style={{ display: 'none' }}
             multiple
           />
-
-          {/* Voice Input Button - positioned to the left of model selector */}
-          {!isEditMode && enableVoiceInput && voiceInputUserEnabled && (
-            <VoiceInputButton
-              onTranscript={(transcript, isFinal) => {
-                if (isFinal && transcript.trim()) {
-                  // Append the final transcript to the current message
-                  textareaManager.set(prev => {
-                    return prev ? `${prev} ${transcript}` : transcript;
-                  });
-                  // Focus the textarea after voice input
-                  setTimeout(() => {
-                    if (textareaRef.current) {
-                      textareaRef.current.focus();
-                      // Move cursor to end
-                      textareaRef.current.setSelectionRange(
-                        textareaRef.current.value.length,
-                        textareaRef.current.value.length
-                      );
-                    }
-                  }, 0);
-                }
-              }}
-              disabled={isProcessing || !sessionIdle || shouldLockComposeUi}
-            />
-          )}
 
           {/* Send Button - on the right side */}
           <div className="right-buttons-group">

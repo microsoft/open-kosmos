@@ -60,7 +60,7 @@ spctl -a -vvv -t install ./release/mac/OpenKosmos.app
 
 Create a temporary configuration file `electron-builder.test.yml`:
 ```yaml
-appId: com.kosmos.app
+appId: com.open-kosmos-ai-studio
 productName: OpenKosmos
 mac:
   icon: brands/kosmos/assets/mac/app.icns

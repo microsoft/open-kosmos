@@ -37,7 +37,7 @@ export function getUserDataPath(): string {
     return electronApp.getPath('userData');
   }
 
-  const fallbackPath = path.join(os.tmpdir(), 'openkosmos-app-test');
+  const fallbackPath = path.join(os.tmpdir(), 'open-kosmos-app-test');
   ensureDirectoryExists(fallbackPath);
   return fallbackPath;
 }
@@ -57,12 +57,34 @@ export function getProfileDirectoryPath(alias: string): string {
   return profileDir;
 }
 
+export interface Mem0StoragePaths {
+  basePath: string;
+  historyDirectory: string;
+  historyDbPath: string;
+}
+
+export function ensureMem0StoragePaths(
+  alias: string,
+  baseDir?: string
+): Mem0StoragePaths {
+  const profileDir = baseDir ? path.resolve(baseDir) : getProfileDirectoryPath(alias);
+  const ragBasePath = path.join(profileDir, 'rag');
+  const historyDirectory = path.join(ragBasePath, 'history');
+
+  [ragBasePath, historyDirectory].forEach(ensureDirectoryExists);
+
+  const historyDbPath = path.join(historyDirectory, 'kosmos_memory.db');
+
+  return {
+    basePath: ragBasePath,
+    historyDirectory,
+    historyDbPath,
+  };
+}
+
 /**
  * Get the default workspace path for a specific chat
  * Path format: {profile_directory}/chat_workspaces/{chat_id}/
- *
- * @deprecated Use getDefaultAgentWorkspacePath for new agent creation.
- * This function is kept for backward compatibility with existing chat sessions.
  */
 export function getDefaultWorkspacePath(alias: string, chatId: string): string {
   if (!alias) {
@@ -88,7 +110,7 @@ export function getDefaultWorkspacePath(alias: string, chatId: string): string {
  *
  * @param alias - User profile alias
  * @param agentName - Agent name (spaces will be replaced with hyphens, converted to lowercase)
- * @param agentSource - Agent source ('ON-DEVICE')
+ * @param agentSource - Agent source ('IN-LIBRARY' or 'ON-DEVICE')
  * @returns The workspace path for the agent
  */
 export function getDefaultAgentWorkspacePath(

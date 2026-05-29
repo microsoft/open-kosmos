@@ -69,7 +69,7 @@ describe('Logger (development mode)', () => {
     log.info('hello', 'extra');
     expect(sendLog).toHaveBeenCalledTimes(1);
     const call = sendLog.mock.calls[0][0];
-    expect(call.__openkosmos_log).toBe(true);
+    expect(call.__kosmos_log).toBe(true);
     expect(call.level).toBe('INFO');
     expect(call.source).toBe('Test');
     expect(call.args).toBeDefined();

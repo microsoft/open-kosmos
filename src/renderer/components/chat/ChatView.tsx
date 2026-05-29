@@ -13,7 +13,6 @@ import { useToast } from '../ui/ToastProvider';
 import { useLayout } from '../layout/LayoutProvider';
 import { CurrentSessionStatus, useHasChatSessionCache, agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { profileDataManager } from '../../lib/userData';
-import { getPmAgentSayHiMessageConfig } from '../../lib/chat/pmAgentSayHi';
 import { startNewChatFor } from '../../lib/chat/startNewChatFor';
 import { createLogger } from '../../lib/utilities/logger';
 import { ScheduleSidepaneAtom } from './chat-side.atom';
@@ -135,7 +134,7 @@ const ChatView: React.FC = memo(() => {
 
           const result = await startNewChatFor(
             routeChatId,
-            getPmAgentSayHiMessageConfig(routeChatId),
+            undefined,
           );
           if (result.success && result.chatSessionId) {
             logger.debug(

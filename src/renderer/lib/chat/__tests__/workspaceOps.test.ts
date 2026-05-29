@@ -41,7 +41,6 @@ import {
   FileChangeType,
   selectWorkspaceFolder,
   getWatchStatus,
-  onFileChange,
   onError,
 } from '../workspaceOps';
 
@@ -110,34 +109,6 @@ describe('getWatchStatus', () => {
   it('isWatching is boolean', () => {
     const status = getWatchStatus();
     expect(typeof status.isWatching).toBe('boolean');
-  });
-});
-
-describe('onFileChange', () => {
-  it('returns an unsubscribe function', () => {
-    const unsub = onFileChange(() => {});
-    expect(typeof unsub).toBe('function');
-    unsub(); // should not throw
-  });
-
-  it('listener is called when file change events are emitted', () => {
-    // Capture the listener registered via onFileChanged mock
-    const registeredListeners: Array<(changes: any[]) => void> = [];
-    mockOnFileChanged.mockImplementation((cb: any) => {
-      registeredListeners.push(cb);
-      return () => {};
-    });
-
-    // Re-create a fresh manager instance for isolated test
-    // Access private method via any-cast; this exercises the refresh pathway
-    const mgr = WorkspaceOpsManager.getInstance();
-    const spy = vi.fn();
-    const unsub = mgr.onFileChange(spy);
-
-    // Simulate a file change by calling notifyRefreshListeners via triggerRefresh
-    mgr.triggerRefresh();
-    expect(spy).toHaveBeenCalled();
-    unsub();
   });
 });
 

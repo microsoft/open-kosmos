@@ -76,7 +76,7 @@ vi.mock('../../../lib/userData/types', async (importOriginal) => {
   };
 });
 
-vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'openkosmos' }));
+vi.mock('@shared/constants/branding', () => ({ BRAND_NAME: 'kosmos' }));
 
 const mockAgentMenuAtomUse = vi.fn(() => [
   { isOpen: false, chatId: null },

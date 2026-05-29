@@ -9,7 +9,7 @@ const { testUserData, mockLogger } = vi.hoisted(() => {
     error: vi.fn(),
     debug: vi.fn(),
   };
-  return { testUserData: p.join(o.tmpdir(), 'openkosmos-test-RuntimeManager'), mockLogger: logger };
+  return { testUserData: p.join(o.tmpdir(), 'kosmos-test-RuntimeManager'), mockLogger: logger };
 });
 
 vi.mock('electron', async () => ({

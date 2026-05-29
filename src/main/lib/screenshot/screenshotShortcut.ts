@@ -19,7 +19,7 @@ export function unregisterScreenshotShortcut(): void {
 export async function registerScreenshotShortcut(options: ScreenshotShortcutOptions): Promise<void> {
   unregisterScreenshotShortcut();
 
-  if (!isFeatureEnabled('openkosmosFeatureScreenshot')) {
+  if (!isFeatureEnabled('kosmosFeatureScreenshot')) {
     return;
   }
 

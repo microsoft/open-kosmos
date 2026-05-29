@@ -1,0 +1,29 @@
+{
+  "mcp_servers": [
+    {
+      "id": "mcp-studio-design-mcp-in-library",
+      "name": "studio-design-mcp",
+      "description": "# Studio Design MCP: Your Design Inspiration Assistant\n\n## Overview\n\n**Studio Design MCP** is a Model Context Protocol (MCP) server for design inspiration - search UI patterns, designs, and references across multiple platforms.\n\n## Available Tools\n\n| Tool | Description |\n|------|-------------|\n| \ud83c\udfa8 **`search_mobbin_flows`** | Search mobile app UI flows and screens from Mobbin's curated collection |\n| \ud83c\udfa8 **`search_mobbin_screens`** | Get specific screens for apps and flows from Mobbin |\n| \ud83c\udfaf **`search_dribbble_shots`** | Search design shots and inspiration on Dribbble |\n| \ud83d\udccc **`search_pinterest_images`** | Search design references and visual inspiration on Pinterest |\n\n## Features\n\n- **Multi-Platform Search**: Access design inspiration from Mobbin, Dribbble, and Pinterest\n- **Mobile UI Patterns**: Explore real-world mobile app screenshots and flows\n- **Design References**: Find visual inspiration for UI/UX projects\n- **No Authentication Required**: Works out of the box without credentials\n\n## How I Work\n\n### Mobbin - Mobile UI Flows\n- Search for mobile app UI flows and screens\n- Get onboarding, login, checkout, and other user flow references\n- Access curated collection of real-world app designs\n\n### Dribbble - Design Inspiration\n- Search design shots and creative inspiration\n- Find dashboard, mobile, web, and illustration designs\n- Explore trending design styles and patterns\n\n### Pinterest - Visual References\n- Search visual references and mood boards\n- Find design inspiration across various styles\n- Explore color palettes and visual treatments\n\n## Getting Started\n\nSimply tell me what design inspiration you need:\n- **\"Search Mobbin flows for Instagram app\"**\n- **\"Find onboarding designs on Dribbble\"**\n- **\"Search Pinterest for modern UI design\"**\n- **\"Get checkout flow screens from Mobbin\"**\n\nI'll search across design platforms and return relevant visual references for your project.\n\n---\n\n**Ready to help you find design inspiration!** \ud83c\udfa8",
+      "contact": "contact@example.com",
+      "version": "1.0.1",
+      "source": "IN-LIBRARY",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "studio-design-mcp"
+      ],
+      "env": {
+        "WORKING_PATH": "@OpenKosmos_PROFILE_WORKSPACES_FOLDER/design-agent"
+      },
+      "url": "",
+      "requirements": {
+        "python": "~3.10.0"
+      },
+      "prompts": {
+        "setup_mcp": "",
+        "update_mcp": "",
+        "setup_requirements": ""
+      }
+    }
+  ]
+}

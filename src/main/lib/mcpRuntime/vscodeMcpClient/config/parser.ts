@@ -325,7 +325,7 @@ export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string
 }
 
 /**
- * Convert OpenKosmos server configuration to VSCode format (settings.json style)
+ * Convert OpenKosmos.app server configuration to VSCode format (settings.json style)
  */
 export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {};
@@ -369,7 +369,7 @@ export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConf
 }
 
 /**
- * Convert OpenKosmos server configuration to VSCode mcp.json format (Windows style)
+ * Convert OpenKosmos.app server configuration to VSCode mcp.json format (Windows style)
  */
 export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {};

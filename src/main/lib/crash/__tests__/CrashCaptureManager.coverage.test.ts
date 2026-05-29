@@ -50,7 +50,7 @@ describe('CrashCaptureManager — additional coverage', () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-crash-extra-'));
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-crash-extra-'));
     userDataDir = path.join(tempRoot, 'userData');
     crashDumpsDir = path.join(tempRoot, 'crashDumps');
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -62,7 +62,7 @@ describe('CrashCaptureManager — additional coverage', () => {
       if (name === 'crashDumps') return crashDumpsDir;
       return tempRoot;
     });
-    (electronMock.app.getName as Mock).mockReturnValue('openkosmos-test');
+    (electronMock.app.getName as Mock).mockReturnValue('kosmos-test');
     (electronMock.app.getVersion as Mock).mockReturnValue('1.0.0-test');
     (electronMock.app.on as unknown as Mock | undefined) = vi.fn();
     (electronMock.BrowserWindow as unknown as { fromId?: Mock }).fromId = vi.fn(() => null);
@@ -126,7 +126,7 @@ describe('CrashCaptureManager — additional coverage', () => {
         sessionId: 'prev-session',
         pid: 123,
         startedAt: '2026-01-01T00:00:00.000Z',
-        appName: 'openkosmos-test',
+        appName: 'kosmos-test',
         appVersion: '1.0.0',
         platform: process.platform,
         arch: process.arch,
@@ -158,7 +158,7 @@ describe('CrashCaptureManager — additional coverage', () => {
         sessionId: 'prev-clean',
         pid: 99,
         startedAt: '2026-01-01T00:00:00.000Z',
-        appName: 'openkosmos-test',
+        appName: 'kosmos-test',
         appVersion: '1.0.0',
         platform: process.platform,
         arch: process.arch,
@@ -558,7 +558,7 @@ describe('CrashCaptureManager — additional coverage', () => {
         sessionId: 'prev-unclean-copy',
         pid: 42,
         startedAt: new Date(Date.now() - 10_000).toISOString(),
-        appName: 'openkosmos-test',
+        appName: 'kosmos-test',
         appVersion: '1.0.0',
         platform: process.platform,
         arch: process.arch,
@@ -625,7 +625,7 @@ describe('CrashCaptureManager — additional coverage', () => {
         sessionId: 'session-prev',
         pid: 321,
         startedAt,
-        appName: 'openkosmos-test',
+        appName: 'kosmos-test',
         appVersion: '1.0.0',
         platform: process.platform,
         arch: process.arch,
@@ -655,7 +655,7 @@ describe('serializeError / serializeUnknown helpers (via recordBreadcrumb metada
 
   beforeEach(async () => {
     vi.resetModules();
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-serialize-'));
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosmos-serialize-'));
     userDataDir = path.join(tempRoot, 'userData');
     crashDumpsDir = path.join(tempRoot, 'crashDumps');
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -667,7 +667,7 @@ describe('serializeError / serializeUnknown helpers (via recordBreadcrumb metada
       if (n === 'crashDumps') return crashDumpsDir;
       return tempRoot;
     });
-    (em.app.getName as Mock).mockReturnValue('openkosmos-test');
+    (em.app.getName as Mock).mockReturnValue('kosmos-test');
     (em.app.getVersion as Mock).mockReturnValue('1.0.0-test');
     (em.app.on as unknown as Mock | undefined) = vi.fn();
     (em.BrowserWindow as unknown as { fromId?: Mock }).fromId = vi.fn(() => null);
