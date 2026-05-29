@@ -8,7 +8,6 @@ export interface StreamingV2Config {
   batchSize: number;
   batchDelay: number; // ms
   performanceTracking: boolean;
-  fallbackToV1OnError: boolean;
   maxRetries: number;
   showStreamingMetrics: boolean;
   enableAdaptiveOptimization: boolean;
@@ -45,7 +44,6 @@ export const DEFAULT_STREAMING_V2_CONFIG: StreamingV2Config = {
   batchSize: 10,  // 🚀 Larger batch size for fastest output
   batchDelay: 5, // 🚀 Minimum delay for maximum speed
   performanceTracking: true,
-  fallbackToV1OnError: true,
   maxRetries: 3,
   showStreamingMetrics: false,
   enableAdaptiveOptimization: true,

@@ -81,13 +81,6 @@ vi.mock('../featureFlags', async () => ({
   isFeatureEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../azureCli', async () => ({
-  getAzureCliManager: vi.fn().mockReturnValue({
-    initialize: vi.fn().mockResolvedValue({ installed: false, loggedIn: false, version: null }),
-    ensureInstalledWithConsent: vi.fn().mockResolvedValue({ success: false }),
-  }),
-}));
-
 import { RuntimeManager } from '../RuntimeManager';
 
 afterAll(() => {

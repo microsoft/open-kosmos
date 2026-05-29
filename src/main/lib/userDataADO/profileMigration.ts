@@ -15,6 +15,7 @@ import {
   isBuiltinAgent,
   withNormalizedAgentKnowledge,
 } from './types/profile';
+import { BRAND_NAME } from '@shared/constants/branding';
 import { BUILTIN_SKILL_CHANGELOG, BUILTIN_DEFAULTS_VERSION } from '../../../shared/constants/builtinSkills';
 import { createConsoleLogger } from '../unifiedLogger';
 
@@ -144,7 +145,7 @@ function restoreRegressedKnowledgeDeliveryDirectories(chat: ChatConfig): void {
  *
  * @returns true if any mutation was made
  */
-export const PROFILE_MIGRATION_VERSION = 3;
+export const PROFILE_MIGRATION_VERSION = 2;
 
 export function applyProfileMigrations(profileCopy: ProfileV2): boolean {
   const storedMigrationVersion = profileCopy.profileMigrationVersion ?? 0;
@@ -155,47 +156,10 @@ export function applyProfileMigrations(profileCopy: ProfileV2): boolean {
 
   // ─── Migration V1 (cutoff: v2.7.2, 2026-04-04) ───
   if (storedMigrationVersion < 1) {
-    // 1a. freDone: determine initial value based on whether this is a default profile
+    // freDone: determine initial value based on whether this is a default profile
     if (profileCopy.freDone === undefined || typeof profileCopy.freDone !== 'boolean') {
       const isDefault = isDefaultProfile(profileCopy);
       profileCopy.freDone = !isDefault;
-    }
-
-    // 1b. Per-chat: normalize legacy knowledge fields → knowledge object
-    if (profileCopy.chats && Array.isArray(profileCopy.chats)) {
-      for (let index = 0; index < profileCopy.chats.length; index++) {
-        const chat = profileCopy.chats[index];
-        if (!chat.agent) continue;
-
-        const hasLegacyKnowledgeFields = chat.agent.knowledgeBase !== undefined;
-        if (hasLegacyKnowledgeFields) {
-          profileCopy.chats[index] = {
-            ...chat,
-            agent: withNormalizedAgentKnowledge(chat.agent)
-          };
-        }
-
-        // 1d. Normalize legacy mcp_servers string format → object format
-        const rawMcpServers = chat.agent.mcp_servers || [];
-        const hasLegacyFormat = rawMcpServers.some(s => typeof s === 'string');
-        if (hasLegacyFormat) {
-          const cleaned = rawMcpServers
-            .map(server => {
-              if (typeof server === 'string') {
-                return { name: server, tools: [] };
-              } else if (server && typeof server === 'object' && server.name) {
-                return { name: server.name, tools: Array.isArray(server.tools) ? server.tools : [] };
-              }
-              return null;
-            })
-            .filter((server): server is { name: string; tools: string[] } => server !== null && server.name !== '');
-          const currentChat = profileCopy.chats[index];
-          profileCopy.chats[index] = {
-            ...currentChat,
-            agent: { ...currentChat.agent!, mcp_servers: cleaned }
-          };
-        }
-      }
     }
   }
 
@@ -213,33 +177,6 @@ export function applyProfileMigrations(profileCopy: ProfileV2): boolean {
         };
         restoreRegressedKnowledgeDeliveryDirectories(normalizedChat);
         profileCopy.chats[index] = normalizedChat;
-      }
-    }
-  }
-
-  // ─── Migration V3 (cutoff: v2.8.0, 2026-05-23) ───
-  if (storedMigrationVersion < 3) {
-    // V3: Rename kosmos → openkosmos in feature flags and placeholders
-    // Feature flags: openkosmosFeature* → openkosmosFeature*, openkosmosUse* → openkosmosUse*, openkosmosPath* → openkosmosPath*
-    if ((profileCopy as any).featureFlags && typeof (profileCopy as any).featureFlags === 'object') {
-      const oldFlags = (profileCopy as any).featureFlags as Record<string, any>;
-      const newFlags: Record<string, any> = {};
-      for (const [key, value] of Object.entries(oldFlags)) {
-        const newKey = key.replace(/^kosmos/, 'openkosmos');
-        newFlags[newKey] = value;
-      }
-      (profileCopy as any).featureFlags = newFlags;
-    }
-    // Placeholders: @OpenKosmos_ → @OPENKOSMOS_ in MCP server env values
-    if (profileCopy.mcp_servers && Array.isArray(profileCopy.mcp_servers)) {
-      for (const server of profileCopy.mcp_servers) {
-        if (server.env && typeof server.env === 'object') {
-          for (const [key, value] of Object.entries(server.env)) {
-            if (typeof value === 'string' && value.includes('@OpenKosmos_')) {
-              (server.env as Record<string, string>)[key] = value.replace(/@OpenKosmos_/g, '@OPENKOSMOS_');
-            }
-          }
-        }
       }
     }
   }
@@ -268,7 +205,7 @@ export function applyBuiltinDefaultsMigrations(profileCopy: ProfileV2): boolean 
     if (!chat.agent) continue;
 
     // Skip built-in agents (already handled by backfill)
-    if (isBuiltinAgent(chat.agent.name)) continue;
+    if (isBuiltinAgent(chat.agent.name, BRAND_NAME)) continue;
 
     // 1. Ensure builtin-tools server with all tools enabled (initial migration only).
     if (storedBuiltinVersion === 0) {

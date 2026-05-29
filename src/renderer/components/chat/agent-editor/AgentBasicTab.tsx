@@ -18,7 +18,8 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   onDataChange,
   cachedData,
   fieldErrors,
-  readOnly = false
+  readOnly = false,
+  isFromLibrary = false
 }) => {
   // Get all chats for duplicate name checking
   const { chats } = useChats()
@@ -27,7 +28,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     emoji: '🤖',
-    avatar: '', // Agent avatar URL
+    avatar: '', // Agent avatar URL (only for IN-LIBRARY agents)
     role: '', // Retained but unused
     model: getDefaultModel()
   })
@@ -35,7 +36,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   // Agent metadata (read-only display)
   const [agentMeta, setAgentMeta] = useState({
     version: '',
-    source: '' as '' | 'ON-DEVICE' | 'EXTERNAL'
+    source: '' as '' | 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL'
   })
 
   // UI state
@@ -52,7 +53,10 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   // Check if this is the Kobi Agent (emoji modification is prohibited)
   const isKobiAgent = agentData?.name?.toLowerCase() === 'kobi'
 
-  const isAvatarNameDisabled = readOnly || isKobiAgent
+  // IN-LIBRARY agent edit permissions:
+  // - avatar/emoji/name: not editable
+  // - model: editable
+  const isAvatarNameDisabled = readOnly || isKobiAgent || isFromLibrary
   const isModelDisabled = readOnly // model is only disabled in readOnly mode; still editable when isFromLibrary
 
   // Initial data used to detect modifications
@@ -279,10 +283,10 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
             <div
               className={`emoji-display ${isAvatarNameDisabled ? 'disabled' : ''}`}
               onClick={() => !isAvatarNameDisabled && setShowEmojiPicker(true)}
-              title={readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to change avatar"}
+              title={isFromLibrary ? "Library Agent's avatar cannot be modified" : readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to change avatar"}
               style={isAvatarNameDisabled ? { cursor: 'not-allowed', opacity: 0.6 } : undefined}
             >
-              {/* Use AgentAvatar component */}
+              {/* Use AgentAvatar component: ON-DEVICE shows emoji, IN-LIBRARY prefers avatar */}
               <AgentAvatar
                 emoji={formData.emoji}
                 avatar={formData.avatar}
@@ -293,7 +297,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
               />
             </div>
             <span className="emoji-hint">
-              {readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to choose avatar"}
+              {isFromLibrary ? "Library Agent's avatar cannot be modified" : readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to choose avatar"}
             </span>
           </div>
         </div>
@@ -307,7 +311,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
             placeholder="Enter agent name..."
-            disabled={isAvatarNameDisabled} // Not editable in read-only mode or for Kobi
+            disabled={isAvatarNameDisabled} // Not editable for IN-LIBRARY agents, read-only mode, or Kobi
           />
           {(validationErrors.name || fieldErrors?.name) && (
             <div className="warning-message">{validationErrors.name || fieldErrors?.name}</div>
@@ -411,8 +415,8 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
               {agentMeta.source && (
                 <div className="agent-meta-item">
                   <span className="agent-meta-label">Source:</span>
-                  <span className={`agent-meta-badge ${agentMeta.source === 'EXTERNAL' ? 'external' : 'device'}`}>
-                    {agentMeta.source === 'EXTERNAL' ? '🌐 External' : '💻 On Device'}
+                  <span className={`agent-meta-badge ${agentMeta.source === 'IN-LIBRARY' ? 'library' : 'device'}`}>
+                    {agentMeta.source === 'IN-LIBRARY' ? '📚 Library' : agentMeta.source === 'EXTERNAL' ? '🌐 External' : '💻 On Device'}
                   </span>
                 </div>
               )}

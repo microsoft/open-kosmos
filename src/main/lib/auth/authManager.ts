@@ -748,7 +748,6 @@ export class MainAuthManager implements IAuthManager {
         logger.error(`[MainAuthManager] ❌ [${signOutId}] Failed to reset ExternalAgentService:`, error instanceof Error ? error.message : String(error));
       }
 
-
       // Phase 5: Notify the renderer process to perform cleanup
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {

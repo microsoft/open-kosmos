@@ -17,8 +17,6 @@
  *  - getChatSessions: counts only non-scheduled sessions for quota
  *  - getChatSessions: handles readMonthIndex error gracefully (skips month)
  *  - getMoreChatSessions: month index not found → returns empty sessions
- *  - getAllChatSessions: skips months with no sessions
- *  - migrateFromProfile: full migration with session files
  *  - writeFileAtomically: cleans up temp file on rename error
  */
 
@@ -565,81 +563,6 @@ describe('ChatSessionManager.extra', () => {
       expect(result.sessions).toEqual([]);
       expect(result.loadedMonth).toBe('202605');
       expect(result.hasMore).toBe(false);
-    });
-  });
-
-  // ─── getAllChatSessions ───────────────────────────────────────────────────
-
-  describe('getAllChatSessions', () => {
-    it('skips months whose month index returns null', async () => {
-      const s1 = makeSession('chatSession_20260501000000', '2026-05-01T00:00:00Z');
-
-      mockFs({
-        'chat_sessions/chat1/index.json': {
-          chat_id: 'chat1',
-          months: ['202605', '202604'],
-          last_updated: '',
-        },
-        'chat_sessions/chat1/202605/index.json': {
-          chat_id: 'chat1', month: '202605', sessions: [s1], last_updated: '',
-        },
-        // 202604 is missing
-      });
-
-      const result = await manager.getAllChatSessions('user', 'chat1');
-      expect(result).toHaveLength(1);
-      expect(result[0].chatSession_id).toBe('chatSession_20260501000000');
-    });
-  });
-
-  // ─── migrateFromProfile ──────────────────────────────────────────────────
-
-  describe('migrateFromProfile', () => {
-    it('migrates multiple sessions and writes files', async () => {
-      const s1 = makeSession('chatSession_20260501000000', '2026-05-01T00:00:00Z');
-      const s2 = makeSession('chatSession_20260401000000', '2026-04-01T00:00:00Z');
-      const fileMap: Record<string, ChatSessionFile> = {
-        'chatSession_20260501000000': makeChatSessionFile('chatSession_20260501000000'),
-        'chatSession_20260401000000': makeChatSessionFile('chatSession_20260401000000'),
-      };
-
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.promises.writeFile as any).mockResolvedValue(undefined);
-      (fs.promises.rename as any).mockResolvedValue(undefined);
-      (fs.mkdirSync as any).mockReturnValue(undefined);
-
-      const result = await manager.migrateFromProfile(
-        'user', 'chat1', [s1, s2],
-        async (id) => fileMap[id] ?? null,
-      );
-
-      expect(result).toBe(true);
-      const writeCalls = (fs.promises.writeFile as any).mock.calls;
-      // Chat index + 2 month indexes + 2 session files = 5 writes minimum
-      expect(writeCalls.length).toBeGreaterThanOrEqual(5);
-    });
-
-    it('handles getChatSessionFileFunc returning null for a session', async () => {
-      const s1 = makeSession('chatSession_20260501000000', '2026-05-01T00:00:00Z');
-
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.promises.writeFile as any).mockResolvedValue(undefined);
-      (fs.promises.rename as any).mockResolvedValue(undefined);
-      (fs.mkdirSync as any).mockReturnValue(undefined);
-
-      // getChatSessionFileFunc returns null for all sessions
-      const result = await manager.migrateFromProfile(
-        'user', 'chat1', [s1],
-        async () => null,
-      );
-
-      expect(result).toBe(true);
-      // Session file write should NOT have happened for missing file
-      const writeCalls = (fs.promises.writeFile as any).mock.calls;
-      const sessionFileWrites = writeCalls.filter((c: string[]) =>
-        c[0]?.replace(/\\/g, '/').endsWith('chatSession_20260501000000.json'),
-      );
-      expect(sessionFileWrites).toHaveLength(0);
     });
   });
 

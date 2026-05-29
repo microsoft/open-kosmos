@@ -23,6 +23,8 @@ const getInteractiveAuthTitle = (commandFamily: ExecuteCommandInteractiveAuthHin
       return 'GitHub device login required';
     case 'gh-auth-refresh':
       return 'GitHub auth refresh required';
+    case 'az-login':
+      return 'CLI sign-in required';
     case 'npm-login':
       return 'npm registry login required';
     case 'npm-adduser':

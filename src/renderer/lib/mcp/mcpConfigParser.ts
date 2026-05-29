@@ -349,7 +349,7 @@ export function isExampleConfiguration(input: string): boolean {
 import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
 
 /**
- * Convert OpenKosmos server config to VSCode format (settings.json style)
+ * Convert OpenKosmos.app server config to VSCode format (settings.json style)
  */
 export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {}
@@ -393,7 +393,7 @@ export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConf
 }
 
 /**
- * Convert OpenKosmos server config to VSCode mcp.json format (Windows style)
+ * Convert OpenKosmos.app server config to VSCode mcp.json format (Windows style)
  */
 export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfig[]): string {
   const servers: Record<string, any> = {}
@@ -436,7 +436,7 @@ export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfi
 }
 
 /**
- * Convert a single OpenKosmos config to VSCode compatible format
+ * Convert a single OpenKosmos.app config to VSCode compatible format
  */
 export function convertOpenKosmosToVSCodeConfig(config: OpenKosmosAppMCPServerConfig): any {
   const vscodeConfig: any = {}

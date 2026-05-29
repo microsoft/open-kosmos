@@ -189,12 +189,6 @@ describe('SubAgentFileManager', () => {
         { name: 'database-server', tools: ['query', 'schema'] },
         'redis-cache',
       ]);
-
-      // Legacy mcp_servers should be populated
-      expect(config.mcp_servers).toEqual([
-        { name: 'database-server', tools: ['query', 'schema'] },
-        { name: 'redis-cache', tools: [] },
-      ]);
     });
 
     it('should return error when content does not start with ---', () => {
@@ -254,10 +248,10 @@ Forward compatible content.
       expect(result.data!.system_prompt).toContain('Forward compatible content');
     });
 
-    it('should parse maxTurns from max_turns (backward compat)', () => {
+    it('should ignore unknown max_turns field in YAML', () => {
       const content = `---
 name: compat-agent
-description: Test backward compat
+description: Test unknown fields
 max_turns: 15
 ---
 

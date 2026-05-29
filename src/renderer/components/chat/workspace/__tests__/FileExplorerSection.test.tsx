@@ -36,7 +36,6 @@ vi.mock('../PasteToWorkspaceProvider', async () => ({
   }),
 }));
 
-
 describe('FileExplorerSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();

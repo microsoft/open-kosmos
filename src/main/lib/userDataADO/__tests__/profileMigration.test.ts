@@ -48,7 +48,7 @@ describe('applyProfileMigrations', () => {
     expect(profile.profileMigrationVersion).toBe(PROFILE_MIGRATION_VERSION);
   });
 
-  it('fully migrates a pre-v1 legacy agent into the current cleaned knowledge shape', () => {
+  it('migrates a pre-v1 agent and normalizes knowledge via V2 migration', () => {
     const profile = createProfile({
       profileMigrationVersion: 0,
       chats: [{
@@ -62,7 +62,6 @@ describe('applyProfileMigrations', () => {
           model: 'mock-default-model',
           workspace: '/tmp/workspace/chat_1',
           knowledge: undefined,
-          knowledgeBase: '/tmp/workspace/chat_1/knowledge',
           version: '1.0.0',
           source: 'ON-DEVICE',
           mcp_servers: [],
@@ -77,15 +76,14 @@ describe('applyProfileMigrations', () => {
 
     expect(mutated).toBe(true);
     expect(agent.knowledge).toEqual({
-      knowledgeBase: '/tmp/workspace/chat_1/knowledge',
+      knowledgeBase: '',
     });
-    expect(agent.knowledgeBase).toBeUndefined();
     expect(profile.profileMigrationVersion).toBe(PROFILE_MIGRATION_VERSION);
   });
 
-  it('skips migration when profile is already at current version', () => {
+  it('skips migration when profile is already at the current migration version', () => {
     const profile = createProfile({
-      profileMigrationVersion: PROFILE_MIGRATION_VERSION,
+      profileMigrationVersion: 2,
       chats: [{
         chat_id: 'chat_2',
         chat_type: 'single_agent',

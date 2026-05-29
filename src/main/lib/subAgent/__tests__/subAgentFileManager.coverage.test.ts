@@ -51,7 +51,7 @@ Scalar mcp server test.
       // A plain string is not an array, so parseMcpServers hits line 736 → returns []
       // But the string branch "if (typeof item === 'string') return item" is in array path
       // A single string value: YAML parses "some-server" as a string → not an array → line 736
-      expect(result.data!.mcp_servers).toEqual([]);
+      expect(result.data!.mcpServers).toEqual([]);
     });
   });
 

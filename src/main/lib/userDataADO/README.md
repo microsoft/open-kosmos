@@ -284,7 +284,7 @@ When adding a new app-level config field:
 
 ## Profile-Level Config Development Guide
 
-> **Profile-level config** is persisted in `{userData}/profiles/{alias}/profile.json` and is **isolated per user**. Use this pattern when a setting should be different for each user (e.g., MCP server list, agent configuration).
+> **Profile-level config** is persisted in `{userData}/profiles/{alias}/profile.json` and is **isolated per user**. Use this pattern when a setting should be different for each user (e.g., MCP server list, agent configuration, toolbar settings).
 >
 > For app-level config shared across all profiles, follow the `AppCacheManager` pattern instead.
 
@@ -318,6 +318,7 @@ This file is the **single source of truth** for the complete `profile.json` data
       "url": "",
       "in_use": true,
       "version": "1.0.0",
+      "remoteVersion": "",
       "source": "ON-DEVICE"
     }
   ],
@@ -340,7 +341,7 @@ This file is the **single source of truth** for the complete `profile.json` data
 
 **File:** `src/main/lib/userDataADO/types/profile.ts`
 
-Follow the existing pattern used by `ToolBarSettings`, `ScreenshotSettings`, etc.:
+Follow the existing pattern used by `ScreenshotSettings`, etc.:
 
 ```typescript
 // 1. Define the interface for the new config section
@@ -419,7 +420,7 @@ private async ensureV2ProfileIntegrity(alias: string, profile: ProfileV2): Promi
 }
 ```
 
-**MCP example:** The `mcp_servers` array migration that backfills `version` and `source` sub-fields (added in newer versions) lives in this method.
+**MCP example:** The `mcp_servers` array migration that backfills `version`, `source`, and `remoteVersion` sub-fields (added in newer versions) lives in this method.
 
 **Important rules from the method's own header:**
 - Always deep-copy the input: `JSON.parse(JSON.stringify(profile))` — never mutate the `profile` argument.

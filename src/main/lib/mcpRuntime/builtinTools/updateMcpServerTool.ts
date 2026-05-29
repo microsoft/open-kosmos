@@ -1,15 +1,34 @@
 /**
  * UpdateMcpServerTool
- * Updates an installed MCP server via MCP configuration.
+ * Updates an installed MCP server via MCP configuration
  *
- * Source is always ON-DEVICE. Version is auto-incremented on each update.
- * ENV update: full replacement — if new ENV is provided, use new ENV; if not provided, clear ENV.
+ * Process flow:
+ * 1. Receive an MCP configuration object
+ * 2. Validate whether the MCP is installed (checked by name)
+ * 3. Process the update according to source and version rules
+ * 4. Call mcpClientManager to update the configuration
+ *
+ * Source and Version update rules:
+ * 2.1. If the original source is ON-DEVICE
+ *      2.1.1. If the new source is ON-DEVICE => ignore new version, use original source, auto-increment patch version
+ *      2.1.2. If the new source is IN-LIBRARY => new version must not be empty && new version must be greater than original, use new source and version
+ *      2.1.3. If no new source is specified => ignore new version, use original source, auto-increment patch version
+ *
+ * 2.2. If the original source is IN-LIBRARY
+ *      2.2.1. If the new source is ON-DEVICE => not allowed to override IN-LIBRARY config with ON-DEVICE config
+ *      2.2.2. If the new source is IN-LIBRARY => new version must not be empty && new version must be greater than original, use new source and version
+ *      2.2.3. If no new source is specified => both source and version must be specified
+ *
+ * ENV update rules:
+ * - IN-LIBRARY update: merge strategy — preserve locally configured values, add new remote keys, keep local-only keys
+ * - ON-DEVICE update: full replacement — if new ENV is provided => use new ENV entirely; if not provided => clear ENV
  */
 
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 import { McpServerConfig } from '../../userDataADO/types';
 import { profileCacheManager } from "../../userDataADO/profileCacheManager";
 import { mcpClientManager } from "../mcpClientManager";
+import { mergeEnv } from "../../startupUpdate/startupUpdateService";
 
 /**
  * Tool input arguments interface
@@ -29,8 +48,12 @@ interface UpdateMcpServerArgs {
     env?: Record<string, string>;
     /** Server URL (for sse/http transport) */
     url?: string;
-    /** MCP server version (optional, auto-managed) */
+    /** MCP server version */
     version?: string;
+    /** MCP server source */
+    source?: 'IN-LIBRARY' | 'ON-DEVICE';
+    /** 🆕 Remote CDN version number (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
+    remoteVersion?: string;
   };
 }
 
@@ -155,7 +178,16 @@ export class UpdateMcpServerTool {
               },
               version: {
                 type: 'string',
-                description: 'MCP server version (auto-managed)'
+                description: 'MCP server version (required when source is IN-LIBRARY)'
+              },
+              source: {
+                type: 'string',
+                enum: ['IN-LIBRARY', 'ON-DEVICE'],
+                description: 'MCP server source'
+              },
+              remoteVersion: {
+                type: 'string',
+                description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
               }
             },
             required: ['name']
@@ -219,18 +251,94 @@ export class UpdateMcpServerTool {
       }
 
       const existingConfig = existingServerInfo.config;
+      const oldSource = existingConfig.source || 'ON-DEVICE';
       const oldVersion = existingConfig.version || '1.0.0';
+      const newSource = config.source;
+      const newVersion = config.version;
 
-      // Source is always ON-DEVICE, auto-increment version
-      const finalSource = 'ON-DEVICE';
-      const finalVersion = incrementPatchVersion(oldVersion);
+      // Apply source and version update rules
+      let finalSource: 'IN-LIBRARY' | 'ON-DEVICE' = oldSource as 'IN-LIBRARY' | 'ON-DEVICE';
+      let finalVersion: string = oldVersion;
+
+      // 2.1. If the original source is ON-DEVICE
+      if (oldSource === 'ON-DEVICE') {
+        if (newSource === 'ON-DEVICE' || newSource === undefined) {
+          // 2.1.1 or 2.1.3: ignore new version, use original source, auto-increment patch
+          finalSource = 'ON-DEVICE';
+          finalVersion = incrementPatchVersion(oldVersion);
+        } else if (newSource === 'IN-LIBRARY') {
+          // 2.1.2: new version must not be empty && must be greater than original; use new source and version
+          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
+            return {
+              success: false,
+              message: 'When changing source from ON-DEVICE to IN-LIBRARY, version must be provided',
+              error: 'VERSION_REQUIRED'
+            };
+          }
+          const trimmedNewVersion = newVersion.trim();
+          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
+            return {
+              success: false,
+              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating to IN-LIBRARY`,
+              error: 'VERSION_NOT_GREATER'
+            };
+          }
+          finalSource = 'IN-LIBRARY';
+          finalVersion = trimmedNewVersion;
+        }
+      }
+      // 2.2. If the original source is IN-LIBRARY
+      else if (oldSource === 'IN-LIBRARY') {
+        if (newSource === 'ON-DEVICE') {
+          // 2.2.1: not allowed to override IN-LIBRARY config with ON-DEVICE config
+          return {
+            success: false,
+            message: 'Cannot override IN-LIBRARY configuration with ON-DEVICE configuration. IN-LIBRARY MCPs must be updated from the library.',
+            error: 'SOURCE_OVERRIDE_NOT_ALLOWED'
+          };
+        } else if (newSource === 'IN-LIBRARY') {
+          // 2.2.2: new version must not be empty && must be greater than original; use new source and version
+          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
+            return {
+              success: false,
+              message: 'When updating IN-LIBRARY MCP, version must be provided',
+              error: 'VERSION_REQUIRED'
+            };
+          }
+          const trimmedNewVersion = newVersion.trim();
+          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
+            return {
+              success: false,
+              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating IN-LIBRARY MCP`,
+              error: 'VERSION_NOT_GREATER'
+            };
+          }
+          finalSource = 'IN-LIBRARY';
+          finalVersion = trimmedNewVersion;
+        } else {
+          // 2.2.3: if no new source is specified => both source and version must be provided
+          return {
+            success: false,
+            message: 'When updating IN-LIBRARY MCP without specifying source, both source and version must be provided',
+            error: 'SOURCE_AND_VERSION_REQUIRED'
+          };
+        }
+      }
 
       // Build the updated McpServerConfig
+      // ENV rules:
+      // - IN-LIBRARY update: merge strategy (preserve locally configured values, add new remote keys)
+      // - ON-DEVICE update: full replacement
+      // 🆕 remoteVersion rule: use provided remoteVersion for IN-LIBRARY updates, clear for ON-DEVICE
       let finalEnv: Record<string, string>;
-      if (config.env && typeof config.env === 'object') {
+      if (finalSource === 'IN-LIBRARY' && config.env && typeof config.env === 'object') {
+        // IN-LIBRARY: merge ENV — preserve local values, add new remote keys
+        finalEnv = mergeEnv(existingConfig.env || {}, config.env);
+      } else if (config.env && typeof config.env === 'object') {
+        // ON-DEVICE: complete replacement
         finalEnv = config.env;
       } else {
-        finalEnv = existingConfig.env || {};
+        finalEnv = {};
       }
 
       const updatedConfig: McpServerConfig = {
@@ -243,6 +351,10 @@ export class UpdateMcpServerTool {
         url: config.url?.trim() || existingConfig.url,
         version: finalVersion,
         source: finalSource,
+        // 🆕 remoteVersion: use provided value or keep original for IN-LIBRARY; clear for ON-DEVICE
+        remoteVersion: finalSource === 'IN-LIBRARY'
+          ? (config.remoteVersion || existingConfig.remoteVersion || '')
+          : ''
       };
 
       // Validate transport-related fields
@@ -272,11 +384,11 @@ export class UpdateMcpServerTool {
       // Successfully updated
       return {
         success: true,
-        message: `Successfully updated MCP server "${serverName}". Version: ${oldVersion} -> ${finalVersion}. The server is now reconnecting...`,
+        message: `Successfully updated MCP server "${serverName}". Version: ${oldVersion} -> ${finalVersion}, Source: ${oldSource} -> ${finalSource}. The server is now reconnecting...`,
         server_name: serverName,
         old_version: oldVersion,
         new_version: finalVersion,
-        old_source: 'ON-DEVICE',
+        old_source: oldSource,
         new_source: finalSource
       };
 

@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos currently uses a two-level Skill model:
+OpenKosmos currently uses a two-level Skill model:
 
 1. `ProfileV2.skills` is the global installed-skill registry.
 2. `ChatAgent.skills` is the Agent-level name reference list.
@@ -18,7 +18,7 @@ The recent incident around local Skill installation exposed the core issue clear
 
 ## 2. Problem Statement
 
-Kosmos currently treats Skill availability as a live read from two mutable sources during prompt assembly:
+OpenKosmos currently treats Skill availability as a live read from two mutable sources during prompt assembly:
 
 1. Agent binding: `chat.agent.skills`
 2. Installed registry: `profile.skills`
@@ -31,7 +31,7 @@ This creates three issues:
 
 ## 3. Product Decision
 
-Kosmos will introduce a chat-level `skill_snapshot` as the only runtime consumption layer for Agent Skills.
+OpenKosmos will introduce a chat-level `skill_snapshot` as the only runtime consumption layer for Agent Skills.
 
 The product rule is:
 
@@ -39,7 +39,7 @@ The product rule is:
 2. `skill_snapshot` is the only source used by prompt assembly.
 3. Refresh takes effect on the next turn, not in the middle of the current model run.
 
-This aligns Kosmos with the practical semantics already proven in OpenClaw research: Skill availability can refresh without restarting the process, but the refresh boundary must be the next turn or a newly started session flow.
+This aligns OpenKosmos with the practical semantics already proven in OpenClaw research: Skill availability can refresh without restarting the process, but the refresh boundary must be the next turn or a newly started session flow.
 
 ## 4. Scope
 
@@ -57,7 +57,7 @@ This aligns Kosmos with the practical semantics already proven in OpenClaw resea
 1. Rebuilding the current in-flight prompt or mutating a running model call.
 2. Supporting direct folder copy as an official local install path.
 3. Redesigning the entire Skills UI.
-4. Converting Kosmos into a full file-scan-based Skill discovery system like OpenClaw.
+4. Converting OpenKosmos into a full file-scan-based Skill discovery system like OpenClaw.
 5. Introducing per-message historical Skill snapshots.
 
 ## 5. Goals

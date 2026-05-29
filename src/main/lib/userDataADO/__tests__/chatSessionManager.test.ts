@@ -261,38 +261,6 @@ describe('ChatSessionManager', () => {
     expect(result.nextMonthIndex).toBe(1);
   });
 
-  // ---- getAllChatSessions ----
-
-  it('getAllChatSessions returns empty when no chat index', async () => {
-    (fs.existsSync as any).mockReturnValue(false);
-    const result = await manager.getAllChatSessions('user', 'chat1');
-    expect(result).toEqual([]);
-  });
-
-  it('getAllChatSessions aggregates sessions across months', async () => {
-    const s1 = makeSession('chatSession_20260501000000', '2026-05-01T00:00:00Z');
-    const s2 = makeSession('chatSession_20260401000000', '2026-04-01T00:00:00Z');
-    mockFs({
-      'chat_sessions/chat1/index.json': {
-        chat_id: 'chat1',
-        months: ['202605', '202604'],
-        last_updated: '2026-05-01T00:00:00Z',
-      },
-      'chat_sessions/chat1/202605/index.json': {
-        chat_id: 'chat1', month: '202605', sessions: [s1], last_updated: '2026-05-01T00:00:00Z',
-      },
-      'chat_sessions/chat1/202604/index.json': {
-        chat_id: 'chat1', month: '202604', sessions: [s2], last_updated: '2026-04-01T00:00:00Z',
-      },
-    });
-
-    const result = await manager.getAllChatSessions('user', 'chat1');
-    expect(result.length).toBe(2);
-    // sorted descending
-    expect(result[0].chatSession_id).toBe('chatSession_20260501000000');
-    expect(result[1].chatSession_id).toBe('chatSession_20260401000000');
-  });
-
   // ---- deleteChatSession ----
 
   it('deleteChatSession returns false for invalid chatSessionId', async () => {
@@ -424,29 +392,6 @@ describe('ChatSessionManager', () => {
       'user', 'chat1', 'chatSession_20260501120000', { title: 'New' }, makeChatSessionFile('chatSession_20260501120000'),
     );
     expect(result).toBe(false);
-  });
-
-  // ---- migrateFromProfile ----
-
-  it('migrateFromProfile returns true with empty sessions array', async () => {
-    (fs.promises.writeFile as any).mockResolvedValue(undefined);
-    (fs.mkdirSync as any).mockReturnValue(undefined);
-    (fs.existsSync as any).mockReturnValue(true);
-
-    const result = await manager.migrateFromProfile('user', 'chat1', [], async () => null);
-    expect(result).toBe(true);
-  });
-
-  it('migrateFromProfile skips sessions with invalid ids', async () => {
-    (fs.promises.writeFile as any).mockResolvedValue(undefined);
-    (fs.promises.rename as any).mockResolvedValue(undefined);
-    (fs.mkdirSync as any).mockReturnValue(undefined);
-    (fs.existsSync as any).mockReturnValue(true);
-
-    const badSession = makeSession('invalid-id', '2026-05-01T00:00:00Z');
-    const result = await manager.migrateFromProfile('user', 'chat1', [badSession], async () => null);
-    expect(result).toBe(true);
-    // No month indexes should have been written for invalid sessions
   });
 
   // ---- normalizeChatSessionReadStatus ----

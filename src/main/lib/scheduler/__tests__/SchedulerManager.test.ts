@@ -62,6 +62,10 @@ vi.mock('../schedulerRuntimeStateStore', async () => ({
   },
 }));
 
+vi.mock('../../remoteChannel/schedulerNotifier', async () => ({
+  notifyScheduledJobCompletion: vi.fn(),
+}));
+
 describe('SchedulerManager cold-start catch-up', () => {
   beforeEach(async () => {
     vi.resetModules();

@@ -33,13 +33,12 @@ export interface ActionItemGroup {
  */
 export function parseSayHiContent(rawText: string): {
   markdownBody: string;
-  actionItems: string[];
   actionItemGroups: ActionItemGroup[];
 } {
   const delimiterIndex = rawText.indexOf(SAY_HI_ACTION_ITEMS_DELIMITER);
 
   if (delimiterIndex === -1) {
-    return { markdownBody: rawText, actionItems: [], actionItemGroups: [] };
+    return { markdownBody: rawText, actionItemGroups: [] };
   }
 
   const markdownBody = rawText.slice(0, delimiterIndex).trimEnd();
@@ -70,10 +69,7 @@ export function parseSayHiContent(rawText: string): {
     groups.push(currentGroup);
   }
 
-  // Flat list for backward compatibility
-  const actionItems = groups.flatMap(g => g.items);
-
-  return { markdownBody, actionItems, actionItemGroups: groups };
+  return { markdownBody, actionItemGroups: groups };
 }
 
 interface SayHiActionItemsProps {

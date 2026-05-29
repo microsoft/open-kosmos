@@ -6,7 +6,7 @@
 
 ## Table of Contents
 
-- [OpenKosmos Sub-Agent User Guide](#kosmos-sub-agent-user-guide)
+- [OpenKosmos Sub-Agent User Guide](#openkosmos-sub-agent-user-guide)
   - [Table of Contents](#table-of-contents)
   - [1. What is a Sub-Agent](#1-what-is-a-sub-agent)
     - [Key Features](#key-features)
@@ -367,7 +367,7 @@ Sub-Agents are stored as `AGENT.md` files using YAML front-matter + Markdown bod
 1. The file must start with `---`; the YAML front-matter ends with the second `---`
 2. `name` and `description` are required fields
 3. The Markdown body section serves as the `system_prompt`
-4. OpenKosmos extension fields are placed under the `x-kosmos` namespace
+4. OpenKosmos extension fields are placed under the `x-openkosmos` namespace
 5. Unknown fields are silently ignored during import (forward compatible)
 
 ### 8.2 Complete Example
@@ -388,7 +388,7 @@ mcpServers: []
 skills: []
 
 # === OpenKosmos Extension Fields ===
-x-kosmos:
+x-openkosmos:
   display_name: Web Researcher
   emoji: "🔍"
   version: "1.0.0"
@@ -445,7 +445,7 @@ OpenKosmos's AGENT.md format is fully compatible with Claude Code's Sub-Agent de
 | `skills` | `skills` | Direct mapping |
 | `mcpServers` | `mcp_servers` | Structure conversion |
 
-**Importing pure Claude Code format**: AGENT.md files without `x-kosmos` can be imported normally; missing OpenKosmos fields will use defaults:
+**Importing pure Claude Code format**: AGENT.md files without `x-openkosmos` can be imported normally; missing OpenKosmos fields will use defaults:
 
 - `emoji` → 🤖
 - `context_access` → `isolated`
@@ -466,7 +466,7 @@ OpenKosmos's AGENT.md format is fully compatible with Claude Code's Sub-Agent de
 ```yaml
 name: code-reviewer
 description: Senior code reviewer for quality assurance.
-x-kosmos:
+x-openkosmos:
   context_access: isolated
   builtin_tools:
     - read_file
@@ -493,7 +493,7 @@ x-kosmos:
 ```yaml
 name: web-researcher
 description: Expert at internet research and information synthesis.
-x-kosmos:
+x-openkosmos:
   context_access: parent_summary
   builtin_tools:
     - bing_web_search
@@ -521,7 +521,7 @@ x-kosmos:
 ```yaml
 name: build-runner
 description: Executes build and deployment commands safely.
-x-kosmos:
+x-openkosmos:
   context_access: isolated
   workspace: "D:/projects/my-app"
   builtin_tools:
@@ -549,7 +549,7 @@ x-kosmos:
 ```yaml
 name: followup-analyzer
 description: Analyzes conversation context for follow-up actions.
-x-kosmos:
+x-openkosmos:
   context_access: full_history
   inherit_mcp_servers: true
   inherit_skills: true
@@ -715,7 +715,7 @@ The AI will guide you through these steps:
 
 ### Q: How do I import Sub-Agents from Claude Code?
 
-**A:** Place Claude Code's Sub-Agent `.md` files in the `agents/{name}/AGENT.md` directory, and OpenKosmos will automatically recognize and import them. Pure Claude Code format files without `x-kosmos` fields will have OpenKosmos extension fields populated with default values.
+**A:** Place Claude Code's Sub-Agent `.md` files in the `agents/{name}/AGENT.md` directory, and OpenKosmos will automatically recognize and import them. Pure Claude Code format files without `x-openkosmos` fields will have OpenKosmos extension fields populated with default values.
 
 ### Q: What's the maximum number of Sub-Agents I can create?
 
@@ -724,7 +724,7 @@ The AI will guide you through these steps:
 ---
 
 > 📖 **For more technical details**, see:
-> - [Sub-Agent Technical Architecture Document](./kosmos-sub-agent-tech-doc.md)
-> - [Sub-Agent Runtime UI Progress Display](./kosmos-sub-agent-runtime-ui-progress.md)
+> - [Sub-Agent Technical Architecture Document](./openkosmos-sub-agent-tech-doc.md)
+> - [Sub-Agent Runtime UI Progress Display](./openkosmos-sub-agent-runtime-ui-progress.md)
 > - [Sub-Agent Feature Flag Plan](./sub-agent-feature-flag.md)
 > - [Sub-Agent Creator Skill Implementation](./sub-agent-creator-skill-implementation.md)

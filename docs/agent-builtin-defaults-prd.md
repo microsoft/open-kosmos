@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos has two types of built-in capabilities available to every Agent:
+OpenKosmos has two types of built-in capabilities available to every Agent:
 
 1. **Built-in Tools** — a set of ~40 core tools (file ops, shell, web search, agent management, etc.) exposed through the `builtin-tools` MCP server.
 2. **Built-in Skills** — 4 pre-installed Skills (`docx`, `frontend-design`, `pptx`, `skill-creator`) that provide prompt-level domain expertise.

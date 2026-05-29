@@ -7,7 +7,7 @@
  *
  * Tests the correctness of the refactored CSS class layout (based on SkillsView):
  * - unified-header rendering (icon, title, Badge, + button)
- * - Empty state display (Create Custom button)
+ * - Empty state display (Browse Library / Create Custom buttons)
  * - List rendering (SubAgentListItem)
  * - Loading state
  */

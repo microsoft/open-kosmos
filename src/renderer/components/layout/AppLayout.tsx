@@ -61,7 +61,7 @@ const AppLayout: React.FC = () => {
   const currentKnowledgeBasePath = useMemo(() => {
     if (!reactiveChatId || !data?.chats) return '';
     const currentChat = data.chats.find((chat: any) => chat.chat_id === reactiveChatId);
-    return currentChat?.agent?.knowledge?.knowledgeBase || currentChat?.agent?.knowledgeBase || '';
+    return currentChat?.agent?.knowledge?.knowledgeBase || '';
   }, [reactiveChatId, data?.chats, data?.lastUpdated]);
 
   // Handle moving file to Agent Knowledge (uses generic function including path replacement logic)
@@ -302,12 +302,12 @@ const AppLayout: React.FC = () => {
   return (
     <LayoutProvider>
       <PasteToWorkspaceProvider>
-        <AppLayoutContent
-          handleFileTreeNodeInstallSkill={handleFileTreeNodeInstallSkill}
-          handleFileTreeNodeMoveToKnowledge={handleFileTreeNodeMoveToKnowledge}
-          currentKnowledgeBasePath={currentKnowledgeBasePath}
-        />
-        <ModifyMessageConfim />
+            <AppLayoutContent
+              handleFileTreeNodeInstallSkill={handleFileTreeNodeInstallSkill}
+              handleFileTreeNodeMoveToKnowledge={handleFileTreeNodeMoveToKnowledge}
+              currentKnowledgeBasePath={currentKnowledgeBasePath}
+            />
+            <ModifyMessageConfim />
       </PasteToWorkspaceProvider>
     </LayoutProvider>
   );

@@ -20,7 +20,7 @@ description: Expert code review specialist. Delegate when you need thorough code
 model: inherit
 maxTurns: 15
 
-x-kosmos:
+x-openkosmos:
   display_name: Code Reviewer
   emoji: "🔍"
   version: "1.0.0"
@@ -83,7 +83,7 @@ description: Research and information gathering specialist. Delegate when you ne
 model: inherit
 maxTurns: 20
 
-x-kosmos:
+x-openkosmos:
   display_name: Research Assistant
   emoji: "📚"
   version: "1.0.0"
@@ -154,7 +154,7 @@ description: Build and test execution specialist. Delegate when you need to run 
 model: inherit
 maxTurns: 15
 
-x-kosmos:
+x-openkosmos:
   display_name: Build Runner
   emoji: "🏗️"
   version: "1.0.0"
@@ -222,7 +222,7 @@ description: Technical documentation writer. Delegate when you need to write or 
 model: inherit
 maxTurns: 20
 
-x-kosmos:
+x-openkosmos:
   display_name: Doc Writer
   emoji: "📝"
   version: "1.0.0"

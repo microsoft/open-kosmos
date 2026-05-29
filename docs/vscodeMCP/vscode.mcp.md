@@ -236,7 +236,7 @@ for (const [key, value] of Array.from(this.pendingRequests.entries())) {
 ### 5. Timeout Handling Optimization and Smart Retry Mechanism ✅
 
 #### Problem Identification
-Users reported frequent "Request timeout: initialize (15000ms)" errors, especially when a-mcp-server initialization time exceeded the 15-second limit.
+Users reported frequent "Request timeout: initialize (15000ms)" errors, especially when complex-mcp-server initialization time exceeded the 15-second limit.
 
 #### Timeout Duration Optimization (2025-08-14)
 
@@ -411,11 +411,12 @@ enum ConnectionState {
 #### 1. Stdio Configuration
 ```json
 {
-  "my-mcp-server": {
+  "complex-mcp-server-stable": {
     "command": "uvx",
-    "args": ["my-mcp-package"],
+    "args": ["complex-mcp-server"],
     "env": {
-      "WORKING_PATH": "C:\\Users\\user\\working_dir"
+      "WORKING_PATH": "C:\\Users\\yanhu\\working_dir",
+      "USER_ALIAS": "user@example.com"
     },
     "type": "stdio"
   }
@@ -476,7 +477,7 @@ private detectTransportType(vscodeConfig: any): TransportType {
 | Metric | Before | After | Improvement |
 |------|--------|--------|--------|
 | Initialization timeout limit | 15s | 30s | **100%** ⬆️ |
-| a-mcp-server connection success rate | ~30% | >95% | **65%** ⬆️ |
+| complex-mcp-server connection success rate | ~30% | >95% | **65%** ⬆️ |
 | Timeout error rate | Frequent | Rare | **90%** ⬇️ |
 | Error diagnosis time | 15s+ | Real-time | **95%** ⬇️ |
 | Retry coverage | 100% | 100% | **Maintained** ✅ |
@@ -494,7 +495,7 @@ private detectTransportType(vscodeConfig: any): TransportType {
 - **Reconnection mechanism**: 3 retries + exponential backoff
 - **Connection success rate**: >95% (smart retry + optimized timeout)
 - **Concurrent connections**: Supports 10 simultaneous server connections
-- **Timeout optimization**: Significantly improved connection stability for complex servers like a-mcp-server
+- **Timeout optimization**: Significantly improved connection stability for complex servers like complex-mcp-server
 
 ## 🚀 Usage Guide
 
@@ -604,7 +605,7 @@ node src/main/lib/mcp/vscodeMcpClient/tests/performance.test.ts
 - **mcp-server-git**: Stdio transport, 13 tools, test validation passed
 
 ### 🎯 Optimization Results
-- **a-mcp-server-stable**: JSON-RPC filter fix, connection stable
+- **complex-mcp-server-stable**: JSON-RPC filter fix, connection stable
 - **Timeout handling**: Smart retry mechanism, success rate >95%
 - **Error diagnostics**: Detailed logs, fast problem localization
 
@@ -621,7 +622,7 @@ uvx mcp-server-git --help
 
 #### 2. Timeout Issues
 ```typescript
-// Optimized configuration for complex servers like a-mcp-server (2025-08-14)
+// Optimized configuration for complex servers like complex-mcp-server (2025-08-14)
 {
   initTimeout: 30000,    // Standard 30-second initialization timeout
   retryAttempts: 3,      // Standard retry count
@@ -1437,7 +1438,7 @@ This migration not only resolved the complexity of the hybrid mode, but also est
 - **⚡ Zero-dependency full coverage**: 100% transport types with zero external dependencies
 - **🔧 Maintenance cost optimization**: Maintenance work halved
 
-This migration provides Kosmos.app's MCP functionality with the **most stable, most pure, and most maintainable** technical architecture, marking the VSCode MCP Client project reaching the **ultimate form of architectural evolution**.
+This migration provides OpenKosmos.app's MCP functionality with the **most stable, most pure, and most maintainable** technical architecture, marking the VSCode MCP Client project reaching the **ultimate form of architectural evolution**.
 
 ---
 

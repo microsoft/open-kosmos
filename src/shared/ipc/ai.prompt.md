@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-05-17 -->
+<!-- Last verified: 2026-04-19 -->
 # IPC Framework (`src/shared/ipc/`)
 
 > TypeScript generics + Proxy based framework that enforces type-safe, compile-time-checked IPC across all three Electron layers (main / preload / renderer) from a single shared definition file.
@@ -121,7 +121,7 @@ const result = await screenshotApi.saveToFile(displayId, rect, imageData);
 
 ## Standard Usage (Main → Renderer)
 
-For push-style events use `connectMainToRender<MR>(prefix?)` (see `buddy.ts` for a live example).
+For push-style events use `connectMainToRender<MR>(prefix?)` (see `buddy.ts`, `remoteChannel.ts` for live examples).
 
 - Main: `mainToRender.bindWebContents(wc).<event>(payload)` — sends to one window. There is no broadcast helper; iterate over active `WebContents` if multiple windows need the event.
 - Renderer: `mainToRender.bindRender(on, off).<event>(handler)` — registers a listener and returns its unsubscribe function.
@@ -155,6 +155,6 @@ Create a new file under `src/shared/ipc/`, instantiate `connectRenderToMain` (an
 
 ## Related
 - Used by: every main and renderer module that communicates across processes (typed) plus all legacy string-channel handlers (untyped).
-- Defines contracts for: screenshot overlay, browser control extension, scheduler, plugin, buddy, memex.
-- Foundation consumed by: `src/preload/main.ts`, `src/preload/screenshot.ts`, IPC handler files under `src/main/`.
+- Defines contracts for: screenshot overlay, remote channels (Teams), browser control extension, scheduler, plugin, buddy.
+- Foundation consumed by: `src/preload/main.ts`, `src/preload/toolbar.ts`, `src/preload/screenshot.ts`, IPC handler files under `src/main/`.
 - See also: [data-flow.md](../../../ai.prompt/data-flow.md) for the broader IPC and chat-message data flow context.

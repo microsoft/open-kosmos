@@ -82,6 +82,6 @@ export function deserializeMessage(raw: RawMessage): Message {
     case 'system':
       return parseSystemMessage(raw);
     default:
-      return parseUserMessage(raw); // Default to user message for backward compatibility
+      return parseUserMessage(raw);
   }
 }

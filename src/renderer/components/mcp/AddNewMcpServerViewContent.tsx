@@ -544,21 +544,21 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
 
       // Determine version and source for the server config
       let version: string
-      let source: 'ON-DEVICE' | 'PLUGIN'
+      let source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
 
-      // Re-fetch the latest server config to ensure source is never accidentally changed
+      // 🔒 Re-fetch the latest server config to ensure source is never accidentally changed
       const currentEditingServer = isEditMode ? getServerByName(editServerName!) : null
 
       if (isEditMode && currentEditingServer) {
         // Edit mode: preserve original source, handle version based on source type
-        source = (currentEditingServer.source || 'ON-DEVICE') as 'ON-DEVICE' | 'PLUGIN'
+        source = currentEditingServer.source || 'ON-DEVICE'
 
         if (source === 'ON-DEVICE') {
           // ON-DEVICE: auto-increment patch version
           const currentVersion = currentEditingServer.version || '1.0.0'
           version = incrementPatchVersion(currentVersion)
         } else {
-          // PLUGIN: keep version unchanged
+          // IN-LIBRARY: keep version unchanged
           version = currentEditingServer.version || '1.0.0'
         }
       } else {
@@ -578,6 +578,8 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         env: parsedConfig.env || {},
         version,
         source,
+        // 🆕 remoteVersion: empty string for ON-DEVICE source, keep original value for IN-LIBRARY
+        remoteVersion: source === 'ON-DEVICE' ? '' : (currentEditingServer?.remoteVersion || '')
       }
 
       let result: { success: boolean; error?: string }

@@ -561,6 +561,7 @@ export class AgentChatSessionCacheManager {
 }
 
 // Windows path regex: matches paths starting with a drive letter
+// Negative lookbehind (?<![:/]) prevents matching SharePoint URL fragments like /:p:/r/...Doc.aspx
 const WindowsPathRegex = /(?<![:/])([A-Za-z]:[\\\/](?:[^\\\/<>"'|?*:\n]+[\\\/])*[^\\\/<>"'|?*:\n]*\.[a-zA-Z0-9]+)/gi;
 // Unix path regex: matches paths starting with common system directories
 const UnixPathRegex = /(\/(?:Users|home|opt|var|etc|usr|Applications|Library|System|private|tmp|bin|sbin|dev|proc|sys|mnt|media|run)(?:\/[^\/\n<>"'|?*:]+)*\/[^\/\n<>"'|?*:]*\.[a-zA-Z0-9]+)/gi;

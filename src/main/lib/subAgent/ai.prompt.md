@@ -46,7 +46,7 @@
 | Change spawn limits | `src/main/lib/userDataADO/types/profile.ts` (`SUB_AGENT_LIMITS`) | Manager reads constants from there |
 | Add fields to sub-agent config | `profile.ts`, `subAgentFileManager.ts` | Update YAML serialization and migration |
 | Tune conversation limits (turns/timeout) | `subAgentChat.ts` | Constants near top of file; also check `SUB_AGENT_LIMITS` |
-| Import new Claude Code tool name | `subAgentFileManager.ts` (`CLAUDE_TO_OPENKOSMOS_TOOL_MAP`) | Extend the mapping object |
+| Import new Claude Code tool name | `subAgentFileManager.ts` (`CLAUDE_TO_OpenKosmos_TOOL_MAP`) | Extend the mapping object |
 | Expose sub-agent state to renderer | `subAgentManager.ts` + IPC handler in `main.ts` | Use existing `SubAgentRuntimeState` shape |
 
 ## Gotchas

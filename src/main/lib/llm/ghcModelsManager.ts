@@ -22,7 +22,7 @@
  *   triggered when the remote has no Claude models but the local cache does; if neither side has Claude, the
  *   update proceeds normally.
  *
- * Models used by OpenKosmos are dynamically matched from the GHC model set via OPENKOSMOS_MODEL_PATTERNS,
+ * Models used by OpenKosmos are dynamically matched from the GHC model set via OpenKosmos_MODEL_PATTERNS,
  * eliminating the need to manually maintain a static ID list — new models matching an existing pattern
  * are automatically included when they go live on GHC.
  */
@@ -62,7 +62,7 @@ const MODELS_FILE_NAME = 'github-copilot-models.json';
  */
 
 /** Matching rule: include represents the regex for model IDs to include */
-const OPENKOSMOS_MODEL_PATTERNS: { include: RegExp; sortGroup: number }[] = [
+const OpenKosmos_MODEL_PATTERNS: { include: RegExp; sortGroup: number }[] = [
   // Claude ≥4.0 opus / sonnet (excludes haiku)
   // Matches claude-(opus|sonnet)-4, 4.5, 4.6, 5, 10, … (major version ≥4)
   { include: /^claude-(opus|sonnet)-([4-9]|\d{2,})/, sortGroup: 0 },
@@ -75,7 +75,7 @@ const OPENKOSMOS_MODEL_PATTERNS: { include: RegExp; sortGroup: number }[] = [
 ];
 
 /** Global exclusion: lightweight and reasoning-only variants (\b prevents matching "mini" inside "gemini") */
-const OPENKOSMOS_MODEL_EXCLUDE = /\bmini|\bflash|\bhaiku/i;
+const OpenKosmos_MODEL_EXCLUDE = /\bmini|\bflash|\bhaiku/i;
 
 // Model categories for UI organization (dynamically maintained is not needed here, kept for backward compat)
 const MODEL_CATEGORIES = {
@@ -395,9 +395,9 @@ class GhcModelsManager {
    * Matching logic:
    *   1. capabilities.type === 'chat'
    *   2. model_picker_enabled === true
-   *   3. Model ID matches at least one OPENKOSMOS_MODEL_PATTERNS include regex
+   *   3. Model ID matches at least one OpenKosmos_MODEL_PATTERNS include regex
    *      (Claude ≥4.0 opus/sonnet, Gemini ≥2.5 pro, GPT >5.0)
-   *   4. Model ID does not match OPENKOSMOS_MODEL_EXCLUDE (mini/flash/haiku)
+   *   4. Model ID does not match OpenKosmos_MODEL_EXCLUDE (mini/flash/haiku)
    *
    * Sort: grouped by sortGroup (Claude → Gemini → GPT), within each group sorted by ID descending
    * (leveraging the natural alphabetical ordering of version numbers; newer versions have larger digits/letters,
@@ -416,12 +416,12 @@ class GhcModelsManager {
       }
 
       // Globally exclude lightweight / reasoning-only variants
-      if (OPENKOSMOS_MODEL_EXCLUDE.test(model.id)) {
+      if (OpenKosmos_MODEL_EXCLUDE.test(model.id)) {
         continue;
       }
 
       // Check if the model matches any include pattern
-      for (const pattern of OPENKOSMOS_MODEL_PATTERNS) {
+      for (const pattern of OpenKosmos_MODEL_PATTERNS) {
         if (pattern.include.test(model.id)) {
           matched.push({ model, sortGroup: pattern.sortGroup });
           break; // Each model is assigned to only the first matching group

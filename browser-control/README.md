@@ -1,11 +1,11 @@
-# Kosmos Browser Control
+# OpenKosmos Browser Control
 
-Browser control suite for [Kosmos](https://github.com/anthropics/kosmos). Exposes Chrome browser capabilities to AI agents via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling browser automation, content analysis, and interaction — all within the user's existing browser session.
+Browser control suite for [OpenKosmos](https://github.com/microsoft/open-kosmos). Exposes Chrome browser capabilities to AI agents via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling browser automation, content analysis, and interaction — all within the user's existing browser session.
 
 ## Architecture
 
 ```
-MCP Client (Kosmos)
+MCP Client (OpenKosmos)
         │
         ▼  Streamable HTTP / SSE / stdio
 ┌───────────────────┐

@@ -2,7 +2,7 @@
 
 > **Document Version**: v1.0
 > **Research Date**: 2026-02-26
-> **Purpose**: Provide technical reference for developing sub-agent capabilities in OpenOpenKosmos AI Studio
+> **Purpose**: Provide technical reference for developing sub-agent capabilities in OpenKosmos AI Studio
 
 ---
 
@@ -18,7 +18,7 @@
 8. [Security and Trust Model](#8-security-and-trust-model)
 9. [MCP Integration and Extensibility](#9-mcp-integration-and-extensibility)
 10. [Comparison with Other Multi-Agent Frameworks](#10-comparison-with-other-multi-agent-frameworks)
-11. [OpenKosmos Integration Proposal](#11-kosmos-integration-proposal)
+11. [OpenKosmos Integration Proposal](#11-openkosmos-integration-proposal)
 12. [References](#12-references)
 
 ---

@@ -26,6 +26,7 @@ import {
   removeChatSessionsDirectory,
   removeDefaultWorkspaceDirectory,
 } from './pathUtils';
+import { BRAND_NAME } from '@shared/constants/branding';
 import {
   normalizeAgentSkillNames,
   createDefaultChat,
@@ -149,7 +150,7 @@ export async function deleteChatConfig(
     if (chatIndex < 0) return false;
 
     const chatToDelete = profile.chats[chatIndex];
-    if (isBuiltinAgent(chatToDelete.agent?.name)) {
+    if (isBuiltinAgent(chatToDelete.agent?.name, BRAND_NAME)) {
       logger.warn('[ProfileChatCrud] Cannot delete built-in agent', 'deleteChatConfig', {
         alias, chatId, agentName: chatToDelete.agent?.name,
       });
@@ -269,6 +270,13 @@ export async function updateChatAgent(
     const newAgentName = agentUpdates.name;
 
     if (newAgentName !== undefined && oldAgentName && newAgentName !== oldAgentName) {
+      if (oldAgent?.source === 'IN-LIBRARY') {
+        logger.warn('[ProfileChatCrud] Cannot rename IN-LIBRARY agent', 'updateChatAgent', {
+          oldName: oldAgentName, newName: newAgentName,
+        });
+        return false;
+      }
+
       if (profile.primaryAgent === oldAgentName) {
         profile.primaryAgent = newAgentName;
         logger.info('[ProfileChatCrud] Updated primaryAgent due to agent rename', 'updateChatAgent', {

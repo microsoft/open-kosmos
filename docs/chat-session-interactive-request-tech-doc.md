@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-This document defines the implementation plan for a unified interactive request system in Kosmos chat sessions.
+This document defines the implementation plan for a unified interactive request system in OpenKosmos chat sessions.
 
 It replaces the current split implementation for:
 
@@ -21,7 +21,7 @@ The migration does not preserve backward compatibility with the old interaction 
 
 ### 2.1 Existing Runtime Paths
 
-Kosmos already has two wait-for-user-input implementations:
+OpenKosmos already has two wait-for-user-input implementations:
 
 1. Approval path:
    [src/main/lib/chat/agentChat.ts](../src/main/lib/chat/agentChat.ts), [src/main/main.ts](../src/main/main.ts), [src/preload/main.ts](../src/preload/main.ts), [src/renderer/lib/chat/agentChatSessionCacheManager.ts](../src/renderer/lib/chat/agentChatSessionCacheManager.ts), [src/renderer/components/chat/ApprovalBar.tsx](../src/renderer/components/chat/ApprovalBar.tsx)
@@ -205,7 +205,7 @@ Recommended direction:
 1. Add a built-in tool named `requestInteractiveInput`.
 2. The tool returns or triggers a JSON interaction schema, not HTML, JSX, or free-form UI markup.
 3. Main process code maps that schema onto the existing `InteractiveRequest` types.
-4. The renderer continues to render only controlled Kosmos card components.
+4. The renderer continues to render only controlled OpenKosmos card components.
 
 This preserves safety, testability, and renderer consistency.
 
@@ -233,7 +233,7 @@ Recommended purpose:
 
 1. Allow the model to request user input during a paused turn, with a default preference for structured collection whenever the ask can be expressed as a choice or form.
 2. Express the request in JSON that the main process can validate and normalize.
-3. Convert the schema into one existing Kosmos interaction request.
+3. Convert the schema into one existing OpenKosmos interaction request.
 
 Recommended high-level input shape:
 

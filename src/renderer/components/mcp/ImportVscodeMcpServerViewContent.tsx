@@ -348,7 +348,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             // For overwrite, keep the original name
           }
 
-          // Convert to OpenKosmos format
+          // Convert to OpenKosmos.app format
           const openkosmosConfig: OpenKosmosAppMCPServerConfig = {
             name: finalName,
             transport: server.transport === 'StreamableHttp' ? 'StreamableHttp' as const : server.transport as 'stdio' | 'sse',
@@ -360,6 +360,8 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             // 🆕 Added from Import from VS Code: uniformly use 1.0.0 and ON-DEVICE
             version: '1.0.0',
             source: 'ON-DEVICE',
+            // ON-DEVICE servers do not need remoteVersion, set to empty string
+            remoteVersion: ''
           }
 
           // Validate if required

@@ -6,20 +6,20 @@ import {
   hasOpenKosmosPlaceholdersInObject,
   extractOpenKosmosPlaceholders,
   replaceOpenKosmosPlaceholders,
-  OPENKOSMOS_PLACEHOLDER_REGEX,
+  OpenKosmos_PLACEHOLDER_REGEX,
 } from '../openkosmosPlaceholderParser';
 
 describe('openkosmosPlaceholderParser', () => {
-  describe('OPENKOSMOS_PLACEHOLDER_REGEX', () => {
+  describe('OpenKosmos_PLACEHOLDER_REGEX', () => {
     it('matches valid placeholders', () => {
-      const matches = 'Use @OPENKOSMOS_WORKSPACE_FOLDER here'.match(new RegExp(OPENKOSMOS_PLACEHOLDER_REGEX.source, 'g'));
-      expect(matches).toEqual(['@OPENKOSMOS_WORKSPACE_FOLDER']);
+      const matches = 'Use @OpenKosmos_WORKSPACE_FOLDER here'.match(new RegExp(OpenKosmos_PLACEHOLDER_REGEX.source, 'g'));
+      expect(matches).toEqual(['@OpenKosmos_WORKSPACE_FOLDER']);
     });
   });
 
   describe('containsOpenKosmosPlaceholder', () => {
     it('returns true for string with placeholder', () => {
-      expect(containsOpenKosmosPlaceholder('path/@OPENKOSMOS_PROFILE/data')).toBe(true);
+      expect(containsOpenKosmosPlaceholder('path/@OpenKosmos_PROFILE/data')).toBe(true);
     });
 
     it('returns false for string without placeholder', () => {
@@ -31,18 +31,18 @@ describe('openkosmosPlaceholderParser', () => {
       expect(containsOpenKosmosPlaceholder(null as any)).toBe(false);
     });
 
-    it('returns false for lowercase kosmos', () => {
+    it('returns false for lowercase openkosmos', () => {
       expect(containsOpenKosmosPlaceholder('@openkosmos_test')).toBe(false);
     });
 
     it('matches multiple placeholders', () => {
-      expect(containsOpenKosmosPlaceholder('@OPENKOSMOS_A and @OPENKOSMOS_B')).toBe(true);
+      expect(containsOpenKosmosPlaceholder('@OpenKosmos_A and @OpenKosmos_B')).toBe(true);
     });
   });
 
   describe('hasOpenKosmosPlaceholdersInObject', () => {
     it('returns true when a value contains placeholder', () => {
-      expect(hasOpenKosmosPlaceholdersInObject({ key: '@OPENKOSMOS_PATH' })).toBe(true);
+      expect(hasOpenKosmosPlaceholdersInObject({ key: '@OpenKosmos_PATH' })).toBe(true);
     });
 
     it('returns false when no values contain placeholders', () => {
@@ -62,8 +62,8 @@ describe('openkosmosPlaceholderParser', () => {
 
   describe('extractOpenKosmosPlaceholders', () => {
     it('extracts all unique placeholders', () => {
-      const result = extractOpenKosmosPlaceholders('@OPENKOSMOS_A and @OPENKOSMOS_B and @OPENKOSMOS_A');
-      expect(result).toEqual(['@OPENKOSMOS_A', '@OPENKOSMOS_B']);
+      const result = extractOpenKosmosPlaceholders('@OpenKosmos_A and @OpenKosmos_B and @OpenKosmos_A');
+      expect(result).toEqual(['@OpenKosmos_A', '@OpenKosmos_B']);
     });
 
     it('returns empty array for no placeholders', () => {
@@ -81,7 +81,7 @@ describe('openkosmosPlaceholderParser', () => {
     });
 
     it('returns original when no API available', async () => {
-      const env = { PATH: '@OPENKOSMOS_DATA' };
+      const env = { PATH: '@OpenKosmos_DATA' };
       const result = await replaceOpenKosmosPlaceholders(env);
       expect(result).toBe(env);
     });
@@ -95,7 +95,7 @@ describe('openkosmosPlaceholderParser', () => {
           }),
         },
       };
-      const result = await replaceOpenKosmosPlaceholders({ PATH: '@OPENKOSMOS_DATA' });
+      const result = await replaceOpenKosmosPlaceholders({ PATH: '@OpenKosmos_DATA' });
       expect(result).toEqual({ PATH: '/resolved/data' });
     });
 
@@ -108,7 +108,7 @@ describe('openkosmosPlaceholderParser', () => {
           }),
         },
       };
-      const env = { PATH: '@OPENKOSMOS_DATA' };
+      const env = { PATH: '@OpenKosmos_DATA' };
       const result = await replaceOpenKosmosPlaceholders(env);
       expect(result).toBe(env);
     });
@@ -119,7 +119,7 @@ describe('openkosmosPlaceholderParser', () => {
           replacePlaceholders: vi.fn().mockRejectedValue(new Error('crash')),
         },
       };
-      const env = { PATH: '@OPENKOSMOS_DATA' };
+      const env = { PATH: '@OpenKosmos_DATA' };
       const result = await replaceOpenKosmosPlaceholders(env);
       expect(result).toBe(env);
     });

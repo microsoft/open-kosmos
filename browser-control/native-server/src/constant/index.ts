@@ -2,9 +2,9 @@ import { DEFAULT_SERVER_PORT } from 'chrome-mcp-shared';
 
 export const NATIVE_SERVER_PORT = DEFAULT_SERVER_PORT;
 
-// Kosmos HTTP server (browserControlHttpServer) configuration
-export const KOSMOS_HTTP_PORT = 8000;
-export const KOSMOS_HTTP_BASE = `http://127.0.0.1:${KOSMOS_HTTP_PORT}`;
+// OpenKosmos HTTP server (browserControlHttpServer) configuration
+export const OpenKosmos_HTTP_PORT = 8000;
+export const OpenKosmos_HTTP_BASE = `http://127.0.0.1:${OpenKosmos_HTTP_PORT}`;
 
 // Timeout constants (in milliseconds)
 export const TIMEOUTS = {

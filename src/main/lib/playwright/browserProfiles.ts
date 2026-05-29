@@ -6,6 +6,9 @@
  *
  * This ensures that profile data (which may contain browser localStorage
  * with auth tokens) does not persist across system reboots on most OSes.
+ *
+ * Predefined profiles:
+ *   - "teams-auth": used for browser-based authentication, stores Teams SSO cookies
  */
 
 import * as fs from 'node:fs';

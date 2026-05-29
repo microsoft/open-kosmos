@@ -130,14 +130,6 @@ vi.mock('../../chat/workspace/PasteToWorkspaceProvider', () => ({
   PasteToWorkspaceProvider: ({ children }: any) => <div>{children}</div>,
 }));
 
-vi.mock('../../chat/workspace/SharePointSearchProvider', () => ({
-  SharePointSearchProvider: ({ children }: any) => <div>{children}</div>,
-}));
-
-vi.mock('../../chat/workspace/TeamsChatSelectorProvider', () => ({
-  TeamsChatSelectorProvider: ({ children }: any) => <div>{children}</div>,
-}));
-
 // ---- helpers ----
 
 function setupElectronAPI() {

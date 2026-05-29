@@ -171,7 +171,7 @@
   text-overflow: ellipsis;
 }
 
-/* 🔥 Built-in Agent badge styles (for Kobi, PM Agent, and other built-in Agents) - consistent with .agent-tab .builtin-badge */
+/* 🔥 Built-in Agent badge styles (for Kobi and other built-in Agents) - consistent with .agent-tab .builtin-badge */
 .nav-item-label .kobi-builtin-badge {
   display: inline-flex;
   align-items: center;

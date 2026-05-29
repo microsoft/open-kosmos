@@ -739,17 +739,6 @@ describe('When electronAPI is unavailable', () => {
 });
 
 // ============================================================
-// Example agent badge
-// ============================================================
-
-describe('Example agent badge', () => {
-  it('shows Example badge for PM Agent - Journeys', () => {
-    render(<AgentList chats={[makeChat({ agent: { name: 'PM Agent - Journeys' } })]} excludeBuiltinAgents={false} />);
-    expect(screen.getByText('Example')).toBeInTheDocument();
-  });
-});
-
-// ============================================================
 // Session context: currentChatSessionId highlights active session
 // ============================================================
 

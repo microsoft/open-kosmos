@@ -2,7 +2,7 @@
 import serverInstance from './server';
 import nativeMessagingHostInstance from './native-messaging-host';
 import { browserConfig } from './config/browser-config';
-import { notifyServerDown } from './kosmos-notifier';
+import { notifyServerDown } from './openkosmos-notifier';
 
 console.error('[NativeServer] Starting Native Server...');
 

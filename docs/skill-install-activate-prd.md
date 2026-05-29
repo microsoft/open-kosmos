@@ -4,7 +4,7 @@
 
 ## 1. Background
 
-Kosmos currently uses a two-layer Skill model:
+OpenKosmos currently uses a two-layer Skill model:
 
 1. `ProfileV2.skills` is the global installed-skill registry.
 2. `ChatAgent.skills` is the per-Agent binding list.
@@ -26,7 +26,7 @@ From the user's perspective, this is not a minor state mismatch. It is a broken 
 
 ## 2. Problem Statement
 
-Kosmos currently exposes two different meanings under the same conversational concept of "available Skill":
+OpenKosmos currently exposes two different meanings under the same conversational concept of "available Skill":
 
 1. installed in the profile registry
 2. callable by the current Agent in the current chat
@@ -40,7 +40,7 @@ This causes four product problems:
 
 ## 3. Product Decision
 
-Kosmos will treat "install and use" as a complete product transaction, not as two separate expert-only steps.
+OpenKosmos will treat "install and use" as a complete product transaction, not as two separate expert-only steps.
 
 The new product rule is:
 
@@ -49,7 +49,7 @@ The new product rule is:
 3. `callable in current chat` means the current Agent can actually use that Skill now
 4. the system must not claim immediate usability unless the current chat has reached the callable state
 
-When the user expresses immediate-use intent, Kosmos should complete both installation and activation in one guided flow.
+When the user expresses immediate-use intent, OpenKosmos should complete both installation and activation in one guided flow.
 
 ## 4. Scope
 
@@ -102,7 +102,7 @@ When the user expresses immediate-use intent, Kosmos should complete both instal
 
 ### 7.1 Truthful Success Messaging
 
-Kosmos must only use "ready to use" language when the current Agent can actually call the Skill.
+OpenKosmos must only use "ready to use" language when the current Agent can actually call the Skill.
 
 Allowed states:
 
@@ -119,11 +119,11 @@ If the user says:
 2. "install and use it now"
 3. "install this for you to use"
 
-Kosmos should interpret that as an install-and-activate request, not as install-only.
+OpenKosmos should interpret that as an install-and-activate request, not as install-only.
 
 ### 7.3 No Silent Global Side Effects
 
-Kosmos must not apply a newly installed Skill to all Agents unless the user explicitly asks for that.
+OpenKosmos must not apply a newly installed Skill to all Agents unless the user explicitly asks for that.
 
 ### 7.4 Clear Ambiguity Handling
 
@@ -161,7 +161,7 @@ When all of the following are true:
 2. the request occurs in a single-Agent chat context
 3. the current Agent is editable
 
-Kosmos must auto-apply the installed Skill to the current Agent.
+OpenKosmos must auto-apply the installed Skill to the current Agent.
 
 ### 8.4 Ambiguous Target Resolution
 
@@ -174,7 +174,7 @@ When the request occurs in a context with more than one possible target Agent:
 
 ### 8.5 Availability Query
 
-Kosmos must provide an availability check that returns:
+OpenKosmos must provide an availability check that returns:
 
 1. whether the Skill is installed
 2. whether it is applied to the current Agent
@@ -248,6 +248,24 @@ Installing from Settings or Skill library views must use the same post-install r
 2. activation success rate
 3. install-to-activation abandonment rate
 4. multi-Agent target-selection completion rate
+
+## 12. Telemetry Requirements
+
+The product should emit:
+
+1. `skill_installed`
+2. `skill_applied_to_agent`
+3. `skill_install_and_activate_completed`
+4. `skill_install_activation_abandoned`
+
+These events should include, when available:
+
+1. skill name
+2. skill version
+3. source type
+4. chat ID
+5. Agent name
+6. resolution type
 
 ## 13. UX Requirements
 

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useSkills, useProfileDataRefresh } from '../userData/userDataProvider';
 import { useToast } from '../ui/ToastProvider';
 import SkillsHeaderView from './SkillsHeaderView';
@@ -15,6 +15,8 @@ const SkillsView: React.FC = () => {
     onSkillsAddMenuToggle,
     onSkillMenuToggle,
   } = useOutletContext<AgentContextType>();
+
+  const navigate = useNavigate();
 
   // Use ProfileDataManager for Skills data
   const { skills, stats: skillsStats, isLoading } = useSkills();
@@ -137,6 +139,11 @@ const SkillsView: React.FC = () => {
 
   // Listen for Skills add menu events from AppLayout
   useEffect(() => {
+    const handleAddFromLibrary = () => {
+      // Navigate to skill library page
+      navigate('/settings/skills/skill-library');
+    };
+
     const handleAddFromDeviceArtifact = () => {
       void handleAddFromDevice('artifact');
     };
@@ -145,10 +152,7 @@ const SkillsView: React.FC = () => {
       void handleAddFromDevice('folder');
     };
 
-    const handleAddFromDeviceLegacy = () => {
-      void handleAddFromDevice();
-    };
-
+    window.addEventListener('skills:addFromLibrary', handleAddFromLibrary);
     window.addEventListener(
       'skills:addFromDeviceArtifact',
       handleAddFromDeviceArtifact as EventListener,
@@ -157,12 +161,9 @@ const SkillsView: React.FC = () => {
       'skills:addFromDeviceFolder',
       handleAddFromDeviceFolder as EventListener,
     );
-    window.addEventListener(
-      'skills:addFromDevice',
-      handleAddFromDeviceLegacy as EventListener,
-    );
 
     return () => {
+      window.removeEventListener('skills:addFromLibrary', handleAddFromLibrary);
       window.removeEventListener(
         'skills:addFromDeviceArtifact',
         handleAddFromDeviceArtifact as EventListener,
@@ -171,12 +172,8 @@ const SkillsView: React.FC = () => {
         'skills:addFromDeviceFolder',
         handleAddFromDeviceFolder as EventListener,
       );
-      window.removeEventListener(
-        'skills:addFromDevice',
-        handleAddFromDeviceLegacy as EventListener,
-      );
     };
-  }, [handleAddFromDevice]);
+  }, [handleAddFromDevice, navigate]);
 
   return (
     <div className="skills-view">

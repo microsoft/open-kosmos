@@ -11,7 +11,6 @@ export { ProfileDataManager, profileDataManager } from './profileDataManager'
 // 🆕 AppDataManager — frontend app.json cache manager (renderer process only)
 export { AppDataManager, appDataManager } from './appDataManager'
 export type { AppDataListener } from './appDataManager'
-export { useVoiceInputEnabled } from './useVoiceInputEnabled'
 export type { AppConfig, RuntimeEnvironment, RuntimeMode } from './types'
 
 // Export all types for use in other parts of the application
@@ -31,5 +30,6 @@ export type {
   ProfileCacheData,
   ProfileDataListener,
   MCPStats,
+  ProfileSyncResponse,
   GhcModel
 } from './types'

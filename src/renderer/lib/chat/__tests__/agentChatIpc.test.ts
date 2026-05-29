@@ -55,10 +55,9 @@ describe('AgentChatIpc', () => {
     return mod.agentChatIpc;
   }
 
-  it('sets up all six IPC listeners on construction', async () => {
+  it('sets up all five IPC listeners on construction', async () => {
     await getInstance();
     expect(api.agentChat.onStreamingChunk).toHaveBeenCalled();
-    expect(api.agentChat.onStreamingMessage).toHaveBeenCalled();
     expect(api.agentChat.onToolUse).toHaveBeenCalled();
     expect(api.agentChat.onToolResult).toHaveBeenCalled();
     expect(api.agentChat.onToolMessageAdded).toHaveBeenCalled();
@@ -366,7 +365,6 @@ describe('AgentChatIpc', () => {
     ipc.destroy();
 
     expect(cleanupFns.chunk).toHaveBeenCalled();
-    expect(cleanupFns.streaming).toHaveBeenCalled();
     expect(cleanupFns.toolUse).toHaveBeenCalled();
     expect(cleanupFns.toolResult).toHaveBeenCalled();
     expect(cleanupFns.toolMessageAdded).toHaveBeenCalled();
@@ -389,25 +387,6 @@ describe('AgentChatIpc', () => {
     expect(eventListener).toHaveBeenCalledTimes(1);
 
     window.removeEventListener('agentChat:toolMessageAdded', eventListener);
-  });
-
-  it('streaming message listener error does not crash the handler', async () => {
-    let streamingHandler: ((msg: any) => void) | null = null;
-    api.agentChat.onStreamingMessage.mockImplementation((cb: (msg: any) => void) => {
-      streamingHandler = cb;
-      return vi.fn();
-    });
-
-    const ipc = await getInstance();
-    const badListener = vi.fn().mockImplementation(() => { throw new Error('boom'); });
-    // Directly push into internal list via streamMessage to add then trigger
-    const msg = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'hi' }], timestamp: 0 } as any;
-
-    // Start a stream to register callback
-    const streamPromise = ipc.streamMessage(msg, { onAssistantMessage: badListener });
-    streamingHandler!({ id: 'a1' });
-    await streamPromise;
-    // No throw means error was swallowed
   });
 
   it('toolUse listener error is swallowed', async () => {

@@ -1,7 +1,7 @@
 /**
  * ApplyMcpToAgentsDialog Component
  *
- * A unified dialog shown after MCP server(s) are added (from device or VS Code import).
+ * A unified dialog shown after MCP server(s) are added (from device, VS Code import, or library).
  * Displays all local agents and lets the user choose which agents to apply the MCP server(s) to.
  * Agents already using all of the MCP servers are pre-checked and disabled.
  *
@@ -25,8 +25,6 @@ import {
 import { useProfileData } from '../userData/userDataProvider'
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
-import { BRAND_NAME } from '../../../shared/constants/branding'
-import { isBuiltinAgent } from '../../../main/lib/userDataADO/types/profile'
 
 interface ApplyMcpToAgentsDialogProps {
   open: boolean
@@ -95,39 +93,30 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
     return serverToolsMap.get(entry.name) || new Set()
   }, [serverToolsMap])
 
-  // Extract agents from chats, excluding built-in agents
   const agentItems: AgentItem[] = useMemo(() => {
     const items: AgentItem[] = []
-    const shouldInclude = (agent: { name: string; source?: string }) => {
-      if (isBuiltinAgent(agent.name, BRAND_NAME) && agent.name === 'Kobi') return false
-      return true
-    }
     for (const chat of chats) {
       if (chat.chat_type === 'single_agent' && chat.agent) {
-        if (shouldInclude(chat.agent)) {
-          const existingNames = new Set((chat.agent.mcp_servers || []).map(s => s.name))
+        const existingNames = new Set((chat.agent.mcp_servers || []).map(s => s.name))
+        const allApplied = mcpServerNames.every(name => existingNames.has(name))
+        items.push({
+          chatId: chat.chat_id,
+          agentName: chat.agent.name,
+          emoji: chat.agent.emoji,
+          avatar: chat.agent.avatar,
+          alreadyApplied: allApplied,
+        })
+      } else if (chat.chat_type === 'multi_agent' && chat.agents) {
+        for (const agent of chat.agents) {
+          const existingNames = new Set((agent.mcp_servers || []).map(s => s.name))
           const allApplied = mcpServerNames.every(name => existingNames.has(name))
           items.push({
             chatId: chat.chat_id,
-            agentName: chat.agent.name,
-            emoji: chat.agent.emoji,
-            avatar: chat.agent.avatar,
+            agentName: agent.name,
+            emoji: agent.emoji,
+            avatar: agent.avatar,
             alreadyApplied: allApplied,
           })
-        }
-      } else if (chat.chat_type === 'multi_agent' && chat.agents) {
-        for (const agent of chat.agents) {
-          if (shouldInclude(agent)) {
-            const existingNames = new Set((agent.mcp_servers || []).map(s => s.name))
-            const allApplied = mcpServerNames.every(name => existingNames.has(name))
-            items.push({
-              chatId: chat.chat_id,
-              agentName: agent.name,
-              emoji: agent.emoji,
-              avatar: agent.avatar,
-              alreadyApplied: allApplied,
-            })
-          }
         }
       }
     }

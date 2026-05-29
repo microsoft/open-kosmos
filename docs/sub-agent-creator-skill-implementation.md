@@ -58,7 +58,7 @@ Maintain a consistent paradigm with `skill-creator`:
 |------|--------------|---------------------------|
 | Core File | `SKILL.md` | `SKILL.md` |
 | Scripts | `init_skill.py`, `package_skill.py`, `quick_validate.py` | `init_agent.py`, `quick_validate.py` |
-| Reference Docs | `references/workflows.md`, `references/output-patterns.md` | `references/agent-patterns.md`, `references/kosmos-extensions.md` |
+| Reference Docs | `references/workflows.md`, `references/output-patterns.md` | `references/agent-patterns.md`, `references/openkosmos-extensions.md` |
 | Output Artifact | `{skill-name}/SKILL.md` | `{agent-name}/AGENT.md` |
 | Directory | `skills/{skill-name}/` | `agents/{agent-name}/` |
 
@@ -96,7 +96,7 @@ mcpServers:
   - github-server
 
 # OpenKosmos Extension Fields
-x-kosmos:
+x-openkosmos:
   display_name: Code Reviewer
   emoji: "🔍"
   version: "1.0.0"
@@ -174,7 +174,7 @@ resources/examples/skills/sub-agent-creator/
 │   └── quick_validate.py            ← Validate AGENT.md format
 └── references/
     ├── agent-patterns.md            ← Sub-Agent design patterns and best practices
-    └── kosmos-extensions.md         ← OpenKosmos x-kosmos extension fields reference
+    └── openkosmos-extensions.md         ← OpenKosmos x-openkosmos extension fields reference
 ```
 
 ### 3.2 SKILL.md Design Approach
@@ -192,7 +192,7 @@ Following the successful pattern of `skill-creator`, the `sub-agent-creator` SKI
 
 | Difference | skill-creator | sub-agent-creator |
 |--------|--------------|-------------------|
-| Output Format | SKILL.md (YAML has only name + description) | AGENT.md (YAML contains full configuration + x-kosmos extensions) |
+| Output Format | SKILL.md (YAML has only name + description) | AGENT.md (YAML contains full configuration + x-openkosmos extensions) |
 | Output Content | body = AI instruction document | body = system_prompt |
 | Configuration Complexity | Low (2 required fields) | High (20+ optional fields, split between Claude Code standard layer and OpenKosmos extension layer) |
 | Resource Types | scripts/ + references/ + assets/ | No resource subdirectories for now (AGENT.md is self-contained) |
@@ -229,7 +229,7 @@ license: Complete terms in LICENSE.txt
   - Format specification (YAML front-matter + Markdown body)
   - Required fields: name, description
   - Claude Code standard fields reference
-  - OpenKosmos extension fields (x-kosmos namespace)
+  - OpenKosmos extension fields (x-openkosmos namespace)
   - Complete example
 
 ## Core Principles
@@ -250,7 +250,7 @@ license: Complete terms in LICENSE.txt
   - scripts/init_agent.py: Create Sub-Agent directory and template
   - scripts/quick_validate.py: Validate AGENT.md format
   - references/agent-patterns.md: Common Sub-Agent design patterns
-  - references/kosmos-extensions.md: OpenKosmos x-kosmos fields complete reference
+  - references/openkosmos-extensions.md: OpenKosmos x-openkosmos fields complete reference
 ```
 
 ### 4.3 Design Considerations
@@ -277,7 +277,7 @@ python init_agent.py <agent-name> --path <output-directory>
 1. Validate `agent-name` format (lowercase letters + digits + hyphens, `/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/`)
 2. Create `{agent-name}/` directory under the specified path
 3. Generate template `AGENT.md` containing:
-   - Complete YAML front-matter (name, description TODO, model: inherit, maxTurns: 25, x-kosmos defaults)
+   - Complete YAML front-matter (name, description TODO, model: inherit, maxTurns: 25, x-openkosmos defaults)
    - Markdown body template (structured TODO for system_prompt)
 4. Print next-step instructions
 
@@ -289,7 +289,7 @@ description: "[TODO: Describe what this sub-agent does and when it should be del
 model: inherit
 maxTurns: 25
 
-x-kosmos:
+x-openkosmos:
   display_name: "{agent_title}"
   emoji: "🤖"
   version: "1.0.0"
@@ -329,7 +329,7 @@ Key guidelines:
 | `model` value valid | inherit / sonnet / opus / haiku / specific model name (advisory warning only) |
 | `maxTurns` range | Integer between 1-100 |
 | `context_access` value valid | isolated / parent_summary / full_history |
-| `x-kosmos` namespace | OpenKosmos extension fields must be under x-kosmos |
+| `x-openkosmos` namespace | OpenKosmos extension fields must be under x-openkosmos |
 | Markdown body non-empty | system_prompt cannot be empty |
 
 > **Tech Review Revision**: The original `name` ≤64 character and `description` ≤1024 character limits have been removed — `SubAgentFileManager.validateAgentConfig()` at runtime **does not enforce length limits** (only checks non-empty and regex pattern). Script validation rules should align with runtime to avoid cases where the script passes but runtime fails (or vice versa). Length recommendations can be output as warnings rather than errors.
@@ -372,16 +372,16 @@ Key guidelines:
    - Lack of clear task completion criteria
 ```
 
-### 6.2 `references/kosmos-extensions.md`
+### 6.2 `references/openkosmos-extensions.md`
 
-**Content**: Complete reference for all extension fields under the `x-kosmos` namespace
+**Content**: Complete reference for all extension fields under the `x-openkosmos` namespace
 
 ```
 # OpenKosmos Extension Fields Reference
 
-## x-kosmos Namespace
+## x-openkosmos Namespace
 
-All OpenKosmos-specific fields are placed under the x-kosmos key in YAML front-matter,
+All OpenKosmos-specific fields are placed under the x-openkosmos key in YAML front-matter,
 ensuring interoperability with the Claude Code standard format.
 
 ## Field Reference
@@ -586,7 +586,7 @@ Ideal flow:   Agent calls add_sub_agent_by_config → Backend auto-writes AGENT.
 | `resources/examples/skills/sub-agent-creator/scripts/init_agent.py` | Sub-Agent initialization script |
 | `resources/examples/skills/sub-agent-creator/scripts/quick_validate.py` | AGENT.md validation script |
 | `resources/examples/skills/sub-agent-creator/references/agent-patterns.md` | Sub-Agent design patterns reference |
-| `resources/examples/skills/sub-agent-creator/references/kosmos-extensions.md` | OpenKosmos x-kosmos fields reference |
+| `resources/examples/skills/sub-agent-creator/references/openkosmos-extensions.md` | OpenKosmos x-openkosmos fields reference |
 
 ### 9.2 Modified Files
 
@@ -617,7 +617,7 @@ The following files **do not need changes** because they already operate dynamic
 |------|------|--------|
 | 1.1 | Write `SKILL.md` (core creation guide, <500 lines) | P0 |
 | 1.2 | Write `references/agent-patterns.md` (4 design patterns + examples) | P0 |
-| 1.3 | Write `references/kosmos-extensions.md` (x-kosmos fields complete reference) | P0 |
+| 1.3 | Write `references/openkosmos-extensions.md` (x-openkosmos fields complete reference) | P0 |
 | 1.4 | Copy `LICENSE.txt` (same as skill-creator) | P0 |
 
 ### Phase 2: Script Development (Estimated 0.5 days)
@@ -691,7 +691,7 @@ The following files **do not need changes** because they already operate dynamic
 | **Registration Location** | `BUILTIN_SKILL_NAMES` | `BUILTIN_SKILL_NAMES` |
 | **SKILL.md Line Count** | ~357 lines | Target <500 lines |
 | **Number of Scripts** | 3 (init, package, validate) | 2 (init, validate) — AGENT.md does not need packaging |
-| **Reference Docs** | 2 (workflows, output-patterns) | 2 (agent-patterns, kosmos-extensions) |
+| **Reference Docs** | 2 (workflows, output-patterns) | 2 (agent-patterns, openkosmos-extensions) |
 | **Frontmatter Fields** | name, description, license | name, description, license |
 | **Output Artifact** | `{skill-name}/SKILL.md` | `{agent-name}/AGENT.md` |
 | **Output Frontmatter** | Simple (name, description) | Complex (20+ fields, layered namespace) |

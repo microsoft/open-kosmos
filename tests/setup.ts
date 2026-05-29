@@ -9,6 +9,17 @@ import '@testing-library/jest-dom/vitest';
 // React 18 test helpers expect this flag in jsdom environments.
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
+// The CDN base URL has no built-in default in source code. Provide a default
+// test value so suites exercising CDN-backed code paths have a base URL.
+// Individual tests that assert the "no CDN configured" behavior delete or
+// override these within their own scope.
+if (!process.env.DEVELOPMENT_BASE_CDN_URL) {
+  process.env.DEVELOPMENT_BASE_CDN_URL = 'https://cdn.test.example.com/dev';
+}
+if (!process.env.PRODUCTION_BASE_CDN_URL) {
+  process.env.PRODUCTION_BASE_CDN_URL = 'https://cdn.test.example.com';
+}
+
 // Global mock: prevent accidental Electron API calls during tests
 vi.mock(
   'electron',
@@ -16,7 +27,7 @@ vi.mock(
     app: {
       getPath: vi.fn(() => '/tmp/test'),
       setPath: vi.fn(),
-      getName: vi.fn(() => 'kosmos-test'),
+      getName: vi.fn(() => 'openkosmos-test'),
       getVersion: vi.fn(() => '0.0.0-test'),
       isReady: vi.fn(() => true),
       whenReady: vi.fn(() => Promise.resolve()),

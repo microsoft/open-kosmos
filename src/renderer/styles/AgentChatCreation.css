@@ -597,19 +597,6 @@
   cursor: not-allowed;
 }
 
-/* PM Agent Settings Section for create-agent-content */
-.create-agent-content .pm-agent-settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background-color: #f9fafb;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  margin-bottom: 24px;
-  margin-top: 8px;
-}
-
 .create-agent-content .checkbox-container {
   display: flex;
   align-items: flex-start;
@@ -633,25 +620,7 @@
   line-height: 1.5;
 }
 
-.create-agent-content .pm-agent-warning {
-  font-size: 12px;
-  color: #d97706;
-  padding: 8px 12px;
-  background-color: rgba(245, 158, 11, 0.1);
-  border-radius: 6px;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-}
 
-.create-agent-content .pm-agent-settings-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background-color: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  margin-top: 4px;
-}
 
 .create-agent-content .preview-item {
   display: flex;
@@ -675,7 +644,6 @@
 
 /* ===========================
    PM Project Agent Creation styles
-   Used for PM Studio Project Agent creation page
    =========================== */
 
 /* Agent Avatar Section */
@@ -758,18 +726,6 @@
   margin-top: 4px;
 }
 
-/* PM Agent Settings Section */
-.agent-creation-content .pm-agent-settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background-color: #f9f9f9;
-  border-radius: 10px;
-  border: 1px solid #e0e0e0;
-  margin-bottom: 24px;
-  text-align: left;
-}
 
 .agent-creation-content .checkbox-container {
   display: flex;
@@ -792,23 +748,7 @@
   line-height: 1.5;
 }
 
-.agent-creation-content .pm-agent-warning {
-  font-size: 12px;
-  color: #f59e0b;
-  padding: 8px 12px;
-  background-color: rgba(245, 158, 11, 0.1);
-  border-radius: 6px;
-}
 
-.agent-creation-content .pm-agent-settings-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background-color: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
 
 .agent-creation-content .preview-item {
   display: flex;

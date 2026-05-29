@@ -292,3 +292,70 @@ describe('StreamingV2Message — displayedText resets when content shrinks', () 
     expect(container.querySelector('.streaming-v2-message')).toBeTruthy();
   });
 });
+
+// ── click-to-skip then new chunk must not regress visible text ───────────────
+
+describe('StreamingV2Message — click-to-skip followed by new chunk', () => {
+  let rafCallbacks: Array<(time: number) => void>;
+  let originalRAF: typeof requestAnimationFrame;
+  let originalCancelRAF: typeof cancelAnimationFrame;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockGetUIConfig.mockReturnValue({ showCursor: true, cursorAnimation: 'smooth', smoothScrolling: true, autoScrollThreshold: 150, renderingMode: 'adaptive' });
+    rafCallbacks = [];
+    originalRAF = globalThis.requestAnimationFrame;
+    originalCancelRAF = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = vi.fn((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    }) as any;
+    globalThis.cancelAnimationFrame = vi.fn(() => {
+      rafCallbacks = [];
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    globalThis.requestAnimationFrame = originalRAF;
+    globalThis.cancelAnimationFrame = originalCancelRAF;
+  });
+
+  function flushRAF(time: number) {
+    const cbs = [...rafCallbacks];
+    rafCallbacks = [];
+    cbs.forEach(cb => cb(time));
+  }
+
+  it('does not regress displayed text after skip + new chunk', () => {
+    const chunk1 = 'Hello world, this is a streaming message';
+    const { rerender, container } = render(
+      <StreamingV2Message message={makeMessage(chunk1)} isStreaming={true} />
+    );
+
+    // RAF was queued for typewriter — run one frame to start partial display
+    act(() => { flushRAF(100); });
+
+    // Click to skip animation — should show full chunk1
+    const content = container.querySelector('.message-content') as HTMLElement;
+    act(() => { fireEvent.click(content); });
+
+    // Expire the 1-second skip window
+    act(() => { vi.advanceTimersByTime(1100); });
+
+    // New chunk arrives
+    const chunk2 = chunk1 + ' with more content appended';
+    rerender(
+      <StreamingV2Message message={makeMessage(chunk2)} isStreaming={true} />
+    );
+
+    // Flush RAF to let typewriter run from the correct position
+    act(() => { flushRAF(200); });
+    act(() => { flushRAF(300); });
+
+    // The displayed text must contain the full chunk1 — it should never shrink
+    const rendered = content.textContent || '';
+    expect(rendered.length).toBeGreaterThanOrEqual(chunk1.length);
+    expect(rendered).toContain('Hello world');
+  });
+});

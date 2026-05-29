@@ -6,7 +6,7 @@
  * PlaywrightManager._getInstallStrategies() and _runInstallCommand().
  *
  * This script was written to diagnose the 5-minute install timeout seen in
- * kosmos-2026-03-12.log where the Bun shim (node.cmd) timed out during
+ * openkosmos-2026-03-12.log where the Bun shim (node.cmd) timed out during
  * Playwright browser download, suggesting Bun incompatibility with
  * Playwright's network/download layer.
  *

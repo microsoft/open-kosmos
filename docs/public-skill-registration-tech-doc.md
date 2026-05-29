@@ -4,9 +4,9 @@
 
 ## 1. Overview
 
-This document turns the investigated public-Skill incident into an implementable Kosmos design.
+This document turns the investigated public-Skill incident into an implementable OpenKosmos design.
 
-The core problem is not acquisition. Kosmos can already obtain Skill content through library downloads, local packages, AI-authored files, or public web workflows.
+The core problem is not acquisition. OpenKosmos can already obtain Skill content through library downloads, local packages, AI-authored files, or public web workflows.
 
 The core problem is formal installation.
 
@@ -105,7 +105,7 @@ So that it accepts:
 This becomes the missing bridge between:
 
 1. public or AI-acquired local files
-2. formally installed Kosmos Skills
+2. formally installed OpenKosmos Skills
 
 ### 4.2 Flow Convergence Rule
 
@@ -560,7 +560,7 @@ Implement unified `Add Skill From Device` first.
 It is the smallest change that solves the investigated user problem end-to-end:
 
 1. the AI can already fetch public Skill content
-2. Kosmos already knows how to validate and register managed Skills
+2. OpenKosmos already knows how to validate and register managed Skills
 3. the missing capability is a universal local/public artifact install step
 
 Once that bridge exists, public Skill workflows become product-supported instead of relying on brittle file-copy side effects.

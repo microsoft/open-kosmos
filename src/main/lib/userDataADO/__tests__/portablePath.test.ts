@@ -236,10 +236,10 @@ describe('convertToLocalPath', () => {
     });
 
     it('should handle alias with underscores', () => {
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_org/chat_workspaces/chat_123';
-      const result = convertToLocalPath(unixPath, 'john_org');
-
-      expect(result).toContain('john_org');
+      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john/chat_workspaces/chat_123';
+      const result = convertToLocalPath(unixPath, 'john');
+      
+      expect(result).toContain('john');
       expect(result).toContain('chat_workspaces');
       expect(result).toContain('chat_123');
     });

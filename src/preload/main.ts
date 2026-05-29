@@ -4,10 +4,11 @@ import type { McpAuthClientIdRequestPayload, McpAuthClientIdResponse } from '@sh
 import invokeScreenshot from './screenshot/invoke';
 import invokeScheduler from './scheduler/invoke';
 import invokeBrowserControl from './browserControl/invoke';
-import { createMemexPreloadApi } from './memex/api';
+import invokeRemoteChannel from './remoteChannel/invoke';
 import invokeExternalAgent from './externalAgent/invoke';
 import invokeBuddy from './buddy/invoke';
 import invokePlugin from './plugin/invoke';
+import invokeDoctor from './doctor/invoke';
 import { UserMessage } from '@shared/types/chatTypes';
 
 // Define the API that will be exposed to the renderer process
@@ -358,32 +359,6 @@ export interface ElectronAPI {
     }>;
     onAuthChanged: (callback: (data: any) => void) => () => void;
 
-    // Legacy naming (backward compatible - mapped to new methods)
-    getLocalActiveSessions: () => Promise<{
-      success: boolean;
-      data?: any[];
-      error?: string;
-    }>;
-    setCurrentSession: (
-      session: any,
-    ) => Promise<{ success: boolean; error?: string }>;
-    getCurrentSession: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-    destroyCurrentSession: () => Promise<{ success: boolean; error?: string }>;
-    getAccessToken: () => Promise<{
-      success: boolean;
-      data?: string;
-      error?: string;
-    }>;
-    refreshCurrentSessionToken: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-    onSessionChanged: (callback: (data: any) => void) => () => void;
 
     // Token monitoring
     // Note: startTokenMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth()
@@ -451,7 +426,6 @@ export interface ElectronAPI {
     embedBatch: (
       texts: string[],
     ) => Promise<{ success: boolean; data?: number[][]; error?: string }>;
-
   };
 
   // Models APIs - GitHub Copilot model management
@@ -598,6 +572,20 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
+  // MCP Library APIs
+  mcpLibrary: {
+    getLibraryData: () => Promise<{
+      success: boolean;
+      data?: any;
+      error?: string;
+    }>;
+    fetchAndUpdate: () => Promise<{
+      success: boolean;
+      data?: any;
+      error?: string;
+    }>;
+  };
+
   // Runtime Environment Management
   runtime: {
     setMode: (mode: 'system' | 'internal') => Promise<any>;
@@ -650,9 +638,36 @@ export interface ElectronAPI {
 
   // Skill Library APIs
   skillLibrary: {
+    getLibraryData: () => Promise<{
+      success: boolean;
+      data?: any;
+      error?: string;
+    }>;
     validateSkill: (
       skillName: string,
     ) => Promise<{ success: boolean; error?: string; hasExisting?: boolean; existingSkill?: any }>;
+    addSkill: (
+      skillName: string,
+      options?: { overwrite?: boolean; chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }
+    ) => Promise<{
+      success: boolean;
+      skillName?: string;
+      skillVersion?: string;
+      message?: string;
+      error?: string;
+      isOverwrite?: boolean;
+      resolution?: 'installed_and_callable' | 'installed_but_not_applied' | 'installed_but_needs_target_selection' | 'already_callable' | 'failed';
+      currentChat?: { chatId?: string; agentName?: string; callable: boolean };
+      activation?: {
+        attempted: boolean;
+        success: boolean;
+        appliedTargets: Array<{ chatId: string; agentName: string }>;
+        skippedTargets: Array<{ chatId: string; agentName: string; reason: string }>;
+      };
+    }>;
+    updateSkill: (
+      skillName: string,
+    ) => Promise<{ success: boolean; error?: string }>;
     addSkillFromDevice: (selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) => Promise<{
       success: boolean;
       skillName?: string;
@@ -1305,6 +1320,13 @@ export interface ElectronAPI {
     invoke: InvokeFn,
   };
 
+  // Remote Channel APIs
+  remoteChannel: {
+    invoke: InvokeFn;
+    on: OnOff;
+    off: OnOff;
+  };
+
   // External Agent APIs
   externalAgent: {
     invoke: InvokeFn;
@@ -1312,174 +1334,6 @@ export interface ElectronAPI {
     off: OnOff;
   };
 
-  // Whisper STT APIs (Voice Input)
-  whisper?: {
-    getAllModelStatus: () => Promise<{
-      success: boolean;
-      data?: Array<{
-        size: string;
-        downloaded: boolean;
-        path?: string;
-        actualSize?: number;
-      }>;
-      error?: string;
-    }>;
-    getModelStatus: (size: string) => Promise<{
-      success: boolean;
-      data?: {
-        size: string;
-        downloaded: boolean;
-        path?: string;
-        actualSize?: number;
-      };
-      error?: string;
-    }>;
-    getAllModelInfo: () => Promise<{
-      success: boolean;
-      data?: Array<{
-        size: string;
-        fileName: string;
-        fileSize: number;
-        fileSizeDisplay: string;
-        downloadUrl: string;
-        description: string;
-      }>;
-      error?: string;
-    }>;
-    downloadModel: (size: string) => Promise<{ success: boolean; error?: string }>;
-    cancelDownload: (size: string) => Promise<{
-      success: boolean;
-      data?: boolean;
-      error?: string;
-    }>;
-    deleteModel: (size: string) => Promise<{
-      success: boolean;
-      data?: boolean;
-      error?: string;
-    }>;
-    getModelPath: (size: string) => Promise<{
-      success: boolean;
-      data?: string;
-      error?: string;
-    }>;
-    isDownloading: () => Promise<{
-      success: boolean;
-      data?: {
-        isDownloading: boolean;
-        activeDownloads: string[];
-      };
-      error?: string;
-    }>;
-    onDownloadProgress: (callback: (progress: {
-      model: string;
-      downloaded: number;
-      total: number;
-      percent: number;
-    }) => void) => () => void;
-    onDownloadComplete: (callback: (data: {
-      model: string;
-      path: string;
-    }) => void) => () => void;
-    onDownloadError: (callback: (data: {
-      model: string;
-      error: string;
-    }) => void) => () => void;
-    onDownloadCancelled: (callback: (data: {
-      model: string;
-    }) => void) => () => void;
-    // Transcription APIs
-    transcribe: (pcmData: Float32Array, modelSize: string, options?: {
-      language?: string;
-      useGPU?: boolean;
-      enableVAD?: boolean;
-      threads?: number;
-      translate?: boolean;
-    }) => Promise<{
-      success: boolean;
-      data?: {
-        text: string;
-        segments?: Array<{
-          start: string;
-          end: string;
-          text: string;
-        }>;
-      };
-      error?: string;
-    }>;
-    isAvailable: () => Promise<{
-      success: boolean;
-      data?: boolean;
-      error?: string;
-    }>;
-    // Streaming transcription APIs
-    startStreaming: (modelSize: string, options?: {
-      language?: string;
-      useGPU?: boolean;
-      threads?: number;
-      translate?: boolean;
-      vadThreshold?: number;
-      silenceDuration?: number;
-      minSpeechDuration?: number;
-    }) => Promise<{
-      success: boolean;
-      data?: { sessionId: string };
-      error?: string;
-    }>;
-    processChunk: (sessionId: string, pcmData: Float32Array) => Promise<{
-      success: boolean;
-      error?: string;
-    }>;
-    stopStreaming: (sessionId: string) => Promise<{
-      success: boolean;
-      error?: string;
-    }>;
-    cancelStreaming: (sessionId: string) => Promise<{
-      success: boolean;
-      error?: string;
-    }>;
-    isStreamingActive: (sessionId: string) => Promise<{
-      success: boolean;
-      data?: boolean;
-      error?: string;
-    }>;
-    onStreamingUpdate: (callback: (update: {
-      sessionId: string;
-      type: 'interim' | 'final' | 'error' | 'started' | 'stopped';
-      text?: string;
-      segments?: Array<{ start: string; end: string; text: string }>;
-      error?: string;
-      duration?: number;
-    }) => void) => () => void;
-  };
-
-  // Voice Input Settings APIs
-  voiceInput?: {
-    getSettings: () => Promise<{
-      success: boolean;
-      data?: {
-        whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
-        language: string;
-      };
-      error?: string;
-    }>;
-    updateSettings: (settings: {
-      whisperModel?: 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
-      language?: string;
-    }) => Promise<{ success: boolean; error?: string }>;
-  };
-
-  // Native Module on-demand download management
-  nativeModule?: {
-    getStatus: (moduleKey: string) => Promise<{ success: boolean; data?: any; error?: string }>;
-    ensureDownloaded: (moduleKey: string) => Promise<{ success: boolean; data?: { localPath: string }; error?: string }>;
-    cancelDownload: (moduleKey: string) => Promise<{ success: boolean; error?: string }>;
-    deleteModule: (moduleKey: string) => Promise<{ success: boolean; error?: string }>;
-    onDownloadStarted: (callback: (data: { packageName: string; url: string }) => void) => () => void;
-    onDownloadProgress: (callback: (data: { packageName: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => () => void;
-    onDownloadComplete: (callback: (data: { packageName: string; localPath: string }) => void) => () => void;
-    onDownloadCancelled: (callback: (data: { packageName: string }) => void) => () => void;
-    onDownloadError: (callback: (data: { packageName: string; error: string }) => void) => () => void;
-  };
 
   // 🆕 App global config management API (app.json read/write handled uniformly by AppCacheManager)
   appConfig: {
@@ -1512,12 +1366,6 @@ export interface ElectronAPI {
     updateSettings: (settings: { browser?: 'chrome' | 'edge' }) => Promise<{ success: boolean; error?: string }>;
   };
 
-  // Memex Memory (per-agent Zettelkasten)
-  memex?: {
-    invoke: InvokeFn;
-    onPhaseChange: (callback: (phase: string) => void) => () => void;
-  };
-
   // Scheduler Management
   scheduler: {
     invoke: InvokeFn;
@@ -1545,6 +1393,13 @@ export interface ElectronAPI {
       requestId: string,
       response: McpAuthClientIdResponse,
     ) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  // Feedback / Bug Report
+  doctor: {
+    invoke: InvokeFn;
+    on: OnOff;
+    off: OnOff;
   };
 
   // Generic event listening methods for main window IPC events
@@ -1846,22 +1701,6 @@ export const electronAPI: ElectronAPI = {
       return () => ipcRenderer.removeListener('auth:authChanged', listener);
     },
 
-    // Legacy naming (backward compatible) - mapped to same IPC handlers
-    getLocalActiveSessions: () =>
-      ipcRenderer.invoke('auth:getLocalActiveSessions'),
-    setCurrentSession: (session: any) =>
-      ipcRenderer.invoke('auth:setCurrentSession', session),
-    getCurrentSession: () => ipcRenderer.invoke('auth:getCurrentSession'),
-    destroyCurrentSession: () =>
-      ipcRenderer.invoke('auth:destroyCurrentSession'),
-    getAccessToken: () => ipcRenderer.invoke('auth:getAccessToken'),
-    refreshCurrentSessionToken: () =>
-      ipcRenderer.invoke('auth:refreshCurrentSessionToken'),
-    onSessionChanged: (callback: (data: any) => void) => {
-      const listener = (event: any, data: any) => callback(data);
-      ipcRenderer.on('auth:sessionChanged', listener);
-      return () => ipcRenderer.removeListener('auth:sessionChanged', listener);
-    },
 
     // Token monitoring
     // Note: startTokenMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth()
@@ -1984,6 +1823,10 @@ export const electronAPI: ElectronAPI = {
     resetOAuth: (serverName: string, scope: 'tokens' | 'all' = 'tokens') =>
       ipcRenderer.invoke('mcp:resetOAuth', serverName, scope),
   },
+  mcpLibrary: {
+    getLibraryData: () => ipcRenderer.invoke('mcpLibrary:getLibraryData'),
+    fetchAndUpdate: () => ipcRenderer.invoke('mcpLibrary:fetchAndUpdate'),
+  },
   // Runtime Environment Management
   runtime: {
     setMode: (mode: 'system' | 'internal') => ipcRenderer.invoke('runtime:set-mode', mode),
@@ -2005,8 +1848,13 @@ export const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('openkosmos:parseUserInputPlaceholders', config),
   },
   skillLibrary: {
+    getLibraryData: () => ipcRenderer.invoke('skillLibrary:getLibraryData'),
     validateSkill: (skillName: string) =>
       ipcRenderer.invoke('skillLibrary:validateSkill', skillName),
+    addSkill: (skillName: string, options?: { overwrite?: boolean; chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) =>
+      ipcRenderer.invoke('skillLibrary:addSkill', skillName, options),
+    updateSkill: (skillName: string) =>
+      ipcRenderer.invoke('skillLibrary:updateSkill', skillName),
     addSkillFromDevice: (selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) =>
       ipcRenderer.invoke('skillLibrary:addSkillFromDevice', selectedPath, options),
     installSkillFromFilePath: (filePath: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) =>
@@ -2490,126 +2338,18 @@ export const electronAPI: ElectronAPI = {
     invoke: invokeScreenshot,
   },
 
+  // Remote Channel functionality
+  remoteChannel: {
+    invoke: invokeRemoteChannel,
+    on: ipcRenderer.on.bind(ipcRenderer),
+    off: ipcRenderer.off.bind(ipcRenderer),
+  },
+
   // External Agent functionality
   externalAgent: {
     invoke: invokeExternalAgent,
     on: ipcRenderer.on.bind(ipcRenderer),
     off: ipcRenderer.off.bind(ipcRenderer),
-  },
-
-  // Whisper STT functionality (Voice Input)
-  whisper: {
-    getAllModelStatus: () => ipcRenderer.invoke('whisper:getAllModelStatus'),
-    getModelStatus: (size: string) => ipcRenderer.invoke('whisper:getModelStatus', size),
-    getAllModelInfo: () => ipcRenderer.invoke('whisper:getAllModelInfo'),
-    downloadModel: (size: string) => ipcRenderer.invoke('whisper:downloadModel', size),
-    cancelDownload: (size: string) => ipcRenderer.invoke('whisper:cancelDownload', size),
-    deleteModel: (size: string) => ipcRenderer.invoke('whisper:deleteModel', size),
-    getModelPath: (size: string) => ipcRenderer.invoke('whisper:getModelPath', size),
-    isDownloading: () => ipcRenderer.invoke('whisper:isDownloading'),
-    // Transcription API
-    transcribe: (pcmData: Float32Array, modelSize: string, options?: {
-      language?: string;
-      useGPU?: boolean;
-      enableVAD?: boolean;
-      threads?: number;
-      translate?: boolean;
-    }) => ipcRenderer.invoke('whisper:transcribe', {
-      pcmData: Array.from(pcmData), // Convert Float32Array to regular array for IPC
-      modelSize,
-      options,
-    }),
-    isAvailable: () => ipcRenderer.invoke('whisper:isAvailable'),
-    onDownloadProgress: (callback: (progress: any) => void) => {
-      const listener = (event: any, progress: any) => callback(progress);
-      ipcRenderer.on('whisper:downloadProgress', listener);
-      return () => ipcRenderer.removeListener('whisper:downloadProgress', listener);
-    },
-    onDownloadComplete: (callback: (data: any) => void) => {
-      const listener = (event: any, data: any) => callback(data);
-      ipcRenderer.on('whisper:downloadComplete', listener);
-      return () => ipcRenderer.removeListener('whisper:downloadComplete', listener);
-    },
-    onDownloadError: (callback: (data: any) => void) => {
-      const listener = (event: any, data: any) => callback(data);
-      ipcRenderer.on('whisper:downloadError', listener);
-      return () => ipcRenderer.removeListener('whisper:downloadError', listener);
-    },
-    onDownloadCancelled: (callback: (data: any) => void) => {
-      const listener = (event: any, data: any) => callback(data);
-      ipcRenderer.on('whisper:downloadCancelled', listener);
-      return () => ipcRenderer.removeListener('whisper:downloadCancelled', listener);
-    },
-    // Streaming transcription APIs
-    startStreaming: (modelSize: string, options?: {
-      language?: string;
-      useGPU?: boolean;
-      threads?: number;
-      translate?: boolean;
-      vadThreshold?: number;
-      silenceDuration?: number;
-      minSpeechDuration?: number;
-    }) => ipcRenderer.invoke('whisper:startStreaming', { modelSize, options }),
-    processChunk: (sessionId: string, pcmData: Float32Array) => ipcRenderer.invoke('whisper:processChunk', {
-      sessionId,
-      pcmData: Array.from(pcmData), // Convert Float32Array to regular array for IPC
-    }),
-    stopStreaming: (sessionId: string) => ipcRenderer.invoke('whisper:stopStreaming', sessionId),
-    cancelStreaming: (sessionId: string) => ipcRenderer.invoke('whisper:cancelStreaming', sessionId),
-    isStreamingActive: (sessionId: string) => ipcRenderer.invoke('whisper:isStreamingActive', sessionId),
-    onStreamingUpdate: (callback: (update: {
-      sessionId: string;
-      type: 'interim' | 'final' | 'error' | 'started' | 'stopped';
-      text?: string;
-      segments?: Array<{ start: string; end: string; text: string }>;
-      error?: string;
-      duration?: number;
-    }) => void) => {
-      const listener = (event: any, update: any) => callback(update);
-      ipcRenderer.on('whisper:streamingUpdate', listener);
-      return () => ipcRenderer.removeListener('whisper:streamingUpdate', listener);
-    },
-  },
-
-  // Voice Input Settings
-  voiceInput: {
-    getSettings: () => ipcRenderer.invoke('voiceInput:getSettings'),
-    updateSettings: (settings: any) => ipcRenderer.invoke('voiceInput:updateSettings', settings),
-  },
-
-  // Native Module on-demand download management
-  // Manage on-demand downloadable large native modules (whisper-addon)
-  nativeModule: {
-    getStatus: (moduleKey: string) => ipcRenderer.invoke('native-module:getStatus', moduleKey),
-    ensureDownloaded: (moduleKey: string) => ipcRenderer.invoke('native-module:ensureDownloaded', moduleKey),
-    cancelDownload: (moduleKey: string) => ipcRenderer.invoke('native-module:cancelDownload', moduleKey),
-    deleteModule: (moduleKey: string) => ipcRenderer.invoke('native-module:delete', moduleKey),
-    // Push events from main process
-    onDownloadStarted: (callback: (data: { packageName: string; url: string }) => void) => {
-      const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('native-module:downloadStarted', listener);
-      return () => ipcRenderer.removeListener('native-module:downloadStarted', listener);
-    },
-    onDownloadProgress: (callback: (data: { packageName: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
-      const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('native-module:downloadProgress', listener);
-      return () => ipcRenderer.removeListener('native-module:downloadProgress', listener);
-    },
-    onDownloadComplete: (callback: (data: { packageName: string; localPath: string }) => void) => {
-      const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('native-module:downloadComplete', listener);
-      return () => ipcRenderer.removeListener('native-module:downloadComplete', listener);
-    },
-    onDownloadCancelled: (callback: (data: { packageName: string }) => void) => {
-      const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('native-module:downloadCancelled', listener);
-      return () => ipcRenderer.removeListener('native-module:downloadCancelled', listener);
-    },
-    onDownloadError: (callback: (data: { packageName: string; error: string }) => void) => {
-      const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('native-module:downloadError', listener);
-      return () => ipcRenderer.removeListener('native-module:downloadError', listener);
-    },
   },
 
   // Browser Control management
@@ -2662,9 +2402,6 @@ export const electronAPI: ElectronAPI = {
     updateSettings: (settings: { browser?: 'chrome' | 'edge' }) => ipcRenderer.invoke('devToolsMcp:updateSettings', settings),
   },
 
-  // Memex Memory (per-agent Zettelkasten)
-  memex: createMemexPreloadApi(ipcRenderer),
-
   // Scheduler Management
   scheduler: {
     invoke: invokeScheduler,
@@ -2676,7 +2413,6 @@ export const electronAPI: ElectronAPI = {
     on: ipcRenderer.on.bind(ipcRenderer),
     off: ipcRenderer.off.bind(ipcRenderer),
   },
-
 
   mcpAuth: {
     onShowConsent: (callback: (data: { requestId: string; serverName: string; providerLabel: string }) => void) => {
@@ -2695,6 +2431,13 @@ export const electronAPI: ElectronAPI = {
       requestId: string,
       response: McpAuthClientIdResponse,
     ) => ipcRenderer.invoke('mcpAuth:respondClientId', requestId, response),
+  },
+
+  // Feedback / Bug Report
+  doctor: {
+    invoke: invokeDoctor,
+    on: ipcRenderer.on.bind(ipcRenderer),
+    off: ipcRenderer.off.bind(ipcRenderer),
   },
 
   // Generic event listening methods for main window IPC events

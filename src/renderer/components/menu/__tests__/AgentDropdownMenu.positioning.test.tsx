@@ -45,8 +45,8 @@ describe('AgentDropdownMenu positioning', () => {
         {
           chat_id: 'chat-builtin',
           agent: {
-            name: 'PM Agent',
-            source: 'ON-DEVICE',
+            name: 'Research Agent',
+            source: 'IN-LIBRARY',
           },
         },
       ],

@@ -23,18 +23,12 @@ import { ExecuteCommandTool } from './executeCommandTool';
 // ManageProcessTool uses lazy import to avoid ipcMain side effects in tests
 import { GetCurrentDateTimeTool } from './getCurrentDateTimeTool';
 import { RequestInteractiveInputTool } from './requestInteractiveInputTool';
+import { GetAgentTemplateFromLibraryTool } from './getAgentTemplateFromLibraryTool';
 import { CreateMcpServerFromConfigTool } from './createMcpServerFromConfigTool';
-import { UpdateMcpServerTool } from './updateMcpServerTool';
-import { GetMcpStatusTool } from './getMcpStatusTool';
 import { SearchSkillsTool } from './searchSkillsTool';
-import { ApplySkillToAgentsTool } from './applySkillToAgentsTool';
-import { UninstallSkillsTool } from './uninstallSkillsTool';
-import { RemoveSkillsFromAgentsTool } from './removeSkillsFromAgentsTool';
+import { APP_NAME } from '../../../../shared/constants/branding';
 import { CreateAgentFromConfigTool } from './createAgentFromConfigTool';
-import { UpdateAgentTool } from './updateAgentTool';
-import { GetAgentStatusTool } from './getAgentStatusTool';
 import { ListAgentsTool } from './listAgentsTool';
-import { SetPrimaryAgentTool } from './setPrimaryAgentTool';
 import { MoveFileTool } from './moveFileTool';
 import { PresentTool } from './presentDeliverablesTool';
 import { CreateScheduleTool } from './createScheduleTool';
@@ -51,10 +45,6 @@ import { ManageMcpFacade } from './facades/manageMcpFacade';
 import { ManageAgentsFacade } from './facades/manageAgentsFacade';
 import { SearchMcpFacade } from './facades/searchMcpFacade';
 import { SearchAgentsFacade } from './facades/searchAgentsFacade';
-
-import { createLogger } from '../../unifiedLogger';
-const logger = createLogger();
-
 // 🐢 Heavy tools - lazy loaded (depend on playwright, mammoth, etc.)
 // BingWebSearchTool, BingImageSearchTool
 // FetchWebContentTool, ReadOfficeFileTool, DownloadFileTool, SetMcpConnectionStateTool
@@ -257,6 +247,7 @@ export class BuiltinToolsManager {
       // Registered in internalTools so executeTool()'s guard passes without
       // polluting getAllTools() / the AI tool inventory.
       // TODO: Migrate renderer callers to dedicated IPC channels, then remove.
+      this.internalTools.set('get_agent_template_from_library', GetAgentTemplateFromLibraryTool.getDefinition());
       this.internalTools.set('create_mcp_server_from_config', CreateMcpServerFromConfigTool.getDefinition());
       this.internalTools.set('create_agent_from_config', CreateAgentFromConfigTool.getDefinition());
       this.internalTools.set('list_agents', ListAgentsTool.getDefinition());
@@ -360,6 +351,19 @@ export class BuiltinToolsManager {
         }
       });
 
+      // 🐢 ReadOfficeFileTool - depends on mammoth, etc.
+      this.tools.set('read_office_file', {
+        name: 'read_office_file',
+        description: 'Read and extract text content from Office files (docx, xlsx, pptx, pdf).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            filePath: { type: 'string', description: 'Path to the Office file' }
+          },
+          required: ['filePath']
+        }
+      });
+
       // 🐢 DownloadFileTool - may depend on network modules
       this.tools.set('download_file', {
         name: 'download_file',
@@ -375,6 +379,38 @@ export class BuiltinToolsManager {
           required: ['url', 'filename']
         }
       });
+
+      // 🐢 ManageRemoteChannelTool - remote channel management (lazy load)
+      if (isFeatureEnabled('openkosmosFeatureRemoteChannel')) {
+        const teamsBotName = `${APP_NAME} Bot`;
+        this.tools.set('manage_remote_channel', {
+          name: 'manage_remote_channel',
+          description:
+            `Control remote channel connections (e.g., Teams via "${teamsBotName}"). ` +
+            'Supports starting/stopping the connection, binding/unbinding with a code, and checking status. ' +
+            'Use action "status" to check current state, "start" to connect, "stop" to disconnect, ' +
+            `"bind" with a bind_code to pair with a Teams user (user gets the code by sending .bind to ${teamsBotName} in Teams), "unbind" to unpair.`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              action: {
+                type: 'string',
+                enum: ['status', 'start', 'stop', 'bind', 'unbind'],
+                description: 'The action to perform',
+              },
+              channel_id: {
+                type: 'string',
+                description: 'Channel ID (defaults to "teams")',
+              },
+              bind_code: {
+                type: 'string',
+                description: 'Bind code from Teams (required for "bind" action)',
+              },
+            },
+            required: ['action'],
+          },
+        });
+      }
 
       // ──── Sub-Agent tool (unified, lazy load) ────
       // Always available; named spawning gated at execution time.
@@ -474,7 +510,6 @@ export class BuiltinToolsManager {
       // ===== Lightweight tools (already imported) =====
       if (name === 'read_file') {
         result = await ReadFileTool.execute(args, { signal });
-        await this.maybeTrackSkillInvocationFromReadFile(args);
       } else if (name === 'read_html') {
         result = await ReadHtmlTool.execute(args, { signal });
       } else if (name === 'write_file') {
@@ -496,8 +531,11 @@ export class BuiltinToolsManager {
         result = await SearchSkillsTool.execute(args);
       }
       // ===== Legacy tools (kept for programmatic renderer calls, not exposed to AI) =====
-      // TODO: Migrate renderer callers (FreSettingUpView) to dedicated IPC channels, then remove these.
-      else if (name === 'create_mcp_server_from_config') {
+      // TODO: Migrate renderer callers (FreSettingUpView, AddFromAgentLibraryViewContent)
+      // to dedicated IPC channels, then remove these dispatch routes.
+      else if (name === 'get_agent_template_from_library') {
+        result = await GetAgentTemplateFromLibraryTool.execute(args);
+      } else if (name === 'create_mcp_server_from_config') {
         result = await CreateMcpServerFromConfigTool.execute(args);
       } else if (name === 'tool_search') {
         result = ToolSearchTool.execute(args, chatSessionId);
@@ -550,9 +588,22 @@ export class BuiltinToolsManager {
       } else if (name === 'fetch_web_content') {
         const { FetchWebContentTool } = await import('./fetchWebContentTool');
         result = await FetchWebContentTool.execute(args, { signal });
+      } else if (name === 'read_office_file') {
+        const { ReadOfficeFileTool } = await import('./readOfficeFileTool');
+        result = await ReadOfficeFileTool.execute(args, { signal });
       } else if (name === 'download_file') {
         const { DownloadFileTool } = await import('./downloadFileTool');
         result = await DownloadFileTool.execute(args, { signal });
+      }
+      // ──── Remote Control tool (lazy load) ────
+      else if (name === 'manage_remote_channel') {
+        // 🔒 openkosmosFeatureRemoteChannel feature flag protected
+        if (!isFeatureEnabled('openkosmosFeatureRemoteChannel')) {
+          result = { content: [{ type: 'text', text: 'Remote channel feature is disabled.' }], isError: true };
+        } else {
+          const { ManageRemoteChannelTool } = await import('./manageRemoteChannelTool');
+          result = await ManageRemoteChannelTool.execute(args, { signal });
+        }
       }
       // ──── Unified Sub-Agent tool ────
       else if (name === 'sub_agent') {
@@ -625,10 +676,6 @@ export class BuiltinToolsManager {
         error: error instanceof Error ? error.message : String(error)
       };
     }
-  }
-
-  private async maybeTrackSkillInvocationFromReadFile(_args: { filePath?: unknown }): Promise<void> {
-    // Analytics removed.
   }
 
   /**
@@ -747,8 +794,3 @@ export const getBuiltinToolsManager = (): BuiltinToolsManager => {
   return BuiltinToolsManager.getInstance();
 };
 
-/**
- * Export default instance for backward compatibility
- * @deprecated Use getBuiltinToolsManager() or BuiltinToolsManager.getInstance()
- */
-export const builtinToolsManager = BuiltinToolsManager.getInstance();

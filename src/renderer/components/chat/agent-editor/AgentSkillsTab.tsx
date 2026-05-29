@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Settings, RotateCw } from 'lucide-react';
 
 import '../../../styles/Agent.css';
 import { TabComponentProps } from './types';
@@ -172,6 +172,75 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
     [navigate, location.pathname],
   );
 
+  /**
+   * Navigate to Skill Library View and select the given Skill
+   * Follows ChatViewHeader's approach: use URL query parameters to pass the selection
+   * Also pass returnPath state so the SettingsPage Back button can return correctly
+   */
+  const handleUpdateSkill = useCallback(
+    (skillName: string) => {
+      if (!skillName) {
+        logger.warn('Update button clicked but skill name is not available');
+        return;
+      }
+
+      logger.debug('Update button clicked for Skill:', skillName);
+
+      // Navigate to the Skill Library page, passing the skill name as a query parameter
+      // Use encodeURIComponent to ensure special characters in the name are correctly encoded
+      // Route path reference AppRoutes.tsx: /settings/skills/skill-library
+      const skillLibraryUrl = `/settings/skills/skill-library?selectSkill=${encodeURIComponent(skillName)}`;
+
+      // Pass returnPath state so the SettingsPage Back button can return to the current page
+      navigate(skillLibraryUrl, { state: { returnPath: location.pathname } });
+    },
+    [navigate, location.pathname],
+  );
+
+  /**
+   * Compare version strings; returns 1 if v1 > v2
+   * Supports semantic versioning format (e.g. 1.0.0, 2.1.3)
+   */
+  const compareVersions = useCallback((v1: string, v2: string): number => {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+
+    const maxLength = Math.max(parts1.length, parts2.length);
+
+    for (let i = 0; i < maxLength; i++) {
+      const p1 = parts1[i] || 0;
+      const p2 = parts2[i] || 0;
+
+      if (p1 > p2) return 1;
+      if (p1 < p2) return -1;
+    }
+
+    return 0;
+  }, []);
+
+  // Determine whether to show the Update button for a Skill
+  const shouldShowUpdateButton = useCallback((skill: any) => {
+    const { version, remoteVersion, source } = skill;
+
+    // ON-DEVICE skills should not show the Update button
+    // ON-DEVICE skills are user-created and have no remote library version to update from
+    if (source === 'ON-DEVICE') {
+      return false;
+    }
+
+    // Only consider showing button when remoteVersion is non-empty
+    if (!remoteVersion || remoteVersion.trim() === '') {
+      return false;
+    }
+
+    // Show button if version is empty or remoteVersion > version
+    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
+      return true;
+    }
+
+    return false;
+  }, [compareVersions]);
+
   return (
     <div className="agent-tab">
       {/* Tab Header */}
@@ -276,6 +345,19 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
                         </div>
                       </div>
                       <div className="skill-actions">
+                        {!isSkillFromPlugin && shouldShowUpdateButton(skill) && (
+                          <button
+                            className="update-skill-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateSkill(skill.name);
+                            }}
+                            title="Update to the latest version in library"
+                          >
+                            <RotateCw size={14} className="update-skill-icon" />
+                            <span className="update-skill-text">Update</span>
+                          </button>
+                        )}
                         {!isSkillFromPlugin && (
                           <button
                             className="manage-btn always-visible"

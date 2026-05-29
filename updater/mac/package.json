@@ -1,0 +1,26 @@
+{
+  "name": "openkosmos-updater-mac",
+  "version": "1.0.0",
+  "description": "OpenKosmos silent updater for macOS using Node.js",
+  "main": "updater.js",
+  "scripts": {
+    "build": "pkg . --targets node18-macos-x64,node18-macos-arm64 --output ../resources/updater/updater-mac",
+    "build:mac-x64": "pkg . --targets node18-macos-x64 --output ../resources/updater/updater-mac-x64",
+    "build:mac-arm64": "pkg . --targets node18-macos-arm64 --output ../resources/updater/updater-mac-arm64",
+    "build:all": "npm run build:mac-x64 && npm run build:mac-arm64"
+  },
+  "bin": "updater.js",
+  "pkg": {
+    "targets": [
+      "node18-macos-x64",
+      "node18-macos-arm64"
+    ],
+    "outputPath": "../resources/updater"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

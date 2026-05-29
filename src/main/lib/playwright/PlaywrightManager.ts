@@ -568,15 +568,46 @@ export class PlaywrightManager {
       return ctx;
     } catch (edgeError) {
       if (channel !== 'msedge') throw edgeError;
-      logger.warn(`[PlaywrightManager] Edge not available, falling back to bundled chromium: ${edgeError instanceof Error ? edgeError.message : String(edgeError)}`);
+      const errMsg = edgeError instanceof Error ? edgeError.message : String(edgeError);
+      const isNotInstalled = errMsg.includes('ENOENT') || errMsg.includes("Executable doesn't exist");
+      if (isNotInstalled) {
+        logger.warn(`[PlaywrightManager] Edge not installed, falling back to bundled chromium: ${errMsg}`);
+      } else {
+        logger.warn(`[PlaywrightManager] Edge launch failed (installed but unusable in this environment), falling back to bundled chromium: ${errMsg}`);
+      }
     }
 
-    // Fallback to bundled chromium
-    const ctx = await chromium.launchPersistentContext(profilePath, launchOpts);
-    this.activeContexts.add(ctx);
-    ctx.on('close', () => this.activeContexts.delete(ctx));
-    logger.info(`[PlaywrightManager] Persistent context launched (bundled chromium, profile=${options.profileName})`);
-    return ctx;
+    // Fallback to bundled chromium — ensure it is installed first
+    const installCheck = await this.ensureBrowserInstalled();
+    if (!installCheck.installed) {
+      throw new Error(`[PlaywrightManager] Chromium fallback unavailable: browser install failed (${installCheck.error ?? 'unknown'})`);
+    }
+    try {
+      const ctx = await chromium.launchPersistentContext(profilePath, launchOpts);
+      this.activeContexts.add(ctx);
+      ctx.on('close', () => this.activeContexts.delete(ctx));
+      logger.info(`[PlaywrightManager] Persistent context launched (bundled chromium, profile=${options.profileName})`);
+      return ctx;
+    } catch (chromiumError) {
+      const chromiumErrMsg = chromiumError instanceof Error ? chromiumError.message : String(chromiumError);
+      if (chromiumErrMsg.includes('exitCode=33') || chromiumErrMsg.includes('Access is denied') || chromiumErrMsg.includes('downgrade')) {
+        logger.warn(`[PlaywrightManager] Chromium launch failed due to corrupted profile, clearing and retrying: ${chromiumErrMsg.substring(0, 300)}`);
+        try {
+          await this.profiles.deleteProfile(options.profileName);
+          this.profiles.ensureProfileDir(options.profileName);
+        } catch (cleanupErr) {
+          logger.warn(`[PlaywrightManager] Failed to clean corrupted profile: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
+          throw chromiumError;
+        }
+        const freshPath = this.profiles.getProfilePath(options.profileName);
+        const ctx = await chromium.launchPersistentContext(freshPath, launchOpts);
+        this.activeContexts.add(ctx);
+        ctx.on('close', () => this.activeContexts.delete(ctx));
+        logger.info(`[PlaywrightManager] Persistent context launched after profile reset (bundled chromium, profile=${options.profileName})`);
+        return ctx;
+      }
+      throw chromiumError;
+    }
   }
 
   // ══════════════════════════════════════════════════════════════

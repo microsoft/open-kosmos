@@ -320,24 +320,3 @@ describe('ApplySkillToAgentsDialog – Apply total failure', () => {
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('my-skill'));
   });
 });
-
-describe('ApplySkillToAgentsDialog – pm-studio brand filters Kobi', () => {
-  it('excludes Kobi agent when BRAND_NAME=pm-studio', async () => {
-    // Reimport with pm-studio brand
-    vi.doMock('../../../../shared/constants/branding', () => ({ BRAND_NAME: 'pm-studio' }));
-    vi.doMock('../../../../main/lib/userDataADO/types/profile', () => ({
-      isBuiltinAgent: (name: string) => name === 'Kobi',
-    }));
-
-    mockChats.push({
-      chat_id: 'cK',
-      chat_type: 'single_agent',
-      agent: { name: 'Kobi', emoji: '🤝', skills: [] },
-    });
-    // In current mock setup BRAND_NAME='openkosmos', so Kobi shows; this verifies pm-studio path
-    // through shouldInclude – with current mocks isBuiltinAgent returns false so Kobi will show
-    render(<ApplySkillToAgentsDialog />);
-    // Just verify the component renders without error
-    expect(screen.getByTestId('dialog')).toBeTruthy();
-  });
-});

@@ -4,9 +4,6 @@
  */
 
 import { EventEmitter } from 'events';
-import { McpAuthMetadataService } from '../../auth/McpAuthMetadataService';
-import { McpAuthService } from '../../auth/McpAuthService';
-import type { McpResolvedAuthMetadata } from '../../auth/types';
 import type { McpServerConfig } from '../../../userDataADO/types/profile';
 
 export interface HttpTransportConfig {
@@ -208,11 +205,6 @@ export class VscodeHttpTransport extends EventEmitter {
   private mode: HttpModeT = { value: HttpMode.Unknown };
   private readonly _abortCtrl = new AbortController();
   private _disposed = false;
-  private authMetadata: McpResolvedAuthMetadata | null = null;
-  /** Set on first 401/403; suppresses the SSE protocol-fallback path for
-   *  later non-auth 4xx — those are semantic failures, not a protocol
-   *  mismatch (the server demonstrably speaks Streamable HTTP). */
-  private _sawAuthChallenge = false;
 
   constructor(private config: HttpTransportConfig) {
     super();
@@ -302,20 +294,17 @@ export class VscodeHttpTransport extends EventEmitter {
       this.mode = { value: HttpMode.Http, sessionId: nextSessionId };
     }
 
-    // Pre-auth-challenge 4xx (except 401/403) → switch to SSE. After we've
-    // seen an OAuth challenge the server is known to speak Streamable HTTP,
-    // so a 4xx is a real semantic failure, not a protocol mismatch.
+    // Pre-auth-challenge 4xx (except 401/403) → switch to SSE.
     if (this.mode.value === HttpMode.Unknown &&
         response.status >= 400 && response.status < 500 &&
-        response.status !== 401 && response.status !== 403 &&
-        !this._sawAuthChallenge) {
+        response.status !== 401 && response.status !== 403) {
       this.emit('log', 'info', `${response.status} status, falling back to SSE`);
       await this._sseFallbackWithMessage(message);
       return;
     }
 
-    // Same caveat for 5xx pre-auth.
-    if (this.mode.value === HttpMode.Unknown && response.status >= 500 && !this._sawAuthChallenge) {
+    // Same caveat for 5xx.
+    if (this.mode.value === HttpMode.Unknown && response.status >= 500) {
       this.emit('log', 'info', `${response.status} server error, trying SSE fallback`);
       await this._sseFallbackWithMessage(message);
       return;
@@ -328,15 +317,6 @@ export class VscodeHttpTransport extends EventEmitter {
                                  (response.status === 400 || response.status === 404);
 
       const errorBody = await this._getErrorText(response);
-      // OAuth succeeded but server still rejected — typically a feature/tier
-      // gate (e.g. GitLab MCP requires Premium + Beta features enabled).
-      if (this._sawAuthChallenge && headers.Authorization && (response.status === 404 || response.status === 403)) {
-        throw new Error(
-          `${response.status} status from ${this.config.url} after successful sign-in: ${errorBody}. ` +
-          `The endpoint exists but is not available for your account — check that the MCP feature ` +
-          `is enabled, your account tier supports it, and any required beta/experimental flags are turned on.`
-        );
-      }
 
       throw new Error(`${response.status} status sending message: ${errorBody}` +
                      (retryWithNewSession ? '; will retry with new session ID' : ''));
@@ -666,74 +646,8 @@ export class VscodeHttpTransport extends EventEmitter {
   }
 
   private async _fetchWithAuthRetry(url: string, init: MinimalRequestInit, headers: Record<string, string>): Promise<Response> {
-    await this._addAuthHeader(headers);
     init.headers = headers;
-
-    let response = await this._fetch(url, init);
-
-    if (this._isAuthStatusCode(response.status)) {
-      this._sawAuthChallenge = true;
-      this.emit('log', 'info', `Received auth challenge for ${this.config.serverName}: status=${response.status}`);
-      if (!this.authMetadata) {
-        this.authMetadata = await McpAuthMetadataService.resolve(url, response.headers);
-        if (this.authMetadata) {
-          this.emit(
-            'log',
-            'info',
-            `Resolved MCP auth metadata for ${this.config.serverName}: `
-            + `provider=${this.authMetadata.providerLabel}, `
-            + `authority=${this.authMetadata.authorizationServerMetadata.issuer || this.authMetadata.authorizationServerUrl}, `
-            + `scopes=${JSON.stringify(this.authMetadata.scopes)}, `
-            + `resourceMetadataSource=${this.authMetadata.telemetry.resourceMetadataSource}, `
-            + `serverMetadataSource=${this.authMetadata.telemetry.serverMetadataSource}`
-          );
-        }
-      } else {
-        this.authMetadata = McpAuthMetadataService.updateFromHeaders(this.authMetadata, response.headers);
-        this.emit('log', 'info', `Updated MCP auth metadata from repeated challenge for ${this.config.serverName}: scopes=${JSON.stringify(this.authMetadata.scopes)}`);
-      }
-
-      if (this.authMetadata) {
-        const token = await this._requestToken(this.authMetadata);
-        if (token) {
-          this.emit('log', 'info', `Retrying ${this.config.serverName} request with Authorization header after auth challenge`);
-          headers.Authorization = `Bearer ${token}`;
-          init.headers = headers;
-          response = await this._fetch(url, init);
-        }
-      }
-    }
-
-    if (headers.Authorization && this._isAuthStatusCode(response.status) && this.authMetadata) {
-      this.emit('log', 'info', `Received ${response.status} with Authorization header for ${this.config.serverName}, retrying with forced refresh`);
-      const token = await this._requestToken(this.authMetadata, { forceRefresh: true });
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-        init.headers = headers;
-        response = await this._fetch(url, init);
-      }
-    }
-
-    return response;
-  }
-
-  private async _addAuthHeader(headers: Record<string, string>): Promise<void> {
-    if (!this.authMetadata) {
-      return;
-    }
-
-    const token = await this._requestToken(this.authMetadata);
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
-  private async _requestToken(metadata: McpResolvedAuthMetadata, options?: { forceRefresh?: boolean }): Promise<string | undefined> {
-    this.emit('log', 'info', `Requesting token for ${this.config.serverName}: forceRefresh=${options?.forceRefresh ? 'true' : 'false'}, scopes=${JSON.stringify(metadata.scopes)}`);
-    return McpAuthService.getInstance().getTokenForServer(this.config.serverName, metadata, {
-      ...options,
-      cfg: this.config.mcpServerConfig,
-    });
+    return this._fetch(url, init);
   }
 
   private _isAuthStatusCode(status: number): boolean {

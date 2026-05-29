@@ -444,6 +444,7 @@ export class AgentChatStreamingService {
                       firstTokenReported = true;
                       if (!this.ttftReportedForTurn) {
                         this.ttftReportedForTurn = true;
+                        const now = Date.now();
                         if (this.turnStartTime > 0) {
                           this.turnStartTime = 0;
                         }
@@ -503,7 +504,6 @@ export class AgentChatStreamingService {
                 firstTokenReported = true;
                 if (!this.ttftReportedForTurn) {
                   this.ttftReportedForTurn = true;
-                  const now = Date.now();
                   if (this.turnStartTime > 0) {
                     this.turnStartTime = 0;
                   }

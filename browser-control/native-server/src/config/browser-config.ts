@@ -48,7 +48,7 @@ class BrowserConfig {
 
   /**
    * Update the selected browser at runtime.
-   * Called by HTTP API when Kosmos changes the browser selection.
+   * Called by HTTP API when OpenKosmos changes the browser selection.
    */
   setBrowser(browser: BrowserType): void {
     this.selectedBrowser = browser;

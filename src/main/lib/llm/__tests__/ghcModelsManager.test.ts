@@ -491,7 +491,7 @@ describe('GhcModelsManager', () => {
         makeModel('gemini-2.5-pro'),
         makeModel('gpt-5.5'),
         makeModel('gpt-4.1'), // Should be excluded (< 5.1)
-        makeModel('claude-haiku-4.5'), // Should be excluded by OPENKOSMOS_MODEL_EXCLUDE
+        makeModel('claude-haiku-4.5'), // Should be excluded by OpenKosmos_MODEL_EXCLUDE
         makeModel('gemini-2.5-flash'), // Should be excluded
       ];
       mockReadFile.mockResolvedValue(JSON.stringify({ models }));

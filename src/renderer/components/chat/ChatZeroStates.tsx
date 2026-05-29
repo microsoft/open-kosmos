@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { ZeroStates, QuickStartItem } from '../../lib/userData/types';
 import '../../styles/ChatZeroStates.css';
 import { createLogger } from '../../lib/utilities/logger';
+import { getCdnBaseUrl } from '@shared/utils/cdn';
 const logger = createLogger('[ChatZeroStates]');
 
 interface ChatZeroStatesProps {
@@ -18,8 +19,15 @@ interface ChatZeroStatesProps {
   onQuickStartClick: (prompt: string) => void;
 }
 
-/** Default quick-start card image */
-const DEFAULT_QUICK_START_IMAGE = 'https://cdn.kosmos-ai.com/images/kosmos/openkosmos-quick-start-default-image.png';
+/**
+ * Default quick-start card image.
+ * Served from the optional CDN; empty when no CDN is configured, in which case
+ * cards with no custom image simply render without a thumbnail.
+ */
+const DEFAULT_QUICK_START_IMAGE = (() => {
+  const baseCdnUrl = getCdnBaseUrl();
+  return baseCdnUrl ? `${baseCdnUrl}/images/openkosmos/openkosmos-quick-start-default-image.png` : '';
+})();
 
 /**
  * Quick-start card component.
@@ -41,6 +49,15 @@ const QuickStartCard: React.FC<{
 
     const loadImage = async () => {
       setIsLoading(true);
+
+      // No image available (no custom image and no CDN default): render without one.
+      if (!rawImageUrl) {
+        if (isMounted) {
+          setImageUrl('');
+          setIsLoading(false);
+        }
+        return;
+      }
 
       try {
         // Try to get the cached local path (auto-caches if not present)

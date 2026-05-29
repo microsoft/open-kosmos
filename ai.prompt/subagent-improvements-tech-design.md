@@ -496,7 +496,7 @@ Total Batch 3 estimate: **~5 days**
 | **Agent resume** | Batch 4 transcript persistence provides the foundation — replay from JSONL |
 | **Thinking budget** | `SubAgentChatOptions` can add `thinkingConfig` field when model API supports it |
 | **Named agent swarm** | `pendingMessages` queue pattern extends naturally to peer-to-peer routing |
-| **Admin governance** | All features gated by `kosmosFeatureSubAgent` flag |
+| **Admin governance** | All features gated by `openkosmosFeatureSubAgent` flag |
 
 ---
 
@@ -585,7 +585,7 @@ private setupAutoWakeListener(): void {
     const instance = this.registry.getInstance(parentSessionId);
     if (!instance) return;
     if (instance.chatStatus !== ChatStatus.IDLE) return;
-    if (!isFeatureEnabled('kosmosFeatureSubAgentAutoWake')) return;
+    if (!isFeatureEnabled('openkosmosFeatureSubAgentAutoWake')) return;
 
     // Mark pending to prevent double-trigger
     this.pendingAutoWakes.add(parentSessionId);
@@ -630,7 +630,7 @@ The simpler approach: the debounce + `pendingAutoWakes` Set naturally prevents r
 | `subAgentManager.ts` | Extend `EventEmitter`, emit `subAgentResultReady` in `enqueueResult()` |
 | `agentChatManager.ts` | Add `setupAutoWakeListener()`, `pendingAutoWakes` Set, debounced handler |
 | `agentChat.ts` | Mark synthetic trigger messages, clean up after drain |
-| `featureFlags.ts` | Add `kosmosFeatureSubAgentAutoWake` flag |
+| `featureFlags.ts` | Add `openkosmosFeatureSubAgentAutoWake` flag |
 
 ---
 

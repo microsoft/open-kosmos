@@ -29,7 +29,7 @@ export interface SchedulerJob {
   lastFinishedAt?: string;
   /** Completion time for one-time jobs */
   executedAt?: string;
-  /** Whether to send a notification on completion. Defaults to true. */
+  /** Whether to send a notification to bound remote channels (e.g. Teams) on completion. Defaults to true. */
   notifyOnCompletion?: boolean;
 }
 

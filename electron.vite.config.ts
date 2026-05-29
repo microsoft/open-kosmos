@@ -8,18 +8,19 @@ import { ejsTemplatePlugin } from './scripts/vite/ejs-template-plugin'
 import { monacoWorkerPlugin } from './scripts/vite/monaco-worker-plugin'
 import { sharedDefines, mainOnlyDefines, rendererOnlyDefines } from './scripts/vite/defines'
 
-// Load openkosmos brand config for template plugin (window title etc.)
+// brand-config.js is CJS; use createRequire for ESM compatibility
 const nodeRequire = createRequire(import.meta.url)
-const openkosmosConfig = nodeRequire('./brands/openkosmos/config.json')
+const brandConfig = nodeRequire('./scripts/brand-config')
 
 // Load .env.local (support DOTENV_CONFIG_PATH override for E2E tests)
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' })
 
 export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve'
+  const appConfig = brandConfig.config
 
-  const shared = sharedDefines(mode)
-  const mainOnly = mainOnlyDefines()
+  const shared = sharedDefines(mode, brandConfig)
+  const mainOnly = mainOnlyDefines(brandConfig)
   const rendererOnly = rendererOnlyDefines()
 
   return {
@@ -85,7 +86,7 @@ export default defineConfig(({ command, mode }) => {
       plugins: [
         react(),
         monacoWorkerPlugin(),
-        ejsTemplatePlugin({ appConfig: openkosmosConfig, isDev }),
+        ejsTemplatePlugin({ appConfig, isDev }),
       ],
       define: {
         ...shared,

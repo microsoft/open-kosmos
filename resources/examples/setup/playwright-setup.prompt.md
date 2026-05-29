@@ -22,7 +22,7 @@ node --version
 npm --version
 ```
 
-If Node.js is not installed, please refer to [npm-setup.prompt.md](https://cdn.kosmos-ai.com/setup/npm-setup.prompt.md) to complete the Node.js environment setup.
+If Node.js is not installed, please install it from the [official Node.js website](https://nodejs.org/) to complete the Node.js environment setup.
 
 ---
 
@@ -313,7 +313,7 @@ browser: webkit 17.4, installed
 **Cause**: Node.js/npm is not installed or Playwright is not correctly installed.
 
 **Solution**:
-1. Ensure Node.js and npm are installed (refer to [npm-setup.prompt.md](https://cdn.kosmos-ai.com/setup/npm-setup.prompt.md))
+1. Ensure Node.js and npm are installed (install from the [official Node.js website](https://nodejs.org/))
 2. Run `npm install -g playwright@1.57.0` for global installation
 3. After installation, you must run `playwright install` to install browsers
 4. Or use `npx playwright` to run (no global installation required)

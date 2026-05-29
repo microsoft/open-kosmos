@@ -2,7 +2,6 @@
 import {
   Companion,
   BuddyXPData,
-  BuddyPersistence,
   BuddyEntry,
   BuddyRosterData,
   Milestone,
@@ -16,7 +15,6 @@ import {
 import { roll, generateSoul, generateSeed } from './companion';
 import { xpToLevel, getStatBoost } from './leveling';
 import { validateMerge, executeMerge, MergeResult } from './merging';
-import { migrateV1ToV2 } from './migration';
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -81,24 +79,11 @@ export class BuddyManager {
         const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
         const stored = JSON.parse(raw);
 
-        if (stored.version === 2) {
-          // Direct V2 load
-          const data = stored as BuddyRosterData & { muted?: boolean };
-          this.roster = data.buddies;
-          this.activeBuddyId = data.activeBuddyId;
-          this.userTotalTokens = data.userTotalTokens;
-          this.muted = data.muted ?? false;
-        } else {
-          // V1 migration
-          const v1 = stored as BuddyPersistence;
-          const migrated = migrateV1ToV2(v1);
-          this.roster = migrated.buddies;
-          this.activeBuddyId = migrated.activeBuddyId;
-          this.userTotalTokens = migrated.userTotalTokens;
-          this.muted = v1.companionMuted ?? false;
-          // Persist migrated data immediately
-          this.persistImmediate();
-        }
+        const data = stored as BuddyRosterData & { muted?: boolean };
+        this.roster = data.buddies;
+        this.activeBuddyId = data.activeBuddyId;
+        this.userTotalTokens = data.userTotalTokens;
+        this.muted = data.muted ?? false;
 
         const activeEntry = this.getActiveEntry();
         console.log(

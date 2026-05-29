@@ -1,7 +1,7 @@
 {
   "name": "chromium-mcp-native-server",
   "version": "1.1.2",
-  "description": "Kosmos Chrome Native Messaging Server",
+  "description": "OpenKosmos Chrome Native Messaging Server",
   "main": "dist/index.js",
   "bin": {
     "mcp-chrome-bridge": "./dist/cli.js",

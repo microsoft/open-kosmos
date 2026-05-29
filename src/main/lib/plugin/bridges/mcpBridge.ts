@@ -6,7 +6,7 @@
  * from user-managed servers and protected from user modification.
  *
  * Supports environment-variable substitution in command/args/env:
- *   ${OPENKOSMOS_PLUGIN_ROOT}  →  plugin installation directory
+ *   ${OpenKosmos_PLUGIN_ROOT}  →  plugin installation directory
  */
 
 import { createLogger } from '../../unifiedLogger';
@@ -24,7 +24,7 @@ const logger = createLogger();
  * Expand variables in a string value.
  *
  * Resolution order (first match wins):
- *   1. `${OPENKOSMOS_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}` → plugin install path
+ *   1. `${OpenKosmos_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}` → plugin install path
  *   2. `${VAR:-default}` → process.env[VAR], falling back to `default`
  *   3. `${VAR}` → process.env[VAR], or left as-is if missing
  *
@@ -33,7 +33,7 @@ const logger = createLogger();
 function substituteVars(value: string, plugin: LoadedPlugin): string {
   return value.replace(/\$\{([^}]+)\}/g, (match, varContent: string) => {
     // Plugin-root shortcuts (exact match, no default-value parsing)
-    if (varContent === 'OPENKOSMOS_PLUGIN_ROOT' || varContent === 'CLAUDE_PLUGIN_ROOT') {
+    if (varContent === 'OpenKosmos_PLUGIN_ROOT' || varContent === 'CLAUDE_PLUGIN_ROOT') {
       return plugin.path;
     }
 

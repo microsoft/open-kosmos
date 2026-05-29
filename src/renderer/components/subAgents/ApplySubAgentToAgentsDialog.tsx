@@ -16,8 +16,6 @@ import {
 } from '../ui/dialog'
 import { useProfileData } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
-import { BRAND_NAME } from '../../../shared/constants/branding'
-import { isBuiltinAgent } from '../../../main/lib/userDataADO/types/profile'
 
 interface ApplySubAgentToAgentsDialogProps {
   open: boolean
@@ -47,32 +45,24 @@ const ApplySubAgentToAgentsDialog: React.FC<ApplySubAgentToAgentsDialogProps> = 
   const agentItems: AgentItem[] = useMemo(() => {
     if (!open) return []
     const items: AgentItem[] = []
-    const shouldInclude = (agent: { name: string; source?: string }) => {
-      if (isBuiltinAgent(agent.name, BRAND_NAME) && agent.name === 'Kobi') return false
-      return true
-    }
     for (const chat of chats) {
       if (chat.chat_type === 'single_agent' && chat.agent) {
-        if (shouldInclude(chat.agent)) {
-          items.push({
-            chatId: chat.chat_id,
-            agentName: chat.agent.name,
-            emoji: chat.agent.emoji,
-            avatar: chat.agent.avatar,
-            alreadyApplied: (chat.agent.sub_agents || []).includes(subAgentName),
-          })
-        }
+        items.push({
+          chatId: chat.chat_id,
+          agentName: chat.agent.name,
+          emoji: chat.agent.emoji,
+          avatar: chat.agent.avatar,
+          alreadyApplied: (chat.agent.sub_agents || []).includes(subAgentName),
+        })
       } else if (chat.chat_type === 'multi_agent' && chat.agents) {
         for (const agent of chat.agents) {
-          if (shouldInclude(agent)) {
-            items.push({
-              chatId: chat.chat_id,
-              agentName: agent.name,
-              emoji: agent.emoji,
-              avatar: agent.avatar,
-              alreadyApplied: (agent.sub_agents || []).includes(subAgentName),
-            })
-          }
+          items.push({
+            chatId: chat.chat_id,
+            agentName: agent.name,
+            emoji: agent.emoji,
+            avatar: agent.avatar,
+            alreadyApplied: (agent.sub_agents || []).includes(subAgentName),
+          })
         }
       }
     }

@@ -50,7 +50,7 @@ const WorkspaceExplorerSidepane: React.FC = () => {
     const currentChat = data.chats.find(chat => chat.chat_id === currentChatId);
     return {
       currentWorkspace: currentChat?.agent?.workspace || '',
-      currentKnowledgeBase: currentChat?.agent?.knowledge?.knowledgeBase || currentChat?.agent?.knowledgeBase || '',
+      currentKnowledgeBase: currentChat?.agent?.knowledge?.knowledgeBase || '',
     };
   }, [data.chats, data.lastUpdated, currentChatId]);
 

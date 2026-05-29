@@ -409,7 +409,7 @@ export function getPlatformDetectionInfo() {
   return {
     platform: platformInfo.platform,
     isSupported: platformInfo.isSupported,
-    standardConfigPath: platformInfo.vscodeConfigPath,
+    standardConfigPath: platformInfo.vscodeConfigPaths[0],
     detectionStrategy: getDetectionStrategy(platformInfo.platform),
     supportedFormats: getSupportedFormats(platformInfo.platform)
   };

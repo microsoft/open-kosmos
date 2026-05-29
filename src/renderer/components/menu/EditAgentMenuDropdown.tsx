@@ -82,6 +82,19 @@ const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
     onClose();
   };
 
+  const handleConfigContextEnhancement = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    // Trigger open Context Enhancement tab event
+    window.dispatchEvent(new CustomEvent('agent:editAgent', {
+      detail: {
+        chatId: null, // Will be obtained from the current chatId in ContentContainer
+        initialTab: 'context'
+      }
+    }));
+    onClose();
+  };
+
   return (
     <div
       ref={editAgentMenuRef}

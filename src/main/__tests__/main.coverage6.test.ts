@@ -252,7 +252,6 @@ const mockAppCacheManager = {
 
 const mockProfileCacheManagerSync = {
   getAllChatConfigs: vi.fn(() => []),
-  getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: '' })),
 };
 
 vi.mock('../startup/lazy', () => ({
@@ -260,7 +259,6 @@ vi.mock('../startup/lazy', () => ({
     Promise.resolve({
       setMainWindow: vi.fn(),
       getAllChatConfigs: vi.fn(() => []),
-      getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: 'Ctrl+Space' })),
     }),
   ),
   getAppCacheManager: vi.fn(() => Promise.resolve(mockAppCacheManager)),
@@ -307,7 +305,6 @@ const mockAnalyticsManager = {
   shutdown: vi.fn(() => Promise.resolve()),
 };
 vi.mock('../lib/analytics', () => ({
-  appInsightsClient: { init: vi.fn() },
   analyticsManager: mockAnalyticsManager,
 }));
 
@@ -320,9 +317,6 @@ vi.mock('../lib/scheduler/SchedulerManager', () => ({
   schedulerManager: mockSchedulerManager,
 }));
 
-vi.mock('../lib/mem0/openkosmos-adapters', () => ({
-  resetOpenKosmosMemory: vi.fn(() => Promise.resolve()),
-}));
 
 vi.mock('../lib/mcpRuntime/mcpClientManager', () => ({
   mcpClientManager: {
@@ -674,28 +668,6 @@ describe('main.ts – coverage6', () => {
       await loadMainModule();
       await triggerReady();
       // capturedInjection may be null if setUpIPC wasn't called — just assert no throw
-      expect(true).toBe(true);
-    });
-  });
-
-  // ─── getToolBarAutoHide → false path ──────────────────────────────────────
-
-  describe('handleWebSearch — autoHide false path', () => {
-    it('does not hideToolBar when autoHide is false', async () => {
-      // Override getToolBarSettings to return autoHide: false
-      const { getProfileCacheManagerSync } = await import('../startup/lazy');
-      vi.mocked(getProfileCacheManagerSync).mockReturnValue({
-        ...mockProfileCacheManagerSync,
-        getToolBarSettings: vi.fn(() => ({ autoHide: false, visibleAgents: [], shortcut: '' })),
-      } as any);
-      await loadMainModule();
-      await triggerReady();
-      const ipc = mocks.capturedInjection;
-      if (ipc && ipc.handleWebSearch) {
-        await ipc.handleWebSearch('pseudo-agent-search-bing');
-        // hideToolBar should not be called since autoHide=false
-        expect(mocks.mockMainBrowserWindow.hide).not.toHaveBeenCalled();
-      }
       expect(true).toBe(true);
     });
   });

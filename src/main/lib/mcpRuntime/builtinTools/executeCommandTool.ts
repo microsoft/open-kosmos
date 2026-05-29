@@ -58,6 +58,7 @@ export class ExecuteCommandTool {
   }> = [
     { family: 'gh-auth-login', pattern: /^gh auth login(?:\s|$)/ },
     { family: 'gh-auth-refresh', pattern: /^gh auth refresh(?:\s|$)/ },
+    { family: 'az-login', pattern: /^az login(?:\s|$)/ },
     { family: 'npm-login', pattern: /^npm login(?:\s|$)/ },
     { family: 'npm-adduser', pattern: /^npm adduser(?:\s|$)/ },
     { family: 'pnpm-login', pattern: /^pnpm login(?:\s|$)/ },
@@ -538,7 +539,7 @@ export class ExecuteCommandTool {
       name: 'execute_command',
       description:
         'Execute a shell command in the selected workspace using the unified terminal manager. Output is truncated to 8000 characters, commands timeout after 60 seconds by default, interactive auth commands like gh auth login get a 15-minute minimum timeout, and high-risk patterns are blocked by safety checks.\n\n' +
-        'Interactive auth commands such as gh auth login, gh auth refresh, npm login, npm adduser, pnpm login, and yarn npm login surface verification hints in the message timeline so users can open links, copy device codes, and see the remaining timeout without digging through raw terminal output.\n\n' +
+        'Interactive auth commands such as gh auth login, gh auth refresh, az login, npm login, npm adduser, pnpm login, and yarn npm login surface verification hints in the message timeline so users can open links, copy device codes, and see the remaining timeout without digging through raw terminal output.\n\n' +
         'Background Mode:\n' +
         '- Set background=true to run long-running commands without blocking\n' +
         '- Returns immediately with sessionId and pid\n' +
@@ -603,7 +604,7 @@ export class ExecuteCommandTool {
       return 'this command would delete credential/token/cookie files, which destroys authentication state for the user and other applications';
     }
     if (/login\.microsoftonline|login\.live|accounts\.google|oauth2?.*logout|revoke|signout/i.test(src)) {
-      return 'this command accesses an OAuth logout/revoke endpoint, which would destroy system-wide SSO login state across all services';
+      return 'this command accesses an OAuth logout/revoke endpoint, which would destroy system-wide SSO login state across all Microsoft/Google services (Edge, Teams, Windows Widgets, etc.)';
     }
     if (/Edge|Chrome.*User Data|Application Support/i.test(src)) {
       return 'this command directly manipulates the system browser profile directory, which can corrupt or destroy browser login state';

@@ -5,6 +5,7 @@ import { useSubAgents, useProfileDataRefresh } from '../userData/userDataProvide
 import { INHERIT_MODEL_VALUE } from '@shared/constants/subAgent'
 import SubAgentForm, { DEFAULT_FORM_DATA } from './SubAgentForm'
 import type { SubAgentFormData } from './SubAgentForm'
+import type { AgentMcpServer } from '../../lib/userData/types'
 import '../../styles/Header.css'
 import '../../styles/SubAgentsView.css'
 
@@ -39,7 +40,7 @@ const EditSubAgentView: React.FC = () => {
         description: existing.description,
         system_prompt: existing.system_prompt,
         model: existing.model || INHERIT_MODEL_VALUE,
-        mcp_servers: Array.isArray(existing.mcp_servers) ? existing.mcp_servers : [],
+        mcp_servers: Array.isArray(existing.mcpServers) ? existing.mcpServers.filter((s): s is AgentMcpServer => typeof s !== 'string') : [],
         inherit_mcp_servers: existing.inherit_mcp_servers ?? true,
         skills: Array.isArray(existing.skills) ? existing.skills : [],
         inherit_skills: existing.inherit_skills ?? true,
@@ -77,7 +78,7 @@ const EditSubAgentView: React.FC = () => {
         description: formData.description.trim(),
         model: formData.model.trim() || INHERIT_MODEL_VALUE,
         system_prompt: formData.system_prompt.trim(),
-        mcp_servers: formData.mcp_servers,
+        mcpServers: formData.mcp_servers,
         skills: formData.skills,
         inherit_mcp_servers: formData.inherit_mcp_servers,
         inherit_skills: formData.inherit_skills,
@@ -152,6 +153,7 @@ const EditSubAgentView: React.FC = () => {
 
   return (
     <div className="sub-agent-form-view">
+      {/* Header - based on SubAgentLibraryViewHeader using unified-header */}
       <div className="unified-header">
         <div className="header-title">
           <button className="btn-action" onClick={() => navigate('/settings/sub-agents')} title="Back">

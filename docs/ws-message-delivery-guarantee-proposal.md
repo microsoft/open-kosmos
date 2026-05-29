@@ -2,16 +2,16 @@
 
 ## 1. Problem Background
 
-Kosmos (Electron desktop app) communicates with external agents (OpenClaw, Hermes, etc.) via WebSocket:
+OpenKosmos (Electron desktop app) communicates with external agents (OpenClaw, Hermes, etc.) via WebSocket:
 
-- **Kosmos is the WS server** (local port 9527), agent plugins are WS clients
-- Agents deliver bot replies to Kosmos via `push` / `push_end` messages
-- **Problem**: When the user closes Kosmos or the network disconnects, the WS connection is interrupted and the agent's reply messages are lost. Users cannot see bot replies from the offline period after reopening Kosmos.
+- **OpenKosmos is the WS server** (local port 9527), agent plugins are WS clients
+- Agents deliver bot replies to OpenKosmos via `push` / `push_end` messages
+- **Problem**: When the user closes OpenKosmos or the network disconnects, the WS connection is interrupted and the agent's reply messages are lost. Users cannot see bot replies from the offline period after reopening OpenKosmos.
 
 ### Current Behavior
 
 ```
-User sends message → Kosmos WS → Plugin → OpenClaw processes → Plugin sends push → WS disconnects → message lost
+User sends message → OpenKosmos WS → Plugin → OpenClaw processes → Plugin sends push → WS disconnects → message lost
                                                                     ↑
                                                               plugin only logs warn, doesn't throw
                                                               OpenClaw thinks delivery succeeded
@@ -19,7 +19,7 @@ User sends message → Kosmos WS → Plugin → OpenClaw processes → Plugin se
 
 ### Fundamental Difference from Discord
 
-| | Discord | Kosmos |
+| | Discord | OpenKosmos |
 |---|---------|--------|
 | Delivery method | REST API (HTTP POST) | WebSocket push |
 | Persistence | Discord cloud server | Client local disk |
@@ -103,7 +103,7 @@ Combining MQTT QoS 1's ACK resend mechanism with Discord's seq tracking to desig
 ### Core Principles
 
 1. **Sender (Plugin) persistence** — persist message to disk before sending, only clear after ACK
-2. **Receiver (Kosmos) acknowledgment** — send ACK upon receiving a message
+2. **Receiver (OpenKosmos) acknowledgment** — send ACK upon receiving a message
 3. **Resend on reconnect** — resend unACK'd messages after reconnection
 4. **Receiver deduplication based on seq** — messages with `seq <= lastReceivedSeq` are ACK'd without reprocessing
 
@@ -113,7 +113,7 @@ Combining MQTT QoS 1's ACK resend mechanism with Discord's seq tracking to desig
 
 ### 4.1 WS Protocol Changes
 
-#### New Message Types (Client → Server, i.e., Plugin → Kosmos)
+#### New Message Types (Client → Server, i.e., Plugin → OpenKosmos)
 
 Existing messages remain unchanged; add `seq` and `msgId` fields:
 
@@ -134,7 +134,7 @@ interface PushEndMessage {
 }
 ```
 
-#### New Message Types (Server → Client, i.e., Kosmos → Plugin)
+#### New Message Types (Server → Client, i.e., OpenKosmos → Plugin)
 
 ```typescript
 // New: message acknowledgment
@@ -146,7 +146,7 @@ interface AckMessage {
 // New: return lastSeq on successful authentication
 interface AuthSuccessMessage {
   type: 'auth_success';
-  lastSeq?: number;   // New: the last seq Kosmos recorded (for resume)
+  lastSeq?: number;   // New: the last seq OpenKosmos recorded (for resume)
 }
 ```
 
@@ -175,13 +175,13 @@ Persist seq to disk (to avoid reset on restart)
 ```
 Data structure: Map<seq, { type, text, conversationId, msgId, timestamp }>
 Storage location: jsonl file under OpenClaw data directory (per-account)
-                  e.g.: ~/.openclaw/plugins/kosmos/pending-<accountId>.jsonl
+                  e.g.: ~/.openclaw/plugins/openkosmos/pending-<accountId>.jsonl
 
 Lifecycle:
   1. Before sending: write message to pending queue
   2. Sent successfully + received ACK: remove from pending queue
   3. WS disconnects: pending queue remains on disk
-  4. After reconnect: read pending queue, compare with Kosmos's returned lastSeq, resend messages with seq > lastSeq
+  4. After reconnect: read pending queue, compare with OpenKosmos's returned lastSeq, resend messages with seq > lastSeq
 ```
 
 #### Reconnect Resend Logic
@@ -196,7 +196,7 @@ Lifecycle:
 7. Enter normal mode after all resends are complete
 ```
 
-### 4.3 Kosmos-Side Changes (WS Server)
+### 4.3 OpenKosmos-Side Changes (WS Server)
 
 #### Seq Tracking
 
@@ -213,7 +213,7 @@ When receiving push/push_end:
 
 ```
 Storage location: chatSessionStore or a dedicated seq-tracking file
-                  e.g.: ~/.kosmos/external-agents/<agentId>/last-seq.json
+                  e.g.: ~/.openkosmos/external-agents/<agentId>/last-seq.json
 
 Content: { lastReceivedSeq: number, updatedAt: timestamp }
 
@@ -240,21 +240,21 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 
 | Data | Storage Location | Format | Expiry Policy |
 |------|---------|------|---------|
-| Plugin pending queue | `~/.openclaw/plugins/kosmos/pending-<accountId>.jsonl` | JSONL | Delete after ACK; auto-clean entries older than 24h |
-| Plugin seq counter | `~/.openclaw/plugins/kosmos/seq-<accountId>.json` | JSON | Never expires |
-| Kosmos lastReceivedSeq | `~/.kosmos/external-agents/<agentId>/last-seq.json` | JSON | Never expires |
+| Plugin pending queue | `~/.openclaw/plugins/openkosmos/pending-<accountId>.jsonl` | JSONL | Delete after ACK; auto-clean entries older than 24h |
+| Plugin seq counter | `~/.openclaw/plugins/openkosmos/seq-<accountId>.json` | JSON | Never expires |
+| OpenKosmos lastReceivedSeq | `~/.openkosmos/external-agents/<agentId>/last-seq.json` | JSON | Never expires |
 
 ### 4.5 Edge Case Handling
 
 #### Duplicate Messages
 - Plugin uses the same seq when resending
-- Kosmos deduplicates via `seq <= lastReceivedSeq`
+- OpenKosmos deduplicates via `seq <= lastReceivedSeq`
 - Deduplication is entirely based on seq, no additional ID mechanism needed
 
 #### Out-of-Order Messages
 - In normal mode, seq is strictly increasing, no out-of-order possible
 - In resend mode, messages are sent serially, no out-of-order possible
-- If a gap occurs (seq jump), Kosmos returns seq_gap error and Plugin resends in order
+- If a gap occurs (seq jump), OpenKosmos returns seq_gap error and Plugin resends in order
 
 #### Seq Overflow
 - Uses JavaScript number (max safe integer 2^53 - 1 ≈ 9×10^15)
@@ -265,13 +265,13 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 - pending queue restored from disk
 - Normal resume flow after reconnect
 
-#### Kosmos Restart
+#### OpenKosmos Restart
 - lastReceivedSeq restored from disk
 - Plugin reconnects after restart, follows normal resume flow
 
 #### Multiple Agents Concurrently
 - seq and pending queue are per-account, different agents don't affect each other
-- Kosmos-side lastReceivedSeq is also per-token
+- OpenKosmos-side lastReceivedSeq is also per-token
 
 #### Oversized Messages
 - pending queue entries exceeding a certain size (e.g., 1MB) are truncated or rejected
@@ -281,7 +281,7 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 
 ## 5. Impact Assessment on Existing Code
 
-### Plugin Side (`packages/openclaw-kosmos-channel/src/plugin.ts`)
+### Plugin Side (`packages/openclaw-openkosmos-channel/src/plugin.ts`)
 
 | Change | Scope | Complexity |
 |------|---------|--------|
@@ -292,7 +292,7 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 | Add replay logic after reconnect | `connect()` function | Medium |
 | ACK handling | `ws.on('message')` | Low |
 
-### Kosmos Side
+### OpenKosmos Side
 
 | File | Changes | Complexity |
 |------|------|--------|
@@ -304,7 +304,7 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 
 - seq and msgId fields are required
 - Messages without these fields are treated as protocol errors; return error and close connection
-- Plugin and Kosmos must be upgraded simultaneously
+- Plugin and OpenKosmos must be upgraded simultaneously
 
 ---
 
@@ -313,7 +313,7 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 | Phase | Content | Value |
 |------|------|------|
 | P0 | Plugin-side pending queue + reconnect resend | Solves the core message loss problem |
-| P0 | Kosmos-side ACK + lastSeq persistence + seq deduplication | Works with Plugin resend |
+| P0 | OpenKosmos-side ACK + lastSeq persistence + seq deduplication | Works with Plugin resend |
 | P1 | Expiry cleanup, monitoring metrics | Operational observability |
 
 ---
@@ -339,14 +339,14 @@ No additional msgId deduplication mechanism needed, since seq is monotonically i
 
 ### 7.3 Streaming Display Depends on OpenClaw Block Granularity
 
-- Kosmos-side streaming chain is complete: push chunk → handlePushChunk → emitStreamingChunk → IPC → renderer (25-30ms adaptive batching)
+- OpenKosmos-side streaming chain is complete: push chunk → handlePushChunk → emitStreamingChunk → IPC → renderer (25-30ms adaptive batching)
 - But OpenClaw's `bufferedBlockDispatcher` dispatches at block (paragraph) level, not token level
-- The user seeing "a whole block appear at once" is OpenClaw-side behavior, not a Kosmos-side issue
+- The user seeing "a whole block appear at once" is OpenClaw-side behavior, not a OpenKosmos-side issue
 - **Impact**: Offline resend does not need to preserve streaming experience. Only full text needs to be sent during resend (push + push_end), no streaming replay needed
 
 ### 7.4 Plugin Lifecycle
 
-- Plugin continues running after Kosmos is closed (runs on OpenClaw server)
+- Plugin continues running after OpenKosmos is closed (runs on OpenClaw server)
 - Plugin continuously attempts WS reconnection (exponential backoff)
 - Plugin can use Node.js fs to persist pending queue to disk
 - **Impact**: Plugin can restore pending queue from disk after restart, provided the data directory is preserved during redeployment
@@ -382,5 +382,5 @@ The two solutions are not mutually exclusive. Solution A can be implemented firs
 1. ~~**Pending queue size limit**~~ → In-memory pending queue recommended limit: 100 entries or 5MB (memory should not be too large)
 2. **Resend strategy** — Serial one-by-one resend, recommend keeping unchanged
 3. ~~**Heartbeat and timeout**~~ → No additional heartbeat needed, WS close event is sufficient
-4. **Multiple Kosmos instances** — If the user runs Kosmos on multiple machines, does the seq space need to be isolated? (Currently already isolated per-account)
+4. **Multiple OpenKosmos instances** — If the user runs OpenKosmos on multiple machines, does the seq space need to be isolated? (Currently already isolated per-account)
 5. ~~**Seq granularity for streaming chunks**~~ → Assign seq only to push_end with full text. Offline resend does not need streaming experience

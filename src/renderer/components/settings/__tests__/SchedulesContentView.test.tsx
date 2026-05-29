@@ -27,7 +27,7 @@ vi.mock('../../lib/scheduler/cronDescriptions', () => ({
 
 // CSS imports fail in happy-dom — stub them out
 vi.mock('../../styles/ContentView.css', () => ({}));
-vi.mock('../../styles/ToolbarSettingsView.css', () => ({}));
+vi.mock('../../styles/SettingsShared.css', () => ({}));
 
 // ---------------------------------------------------------------------------
 // Helpers

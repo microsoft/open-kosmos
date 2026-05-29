@@ -7,7 +7,7 @@ import { BuiltinToolsManager } from './builtinToolsManager';
 interface ApplySkillToAgentsArgs {
   skill_name?: string;
   path?: string;
-  source?: 'device';
+  source?: 'device' | 'library';
   agent_chat_ids?: string[];
   agent_names?: string[];
   apply_to_all?: boolean;
@@ -21,14 +21,14 @@ export class ApplySkillToAgentsTool {
       description:
         'Apply a skill to one or more agents. ' +
         'If the skill is already globally installed, it is applied directly. ' +
-        'If not installed, provide path (source=device) to install it first, then apply. ' +
+        'If not installed, provide path (source=device) or skill_name (source=library) to install it first, then apply. ' +
         'When no agent targeting is specified, defaults to the current agent in the active chat.',
       inputSchema: {
         type: 'object',
         properties: {
           skill_name: {
             type: 'string',
-            description: 'Skill name. Used as the installed-skill identifier.',
+            description: 'Skill name. Used both as the installed-skill identifier and as the library skill name when source=library.',
           },
           path: {
             type: 'string',
@@ -36,8 +36,8 @@ export class ApplySkillToAgentsTool {
           },
           source: {
             type: 'string',
-            enum: ['device'],
-            description: 'Installation source for uninstalled skills. Requires path to be provided.',
+            enum: ['device', 'library'],
+            description: 'Installation source for uninstalled skills. Defaults to device when path is provided, otherwise library.',
           },
           agent_chat_ids: {
             type: 'array',
@@ -86,17 +86,21 @@ export class ApplySkillToAgentsTool {
 
     // ---------- If not installed, install first ----------
     if (!isInstalled) {
-      if (!args.path || !args.path.trim()) {
+      const sourceType = args.source || (args.path ? 'device' : 'library');
+
+      if (sourceType === 'device' && (!args.path || !args.path.trim())) {
         return {
           success: false,
-          message: `Skill "${skillName}" is not installed. Provide a path to install from a local artifact.`,
+          message: `Skill "${skillName}" is not installed. Provide a path with source=device to install from a local artifact.`,
           error: 'SKILL_NOT_INSTALLED',
         };
       }
 
       const installResult = await installAndActivateSkill({
         userAlias: currentUserAlias,
-        source: { type: 'device-path', value: args.path!.trim() },
+        source: sourceType === 'device'
+          ? { type: 'device-path', value: args.path!.trim() }
+          : { type: 'library-name', value: skillName },
         requestSource: 'chat-tool',
         activation: { mode: 'install-only' },
       });

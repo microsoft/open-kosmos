@@ -15,9 +15,6 @@
  *     "pinnedPythonVersion": "cpython-3.10.12-macos-aarch64-none" | null
  *   }
  * }
- *
- * Migration rules (integrityEnsure):
- *   If runtimeEnvironment is absent in app.json, migrate it from {userData}/runtimeConfig.json.
  */
 
 import * as fs from 'fs';
@@ -27,23 +24,20 @@ import { createConsoleLogger } from '../unifiedLogger';
 import {
   AppConfig,
   RuntimeEnvironment,
-  RuntimeMode,
   DEFAULT_RUNTIME_ENVIRONMENT,
   DEFAULT_APP_CONFIG,
-  DEFAULT_VOICE_INPUT_CONFIG,
   DEFAULT_SCREENSHOT_SETTINGS,
   isAppConfig,
 } from './types/app';
 import type { ScreenshotSettings } from './types/app';
 
 // Re-export types so external callers can import them directly from appCacheManager
-export { DEFAULT_RUNTIME_ENVIRONMENT, DEFAULT_APP_CONFIG, DEFAULT_VOICE_INPUT_CONFIG, DEFAULT_SCREENSHOT_SETTINGS, isAppConfig } from './types/app';
-export type { VoiceInputConfig, ScreenshotSettings } from './types/app';
+export { DEFAULT_RUNTIME_ENVIRONMENT, DEFAULT_APP_CONFIG, DEFAULT_SCREENSHOT_SETTINGS, isAppConfig } from './types/app';
+export type { ScreenshotSettings } from './types/app';
 
 const logger = createConsoleLogger();
 
 const APP_CONFIG_FILENAME = 'app.json';
-const LEGACY_RUNTIME_CONFIG_FILENAME = 'runtimeConfig.json';
 const DEFAULT_ZOOM_LEVEL = 0;
 const ZOOM_MIN = -3;
 const ZOOM_MAX = 3;
@@ -75,7 +69,7 @@ function getElectronApp(): Electron.App {
  * Responsibilities:
  * 1. Read / write {userData}/app.json
  * 2. Keep an in-memory cache of the latest config
- * 3. integrityEnsure on read (migrate from legacy runtimeConfig.json when runtimeEnvironment is missing)
+ * 3. integrityEnsure on read (fill missing fields with defaults)
  * 4. appConfigSanitize on write (strip invalid fields and enforce type safety)
  * 5. Notify the frontend AppDataManager via IPC after data updates
  *
@@ -119,10 +113,6 @@ export class AppCacheManager {
 
   private getAppConfigPath(): string {
     return path.join(this.getUserDataPath(), APP_CONFIG_FILENAME);
-  }
-
-  private getLegacyRuntimeConfigPath(): string {
-    return path.join(this.getUserDataPath(), LEGACY_RUNTIME_CONFIG_FILENAME);
   }
 
   // ── Load ───────────────────────────────────────────────────────────────────
@@ -176,9 +166,8 @@ export class AppCacheManager {
   // ── integrityEnsure ────────────────────────────────────────────────────────
 
   /**
-   * Integrity check:
-   * - If runtimeEnvironment is missing, migrate from legacy runtimeConfig.json; otherwise fill with defaults.
-   * - All other fields are left as-is.
+   * Integrity check: fills missing fields with defaults.
+   * All other fields are left as-is.
    *
    * 📖 Standard pattern for adding new fields, see README Step 3a:
    * src/main/lib/userDataADO/README.md — "3a. integrityEnsure — called on every read"
@@ -187,23 +176,11 @@ export class AppCacheManager {
     const result: AppConfig = { ...raw };
 
     if (!result.runtimeEnvironment) {
-      const migrated = this.migrateRuntimeEnvironmentFromLegacy();
-      result.runtimeEnvironment = migrated
-        ? { ...DEFAULT_RUNTIME_ENVIRONMENT, ...migrated }
-        : { ...DEFAULT_RUNTIME_ENVIRONMENT };
-
-      if (migrated) {
-        logger.info(
-          '[AppCacheManager] runtimeEnvironment migrated from runtimeConfig.json',
-          'AppCacheManager',
-          { migrated },
-        );
-      } else {
-        logger.info(
-          '[AppCacheManager] runtimeEnvironment not found, using default values',
-          'AppCacheManager',
-        );
-      }
+      result.runtimeEnvironment = { ...DEFAULT_RUNTIME_ENVIRONMENT };
+      logger.info(
+        '[AppCacheManager] runtimeEnvironment not found, using default values',
+        'AppCacheManager',
+      );
     } else {
       // Fill in any sub-fields that may be missing
       result.runtimeEnvironment = {
@@ -212,32 +189,13 @@ export class AppCacheManager {
       };
     }
 
-    // voiceInput: fill with defaults if missing, merge sub-fields to add any new keys
-    if (!result.voiceInput) {
-      result.voiceInput = { ...DEFAULT_VOICE_INPUT_CONFIG };
-    } else {
-      result.voiceInput = { ...DEFAULT_VOICE_INPUT_CONFIG, ...result.voiceInput };
-    }
-
-    // screenshotSettings: fill with defaults if missing; on first run migrate from first profile
+    // screenshotSettings: fill with defaults if missing
     if (!result.screenshotSettings) {
-      const migrated = this.migrateScreenshotFromFirstProfile();
-      result.screenshotSettings = migrated
-        ? { ...DEFAULT_SCREENSHOT_SETTINGS, ...migrated }
-        : { ...DEFAULT_SCREENSHOT_SETTINGS };
-
-      if (migrated) {
-        logger.info(
-          '[AppCacheManager] screenshotSettings migrated from first profile',
-          'AppCacheManager',
-          { migrated },
-        );
-      } else {
-        logger.info(
-          '[AppCacheManager] screenshotSettings not found in profile, using default values',
-          'AppCacheManager',
-        );
-      }
+      result.screenshotSettings = { ...DEFAULT_SCREENSHOT_SETTINGS };
+      logger.info(
+        '[AppCacheManager] screenshotSettings not found, using default values',
+        'AppCacheManager',
+      );
     } else {
       result.screenshotSettings = { ...DEFAULT_SCREENSHOT_SETTINGS, ...result.screenshotSettings };
     }
@@ -261,60 +219,6 @@ export class AppCacheManager {
     }
 
     return result;
-  }
-
-  /**
-   * Attempt to read ScreenshotSettings from the first user profile's profile.json.
-   * Returns null if no profile exists or reading fails.
-   */
-  private migrateScreenshotFromFirstProfile(): Partial<ScreenshotSettings> | null {
-    try {
-      const profilesDir = path.join(this.getUserDataPath(), 'profiles');
-      if (!fs.existsSync(profilesDir)) return null;
-
-      const entries = fs.readdirSync(profilesDir, { withFileTypes: true });
-      // Filter out hidden directories
-      const firstProfileDir = entries.find((e) => {
-        if (e.name.startsWith('.')) return false;
-        return e.isDirectory();
-      });
-      if (!firstProfileDir) return null;
-
-      const profileJsonPath = path.join(profilesDir, firstProfileDir.name, 'profile.json');
-      if (!fs.existsSync(profileJsonPath)) return null;
-
-      const content = fs.readFileSync(profileJsonPath, 'utf-8');
-      const profile = JSON.parse(content);
-      if (profile && typeof profile === 'object' && profile.screenshotSettings) {
-        return profile.screenshotSettings as Partial<ScreenshotSettings>;
-      }
-      return null;
-    } catch (error) {
-      logger.warn('[AppCacheManager] Failed to migrate screenshotSettings from first profile', 'AppCacheManager', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Attempt to read RuntimeEnvironment data from the legacy runtimeConfig.json.
-   * Returns null if the legacy file does not exist or reading fails.
-   */
-  private migrateRuntimeEnvironmentFromLegacy(): Partial<RuntimeEnvironment> | null {
-    const legacyPath = this.getLegacyRuntimeConfigPath();
-    if (!fs.existsSync(legacyPath)) return null;
-
-    try {
-      const content = fs.readFileSync(legacyPath, 'utf-8');
-      const parsed = JSON.parse(content) as Partial<RuntimeEnvironment>;
-      return parsed;
-    } catch (error) {
-      logger.warn('[AppCacheManager] Failed to read runtimeConfig.json', 'AppCacheManager', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
   }
 
   /**
@@ -367,17 +271,6 @@ export class AppCacheManager {
             : re.pinnedPythonVersion === null
             ? null
             : DEFAULT_RUNTIME_ENVIRONMENT.pinnedPythonVersion ?? '3.10.12',
-      };
-    }
-
-    // voiceInput: VoiceInputConfig | undefined
-    const vi = config.voiceInput;
-    if (vi && typeof vi === 'object') {
-      sanitized.voiceInput = {
-        voiceInputEnabled: typeof vi.voiceInputEnabled === 'boolean' ? vi.voiceInputEnabled : DEFAULT_VOICE_INPUT_CONFIG.voiceInputEnabled,
-        whisperModelSelected: typeof vi.whisperModelSelected === 'string' ? vi.whisperModelSelected : DEFAULT_VOICE_INPUT_CONFIG.whisperModelSelected,
-        recognitionLanguage: typeof vi.recognitionLanguage === 'string' ? vi.recognitionLanguage : DEFAULT_VOICE_INPUT_CONFIG.recognitionLanguage,
-        gpuAcceleration: typeof vi.gpuAcceleration === 'boolean' ? vi.gpuAcceleration : DEFAULT_VOICE_INPUT_CONFIG.gpuAcceleration,
       };
     }
 
@@ -454,14 +347,6 @@ export class AppCacheManager {
           ? {
               ...(this.cache.runtimeEnvironment ?? DEFAULT_RUNTIME_ENVIRONMENT),
               ...(updates.runtimeEnvironment ?? {}),
-            }
-          : undefined,
-      // Deep-merge voiceInput
-      voiceInput:
-        updates.voiceInput || this.cache.voiceInput
-          ? {
-              ...(this.cache.voiceInput ?? DEFAULT_VOICE_INPUT_CONFIG),
-              ...(updates.voiceInput ?? {}),
             }
           : undefined,
       // Deep-merge screenshotSettings

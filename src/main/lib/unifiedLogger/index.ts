@@ -296,22 +296,5 @@ export function getUnifiedLogger(config?: Partial<UnifiedLoggerConfig>): Unified
   return getGlobalLogger(config);
 }
 
-/**
- * Legacy compatibility - still support getRefactoredLogger
- */
-export function getRefactoredLogger(config?: Partial<UnifiedLoggerConfig>): UnifiedLogger {
-  return getGlobalLogger(config);
-}
-
 // Export the global logger getter as default export for convenience
 export default getGlobalLogger;
-
-// Legacy compatibility - export some types that might be expected
-export type LoggerConfig = UnifiedLoggerConfig; // Alias for compatibility
-export type MainLogger = UnifiedLogger; // Alias for compatibility
-export type RefactoredLoggerConfig = UnifiedLoggerConfig; // Legacy compatibility
-export type RefactoredLogger = UnifiedLogger; // Legacy compatibility
-
-// For compatibility with old system
-export const DEFAULT_CONFIG = DEFAULT_UNIFIED_CONFIG;
-export const DEFAULT_REFACTORED_CONFIG = DEFAULT_UNIFIED_CONFIG; // Legacy compatibility

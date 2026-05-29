@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos currently has two supported Skill installation paths:
+OpenKosmos currently has two supported Skill installation paths:
 
 1. In-library install via Skill Library.
 2. On-device package install via `.zip` or `.skill` import.
@@ -29,7 +29,7 @@ This is not an edge case. The user need is valid:
 
 1. search the web for a public Skill
 2. download or construct the Skill locally
-3. install it into Kosmos
+3. install it into OpenKosmos
 4. apply it to selected Agents
 
 Both key actions in this workflow must exist in two forms:
@@ -37,7 +37,7 @@ Both key actions in this workflow must exist in two forms:
 1. UI capability for direct user interaction
 2. built-in tool capability for AI-led automation
 
-Today, Kosmos does not provide a single supported product flow that covers all of those steps for local or public artifacts.
+Today, OpenKosmos does not provide a single supported product flow that covers all of those steps for local or public artifacts.
 
 ## 2. Investigated Evidence
 
@@ -45,7 +45,7 @@ Today, Kosmos does not provide a single supported product flow that covers all o
 
 The exported conversation shows all of the following facts in sequence:
 
-1. The assistant first tried `install_skill_from_library` for `pptx` and related names and failed because the Skill was not in the Kosmos Skill Library.
+1. The assistant first tried `install_skill_from_library` for `pptx` and related names and failed because the Skill was not in the OpenKosmos Skill Library.
 2. The assistant later created or copied local Skill files directly into the user's profile Skill directory, including `pptx` and `pptx-design-system`.
 3. The assistant later verified the physical files existed on disk.
 4. The assistant ran `get_skill_installation_state` for `pptx` and `pptx-design-system`, and both returned `NotAdded` with the message that the Skill was not added to the profile's global Skill list.
@@ -57,7 +57,7 @@ The user chat reflects a real product issue, not merely a mistaken user expectat
 
 The missing capability is not a new special-case registration screen. The missing capability is a universal local install flow.
 
-Kosmos needs one `Add Skill From Device` capability that can accept:
+OpenKosmos needs one `Add Skill From Device` capability that can accept:
 
 1. `.zip`
 2. `.skill`
@@ -67,7 +67,7 @@ All three must be validated against the same Skill package standard and end in t
 
 ## 3. Problem Statement
 
-Kosmos can physically host a Skill on disk without recognizing it as installed.
+OpenKosmos can physically host a Skill on disk without recognizing it as installed.
 
 This happens when a Skill is introduced through non-standard means such as:
 
@@ -92,11 +92,11 @@ The result is confusing behavior:
 
 ## 4. Product Decision
 
-Kosmos will support public and locally sourced Skills through one formal rule:
+OpenKosmos will support public and locally sourced Skills through one formal rule:
 
 Any Skill that should be usable must pass through a managed install flow that ends in `profile.skills`.
 
-To support real-world usage, Kosmos will extend the existing `Add Skill From Device` concept into a single universal device-install capability.
+To support real-world usage, OpenKosmos will extend the existing `Add Skill From Device` concept into a single universal device-install capability.
 
 That unified flow will support:
 
@@ -122,7 +122,7 @@ Recommended rollout:
 
 ### 5.2 User Goals
 
-1. "If I or the AI fetch a public Skill from the web, I want it to become usable in Kosmos."
+1. "If I or the AI fetch a public Skill from the web, I want it to become usable in OpenKosmos."
 2. "If a Skill is on my device as a zip, a .skill file, or a folder, I want one install entry to handle it."
 3. "After installation, I want to apply the Skill to the Agents I choose."
 4. "If an Agent references a missing Skill, I want the product to help me repair it instead of failing silently."
@@ -166,7 +166,7 @@ Current UI supports local package import, but `Add Skill From Device` only accep
 
 ### 7.2 Missing Unified Validation
 
-Kosmos validates package-based installs, but it does not expose the same standards-based validation for folder-based local artifacts.
+OpenKosmos validates package-based installs, but it does not expose the same standards-based validation for folder-based local artifacts.
 
 ### 7.3 Agent/UI Mismatch
 
@@ -213,13 +213,13 @@ The key design rule is that these are acquisition flows only. They still must en
 
 ### 8.3 Repair UX
 
-When Kosmos detects this mismatch:
+When OpenKosmos detects this mismatch:
 
 1. Agent references Skill name
 2. `profile.skills` does not contain it
 3. matching folder exists on disk
 
-Kosmos should offer a repair action that still reuses the same installation semantics, for example:
+OpenKosmos should offer a repair action that still reuses the same installation semantics, for example:
 
 1. `Add Skill From Device`
 2. `Repair Skill Registration`
@@ -253,7 +253,7 @@ Supported install affordances should eventually include:
 
 ### 9.3 Post-Install Agent Binding UX
 
-After a successful new install, Kosmos should offer the existing `Apply Skill To Agents` flow so the user can bind the Skill to chosen Agents immediately.
+After a successful new install, OpenKosmos should offer the existing `Apply Skill To Agents` flow so the user can bind the Skill to chosen Agents immediately.
 
 `Apply Skill To Agents` must also be invokable by the AI through a built-in tool, not only through renderer events.
 

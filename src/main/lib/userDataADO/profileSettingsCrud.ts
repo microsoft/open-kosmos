@@ -13,11 +13,10 @@
 import { createConsoleLogger } from '../unifiedLogger';
 import {
   ProfileV2,
-  VoiceInputSettings,
   BrowserControlSettings,
   DevToolsMcpSettings,
   ConfirmationSettings,
-  DEFAULT_VOICE_INPUT_SETTINGS,
+  RemoteChannelsConfig,
   DEFAULT_BROWSER_CONTROL_SETTINGS,
   DEFAULT_DEVTOOLS_MCP_SETTINGS,
   DEFAULT_CONFIRMATION_SETTINGS,
@@ -86,21 +85,9 @@ export async function updateConfirmationSettings(ctx: SettingsCrudContext, alias
   }
 }
 
-// ═══════ Voice Input ═══════
+// ═══════ Remote Channels ═══════
 
-export function getVoiceInputSettings(ctx: SettingsCrudContext, alias: string): VoiceInputSettings {
-  try {
-    const profile = ctx.cache.get(alias);
-    if (profile && isProfileV2(profile) && profile.voiceInputSettings) {
-      return profile.voiceInputSettings;
-    }
-    return { ...DEFAULT_VOICE_INPUT_SETTINGS };
-  } catch (error) {
-    return { ...DEFAULT_VOICE_INPUT_SETTINGS };
-  }
-}
-
-export async function updateVoiceInputSettings(ctx: SettingsCrudContext, alias: string, settings: Partial<VoiceInputSettings>): Promise<boolean> {
+export async function updateRemoteChannelsConfig(ctx: SettingsCrudContext, alias: string, config: Partial<RemoteChannelsConfig>): Promise<boolean> {
   try {
     let profile = ctx.cache.get(alias);
     if (!profile) {
@@ -110,12 +97,18 @@ export async function updateVoiceInputSettings(ctx: SettingsCrudContext, alias: 
     }
     if (!isProfileV2(profile)) return false;
 
-    const currentSettings = profile.voiceInputSettings || { ...DEFAULT_VOICE_INPUT_SETTINGS };
-    profile.voiceInputSettings = { ...currentSettings, ...settings };
+    const currentConfig = profile.remoteChannels || {};
+    const merged: RemoteChannelsConfig = { ...currentConfig };
+    for (const [k, v] of Object.entries(config)) {
+      if (v !== undefined) merged[k] = v;
+    }
+    profile.remoteChannels = merged;
+
     ctx.cache.set(alias, profile);
     await ctx.notifyProfileDataManager(alias, true);
     return await ctx.writeProfileToFile(alias, profile);
   } catch (error) {
+    logger.error(`[ProfileCacheManager] Failed to update remote channels config: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }

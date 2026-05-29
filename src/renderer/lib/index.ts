@@ -21,6 +21,7 @@ export {
   type McpServerConfig,
   type ProfileCacheData,
   type ProfileDataListener,
+  type ProfileSyncResponse,
   type GhcModel
 } from './userData';
 

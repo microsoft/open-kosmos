@@ -23,9 +23,9 @@ OpenKosmos AI Studio exposes 18 built-in tools for managing Skills, MCP Servers,
 
 **Skills (4):** `search_skills`, `apply_skill_to_agents`, `uninstall_skills`, `remove_skills_from_agents`
 
-**MCP (3):** `create_mcp_server_from_config`, `update_mcp_server`, `get_mcp_status`, `set_mcp_connection_state`
+**MCP (5):** `get_mcp_template_from_library`, `create_mcp_server_from_config`, `update_mcp_server`, `get_mcp_status`, `set_mcp_connection_state`
 
-**Agent (8):** `create_agent_from_config`, `update_agent`, `get_agent_status`, `list_agents`, `set_primary_agent`, `spawn_subagent`, `spawn_subagents`, `coding_agent`
+**Agent (9):** `get_agent_template_from_library`, `create_agent_from_config`, `update_agent`, `get_agent_status`, `list_agents`, `set_primary_agent`, `spawn_subagent`, `spawn_subagents`, `coding_agent`
 
 ---
 

@@ -16,6 +16,8 @@ import {
   ChatConfig,
   ChatAgent,
   AgentMcpServer,
+  ContextEnhancement,
+  DEFAULT_CONTEXT_ENHANCEMENT,
   DEFAULT_CHAT_AGENT
 } from '../../userDataADO/types/profile';
 
@@ -57,7 +59,7 @@ interface CreateAgentFromConfigArgs {
   name: string;
   /** Agent emoji (optional, default 🤖) */
   emoji?: string;
-  /** Agent avatar URL (optional) */
+  /** Agent avatar URL (optional, only for IN-LIBRARY agents; ON-DEVICE agents should leave this empty) */
   avatar?: string;
   /** Agent role description (optional, default Assistant) */
   role?: string;
@@ -78,7 +80,9 @@ interface CreateAgentFromConfigArgs {
   /** Agent version (optional, default 1.0.0) */
   version?: string;
   /** Agent source (optional, default ON-DEVICE) */
-  source?: 'ON-DEVICE' | 'EXTERNAL';
+  source?: 'IN-LIBRARY' | 'ON-DEVICE';
+  /** 🆕 Remote CDN version number (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
+  remoteVersion?: string;
   /** 🆕 Zero States configuration (optional, for initial chat experience) */
   zero_states?: {
     greeting?: string;
@@ -127,7 +131,7 @@ export class CreateAgentFromConfigTool {
           },
           avatar: {
             type: 'string',
-            description: 'The avatar image URL for the agent (optional, should be empty for ON-DEVICE agents)'
+            description: 'The avatar image URL for the agent (optional, only used for IN-LIBRARY agents, should be empty for ON-DEVICE agents)'
           },
           role: {
             type: 'string',
@@ -211,12 +215,16 @@ export class CreateAgentFromConfigTool {
           },
           source: {
             type: 'string',
-            enum: ['ON-DEVICE', 'EXTERNAL'],
+            enum: ['IN-LIBRARY', 'ON-DEVICE'],
             description: 'Agent source (optional, defaults to ON-DEVICE)'
           },
           knowledgeBase: {
             type: 'string',
             description: 'The knowledge base directory path for this agent (optional, defaults to workspace/knowledge)'
+          },
+          remoteVersion: {
+            type: 'string',
+            description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
           },
           zero_states: {
             type: 'object',
@@ -271,7 +279,7 @@ export class CreateAgentFromConfigTool {
    * Build ChatAgent from input arguments
    */
   private static buildChatAgent(args: CreateAgentFromConfigArgs): ChatAgent {
-    // Build mcp_servers array, default to empty if not specified
+    // Build mcp_servers array; empty by default (all tools) when not specified
     const mcpServers: AgentMcpServer[] = args.mcp_servers
       ? args.mcp_servers.map(server => ({
           name: server.name,
@@ -279,17 +287,17 @@ export class CreateAgentFromConfigTool {
         }))
       : [];
 
-    // Build context_enhancement (pass through user input or default to disabled)
-    const contextEnhancement: Record<string, unknown> | undefined = args.context_enhancement ? {
+    // Build context_enhancement
+    const contextEnhancement: ContextEnhancement = {
       search_memory: {
-        enabled: args.context_enhancement?.search_memory?.enabled ?? false,
-        semantic_similarity_threshold: args.context_enhancement?.search_memory?.semantic_similarity_threshold ?? 0.7,
-        semantic_top_n: args.context_enhancement?.search_memory?.semantic_top_n ?? 5
+        enabled: args.context_enhancement?.search_memory?.enabled ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.enabled,
+        semantic_similarity_threshold: args.context_enhancement?.search_memory?.semantic_similarity_threshold ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.semantic_similarity_threshold,
+        semantic_top_n: args.context_enhancement?.search_memory?.semantic_top_n ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.semantic_top_n
       },
       generate_memory: {
-        enabled: args.context_enhancement?.generate_memory?.enabled ?? false
+        enabled: args.context_enhancement?.generate_memory?.enabled ?? DEFAULT_CONTEXT_ENHANCEMENT.generate_memory.enabled
       }
-    } : undefined;
+    };
 
     const finalVersion = args.version || '1.0.0';
     const finalSource = args.source || 'ON-DEVICE';
@@ -303,6 +311,10 @@ export class CreateAgentFromConfigTool {
       // 🆕 Added: version and source fields; use args values if specified, otherwise use defaults
       version: finalVersion,
       source: finalSource,
+      // 🆕 Added: remoteVersion field
+      // For IN-LIBRARY source: remoteVersion equals version (both are CDN library version)
+      // For ON-DEVICE source: remoteVersion should be an empty string
+      remoteVersion: finalSource === 'IN-LIBRARY' ? finalVersion : '',
       mcp_servers: mcpServers,
       system_prompt: args.system_prompt || '',
       context_enhancement: contextEnhancement,
@@ -371,7 +383,7 @@ export class CreateAgentFromConfigTool {
         agent: {
           ...chatAgent,
           workspace: args.workspace ?? '',
-          knowledgeBase: args.knowledgeBase ?? ''
+          knowledge: { knowledgeBase: args.knowledgeBase ?? '' }
         }
       };
 

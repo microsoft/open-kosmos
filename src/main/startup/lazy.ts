@@ -5,6 +5,7 @@ import type { ProfileCacheManager } from '../lib/userDataADO/profileCacheManager
 import type { AppCacheManager } from '../lib/userDataADO/appCacheManager';
 import type { MainAuthManager } from '../lib/auth/authManager';
 import type { TerminalManager } from '../lib/terminalManager';
+import type { RemoteChannelManager } from '../lib/remoteChannel/channelManager';
 import type { ExternalAgentService } from '../lib/externalAgent/externalAgentService';
 
 import { createLogger, UnifiedLogger } from '../lib/unifiedLogger';
@@ -21,12 +22,14 @@ let _appCacheManager: AppCacheManager | null = null;
 let _mainAuthManager: MainAuthManager | null = null;
 let _mainTokenMonitor: MainTokenMonitor | null = null;
 let _terminalManager: TerminalManager | null = null;
+let _remoteChannelManager: RemoteChannelManager | null = null;
 let _externalAgentService: ExternalAgentService | null = null;
 
 // 🚀 Lazy getters: modules loaded only on first call
 export async function getProfileCacheManager(): Promise<ProfileCacheManager> {
   if (!_profileCacheManager) {
     _profileCacheManager = profileCacheManager;
+    _profileCacheManager.setRemoteChannelManagerGetter(() => getRemoteChannelManager());
   }
   return _profileCacheManager;
 }
@@ -60,6 +63,19 @@ export async function getTerminalManagerInstance(): Promise<TerminalManager> {
     _terminalManager = getTerminalManager();
   }
   return _terminalManager;
+}
+
+export async function getRemoteChannelManager(): Promise<RemoteChannelManager> {
+  if (!_remoteChannelManager) {
+    const { initRemoteChannelModule } = await import('../lib/remoteChannel');
+    _remoteChannelManager = await initRemoteChannelModule();
+  }
+  return _remoteChannelManager;
+}
+
+export function useRemoteChannelManager<T>(callback: (manager: RemoteChannelManager) => T) {
+  if (!_remoteChannelManager) return;
+  return callback(_remoteChannelManager);
 }
 
 export async function getExternalAgentService(alias: string): Promise<ExternalAgentService> {

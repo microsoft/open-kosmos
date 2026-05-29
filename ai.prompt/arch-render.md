@@ -12,8 +12,9 @@ The renderer process backs **three independent Electron `BrowserWindow`s**, each
 |---|--------|--------------|----------------|-------|
 | 1 | **Main** | `index.tsx` / `index.html` | most of `src/renderer/` | Primary UI. Mounts `<App />` → provider stack → `HashRouter`. Almost every feature lives here. |
 | 2 | **Screenshot** | `screenshot.tsx` / `screenshot.html` | `src/renderer/screenshot/` (`constant.ts`, `core/`, `index.tsx`) | Cropping + annotation UI. Self-contained; does not import the main-window component tree. |
+| 3 | **Toolbar** | `toolbar.tsx` / `toolbar.html` | none — renders `components/pages/ToolBarPage.tsx` and reuses main-window components | Floating context-menu toolbar that can pop up anywhere on screen. Low-traffic feature, kept in-tree with the main window rather than carved out. |
 
-Screenshot entry renders a single root via `createRoot` and bypasses `<App />` and routing entirely.
+Screenshot and toolbar entries each render a single root via `createRoot` and bypass `<App />` and routing entirely.
 
 ---
 
@@ -23,6 +24,7 @@ Screenshot entry renders a single root via `createRoot` and bypasses `<App />` a
 src/renderer/
 ├── index.tsx, index.html              # Main window
 ├── screenshot.tsx, screenshot.html, screenshot/   # Screenshot window
+├── toolbar.tsx, toolbar.html          # Toolbar window
 ├── App.tsx                            # Main-window provider stack + readiness gate
 ├── routes/                            # AppRoutes.tsx, RequireAuth.tsx (main window only)
 ├── components/                        # Feature-grouped UI (chat/, layout/, settings/, ...)
@@ -52,12 +54,13 @@ The renderer is sandboxed (`web` target, no Node integration). Anything privileg
 
 ## 4. Main-Window Bootstrap (`App.tsx`)
 
-1. **Readiness gate** — block the provider stack on `electronAPI.isReady()` / `onAppReady`. AuthProvider / ProfileDataProvider must not fire IPC before main-process services (auth, profile cache, MCP runtime) finish startup, or first calls race the bootstrap and surface as spurious errors.
-2. **Provider stack** (outer → inner):
+1. **Toolbar fallback** — if `window.location.hash === '#/toolbar'`, render `<ToolBarPage />` and skip everything else. (Only for cases where toolbar UI is opened inside the main window's BrowserWindow; the standalone toolbar window doesn't load `App.tsx` at all.)
+2. **Readiness gate** — block the provider stack on `electronAPI.isReady()` / `onAppReady`. AuthProvider / ProfileDataProvider must not fire IPC before main-process services (auth, profile cache, MCP runtime) finish startup, or first calls race the bootstrap and surface as spurious errors.
+3. **Provider stack** (outer → inner):
    `ToastProvider → UpdateProvider → AuthProvider → ReauthProvider → ProfileDataProvider → AppContent`
    - Auth wraps ProfileData (profile load needs the token).
    - Reauth sits between to intercept 401s from any data layer below.
-3. **AppContent** mounts `HashRouter`, `WindowsTitleBar`, `WindowZoomHotkeys`, `McpAuthConsentDialog`, `RequestOAuthClientIdDialog`, `AzureCliInstallConsentDialog`, `<AppRoutes />`.
+4. **AppContent** mounts `HashRouter`, `WindowsTitleBar`, `WindowZoomHotkeys`, `McpAuthConsentDialog`, `RequestOAuthClientIdDialog`, `<AppRoutes />`.
 
 Token-monitor DOM events and the MCP connection-failure toast are subscribed at the `App` level so a crashed panel below cannot drop them.
 
@@ -75,8 +78,8 @@ Token-monitor DOM events and the MCP connection-failure toast are subscribed at 
 | `/loading` | `DataLoadingPage` | Hydrates profile, then → `/agent` |
 | `/agent/chat[/:chatId[/:sessionId]]` | `ChatView` | Main chat surface |
 | `/agent/chat/:chatId/settings/*` | `AgentChatEditingView` | Agent editor (basic / system-prompt / mcp / skills / …) |
-| `/agent/chat/creation/*` | agent-area + pm-project-agent-creation | Custom-agent + library + project creation flows |
-| `/settings/*` | `SettingsPage` | mcp / runtime / skills / plugins / sub-agents (FF) / memory / sync / about / archived / browser-control (FF) / memex (FF) |
+| `/agent/chat/creation/*` | agent-area | Custom-agent + library flows |
+| `/settings/*` | `SettingsPage` | mcp / runtime / skills / plugins / sub-agents (FF) / sync / about / archived / browser-control (FF) / remote-channel (FF) |
 
 `AppRoutes` also bridges main-process `navigate:to` events into React Router and records every `route-change` as a crash breadcrumb via `electronAPI.recordCrashBreadcrumb`.
 
@@ -87,7 +90,7 @@ Token-monitor DOM events and the MCP connection-failure toast are subscribed at 
 | Module | Path | One-line | Docs |
 |--------|------|----------|------|
 | Atom State Library | `src/renderer/atom/` | `atom()` (Value/Action/Computed) + `<WithStore>` + `mutate`; useSyncExternalStore-based, `immer` interop | [ai.prompt.md](../src/renderer/atom/ai.prompt.md) |
-| Chat UI | `src/renderer/components/chat/` | ChatView/ChatViewContent/ChatContainer/ChatRenderItem + ChatInput + Message + agent-editor (8 tabs) + toolCallViews + chat-input subcomponents + workspace + pm-project-agent-creation | [ai.prompt.md](../src/renderer/components/chat/ai.prompt.md) |
+| Chat UI | `src/renderer/components/chat/` | ChatView/ChatViewContent/ChatContainer/ChatRenderItem + ChatInput + Message + agent-editor (8 tabs) + toolCallViews + chat-input subcomponents + workspace | [ai.prompt.md](../src/renderer/components/chat/ai.prompt.md) |
 | Streaming | `src/renderer/lib/streaming/` | RAF typewriter, smart auto-scroll, perf monitor, compatibility layer for old message format | [ai.prompt.md](../src/renderer/lib/streaming/ai.prompt.md) |
 | Layout | `src/renderer/components/layout/` | AppLayout (logic) + AppLayoutContent (UI shell) + ContentContainer + LayoutProvider, LeftNavigation, NavigationSection, UserMenu, WindowsTitleBar, WindowZoomHotkeys | [ai.prompt.md](../src/renderer/components/layout/ai.prompt.md) |
 | Plugin UI | `src/renderer/components/plugin/` | Plugin manifest install / config UI | [ai.prompt.md](../src/renderer/components/plugin/ai.prompt.md) |
@@ -101,30 +104,31 @@ Token-monitor DOM events and the MCP connection-failure toast are subscribed at 
 | `components/autoUpdate/` | `UpdateProvider` + update toast |
 | `components/buddy/` | Self-contained pixel-art companion widget (sprite, XP, hatching ceremony, speech bubble) |
 | `components/common/` | Reusable widgets shared across features |
-| `components/pages/` | Top-level route pages: Startup / SignIn / DataLoading / Agent / Settings |
+| `components/fre/` | First-run-experience flow |
+| `components/mcp/` | Server list / add / import-from-vscode / library / auth consent dialog |
+| `components/menu/` | Context menus and menubars |
+| `components/pages/` | Top-level route pages: Startup / SignIn / DataLoading / Agent / Settings / **ToolBar** |
 | `components/settings/` | All `/settings/*` panels (one per category) |
 | `components/skills/` | Skills list + library install |
 | `components/streaming/` | Streaming UI components (typewriter, auto-scroll wrapper) |
 | `components/subAgents/` | Sub-agent CRUD + library |
 | `components/ui/` | Design-system primitives (`ToastProvider` lives here) |
 | `components/userData/` | `ProfileDataProvider` — top of the data hydration tree |
-| `lib/audio/` | Whisper STT (`useSpeechRecognition`, `useStreamingAudioRecorder`) |
 | `lib/auth/` | Renderer-side auth helpers / hooks |
 | `lib/chat/` | Chat-view orchestration helpers (selectors, derived state) |
 | `lib/featureFlags/` | `useFeatureFlag` hook over main-side flag manager |
 | `lib/mcp/` | `useMcpConnectionFailureToast` + MCP client helpers |
-| `lib/memory/` | Memory query hooks |
 | `lib/models/` | Model-list / model-selector helpers |
-| `lib/perf/` | `ghcPerformanceOptimizer`, `memoryOptimizer` |
+| `lib/perf/` | `ghcPerformanceOptimizer` |
 | `lib/runtime/` | Renderer view of runtime status (bun/uv install state) |
 | `lib/scheduler/` | Renderer scheduler client |
 | `lib/screenshot/` | Renderer-side screenshot trigger |
 | `lib/skills/` | Skill list / install hooks |
 | `lib/startup/` | Startup validation client |
-| `lib/userData/` | `appDataManager`, `profileDataManager`, `useAppZoomLevel`, `useVoiceInputEnabled` |
+| `lib/userData/` | `appDataManager`, `profileDataManager`, `useAppZoomLevel` |
 | `lib/utilities/` | `createLogger` (forwards to main unifiedLogger), misc helpers |
 | `lib/workspace/` | Renderer file-tree client |
-| `ipc/` | One file per subsystem: `browserControl`, `memex`, `plugin`, `scheduler`, `screenshot-main`, `screenshot-overlay` |
+| `ipc/` | One file per subsystem: `browserControl`, `plugin`, `remoteChannel`, `scheduler`, `screenshot-main`, `screenshot-overlay` |
 | `states/` | App-wide atoms (e.g. `left-nav.atom.ts`). Other state should live next to its consuming components, named `*.atom.ts`. See §8. |
 | `types/` | `authTypes`, `ghcAuthTypes`, `mcpTypes`, `profileTypes`, `startupValidationTypes`, `agentContextTypes`, `global.d.ts` (declares `window.electronAPI`) |
 
@@ -175,13 +179,13 @@ Pick the simplest option that works. **Only escalate when you actually need to:*
 | settings panel (any `/settings/*`) | Settings | `src/renderer/components/settings/` |
 | login / auto-login / reauth dialog | Auth | `src/renderer/components/auth/` |
 | profile loading, app data hydration | Userdata | `src/renderer/components/userData/`, `lib/userData/` |
-| voice input | Audio | `src/renderer/lib/audio/` |
 | MCP UI (server list, add, library) | MCP UI | `src/renderer/components/mcp/`, `lib/mcp/` |
 | sub-agents UI | Sub-Agents UI | `src/renderer/components/subAgents/` |
 | skills UI | Skills UI | `src/renderer/components/skills/`, `lib/skills/` |
 | feature flag check in UI | featureFlags hook | `src/renderer/lib/featureFlags/` |
 | routes / navigation | Routes | `src/renderer/routes/AppRoutes.tsx` |
 | state management, atom | Atom | `src/renderer/atom/` |
+| toolbar window | ToolBar entry | `src/renderer/toolbar.tsx`, `components/pages/ToolBarPage.tsx` |
 | screenshot window (cropping, annotation UI) | Screenshot entry + folder | `src/renderer/screenshot.tsx`, `src/renderer/screenshot/` |
 | plugin UI | Plugin | `src/renderer/components/plugin/` |
 | IPC channel typing / contract | IPC framework | `src/shared/ipc/` |

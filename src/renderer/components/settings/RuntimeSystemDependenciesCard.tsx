@@ -11,7 +11,7 @@ interface RuntimeSystemDependenciesCardProps {
 const installLinkStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' };
 
 const RuntimeSystemDependenciesCard: React.FC<RuntimeSystemDependenciesCardProps> = ({
-  status: _status,
+  status,
   gitVersion,
   showGitVersion,
 }) => (

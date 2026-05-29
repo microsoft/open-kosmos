@@ -138,6 +138,8 @@ export async function applySkillToAgents(
     };
   }
 
+  const analyticsSource = installedSkill.source === 'IN-LIBRARY' ? 'library' : 'local';
+
   const resolvedTargets = resolveTargets(profile.chats || [], options);
   if (resolvedTargets.length === 0) {
     return {
@@ -277,6 +279,10 @@ export async function applySkillToAgents(
     : skippedTargets.length > 0 && failedCount === 0
       ? `Skill "${skillName}" was already applied to all resolved target agents.`
       : `Failed to apply skill "${skillName}" to the requested agents.`;
+
+  if (appliedTargets.length > 0) {
+    // Analytics removed: recordSkillAppliedToAgent calls removed
+  }
 
   return {
     success,

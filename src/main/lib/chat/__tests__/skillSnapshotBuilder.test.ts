@@ -57,7 +57,7 @@ describe('skillSnapshotBuilder', () => {
           name: 'beta',
           description: 'Beta skill',
           version: '2.0.0',
-          source: 'ON-DEVICE',
+          source: 'IN-LIBRARY',
         },
       ],
       userDataPath: '/tmp/openkosmos-user-data',

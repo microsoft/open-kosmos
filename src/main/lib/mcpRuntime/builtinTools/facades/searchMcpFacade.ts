@@ -1,5 +1,10 @@
 /**
- * search_mcp facade — list installed MCP servers with their connection status.
+ * search_mcp facade — search MCP library or list installed servers.
+ *
+ * Merges lookup capabilities from:
+ *   get_mcp_template_from_library (library search)
+ *   get_mcp_status (installed status)
+ * into a single read-only tool.
  */
 
 import {
@@ -8,6 +13,7 @@ import {
   FacadeResult,
   errorResult,
 } from './types';
+import { McpLibraryFetcher } from '../../../assetsFetcher/mcpLibraryFetcher';
 import { GetMcpStatusTool } from '../getMcpStatusTool';
 import { profileCacheManager } from '../../../userDataADO/profileCacheManager';
 
@@ -16,11 +22,16 @@ export class SearchMcpFacade {
     return {
       name: 'search_mcp',
       description:
-        'List installed MCP servers with their connection status. ' +
+        'Search MCP library for available servers, or list installed servers with their connection status. ' +
+        'Use "query" to search the library by name or keyword. ' +
         'Use "installed: true" to list all installed MCP servers and their current status.',
       inputSchema: {
         type: 'object',
         properties: {
+          query: {
+            type: 'string',
+            description: 'Search MCP library by name or keyword. Returns matching templates.',
+          },
           installed: {
             type: 'boolean',
             description: 'true = list all installed MCP servers with their current connection status',
@@ -31,13 +42,57 @@ export class SearchMcpFacade {
   }
 
   static async execute(args: SearchMcpInput): Promise<FacadeResult> {
-    if (!args.installed) {
+    if (!args.query && !args.installed) {
       return errorResult(
-        'Provide "installed: true" to list installed servers.',
+        'Provide "query" to search the library, or "installed: true" to list installed servers.',
       );
     }
 
-    return SearchMcpFacade.listInstalled();
+    if (args.installed) {
+      return SearchMcpFacade.listInstalled();
+    }
+
+    return SearchMcpFacade.searchLibrary(args.query!);
+  }
+
+  private static async searchLibrary(query: string): Promise<FacadeResult> {
+    try {
+      const fetcher = McpLibraryFetcher.getInstance();
+      const libraryResult = await fetcher.getLibraryData();
+
+      if (!libraryResult.success || !libraryResult.data) {
+        return {
+          success: false,
+          message: `Failed to fetch MCP library: ${libraryResult.error || 'Unknown error'}`,
+          error: 'LIBRARY_FETCH_FAILED',
+        };
+      }
+
+      const queryLower = query.toLowerCase();
+      const matches = libraryResult.data.mcp_servers.filter(
+        (s: any) =>
+          s.name.toLowerCase().includes(queryLower) ||
+          (s.description && s.description.toLowerCase().includes(queryLower)),
+      );
+
+      return {
+        success: true,
+        message: `Found ${matches.length} MCP server(s) matching "${query}".`,
+        results: matches.map((s: any) => ({
+          name: s.name,
+          description: s.description,
+          transport: s.transport,
+          version: s.version,
+        })),
+        total: matches.length,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: `Error searching MCP library: ${err instanceof Error ? err.message : String(err)}`,
+        error: 'SEARCH_ERROR',
+      };
+    }
   }
 
   private static async listInstalled(): Promise<FacadeResult> {

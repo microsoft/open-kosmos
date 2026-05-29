@@ -148,7 +148,7 @@ function createMockSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubA
     name: 'test-sub-agent',
     description: 'A specialized test sub-agent',
     system_prompt: 'You are a specialized testing agent. Follow testing best practices.',
-    mcp_servers: [],
+    mcpServers: [],
     ...overrides,
   };
 }
@@ -1355,7 +1355,7 @@ describe('SubAgentChat', () => {
       const options = createMockOptions({
         subAgent: {
           config: createMockSubAgentConfig({
-            mcp_servers: [{ name: 'config-server', tools: ['old'] }],
+            mcpServers: [{ name: 'config-server', tools: ['old'] }],
           }),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',
@@ -1382,13 +1382,13 @@ describe('SubAgentChat', () => {
       expect(tools).toEqual(['mock-tool']);
     });
 
-    it('should fall back to config.mcp_servers when resolvedMcpServers is empty', async () => {
+    it('should fall back to config.mcpServers when resolvedMcpServers is empty', async () => {
       const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
 
       const options = createMockOptions({
         subAgent: {
           config: createMockSubAgentConfig({
-            mcp_servers: [{ name: 'fallback-server', tools: ['t1'] }],
+            mcpServers: [{ name: 'fallback-server', tools: ['t1'] }],
           }),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',

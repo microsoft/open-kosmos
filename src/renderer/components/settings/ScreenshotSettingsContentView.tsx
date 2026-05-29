@@ -4,8 +4,7 @@ import React from 'react'
 import ShortcutRecorder from '../ui/ShortcutRecorder'
 import type { ScreenshotSettings } from '@shared/ipc/screenshot'
 import '../../styles/ContentView.css'
-import '../../styles/SettingsComponents.css'
-import '../../styles/ToolbarSettings.css'
+import '../../styles/SettingsShared.css'
 
 interface ScreenshotSettingsContentViewProps {
   settings: ScreenshotSettings

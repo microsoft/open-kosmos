@@ -616,7 +616,6 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
               className="workspace-file-tree"
               directoryStack={directoryStack}
               onDirectoryStackChange={setDirectoryStack}
-              showBreadcrumb={false}
               onLoadChildren={handleLoadChildren}
             />
           )}

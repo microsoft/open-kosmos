@@ -14,10 +14,6 @@ vi.mock('../ghcConfig', () => ({
   },
 }));
 
-vi.mock('../aliasUtils', () => ({
-  aliasToAadAccount: vi.fn((login: string) => `${login}@github.com`),
-}));
-
 import { GhcAuthManager } from '../ghcAuth';
 
 function mockFetch(data: any, status = 200, statusText = 'OK') {

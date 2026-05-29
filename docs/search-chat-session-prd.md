@@ -2,7 +2,7 @@
 
 ## 1. Background
 
-Kosmos already supports multiple agents and multiple chat sessions per agent. Sessions are surfaced in the left sidebar as a second-level list under each agent, ordered by `last_updated`.
+OpenKosmos already supports multiple agents and multiple chat sessions per agent. Sessions are surfaced in the left sidebar as a second-level list under each agent, ordered by `last_updated`.
 
 As the number of sessions grows, users have to expand agents one by one and visually scan titles. This is workable for a small number of sessions, but it breaks down when users:
 
@@ -17,7 +17,7 @@ Current architecture is favorable for a first version of session search:
 - session metadata is indexed by chat and month
 - renderer already receives session projections and keeps a local session list for navigation
 
-This means Kosmos can deliver a strong first version with metadata search before investing in full-text search over message history.
+This means OpenKosmos can deliver a strong first version with metadata search before investing in full-text search over message history.
 
 ## 2. Problem Statement
 
@@ -53,7 +53,7 @@ The current navigation model is browse-first, not find-first.
 ### 4.1 Primary Users
 
 - Heavy daily users with tens to hundreds of sessions
-- Users who split work by topic or branch
+- OpenKosmos users who split work by topic or branch
 - Users revisiting earlier research, debugging, or planning threads
 
 ### 4.2 Core Scenarios
@@ -272,7 +272,7 @@ Use renderer-side metadata search.
 
 Why this is the right first step:
 
-- Kosmos already surfaces session metadata in the sidebar flow.
+- OpenKosmos already surfaces session metadata in the sidebar flow.
 - Session title, `last_updated`, `readStatus`, and agent relationship are enough for the primary job-to-be-done.
 - This avoids scanning every chat session file on each keystroke.
 - It fits the current architecture where session metadata is already separated from full chat history.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # macOS Extension Auto-Unregister Script for Chrome and Edge
 # Removes ExtensionSettings from Managed Preferences plist (machine + user level)
-# Requires sudo (called via sudo-prompt from Kosmos)
+# Requires sudo (called via sudo-prompt from OpenKosmos)
 
 set -e
 
@@ -13,7 +13,7 @@ if [ ! -f "$EXT_JSON" ]; then
   exit 1
 fi
 
-# Get current username (passed from Kosmos as $1, fallback to console user detection)
+# Get current username (passed from OpenKosmos as $1, fallback to console user detection)
 if [ -n "$1" ]; then
   USERNAME="$1"
 else

@@ -240,6 +240,7 @@ export async function addSkillFromDevice(
       name: metadata.name,
       description: metadata.description,
       version: finalVersion,
+      remoteVersion: '',
       source: 'ON-DEVICE' as const
     };
 
@@ -337,6 +338,7 @@ export async function updateSkillFromDevice(
       name: metadata.name,
       description: metadata.description,
       version: finalVersion,
+      remoteVersion: '',
       source: 'ON-DEVICE' as const
     };
 

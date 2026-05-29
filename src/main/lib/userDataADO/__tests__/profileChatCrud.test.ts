@@ -276,6 +276,12 @@ describe('updateChatAgent', () => {
     expect(profile.primaryAgent).toBe('Renamed Agent');
   });
 
+  it('returns false when trying to rename IN-LIBRARY agent', async () => {
+    const profile = makeProfile();
+    profile.chats.push(makeChat({ agent: makeAgent({ name: 'Lib Agent', source: 'IN-LIBRARY' }) }));
+    const ctx = makeCtx(profile);
+    expect(await updateChatAgent(ctx, 'alice', 'chat_001', { name: 'New Name' })).toBe(false);
+  });
 
   it('clears skill_snapshot when skills change', async () => {
     const profile = makeProfile();

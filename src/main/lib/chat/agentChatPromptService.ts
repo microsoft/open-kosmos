@@ -122,14 +122,14 @@ export class AgentChatPromptService {
     const chatSessionId = this.deps.getChatSessionId();
     const chatId = this.deps.getChatId();
 
-    const agentIdentityInfo = `\n---\n**Your Identity:**\n- You are **${agentName}**, an AI assistant.\n- When users ask about "${agentName}" or refer to "you", they are asking about you as ${agentName}.\n- Your configured knowledge can include Knowledge Base files. When users ask questions related to "${agentName}", treat all enabled knowledge sources as relevant context.\n---`;
+    const agentIdentityInfo = `\n---\n**Your Identity:**\n- You are **${agentName}**, an AI assistant.\n- When users ask about "${agentName}" or refer to "you", they are asking about you as ${agentName}.\n- Your configured knowledge can include Knowledge Base files and other enabled knowledge sources. When users ask questions related to "${agentName}", treat all enabled knowledge sources as relevant context.\n---`;
 
     try {
       if (currentUserAlias) {
         const allChats = profileCacheManager.getAllChatConfigs(currentUserAlias);
         const currentChat = allChats.find((chat: any) => chat.agent?.name === agentName);
 
-        const knowledgeBasePath = currentChat?.agent?.knowledge?.knowledgeBase ?? currentChat?.agent?.knowledgeBase;
+        const knowledgeBasePath = currentChat?.agent?.knowledge?.knowledgeBase;
         const hasKnowledgeBase = knowledgeBasePath && typeof knowledgeBasePath === 'string' && knowledgeBasePath.trim().length > 0;
 
         const workspacePath = currentChat?.agent?.workspace;
@@ -258,8 +258,8 @@ export class AgentChatPromptService {
 
     const subAgentDescriptions = enabledSubAgents.map((sa) => {
       const capabilities: string[] = [];
-      if (sa.mcp_servers && sa.mcp_servers.length > 0) {
-        capabilities.push(`MCP Servers: ${sa.mcp_servers.map((server) => server.name).join(', ')}`);
+      if (sa.mcpServers && sa.mcpServers.length > 0) {
+        capabilities.push(`MCP Servers: ${sa.mcpServers.map((server) => typeof server === 'string' ? server : server.name).join(', ')}`);
       }
       if (sa.skills && sa.skills.length > 0) {
         capabilities.push(`Skills: ${sa.skills.join(', ')}`);
@@ -325,16 +325,11 @@ Use \`send_to_subagent({ task_id, message })\` to send follow-up instructions to
     }
 
     if (this.deps.isRemoteSession() || this.deps.getInteractionPolicy() === 'plain-text-only') {
-      texts.push(wrapInSystemReminder('You are currently serving a user through a remote channel. Interactive UI tools like `request_interactive_input` are unavailable in this environment. When you need user input, ask directly in plain text.'));
+      texts.push(wrapInSystemReminder('You are currently serving a user through a remote IM channel. Interactive UI tools like `request_interactive_input` are unavailable in this environment. When you need user input, ask directly in plain text.'));
     }
 
     if (this.deps.getInteractionPolicy() === 'forbid') {
       texts.push(wrapInSystemReminder('You are currently running as a background scheduled job. Interactive UI tools like `request_interactive_input` are unavailable, and you must not ask the user follow-up questions because no user is present. If critical information is missing, stop and explain which input is missing so the schedule or agent configuration can be fixed for unattended execution.'));
-    }
-
-    // PM Studio interactive sessions: ask before creating tasks (scheduled jobs excluded via forbid check above)
-    if (process.env.BRAND_NAME === 'pm-studio' && this.deps.getInteractionPolicy() !== 'forbid') {
-      texts.push(wrapInSystemReminder('**Task Creation Confirmation:** When the user mentions action items, deadlines, or follow-ups, ask whether they would like you to create tasks for them before calling create_user_task. Do not create tasks automatically — wait for explicit confirmation.'));
     }
 
     // 🔌 Plugin hook: inject additionalContext from SessionStart hooks

@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-09 -->
+<!-- Last verified: 2026-05-29 -->
 # Browser Control
 
 > Manages browser installation, Chrome extension registration, Native Server lifecycle, and MCP connectivity for browser automation; also exposes a secondary CDP (DevTools) MCP path.
@@ -39,7 +39,7 @@
 | Scenario | Files to Modify | Notes |
 |----------|----------------|-------|
 | Add a new supported browser | `browserConfig.ts` (new entry) + `browserControlStatus.ts` + scripts in `resources/browser-control/` | `BrowserType` is derived from `BROWSER_CONFIG` keys |
-| Change Native Server CDN URL | `nativeServerFetcher.ts` constructor | Reads `DEVELOPMENT_BASE_CDN_URL` / `PRODUCTION_BASE_CDN_URL` env vars |
+| Change Native Server CDN URL | `nativeServerFetcher.ts` constructor | Resolves via `getCdnBaseUrl()` from `@shared/utils/cdn` (no built-in default; unset disables the download) |
 | Add a new enable sub-step | `BrowserControlManager.ts` `enable()` + add a `sendPhaseChange` call | Renderer `browserControl:phaseChange` events drive the UI progress stepper |
 | Change NativeMessagingHost name or extension ID | `browserControlStatus.ts` (`NATIVE_HOST_NAME`) + `BrowserControlManager.ts` `registerNativeServer` + PowerShell/bash scripts | Must stay in sync across all four locations |
 | Change HTTP server port | `browserControlHttpServer.ts` (`HTTP_PORT`) + Native Server config | Native Server hardcodes the callback URL on its side |

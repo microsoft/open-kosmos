@@ -55,10 +55,6 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   UserInputField: class UserInputField {},
 }));
 
-vi.mock('../../mem0/openkosmos-adapters/OpenKosmosMemoryManager', async () => ({
-  openkosmosMemoryManager: {},
-}));
-
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
 }));

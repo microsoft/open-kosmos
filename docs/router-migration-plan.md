@@ -2,7 +2,7 @@
 
 ## 1. Background and Current State Analysis
 
-The Kosmos project's main window currently relies entirely on React component internal state management for page switching. This is primarily controlled by multiple state variables in `App.tsx` that govern the visibility of different components.
+The OpenKosmos project's main window currently relies entirely on React component internal state management for page switching. This is primarily controlled by multiple state variables in `App.tsx` that govern the visibility of different components.
 
 ### 1.1 Current Implementation
 
@@ -12,11 +12,13 @@ In `src/renderer/App.tsx`, the rendering logic mainly depends on these states:
 *   `showStartup`: whether to show the startup page.
 *   `startupValidationResult`: startup validation result, used to decide whether to show the login page, error page, or auto-login.
 *   `dataReady`: whether data has finished loading.
+*   `window.location.hash`: used only to determine whether this is a ToolBar window (`#/toolbar`).
 
 The rendering logic is filled with a large number of `if/else` conditions:
 
 ```tsx
 // Pseudocode example
+if (isToolBarWindow) return <ToolBarPage />;
 if (!isAuthenticated && !showStartup) return <SignInPage />;
 if (showStartup) return <StartupPage />;
 if (startupValidationResult) return <SignInPage ... />; // or other handling
@@ -73,6 +75,8 @@ Recommended route structure:
   /agent/memory     -> Memory management view (MemoryView)
   /agent/settings   -> Settings page (SettingsPage)
 ```
+
+**Note**: The `ToolBar` window has its own independent entry file (`toolbar.html` / `toolbar.tsx`) and does not share the main window's routing system, so no configuration is needed here.
 
 ### 3.4 Route Guards
 
@@ -257,12 +261,13 @@ This pattern forces `ContentContainer` to receive all Props needed by sub-views 
 ## 6. Risks and Notes
 
 1.  **State passing**: The original `startupValidationResult` was passed via Props. After migration, it needs to be passed via React Router's `state` attribute, or placed in a global Context (such as `StartupContext`). For complex startup data, using Context or a global Store is recommended.
-2.  **Lifecycle**: Route switching causes components to unmount and remount. Check whether any components rely on the assumption of "always being present" (e.g., some `useEffect` that runs only once when the app starts). If state needs to be preserved, it may be necessary to lift state to Context or use a state management library.
-3.  **Style compatibility**: Ensure routing containers (`Routes`, `Outlet`) do not break existing CSS layouts (e.g., `flex`, `h-screen`, etc.).
+2.  **ToolBar window**: The ToolBar window is a standalone Electron window that may load with a specific hash. Ensure `HashRouter` can correctly recognize and render the `/toolbar` route.
+3.  **Lifecycle**: Route switching causes components to unmount and remount. Check whether any components rely on the assumption of "always being present" (e.g., some `useEffect` that runs only once when the app starts). If state needs to be preserved, it may be necessary to lift state to Context or use a state management library.
+4.  **Style compatibility**: Ensure routing containers (`Routes`, `Outlet`) do not break existing CSS layouts (e.g., `flex`, `h-screen`, etc.).
 
 ## 7. Summary
 
-By introducing `react-router-dom`, the Kosmos project will gain standard routing management capabilities. The code structure will be cleaner, laying a solid foundation for future multi-page feature expansion (such as settings pages, standalone chat windows, etc.).
+By introducing `react-router-dom`, the OpenKosmos project will gain standard routing management capabilities. The code structure will be cleaner, laying a solid foundation for future multi-page feature expansion (such as settings pages, standalone chat windows, etc.).
 
 ## 8. Implementation Progress Tracking (TODO List)
 
@@ -285,6 +290,7 @@ By introducing `react-router-dom`, the Kosmos project will gain standard routing
     - [x] `StartupPage`: replace `onComplete` callback with `useNavigate` navigation.
     - [x] `SignInPage`: use `useNavigate` to navigate to `/agent` after login.
     - [x] `DataLoadingPage`: navigate after loading completes.
+    - [x] Verify `/toolbar` standalone window route works correctly.
 
 ### Phase 2: Sub-routes and Layout Refactoring (AgentPage)
 

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { createLogger } from '../unifiedLogger';
 import { appendCacheBustingTimestamp } from '../utils/urlUtils';
+import { getCdnBaseUrl } from '@shared/utils/cdn';
 import StreamZip from 'node-stream-zip';
 
 export interface NativeServerInfo {
@@ -37,15 +38,13 @@ export class NativeServerFetcher {
   private baseUrl: string;
 
   constructor() {
-    // Get the base CDN URL based on the environment
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    this.baseUrl = isDevelopment
-      ? process.env.DEVELOPMENT_BASE_CDN_URL || 'https://cdn.kosmos-ai.com/dev'
-      : process.env.PRODUCTION_BASE_CDN_URL || 'https://cdn.kosmos-ai.com';
+    // Resolve the optional CDN base URL. The Chrome native-messaging host
+    // download is an optional feature; when no CDN is configured the fetch is
+    // skipped (see fetchNativeServerInfo).
+    this.baseUrl = getCdnBaseUrl();
 
     this.logger.info('NativeServerFetcher initialized', 'NativeServerFetcher', {
-      isDevelopment,
-      baseUrl: this.baseUrl
+      baseUrl: this.baseUrl || '(none — native server download disabled)'
     });
   }
 
@@ -166,6 +165,12 @@ export class NativeServerFetcher {
    * Fetch latest.json from the CDN
    */
   private async fetchNativeServerInfo(): Promise<NativeServerInfo | null> {
+    // CDN is optional; without a base URL there is no remote native-server source.
+    if (!this.baseUrl) {
+      this.logger.info('CDN not configured; skipping native server info fetch', 'NativeServerFetcher');
+      return null;
+    }
+
     // Add timestamp to bypass CDN cache
     const latestJsonUrl = appendCacheBustingTimestamp(`${this.baseUrl}/tools/chrome-mcp-native-server/latest.json`);
 

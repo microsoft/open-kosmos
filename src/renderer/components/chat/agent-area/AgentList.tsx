@@ -32,7 +32,7 @@ interface SearchResultItem {
   agentName: string;
   agentEmoji?: string;
   agentAvatar?: string;
-  agentSource?: 'ON-DEVICE' | 'EXTERNAL';
+  agentSource?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL';
   agentVersion?: string;
   lastUpdated: string;
   readStatus?: ChatSession['readStatus'];
@@ -44,7 +44,7 @@ interface SearchAgentOption {
   agentName: string;
   agentEmoji?: string;
   agentAvatar?: string;
-  agentSource?: 'ON-DEVICE' | 'EXTERNAL';
+  agentSource?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL';
   agentVersion?: string;
 }
 
@@ -1965,7 +1965,7 @@ const AgentList: React.FC<AgentListProps> = ({
             // 🔥 Determine if this is a Built-in Agent (built-in agent; list differs by branding)
             const isBuiltinAgentFlag = isBuiltinAgent(chat.agent?.name, BRAND_NAME);
             // 🔥 Determine if this is an Example Agent (demo/sample)
-            const isExampleAgent = chat.agent?.name === 'PM Agent - Journeys';
+            const isExampleAgent = false;
             const agentName = chat.agent?.name || 'Unnamed Agent';
             const paginatedState = paginatedChatSessions.get(chat.chat_id) || getDefaultPaginatedState();
             const inlineChatSessions = getNonScheduledSessions(chat.chatSessions || []);

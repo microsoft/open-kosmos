@@ -29,8 +29,8 @@ function makeDeferredTool(name: string, serverName: string, description?: string
 }
 
 const DEFERRED_TOOLS: McpTool[] = [
-  makeDeferredTool('ado_query', 'ado-server', 'Query Azure DevOps work items'),
-  makeDeferredTool('ado_create_work_item', 'ado-server', 'Create a work item in ADO'),
+  makeDeferredTool('gh_query', 'github-server', 'Query GitHub issues and pull requests'),
+  makeDeferredTool('gh_create_issue', 'github-server', 'Create an issue in GitHub'),
   makeDeferredTool('slack_send_message', 'slack-server', 'Send a Slack message'),
   makeDeferredTool('slack_list_channels', 'slack-server', 'List Slack channels'),
   makeDeferredTool('kusto_query', 'kusto-server', 'Run a Kusto query', 'KQL database analytics'),
@@ -51,11 +51,11 @@ describe('ToolSearchTool', () => {
 
   describe('execute — select: exact match', () => {
     it('returns exact tools by name', () => {
-      const result = ToolSearchTool.execute({ query: 'select:ado_query,kusto_query' });
+      const result = ToolSearchTool.execute({ query: 'select:gh_query,kusto_query' });
       expect(result.success).toBe(true);
       const data = JSON.parse(result.data!);
       expect(data.matches).toHaveLength(2);
-      expect(data.matches.map((m: any) => m.name).sort()).toEqual(['ado_query', 'kusto_query']);
+      expect(data.matches.map((m: any) => m.name).sort()).toEqual(['gh_query', 'kusto_query']);
     });
 
     it('returns empty for non-existent tool names', () => {
@@ -67,10 +67,10 @@ describe('ToolSearchTool', () => {
 
   describe('execute — exact name fast path', () => {
     it('returns immediately on case-insensitive exact name match', () => {
-      const result = ToolSearchTool.execute({ query: 'ADO_QUERY' });
+      const result = ToolSearchTool.execute({ query: 'GH_QUERY' });
       const data = JSON.parse(result.data!);
       expect(data.matches).toHaveLength(1);
-      expect(data.matches[0].name).toBe('ado_query');
+      expect(data.matches[0].name).toBe('gh_query');
     });
   });
 
@@ -95,7 +95,7 @@ describe('ToolSearchTool', () => {
     });
 
     it('respects max_results', () => {
-      const result = ToolSearchTool.execute({ query: 'ado', max_results: 1 });
+      const result = ToolSearchTool.execute({ query: 'github', max_results: 1 });
       const data = JSON.parse(result.data!);
       expect(data.matches).toHaveLength(1);
     });
@@ -103,10 +103,10 @@ describe('ToolSearchTool', () => {
 
   describe('execute — +server prefix', () => {
     it('requires server name match with + prefix', () => {
-      const result = ToolSearchTool.execute({ query: '+ado query' });
+      const result = ToolSearchTool.execute({ query: '+github query' });
       const data = JSON.parse(result.data!);
       expect(data.matches.length).toBeGreaterThan(0);
-      expect(data.matches.every((m: any) => m.serverName.includes('ado') || m.name.includes('ado'))).toBe(true);
+      expect(data.matches.every((m: any) => m.serverName.includes('github') || m.name.includes('github'))).toBe(true);
     });
 
     it('returns no results when server prefix does not match', () => {
@@ -128,7 +128,7 @@ describe('ToolSearchTool', () => {
 
   describe('execute — metadata', () => {
     it('includes total_deferred_tools count', () => {
-      const result = ToolSearchTool.execute({ query: 'ado_query' });
+      const result = ToolSearchTool.execute({ query: 'gh_query' });
       const data = JSON.parse(result.data!);
       expect(data.total_deferred_tools).toBe(DEFERRED_TOOLS.length);
     });

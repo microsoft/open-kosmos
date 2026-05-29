@@ -67,13 +67,14 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
 }) => {
   const [showMetrics, setShowMetrics] = useState(false);
   const [displayedText, setDisplayedText] = useState('');
-  const [lastHeight, setLastHeight] = useState(0);
+  const lastHeightRef = useRef(0);
   const [isTyping, setIsTyping] = useState(false);
   const [shouldSkipAnimation, setShouldSkipAnimation] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const metricsTimeoutRef = useRef<NodeJS.Timeout>();
   const rafIdRef = useRef<number>();
   const lastProcessedLengthRef = useRef(0);
+  const visibleLengthRef = useRef(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout>();
   const lastFrameTimeRef = useRef<number>(0);
 
@@ -90,6 +91,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     // If target text is already reached, set directly
     if (startIndex >= targetText.length) {
       setDisplayedText(targetText);
+      visibleLengthRef.current = targetText.length;
       setIsTyping(false);
       lastFrameTimeRef.current = 0;
       return;
@@ -109,6 +111,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
       // If completed, exit
       if (currentIndex >= targetText.length) {
         setDisplayedText(targetText);
+        visibleLengthRef.current = targetText.length;
         setIsTyping(false);
         lastFrameTimeRef.current = 0;
         return;
@@ -153,6 +156,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
 
         // 🚀 Key optimization: set state once after batch update to reduce re-renders
         setDisplayedText(targetText.substring(0, currentIndex));
+        visibleLengthRef.current = currentIndex;
         lastUpdateTime = currentTime;
       }
 
@@ -182,6 +186,8 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
           ).join('') || '';
 
       setDisplayedText(fullText);
+      visibleLengthRef.current = fullText.length;
+      lastProcessedLengthRef.current = fullText.length;
       setIsTyping(false);
       setShouldSkipAnimation(true);
 
@@ -205,8 +211,8 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
 
     if (isStreaming) {
       // Smooth typewriter effect: only animate newly added content
-      if (text !== displayedText && text.length > lastProcessedLengthRef.current) {
-        const currentLength = displayedText.length;
+      if (text.length > lastProcessedLengthRef.current) {
+        const currentLength = visibleLengthRef.current;
         lastProcessedLengthRef.current = text.length;
 
         // Cancel previous animation
@@ -218,29 +224,33 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
         if (shouldSkipAnimation || !uiConfig.showCursor) {
           // Display directly without typewriter effect
           setDisplayedText(text);
+          visibleLengthRef.current = text.length;
           setIsTyping(false);
         } else {
-          // Start typewriter animation (from current length)
+          // Start typewriter animation (from actual visible position)
           animateTypewriter(text, currentLength);
         }
-      } else if (text.length < displayedText.length) {
+      } else if (text.length < lastProcessedLengthRef.current) {
         // If text got shorter (e.g. restart), set directly
         setDisplayedText(text);
         lastProcessedLengthRef.current = text.length;
+        visibleLengthRef.current = text.length;
         setShouldSkipAnimation(false); // Reset skip state
       }
     } else {
-      // Non-streaming state, set text directly
-      setDisplayedText(text);
+      // Non-streaming state, set text directly (guard to avoid redundant state update)
+      setDisplayedText(prev => prev === text ? prev : text);
       setIsTyping(false);
       lastProcessedLengthRef.current = text.length;
+      visibleLengthRef.current = text.length;
       setShouldSkipAnimation(false); // Reset skip state
 
       if ((message as any).streamingComplete && onStreamingComplete) {
         onStreamingComplete();
       }
     }
-  }, [message, isStreaming, displayedText, animateTypewriter, onStreamingComplete, shouldSkipAnimation, uiConfig.showCursor]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- displayedText tracked via lastProcessedLengthRef to avoid infinite loop
+  }, [message, isStreaming, animateTypewriter, onStreamingComplete, shouldSkipAnimation, uiConfig.showCursor]);
 
   // Clean up timers and RAF
   useEffect(() => {
@@ -261,12 +271,12 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
   useEffect(() => {
     if (containerRef.current && onHeightChange) {
       const currentHeight = containerRef.current.scrollHeight;
-      if (currentHeight !== lastHeight) {
-        setLastHeight(currentHeight);
+      if (currentHeight !== lastHeightRef.current) {
+        lastHeightRef.current = currentHeight;
         onHeightChange(currentHeight);
       }
     }
-  }, [displayedText, lastHeight, onHeightChange]);
+  }, [displayedText, onHeightChange]);
 
   // Auto-hide performance metrics
   useEffect(() => {

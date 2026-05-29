@@ -26,7 +26,9 @@ export interface SkillConfig {
   name: string;
   description: string;
   version: string;
-  source: 'ON-DEVICE' | 'PLUGIN';
+  /** Remote CDN version for IN-LIBRARY skills, empty string for ON-DEVICE skills */
+  remoteVersion?: string;
+  source: 'ON-DEVICE' | 'IN-LIBRARY' | 'PLUGIN';
 }
 
 export interface SkillValidationResult {

@@ -27,7 +27,7 @@ export interface McpConfigFormatterParams {
 
 /**
  * MCP configuration LLM formatter
- * Uses Azure OpenAI API to format and validate MCP configuration
+ * Uses LLM API to format and validate MCP configuration
  */
 export class McpConfigLlmFormatter {
   // Hard-coded prompt template from .vscode/mcpConfigFormattingExample.md

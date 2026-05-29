@@ -16,7 +16,6 @@ const {
   mockRemoteChannelEnabled,
   mockSubAgentEnabled,
   mockPluginsEnabled,
-  mockMemexEnabled,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockLocation: { pathname: '/', search: '', hash: '' },
@@ -25,7 +24,6 @@ const {
   mockRemoteChannelEnabled: vi.fn(() => false),
   mockSubAgentEnabled: vi.fn(() => false),
   mockPluginsEnabled: vi.fn(() => false),
-  mockMemexEnabled: vi.fn(() => false),
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -43,7 +41,6 @@ vi.mock('../lib/featureFlags', () => ({
     if (flag === 'openkosmosFeatureRemoteChannel') return mockRemoteChannelEnabled();
     if (flag === 'openkosmosFeatureSubAgent') return mockSubAgentEnabled();
     if (flag === 'openkosmosFeaturePlugins') return mockPluginsEnabled();
-    if (flag === 'openkosmosFeatureMemexMemory') return mockMemexEnabled();
     return false;
   },
 }));
@@ -78,25 +75,17 @@ vi.mock('../components/subAgents/SubAgentsView', () => ({ default: () => <div da
 vi.mock('../components/subAgents/CreateSubAgentView', () => ({ default: () => <div data-testid="create-sub-agent" /> }));
 vi.mock('../components/subAgents/EditSubAgentView', () => ({ default: () => <div data-testid="edit-sub-agent" /> }));
 vi.mock('../components/subAgents/SubAgentLibraryView', () => ({ default: () => <div data-testid="sub-agent-library" /> }));
-vi.mock('../components/memory/MemoryView', () => ({ default: () => <div data-testid="memory-view" /> }));
 vi.mock('../components/pages/SettingsPage', () => ({ default: () => <div data-testid="settings-page" /> }));
 vi.mock('../components/settings/RuntimeSettingsView', () => ({ default: () => <div data-testid="runtime-view" /> }));
-vi.mock('../components/settings/ToolbarSettingsView', () => ({ default: () => <div data-testid="toolbar-view" /> }));
-vi.mock('../components/settings/VoiceInputSettingsView', () => ({ default: () => <div data-testid="voice-view" /> }));
-vi.mock('../components/settings/TtsSettingsView', () => ({ default: () => <div data-testid="tts-view" /> }));
 vi.mock('../components/settings/ScreenshotSettingsView', () => ({ default: () => <div data-testid="screenshot-view" /> }));
-vi.mock('../components/settings/SyncSettingsView', () => ({ default: () => <div data-testid="sync-view" /> }));
 vi.mock('../components/settings/AboutAppView', () => ({ default: () => <div data-testid="about-view" /> }));
 vi.mock('../components/settings/BrowserControlView', () => ({ default: () => <div data-testid="browser-control-view" /> }));
-vi.mock('../components/settings/MemexView', () => ({ default: () => <div data-testid="memex-view" /> }));
 vi.mock('../components/settings/ArchivedAgentsView', () => ({ default: () => <div data-testid="archived-view" /> }));
-vi.mock('../components/settings/MicrosoftSettingsView', () => ({ default: () => <div data-testid="microsoft-view" /> }));
 vi.mock('../components/settings/RemoteChannelSettingsView', () => ({ default: () => <div data-testid="remote-channel-view" /> }));
 vi.mock('../components/chat/agent-area/AgentChatEditingView', () => ({ default: () => <div data-testid="edit-view" /> }));
 vi.mock('../components/chat/agent-area/AgentChatCreationView', () => ({ default: () => <div data-testid="creation-view" /> }));
 vi.mock('../components/chat/agent-area/CreateCustomAgentView', () => ({ default: () => <div data-testid="custom-agent-view" /> }));
 vi.mock('../components/chat/agent-area/AddFromAgentLibraryView', () => ({ default: () => <div data-testid="agent-library-view" /> }));
-vi.mock('../components/chat/pm-project-agent-creation', () => ({ NewProjectAgentCreationView: () => <div data-testid="pm-project-view" /> }));
 vi.mock('../routes/RequireAuth', () => ({ RequireAuth: () => <div data-testid="require-auth" /> }));
 vi.mock('../components/auth/AutoLoginSingleUser', () => ({ AutoLoginSingleUser: () => <div data-testid="auto-login" /> }));
 
@@ -173,7 +162,6 @@ describe('AppRoutes', () => {
     mockRemoteChannelEnabled.mockReturnValue(true);
     mockSubAgentEnabled.mockReturnValue(true);
     mockPluginsEnabled.mockReturnValue(true);
-    mockMemexEnabled.mockReturnValue(true);
     render(<AppRoutes />);
     expect(screen.getByTestId('routes')).toBeInTheDocument();
   });

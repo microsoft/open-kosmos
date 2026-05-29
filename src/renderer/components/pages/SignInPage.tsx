@@ -264,7 +264,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       });
     }
 
-    // Automatically open GitHub authorization page (via Microsoft SSO)
+    // Automatically open GitHub authorization page (via GitHub device flow)
     if (deviceCodeData.verification_uri) {
       window.open(deviceCodeData.verification_uri, '_blank');
     }
@@ -275,14 +275,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       setShowGhcDeviceFlow(true);
     }, 800);
   }, []);
-
-  const clearSessionState = () => {
-    // Optimization: sessionStorage operations removed, keeping this function for backward compatibility
-    // sessionStorage.removeItem('signin-isLoading');
-    // sessionStorage.removeItem('signin-showGhcDeviceFlow');
-    // sessionStorage.removeItem('signin-deviceCode');
-    // sessionStorage.removeItem('signin-showGeneratingCode');
-  };
 
   const handleAuthSuccess = useCallback(async (event: Event) => {
     const customEvent = event as CustomEvent;
@@ -303,7 +295,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         setDeviceCode(null);
         setIsLoading(false);
         setShowGeneratingCode(false);
-        clearSessionState();
 
         // 🔥 Case 1: Existing user authentication (from handleProfileSelect with authData)
         if (eventSource.includes('profile') || authData) {
@@ -328,7 +319,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       setDeviceCode(null);
       setIsLoading(false);
       setShowGeneratingCode(false);
-      clearSessionState();
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown authentication error';
       showError(`Authentication failed: ${errorMessage}`);
@@ -342,7 +332,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     setTimeLeft(0);
     setIsLoading(false);
     setShowGeneratingCode(false);
-    clearSessionState();
     showError('GitHub Copilot authentication failed: ' + (event.detail.message || 'Unknown error'));
   }, [showError]);
 
@@ -426,7 +415,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       setShowGeneratingCode(false);
       showError('GitHub Copilot login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setIsLoading(false);
-      clearSessionState();
 
       // Clean up event listeners
       (window as any).electronAPI.auth.removeDeviceFlowListeners();
@@ -440,7 +428,6 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     setTimeLeft(0);
     setIsLoading(false);
     setShowGeneratingCode(false);
-    clearSessionState();
   };
 
   const handleCopyCode = async () => {

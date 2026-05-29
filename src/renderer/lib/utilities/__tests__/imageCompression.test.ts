@@ -174,7 +174,6 @@ import {
   shouldCompressImage,
   estimateBase64Size,
   VSCODE_IMAGE_LIMITS,
-  GITHUB_COPILOT_IMAGE_LIMITS,
   smartCompressImage,
   shouldCompressImageAdvanced,
 } from '../imageCompression';
@@ -205,10 +204,6 @@ describe('VSCODE_IMAGE_LIMITS', () => {
 
   it('has correct SCALE_TARGET_DIMENSION', () => {
     expect(VSCODE_IMAGE_LIMITS.SCALE_TARGET_DIMENSION).toBe(768);
-  });
-
-  it('GITHUB_COPILOT_IMAGE_LIMITS is the same object as VSCODE_IMAGE_LIMITS', () => {
-    expect(GITHUB_COPILOT_IMAGE_LIMITS).toBe(VSCODE_IMAGE_LIMITS);
   });
 
   it('smartCompressImage is alias for smartCompressImageVSCodeStyle', () => {

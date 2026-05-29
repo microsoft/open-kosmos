@@ -18,7 +18,6 @@ describe('DEFAULT constants', () => {
     expect(DEFAULT_STREAMING_V2_CONFIG.batchSize).toBe(10);
     expect(DEFAULT_STREAMING_V2_CONFIG.batchDelay).toBe(5);
     expect(DEFAULT_STREAMING_V2_CONFIG.performanceTracking).toBe(true);
-    expect(DEFAULT_STREAMING_V2_CONFIG.fallbackToV1OnError).toBe(true);
     expect(DEFAULT_STREAMING_V2_CONFIG.maxRetries).toBe(3);
     expect(DEFAULT_STREAMING_V2_CONFIG.showStreamingMetrics).toBe(false);
     expect(DEFAULT_STREAMING_V2_CONFIG.enableAdaptiveOptimization).toBe(true);

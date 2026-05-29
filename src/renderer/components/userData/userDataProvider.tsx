@@ -121,14 +121,16 @@ export function ProfileDataProvider({ children }: { children: React.ReactNode })
       const currentChatId = agentChatSessionCacheManager.getCurrentChatId()
 
       // Compare core config instead of object references, preventing MCP tool changes from being misidentified as Agent changes
-      // Force update when chatId changes or key agent fields differ
+      // 🔥 Fix: Only do detailed comparison when currentAgent exists and chatId hasn't changed
+      // 🆕 New: Include version and remoteVersion comparison to ensure Update button responds correctly to remote version updates
       const hasAgentConfigChanged = !currentAgent ||
-        currentChatId !== trackedChatId || // Force update when chatId changes
+        currentChatId !== trackedChatId || // 🔥 Key: Force update when chatId changes
         currentAgent.role !== updatedAgent?.role ||
         currentAgent.name !== updatedAgent?.name ||
         currentAgent.emoji !== updatedAgent?.emoji ||
         currentAgent.system_prompt !== updatedAgent?.system_prompt ||
         currentAgent.version !== updatedAgent?.version ||
+        currentAgent.remoteVersion !== updatedAgent?.remoteVersion ||
         JSON.stringify(currentAgent.skills) !== JSON.stringify(updatedAgent?.skills)
 
       const hasModelChanged = currentModel !== updatedModel

@@ -1,6 +1,6 @@
 # macOS Code Signing Configuration Guide
 
-This document explains how to configure macOS code signing and notarization for Kosmos.app.
+This document explains how to configure macOS code signing and notarization for OpenKosmos.app.
 
 ## Prerequisites
 

@@ -7,8 +7,6 @@ import '../../../styles/markdown-render.css';
 import GeneratedFileCards, { GeneratedFileCardItem, normalizePresentedFilesToGeneratedFileItems, PresentedFile } from './GeneratedFileCards';
 import GeneratedScheduleCards from './GeneratedScheduleCards';
 import SayHiActionItems, { parseSayHiContent } from './SayHiActionItems';
-import PmProjectSayHiCards, { parsePmSayHiCards } from './PmProjectSayHiCards';
-import PmAgentSayHiCards, { parsePmAgentSayHiMessage } from './PmAgentSayHiCards';
 import { createLogger } from '../../../lib/utilities/logger';
 import { ImageGalleryMenuAtom } from '../../menu/ImageGalleryContextMenu';
 const logger = createLogger('[Message]');
@@ -858,14 +856,6 @@ const Message: React.FC<MessageProps> = ({
     return null;
   }
 
-  // 🔥 Refactor: remove thinking-message rendering logic
-  // All assistant messages are now rendered directly; there is no longer a "thinking" type
-  if (message.role === 'thinking' as any) {
-    // Keep empty branch for backward compatibility, but execution should never reach here
-    logger.warn('[Message] Unexpected thinking role message - this should not happen after refactoring');
-    return null;
-  }
-
   // Optimize markdown rendering content during streaming
   const optimizeContentForMarkdown = (content: string, isStreaming: boolean): string => {
     if (!content) return content;
@@ -918,21 +908,15 @@ const Message: React.FC<MessageProps> = ({
 
   // 🆕 Say-Hi action items: parse clickable prompts from say-hi messages
   const isSayHiMessage = !!message.id?.startsWith('say-hi-');
-  // Priority 1: PM Agent greeting + hardcoded cards (<!-- PM_AGENT_SAY_HI_CARDS --> delimiter)
-  const pmAgentSayHiResult = isSayHiMessage ? parsePmAgentSayHiMessage(processedContent) : null;
-  // Priority 2: PM Project Agent card format (<!-- PM_SAY_HI_CARDS --> delimiter)
-  const pmSayHiResult = (isSayHiMessage && !pmAgentSayHiResult) ? parsePmSayHiCards(processedContent) : null;
-  // Priority 3: legacy action-item chips
-  const { markdownBody: sayHiBody, actionItemGroups: sayHiGroups } = (isSayHiMessage && !pmAgentSayHiResult && !pmSayHiResult)
+  // Parse legacy action-item chips
+  const { markdownBody: sayHiBody, actionItemGroups: sayHiGroups } = isSayHiMessage
     ? parseSayHiContent(processedContent)
     : {
-      markdownBody: pmAgentSayHiResult?.markdownBody ?? pmSayHiResult?.markdownBody ?? processedContent,
+      markdownBody: processedContent,
       actionItemGroups: [] as import('./SayHiActionItems').ActionItemGroup[],
     };
-  // Use the stripped body (without action items/cards) for rendering markdown
-  const displayContent = isSayHiMessage
-    ? (pmAgentSayHiResult?.markdownBody ?? pmSayHiResult?.markdownBody ?? sayHiBody)
-    : processedContent;
+  // Use the stripped body (without action items) for rendering markdown
+  const displayContent = isSayHiMessage ? sayHiBody : processedContent;
 
   // 🆕 New: if this is an assistant message that contains new-format images, use segmented rendering
   if (message.role === 'assistant' && hasNewImageFormat(displayContent)) {
@@ -965,14 +949,8 @@ const Message: React.FC<MessageProps> = ({
                       }
                     }}
                   />
-                  {/* 🆕 Render say-hi action items: PM Agent cards > PM Project cards > legacy chips */}
-                  {isSayHiMessage && pmAgentSayHiResult && (
-                    <PmAgentSayHiCards />
-                  )}
-                  {isSayHiMessage && !pmAgentSayHiResult && pmSayHiResult && pmSayHiResult.cards.length > 0 && (
-                    <PmProjectSayHiCards cards={pmSayHiResult.cards} chatId={chatId} />
-                  )}
-                  {isSayHiMessage && !pmAgentSayHiResult && !pmSayHiResult && sayHiGroups.length > 0 && (
+                  {/* 🆕 Render say-hi action items */}
+                  {isSayHiMessage && sayHiGroups.length > 0 && (
                     <SayHiActionItems groups={sayHiGroups} />
                   )}
                 </div>

@@ -15,18 +15,19 @@ import {
   McpServerConfig,
   SubAgentConfig,
   SubAgentIndex,
-  SkillConfig,
   isProfileV2,
-  VoiceInputSettings,
+  RemoteChannelsConfig,
   BrowserControlSettings,
   DevToolsMcpSettings,
   ConfirmationSettings,
 } from './types/profile';
+import type { ChannelStatusInfo } from '../remoteChannel/types';
 import { ChatSessionFile } from './chatSessionFileOps';
 import { chatSessionManager } from './chatSessionManager';
 import { getDefaultWorkspacePath, isDefaultWorkspacePath } from './pathUtils';
 import { getExternalAgentService } from '../../startup/lazy';
 import { chatSessionStore } from '../chat/chatSessionStore';
+import { BRAND_NAME } from '@shared/constants/branding';
 import { BUILTIN_DEFAULTS_VERSION } from '../../../shared/constants/builtinSkills';
 import {
   sanitizeProfileV2,
@@ -59,6 +60,7 @@ import { ghcModelsManager } from "../llm/ghcModelsManager";
 import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
 import { pluginManager } from "../plugin/pluginManager";
 import { agentChatManager } from "../chat/agentChatManager";
+import { credentialStore } from "../remoteChannel/credentialStore";
 
 /**
  * MCP Server status enumeration
@@ -121,6 +123,13 @@ function getElectronApp() {
  * type definitions, integrity migration, frontend sync
  * (ProfileCacheManager ↔ ProfileDataManager IPC), and the Feature Manager pattern.
  */
+interface IRemoteChannelManager {
+  initialize(alias: string): Promise<void>;
+  startChannel(channelId: string): Promise<void>;
+  setStatusChangeListener(listener: (info: ChannelStatusInfo) => void): void;
+  setBindingChangeListener(listener: (info: { channelId: string; bound: boolean }) => void): void;
+}
+
 export class ProfileCacheManager {
   private static instance: ProfileCacheManager;
   private cache: Map<string, ProfileV2> = new Map();
@@ -136,6 +145,7 @@ export class ProfileCacheManager {
   private batchedUpdates = new Set<string>(); // Tracks user aliases with pending updates
 
   private mainWindow: BrowserWindow | null = null; // Reference to the main window
+  private getRemoteChannelManager: (() => Promise<IRemoteChannelManager>) | null = null;
 
   // Data-change detection — disabled; all notifications are sent directly
   // private lastSentSnapshots: Map<string, DataSnapshot> = new Map(); // user alias -> last sent data snapshot
@@ -157,6 +167,14 @@ export class ProfileCacheManager {
    */
   public setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
+  }
+
+  /**
+   * Inject the lazy getter for Remote Channel Manager.
+   * Called by main.ts before handleProfile.
+   */
+  setRemoteChannelManagerGetter(getter: () => Promise<IRemoteChannelManager>): void {
+    this.getRemoteChannelManager = getter;
   }
 
   /**
@@ -566,11 +584,11 @@ export class ProfileCacheManager {
       if (!targetWindow || targetWindow.isDestroyed()) {
         const windows = BrowserWindow.getAllWindows();
         // Try to match by title (multi-brand compatible)
-        const appTitle = process.env.APP_NAME; // e.g. "OpenKosmos" (may not match window title exactly)
+        const appTitle = process.env.APP_NAME; // "OpenKosmos" (App Name may not match Window Title)
 
         // Window lookup strategy:
         // 1. Exact title match "OpenKosmos AI Studio" (default / legacy)
-        // 2. Title contains "OpenKosmos"
+        // 2. Title contains "OpenKosmos" 
         // 3. Fall back to the only open window
 
         targetWindow = windows.find((window: BrowserWindow) => {
@@ -837,7 +855,43 @@ export class ProfileCacheManager {
         }
       })(),
 
-      // Initialize External Agent service
+      // Initialize Remote Channel
+      (async () => {
+        console.time('[ProfileCacheManager] remoteChannel.initialize');
+        try {
+          if (!featureFlagManager.isEnabled('openkosmosFeatureRemoteChannel')) {
+            console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
+            return;
+          }
+
+          if (!this.getRemoteChannelManager) {
+            logger.warn('[ProfileCacheManager] Remote channel manager getter not injected, skipping');
+            console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
+            return;
+          }
+
+          const manager = await this.getRemoteChannelManager();
+
+          await manager.initialize(alias);
+
+          const { broadcastRemoteChannelStatus, broadcastBindingChanged } = await import('../remoteChannel/remoteChannelIPC');
+          manager.setStatusChangeListener(broadcastRemoteChannelStatus);
+          manager.setBindingChangeListener(broadcastBindingChanged);
+
+          const hasToken = await credentialStore.hasCredential(alias, 'teams', 'bindingToken');
+          if (hasToken) {
+            logger.debug('[ProfileCacheManager] Auto-starting Teams channel (has binding token)...');
+            await manager.startChannel('teams');
+          }
+
+          console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
+        } catch (error) {
+          console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
+          logger.error(`[ProfileCacheManager] Remote channel initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })(),
+
+      // Initialize External Agent service (independent from RemoteChannel)
       (async () => {
         console.time('[ProfileCacheManager] externalAgent?.initialize');
         try {
@@ -890,16 +944,16 @@ export class ProfileCacheManager {
   async deleteMcpServerConfig(alias: string, serverName: string): Promise<boolean> {
     return entityCrud.deleteMcpServerConfig(this.entityCtx(), alias, serverName);
   }
-  async addSkill(alias: string, skillConfig: SkillConfig): Promise<boolean> {
+  async addSkill(alias: string, skillConfig: { name: string; description: string; version: string; remoteVersion?: string; source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN' }): Promise<boolean> {
     return entityCrud.addSkill(this.entityCtx(), alias, skillConfig);
   }
-  async updateSkill(alias: string, skillName: string, updates: { description?: string; version?: string }): Promise<boolean> {
+  async updateSkill(alias: string, skillName: string, updates: { description?: string; version?: string; remoteVersion?: string }): Promise<boolean> {
     return entityCrud.updateSkill(this.entityCtx(), alias, skillName, updates);
   }
   async deleteSkill(alias: string, skillName: string): Promise<boolean> {
     return entityCrud.deleteSkill(this.entityCtx(), alias, skillName);
   }
-  async getSubAgents(): Promise<SubAgentConfig[]> {
+  async getSubAgents(): Promise<SubAgentConfig[] | SubAgentIndex[]> {
     return entityCrud.getSubAgents(this.entityCtx());
   }
   getSubAgentIndex(alias?: string): SubAgentIndex[] {
@@ -1002,6 +1056,10 @@ export class ProfileCacheManager {
 
       // Phase 3: Clear user runtime states (including MCP servers)
       this.clearUserRuntimeStates(alias);
+
+      // Phase 4: Clean up resources for user sign-out or profile switching
+      this.cleanupMem0Resources().catch(error => {
+      });
     } else {
 
       // Phase 1: Inventory all cached users
@@ -1023,6 +1081,9 @@ export class ProfileCacheManager {
         this.clearUserRuntimeStates(user);
       }
 
+      // Phase 4: Clean up resources for complete application cleanup
+      this.cleanupMem0Resources().catch(error => {
+      });
     }
   }
 
@@ -1037,52 +1098,6 @@ export class ProfileCacheManager {
    * Runtime state management methods
    * 🆕 Refactored: these methods now delegate to mcpClientManager; runtimeStates are no longer maintained inside profileCacheManager
    */
-
-  /**
-   * Update MCP server runtime status
-   * 🆕 Refactored: delegates to mcpClientManager
-   * @deprecated This method is kept for backward compatibility; state is now managed internally by mcpClientManager
-   */
-  updateMcpServerStatus(alias: string, serverName: string, status: MCPServerStatus): void {
-    // 🆕 Refactored: state is now managed internally by mcpClientManager
-    // This method retains an empty implementation for backward compatibility
-    // mcpClientManager automatically notifies the frontend when state changes
-    logger.debug('[ProfileCacheManager] updateMcpServerStatus called (deprecated, delegated to mcpClientManager)', 'updateMcpServerStatus', {
-      alias,
-      serverName,
-      status
-    });
-  }
-
-  /**
-   * Update MCP server tools
-   * 🆕 Refactored: delegates to mcpClientManager
-   * @deprecated This method is kept for backward compatibility; the tool list is now managed internally by mcpClientManager
-   */
-  updateMcpServerTools(alias: string, serverName: string, tools: { name: string; description?: string; inputSchema: any }[]): void {
-    // 🆕 Refactored: the tool list is now managed internally by mcpClientManager
-    // This method retains an empty implementation for backward compatibility
-    logger.debug('[ProfileCacheManager] updateMcpServerTools called (deprecated, delegated to mcpClientManager)', 'updateMcpServerTools', {
-      alias,
-      serverName,
-      toolCount: tools.length
-    });
-  }
-
-  /**
-   * Update MCP server last error
-   * 🆕 Refactored: delegates to mcpClientManager
-   * @deprecated This method is kept for backward compatibility; errors are now managed internally by mcpClientManager
-   */
-  updateMcpServerError(alias: string, serverName: string, error: Error | null): void {
-    // 🆕 Refactored: errors are now managed internally by mcpClientManager
-    // This method retains an empty implementation for backward compatibility
-    logger.debug('[ProfileCacheManager] updateMcpServerError called (deprecated, delegated to mcpClientManager)', 'updateMcpServerError', {
-      alias,
-      serverName,
-      hasError: error !== null
-    });
-  }
 
   /**
    * Get MCP server runtime state
@@ -1139,6 +1154,25 @@ export class ProfileCacheManager {
     logger.debug('[ProfileCacheManager] clearUserRuntimeStates delegated to mcpClientManager', 'clearUserRuntimeStates', {
       alias
     });
+  }
+
+  /**
+   * Cleanup resources
+   * Called during application shutdown or user sign-out
+   */
+  async cleanupMem0Resources(): Promise<void> {
+    const cleanupStart = Date.now();
+    const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+    try {
+
+      // ProfileCacheManager only clears local cache state (already handled elsewhere)
+      // e.g. clearCache(), clearUserRuntimeStates(), etc.
+
+      const cleanupDuration = Date.now() - cleanupStart;
+    } catch (error) {
+      const cleanupDuration = Date.now() - cleanupStart;
+    }
   }
 
   /**
@@ -1218,11 +1252,8 @@ export class ProfileCacheManager {
   async updateConfirmationSettings(alias: string, settings: Partial<ConfirmationSettings>): Promise<boolean> {
     return settingsCrud.updateConfirmationSettings(this.settingsCtx(), alias, settings);
   }
-  getVoiceInputSettings(alias: string): VoiceInputSettings {
-    return settingsCrud.getVoiceInputSettings(this.settingsCtx(), alias);
-  }
-  async updateVoiceInputSettings(alias: string, settings: Partial<VoiceInputSettings>): Promise<boolean> {
-    return settingsCrud.updateVoiceInputSettings(this.settingsCtx(), alias, settings);
+  async updateRemoteChannelsConfig(alias: string, config: Partial<RemoteChannelsConfig>): Promise<boolean> {
+    return settingsCrud.updateRemoteChannelsConfig(this.settingsCtx(), alias, config);
   }
   async updatePrimaryAgent(alias: string, agentName: string): Promise<boolean> {
     return settingsCrud.updatePrimaryAgent(this.settingsCtx(), alias, agentName);
@@ -1296,7 +1327,6 @@ export class ProfileCacheManager {
   async deleteChatSession(alias: string, chatId: string, chatSessionId: string): Promise<boolean> {
     return chatSessionOps.deleteChatSession(this.chatSessionCtx(), alias, chatId, chatSessionId);
   }
-  /** @deprecated Use getChatSessionsAsync instead */
   getChatSessions(alias: string, chatId: string): ChatSession[] {
     return chatSessionOps.getChatSessions(alias, chatId);
   }

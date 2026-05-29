@@ -90,7 +90,6 @@ vi.mock('../../layout/LayoutProvider', () => ({
   useLayout: () => ({ isMinimalMode: mockIsMinimalMode }),
 }));
 
-vi.mock('../../../lib/audio/useAutoTts', () => ({ useAutoTts: vi.fn() }));
 
 vi.mock('../chat-side.atom', () => ({
   ScheduleSidepaneAtom: {
@@ -124,10 +123,6 @@ vi.mock('../../../lib/userData', () => ({
       ],
     })),
   },
-}));
-
-vi.mock('../../../lib/chat/pmAgentSayHi', () => ({
-  getPmAgentSayHiMessageConfig: vi.fn(() => null),
 }));
 
 vi.mock('../../../lib/chat/startNewChatFor', () => ({

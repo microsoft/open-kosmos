@@ -7,7 +7,7 @@ import Divider from '../ui/Divider';
 import { useToast } from '../ui/ToastProvider';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { isBuiltinAgent } from '../../lib/userData/types';
-import { BRAND_NAME } from '@shared/constants/branding'; // used in isBuiltinAgent calls
+import { BRAND_NAME } from '@shared/constants/branding';
 
 const PlusIcon = () => (
   <svg
@@ -55,6 +55,15 @@ const NavigationSection: React.FC = () => {
     string | null
   >(agentChatSessionCacheManager.getCurrentChatSessionId());
 
+  /**
+   * 🔄 chatStatusVersion: version counter used to trigger builtinChats useMemo recalculation
+   *
+   * Background: builtinChats computation depends on session state in agentChatSessionCacheManager,
+   * but useMemo cannot directly observe external manager state changes.
+   *
+   * Solution: listen for onChatStatusChanged events and increment the version counter on each change;
+   * include the version counter as a useMemo dependency to trigger recalculation.
+   */
   // 🔥 Listen for changes to agentChatSessionCacheManager's currentChatSessionId and sync local state
   useEffect(() => {
     const unsubscribe =
@@ -153,11 +162,10 @@ const NavigationSection: React.FC = () => {
 
   /**
    * 🔥 Calculate the list of Built-in Agents to display below the Divider
-   * Kobi is always visible.
+   * All built-in agents for the current branding are always visible.
    */
   const builtinChats = useMemo(() => {
     return chats.filter(chat => isBuiltinAgent(chat.agent?.name, BRAND_NAME));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats]);
 
   // 🔥 Determine whether to show Built-in Agents below the Divider
@@ -314,7 +322,7 @@ const NavigationSection: React.FC = () => {
         </div>
       )}
 
-      {/* Function List - Chat, MCP, Memory - migrated to settings page */}
+      {/* Function List - Chat, MCP - migrated to settings page */}
     </div>
   );
 };

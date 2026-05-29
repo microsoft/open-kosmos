@@ -301,26 +301,6 @@ describe('SubAgentToolExecutor', () => {
       );
     });
 
-    it('falls back to config.mcp_servers when resolvedMcpServers is empty', async () => {
-      const opts = makeOptions({
-        subAgent: {
-          inheritedModel: 'gpt-4o',
-          parentSessionId: 'session-1',
-          parentChatId: 'chat-1',
-          userAlias: 'testUser',
-          resolvedMcpServers: [],
-          config: { mcp_servers: [{ name: 'fallback-server' }] },
-          taskId: 'sa-1',
-        },
-      });
-      const executor = makeExecutor(opts);
-      await executor.executeToolCalls([makeToolCall('some_tool', {})], 0);
-
-      expect(mockExecuteTool).toHaveBeenCalledWith(
-        expect.objectContaining({ agentMcpServerNames: ['fallback-server'] }),
-      );
-    });
-
     it('uses empty agentMcpServerNames when both are empty', async () => {
       const opts = makeOptions();
       const executor = makeExecutor(opts);

@@ -15,10 +15,8 @@ import {
   validateModelId,
   getDefaultModel,
   isReasoningModel,
-  getLegacyModels,
   getModelsByCategory,
   MODEL_CATEGORIES,
-  GITHUB_COPILOT_MODELS,
 } from '../ghcModels';
 import { modelCacheManager } from '../modelCacheManager';
 import type { GhcCopilotModel } from '@shared/types/ghcChatTypes';
@@ -176,40 +174,6 @@ describe('ghcModels', () => {
     });
   });
 
-  describe('getLegacyModels', () => {
-    it('returns empty array when no openkosmos models', () => {
-      expect(getLegacyModels()).toEqual([]);
-    });
-
-    it('converts GhcCopilotModel to legacy format', async () => {
-      const m = makeModel({ id: 'legacy-test', name: 'Legacy' });
-      (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [m] });
-      await modelCacheManager.syncFromBackend();
-
-      const legacy = getLegacyModels();
-      expect(legacy).toHaveLength(1);
-      expect(legacy[0].id).toBe('legacy-test');
-      expect(legacy[0].name).toBe('Legacy');
-      expect(legacy[0].attachment).toBe(true); // vision: true
-      expect(legacy[0].reasoning).toBe(false);
-      expect(legacy[0].tool_call).toBe(true);
-      expect(legacy[0].modalities.input).toContain('image');
-    });
-
-    it('marks o3-family model as reasoning in legacy format', async () => {
-      const m = makeModel({
-        id: 'o3-legacy',
-        capabilities: { ...makeModel().capabilities, family: 'o3', supports: { tool_calls: false, vision: false } },
-      });
-      (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [m] });
-      await modelCacheManager.syncFromBackend();
-
-      const legacy = getLegacyModels();
-      expect(legacy[0].reasoning).toBe(true);
-      expect(legacy[0].temperature).toBe(false);
-    });
-  });
-
   describe('getModelsByCategory', () => {
     it('returns empty array when cache is empty', () => {
       expect(getModelsByCategory('claude')).toEqual([]);
@@ -237,9 +201,4 @@ describe('ghcModels', () => {
     });
   });
 
-  describe('GITHUB_COPILOT_MODELS', () => {
-    it('is an empty array (deprecated constant)', () => {
-      expect(GITHUB_COPILOT_MODELS).toEqual([]);
-    });
-  });
 });

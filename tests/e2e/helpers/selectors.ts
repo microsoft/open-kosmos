@@ -14,7 +14,7 @@ export const Selectors = {
   // ==================== App.tsx initialization loading screen ====================
   /** App initialization loading screen (dark background #1c1c1c) */
   LOADING_SCREEN_TEXT: 'text=Initializing Core Services',
-  LOADING_SCREEN_BRAND: 'text=KOSMOS',
+  LOADING_SCREEN_BRAND: 'text=OpenKosmos',
   LOADING_SPINNER: '.animate-spin',
 
   // ==================== StartupPage (route /) ====================
@@ -38,7 +38,7 @@ export const Selectors = {
   SIGN_IN_CARD_TITLE: '.signin-card-title',
 
   // --- State 2: default login (new user) ---
-  /** "Welcome to KOSMOS" heading */
+  /** "Welcome to OpenKosmos" heading */
   SIGN_IN_WELCOME_TITLE: 'text=Welcome to',
   /** Primary login button */
   SIGN_IN_BUTTON: 'button:has-text("Sign In with GitHub Copilot")',
@@ -130,13 +130,13 @@ export const Selectors = {
   SETTINGS_NAV_SKILLS: 'a[href*="settings/skills"]',
   SETTINGS_NAV_MEMORY: 'a[href*="settings/memory"]',
   SETTINGS_NAV_ABOUT: 'a[href*="settings/about"]',
-  SETTINGS_NAV_VOICE: 'a[href*="settings/voice-input"]',
-  SETTINGS_NAV_SCREENSHOT: 'a[href*="settings/screenshot"]',
+SETTINGS_NAV_SCREENSHOT: 'a[href*="settings/screenshot"]',
   SETTINGS_NAV_BROWSER: 'a[href*="settings/browser-control"]',
   SETTINGS_NAV_TOOLBAR: 'a[href*="settings/toolbar"]',
 
   // ==================== MCP management ====================
   MCP_ADD_SERVER_BUTTON: 'button:has-text("Add")',
+  MCP_LIBRARY: 'a[href*="mcp-library"]',
 
   // ==================== Common UI ====================
   DIALOG_OVERLAY: '[role="dialog"]',

@@ -25,7 +25,7 @@ export interface SystemPromptWriterParams {
 
 /**
  * System Prompt LLM Writer
- * Uses Azure OpenAI API to improve and optimize system prompts
+ * Uses LLM API to improve and optimize system prompts
  */
 export class SystemPromptLlmWriter {
   private static readonly SYSTEM_PROMPT = `# Identity

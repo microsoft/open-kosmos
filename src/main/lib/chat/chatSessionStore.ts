@@ -11,6 +11,7 @@ import {
   isValidChatSessionId,
 } from '../userDataADO/pathUtils';
 import { createLogger } from '../unifiedLogger';
+import { cleanupSessionAttachmentDir } from '../remoteChannel/agentBridge/attachmentPipeline';
 
 const logger = createLogger();
 
@@ -444,6 +445,7 @@ export class ChatSessionStore {
         this.chatToSessionIds.delete(chatId);
       }
       this.notifySessionDeleted(alias, chatId, chatSessionId);
+      cleanupSessionAttachmentDir(chatSessionId).catch(() => {});
       await this.notifyUnreadSummaryChanged(alias, chatId);
       return true;
     });
@@ -452,7 +454,20 @@ export class ChatSessionStore {
   }
 
   async getChatSessionsProjection(alias: string, chatId: string): Promise<ChatSessionListProjection> {
-    const persisted = await chatSessionManager.getAllChatSessions(alias, chatId);
+    // Load all sessions across all months without pagination
+    const allSessions: ChatSession[] = [];
+    let result = await chatSessionManager.getChatSessions(alias, chatId, Number.MAX_SAFE_INTEGER);
+    allSessions.push(...result.sessions);
+    while (result.hasMore) {
+      result = await chatSessionManager.getMoreChatSessions(alias, chatId, result.nextMonthIndex).then(r => ({
+        sessions: r.sessions,
+        loadedMonths: r.loadedMonth ? [r.loadedMonth] : [],
+        hasMore: r.hasMore,
+        nextMonthIndex: r.nextMonthIndex,
+      }));
+      allSessions.push(...result.sessions);
+    }
+    const persisted = allSessions;
     const overlays = this.chatToSessionIds.get(chatId);
     const byId = new Map<string, ChatSession>(persisted.map((session) => [session.chatSession_id, buildMetadataSnapshot(session)]));
 

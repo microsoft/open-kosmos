@@ -4,25 +4,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Mock auth dependencies ────────────────────────────────────────────────────
-const mockResolveMetadata = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-const mockGetTokenForServer = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-
-vi.mock('../../../auth/McpAuthMetadataService', () => ({
-  McpAuthMetadataService: {
-    resolve: mockResolveMetadata,
-    updateFromHeaders: vi.fn((existing: unknown) => existing),
-  },
-}));
-
-vi.mock('../../../auth/McpAuthService', () => ({
-  McpAuthService: {
-    getInstance: vi.fn(() => ({
-      getTokenForServer: mockGetTokenForServer,
-    })),
-  },
-}));
-
 import { VscodeHttpTransport } from '../VscodeHttpTransport';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -268,37 +249,6 @@ describe('VscodeHttpTransport — SSE fallback on 4xx', () => {
     await t.start();
     await t.send('{"id":1}');
     expect((t as any).mode.value).toBe(2); // SSE
-  });
-});
-
-// ── Error: 4xx after auth challenge ──────────────────────────────────────────
-
-describe('VscodeHttpTransport — error after successful auth', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    mockResolveMetadata.mockReset();
-    mockGetTokenForServer.mockReset();
-  });
-
-  it('throws with helpful message on 404 post-auth when Authorization header present', async () => {
-    mockResolveMetadata.mockResolvedValue({
-      authorizationServerUrl: 'https://auth.example.com',
-      authorizationServerMetadata: { issuer: 'https://auth.example.com' },
-      scopes: ['api://res/.default'],
-      providerLabel: 'Test',
-      telemetry: { resourceMetadataSource: 'header', serverMetadataSource: 'header' },
-    });
-    mockGetTokenForServer.mockResolvedValue('tok-abc');
-
-    vi.spyOn(global, 'fetch')
-      // 1st: initial POST → 401 triggers auth
-      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer scope="api://res/.default"' } }))
-      // 2nd: retry POST with auth header → 404
-      .mockResolvedValueOnce(new Response('Not found', { status: 404 }));
-
-    const t = makeTransport();
-    await t.start();
-    await expect(t.send('{}')).rejects.toThrow(/404 status from/);
   });
 });
 

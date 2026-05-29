@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-This document turns the accepted design into an implementable Kosmos architecture:
+This document turns the accepted design into an implementable OpenKosmos architecture:
 
 1. trigger from both `chat.agent.skills` binding changes and `profile.skills` registry changes
 2. consume via chat-level `skill_snapshot`
@@ -396,7 +396,7 @@ If snapshot persistence fails:
 2. fallback can rebuild in memory for the current request
 3. a warning should be logged
 
-This follows Kosmos's non-fatal error strategy.
+This follows OpenKosmos's non-fatal error strategy.
 
 ## 12. Testing Strategy
 

@@ -20,15 +20,16 @@ import {
   ChatSkillSnapshotItem,
   ChatSession,
   StarredChatSessionIndexItem,
-  SubAgentConfig,
   SubAgentIndex,
   DEFAULT_CHAT_AGENT,
   DEFAULT_CONFIRMATION_SETTINGS,
+  DEFAULT_CONTEXT_ENHANCEMENT,
   DEFAULT_ZERO_STATES,
   getAgentKnowledge,
   isBuiltinAgent,
   withNormalizedAgentKnowledge,
 } from './types/profile';
+import { BRAND_NAME } from '@shared/constants/branding';
 import { BUILTIN_SKILL_NAMES } from '../../../shared/constants/builtinSkills';
 
 const logger = createConsoleLogger();
@@ -43,11 +44,9 @@ export function generateChatId(): string {
 /**
  * Sanitize sub-agents array, ensuring data integrity and removing dangling references.
  *
- * Post-migration: sub_agents contains SubAgentIndex[] (lightweight).
- * Pre-migration: sub_agents may contain SubAgentConfig[] (full).
- * This method handles both formats gracefully.
+ * sub_agents contains SubAgentIndex[] (lightweight post-migration format).
  */
-export function sanitizeSubAgents(profile: ProfileV2, cleanChats: ChatConfig[]): SubAgentIndex[] | SubAgentConfig[] {
+export function sanitizeSubAgents(profile: ProfileV2, cleanChats: ChatConfig[]): SubAgentIndex[] {
   if (!Array.isArray(profile.sub_agents)) {
     return [];
   }
@@ -60,32 +59,13 @@ export function sanitizeSubAgents(profile: ProfileV2, cleanChats: ChatConfig[]):
     return true;
   });
 
-  // Detect format: if first valid item has system_prompt, it's old (pre-migration) format
-  const isOldFormat = deduped.length > 0 &&
-    'system_prompt' in (deduped[0] as any);
-
-  let sanitized: SubAgentIndex[] | SubAgentConfig[];
-
-  if (isOldFormat) {
-    // Pre-migration: sanitize as full SubAgentConfig (backward compat)
-    sanitized = (deduped as SubAgentConfig[]).map(sa => ({
-      name: sa.name,
-      description: sa.description || '',
-      system_prompt: sa.system_prompt || '',
-      mcp_servers: Array.isArray(sa.mcp_servers) ? sa.mcp_servers : [],
-      skills: Array.isArray(sa.skills) ? sa.skills : [],
-      builtin_tools: Array.isArray(sa.builtin_tools) ? sa.builtin_tools : [],
-      inherit_mcp_servers: sa.inherit_mcp_servers ?? true,
-      inherit_skills: sa.inherit_skills ?? true,
-    })) as SubAgentConfig[];
-  } else {
-    // Post-migration: sanitize as lightweight SubAgentIndex
-    sanitized = (deduped as SubAgentIndex[]).map(sa => ({
-      name: sa.name,
-      version: sa.version || '1.0.0',
-      source: sa.source || 'ON-DEVICE' as const,
-    })) as SubAgentIndex[];
-  }
+  // Sanitize as lightweight SubAgentIndex
+  const sanitized: SubAgentIndex[] = (deduped as SubAgentIndex[]).map(sa => ({
+    name: sa.name,
+    version: sa.version || '1.0.0',
+    remoteVersion: sa.remoteVersion ?? '',
+    source: sa.source || 'ON-DEVICE' as const,
+  }));
 
   // Clean ChatAgent references to non-existent sub-agents
   const validNames = new Set(sanitized.map(sa => sa.name));
@@ -317,7 +297,7 @@ export function createDefaultChat(): ChatConfig {
  */
 export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
   try {
-    // Sanitize MCP server configs, ensuring version and source fields exist
+    // Sanitize MCP server configs, ensuring version, remoteVersion, and source fields exist
     const cleanMcpServers = (profile.mcp_servers || []).map(server => ({
       name: server.name || '',
       transport: server.transport || 'stdio',
@@ -327,6 +307,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
       url: server.url || '',
       in_use: Boolean(server.in_use),
       version: server.version || '1.0.0',
+      remoteVersion: server.remoteVersion ?? '',
       source: server.source || 'ON-DEVICE',
       ...(server.hidden != null && { hidden: Boolean(server.hidden) }),
       ...(server.headers && typeof server.headers === 'object' && { headers: server.headers }),
@@ -334,12 +315,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
 
     // Sanitize chats config
     const cleanChats = (profile.chats || []).map(chat => {
-      // Backward compat: read workspace from chat.workspace (legacy) or chat.agent.workspace
-      const legacyWorkspace = (chat as any).workspace;
-      const agentWorkspace = chat.agent?.workspace;
-      const workspacePath = typeof agentWorkspace === 'string' && agentWorkspace
-        ? agentWorkspace
-        : (typeof legacyWorkspace === 'string' ? legacyWorkspace : '');
+      const workspacePath = typeof chat.agent?.workspace === 'string' ? chat.agent.workspace : '';
 
       const cleanAgent = chat.agent ? (() => {
         const normalizedKnowledge = getAgentKnowledge(chat.agent);
@@ -356,6 +332,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
           knowledgeBase: normalizedKnowledge.knowledgeBase || (workspacePath ? path.join(workspacePath, 'knowledge') : ''),
         },
         version: chat.agent.version || '1.0.0',
+        remoteVersion: chat.agent.remoteVersion ?? '',
         source: chat.agent.source || 'ON-DEVICE',
         mcp_servers: Array.isArray(chat.agent.mcp_servers)
           ? chat.agent.mcp_servers
@@ -374,7 +351,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
               .filter((server): server is AgentMcpServer => server !== null && server.name !== '')
           : [],
         system_prompt: chat.agent.system_prompt !== undefined ? chat.agent.system_prompt : DEFAULT_CHAT_AGENT.system_prompt,
-        context_enhancement: chat.agent.context_enhancement,
+        context_enhancement: chat.agent.context_enhancement || DEFAULT_CONTEXT_ENHANCEMENT,
         skills: normalizedSkills,
         sub_agents: Array.isArray(chat.agent.sub_agents) ? chat.agent.sub_agents : [],
         enabled_plugins: Array.isArray(chat.agent.enabled_plugins) ? chat.agent.enabled_plugins : [],
@@ -384,7 +361,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
       })() : undefined;
 
       // Ensure builtin agents include all builtin skills
-      if (cleanAgent && isBuiltinAgent(cleanAgent.name)) {
+      if (cleanAgent && isBuiltinAgent(cleanAgent.name, BRAND_NAME)) {
         const existingSkills = cleanAgent.skills || [];
         const missingSkills = BUILTIN_SKILL_NAMES.filter(s => !existingSkills.includes(s));
         if (missingSkills.length > 0) {
@@ -415,6 +392,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
         name: skill.name || '',
         description: skill.description || '',
         version: skill.version || '1.0.0',
+        remoteVersion: skill.remoteVersion ?? '',
         source: skill.source || 'ON-DEVICE'
       })) : [],
       sub_agents: sanitizeSubAgents(profile, cleanChats),
@@ -429,6 +407,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
           ...(profile.confirmationSettings?.inlineEditRegenerate || {}),
         },
       },
+      remoteChannels: profile.remoteChannels ? { ...profile.remoteChannels } : {},
       builtinDefaultsVersion: profile.builtinDefaultsVersion,
       profileMigrationVersion: profile.profileMigrationVersion,
     };
@@ -449,6 +428,7 @@ export function sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
       chats: [createDefaultChat()],
       'starred-chat-sessions': [],
       confirmationSettings: DEFAULT_CONFIRMATION_SETTINGS,
+      remoteChannels: profile.remoteChannels ? { ...profile.remoteChannels } : {},
     };
   }
 }

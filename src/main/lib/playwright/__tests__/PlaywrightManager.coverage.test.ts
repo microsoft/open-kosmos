@@ -359,6 +359,7 @@ describe('PlaywrightManager — launchPersistentContext', () => {
     mockExistsSync.mockReturnValue(true);
 
     const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
     const ctx = await manager.launchPersistentContext({ profileName: 'test-profile' });
     expect(ctx).toBe(fakeCtx);
     // Second call should not have channel
@@ -507,6 +508,108 @@ describe('PlaywrightManager — closeAll with contexts', () => {
     const manager = freshManager();
     await manager.launchBrowser();
     await expect(manager.closeAll()).resolves.not.toThrow();
+  });
+});
+
+// ── launchPersistentContext — chromium fallback scenarios ────────────────────
+
+describe('PlaywrightManager — launchPersistentContext chromium fallback', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('calls ensureBrowserInstalled before chromium fallback', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Browser window not found'))
+      .mockResolvedValueOnce(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    const spy = vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    await manager.launchPersistentContext({ profileName: 'test-profile' });
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('classifies ENOENT as "Edge not installed"', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('spawn msedge ENOENT'))
+      .mockResolvedValueOnce(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    const ctx = await manager.launchPersistentContext({ profileName: 'test-profile' });
+    expect(ctx).toBe(fakeCtx);
+  });
+
+  it('classifies non-ENOENT error as "installed but unusable"', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Protocol error (Browser.getWindowForTarget): Browser window not found'))
+      .mockResolvedValueOnce(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    const ctx = await manager.launchPersistentContext({ profileName: 'test-profile' });
+    expect(ctx).toBe(fakeCtx);
+  });
+
+  it('recovers from corrupted chromium profile (exitCode=33)', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Browser window not found')) // Edge fails
+      .mockRejectedValueOnce(new Error('browser process exited with exitCode=33')) // chromium profile corrupt
+      .mockResolvedValueOnce(fakeCtx); // retry after profile reset succeeds
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    const ctx = await manager.launchPersistentContext({ profileName: 'test-profile' });
+    expect(ctx).toBe(fakeCtx);
+    expect(mockLaunchPersistentContext).toHaveBeenCalledTimes(3);
+  });
+
+  it('recovers from corrupted chromium profile (Access is denied)', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Browser window not found'))
+      .mockRejectedValueOnce(new Error('Access is denied'))
+      .mockResolvedValueOnce(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    const ctx = await manager.launchPersistentContext({ profileName: 'test-profile' });
+    expect(ctx).toBe(fakeCtx);
+  });
+
+  it('rethrows non-recoverable chromium errors', async () => {
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Browser window not found'))
+      .mockRejectedValueOnce(new Error('some other chromium error'));
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    await expect(
+      manager.launchPersistentContext({ profileName: 'test-profile' })
+    ).rejects.toThrow('some other chromium error');
+  });
+
+  it('rethrows when profile cleanup fails during corruption recovery', async () => {
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce(new Error('Browser window not found'))
+      .mockRejectedValueOnce(new Error('exitCode=33'));
+    mockExistsSync.mockReturnValue(true);
+    mockRmSync.mockImplementation(() => { throw new Error('permission denied'); });
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+    await expect(
+      manager.launchPersistentContext({ profileName: 'test-profile' })
+    ).rejects.toThrow('exitCode=33');
   });
 });
 

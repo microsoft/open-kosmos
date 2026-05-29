@@ -313,17 +313,7 @@ description: "snake"
     expect(result.data?.maxTurns).toBeUndefined();
   });
 
-  it('handles mcp_servers (snake_case) fallback', () => {
-    const content = `---
-name: snake-mcp-agent
-description: "has mcp"
-mcp_servers:
-  - srv1
----
-`;
-    const result = manager.parseAgentMarkdown(content);
-    expect(result.data?.mcpServers).toHaveLength(1);
-  });
+  // ── exportAsClaudeCodeFormat ──────────────────────────────────────────────
 
   it('parses agent without context_access (field removed)', () => {
     const content = `---
@@ -386,15 +376,6 @@ description: "no emoji"
     const output = manager.serializeToAgentMarkdown(config);
     // display_name removed, so x-openkosmos section may not be included
     expect(output).not.toContain('display_name');
-  });
-
-  it('uses legacy mcp_servers when mcpServers undefined', () => {
-    const config = makeMinimalConfig({
-      mcpServers: undefined as any,
-      mcp_servers: [{ name: 'legacy-srv', tools: ['t1'] }],
-    });
-    const output = manager.serializeToAgentMarkdown(config);
-    expect(output).toContain('legacy-srv');
   });
 
   // ── exportAsClaudeCodeFormat ──────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { createLogger } from '../unifiedLogger';
 
 export { ExternalAgentService };
 
-const DEFAULT_EXTERNAL_AGENT_PORT = 51927;
+const DEFAULT_EXTERNAL_AGENT_PORT = 19527;
 
 /**
  * Initialize the External Agent module: create singleton and auto-start.

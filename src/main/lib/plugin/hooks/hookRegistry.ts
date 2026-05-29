@@ -3,7 +3,7 @@
  *
  * Compatible with the Claude Code plugin format:
  *   - `${CLAUDE_PLUGIN_ROOT}` variable substitution in commands
- *   - `CLAUDE_PLUGIN_ROOT` / `OPENKOSMOS_PLUGIN_ROOT` env vars
+ *   - `CLAUDE_PLUGIN_ROOT` / `OpenKosmos_PLUGIN_ROOT` env vars
  *   - `async` flag (fire-and-forget hooks)
  *   - Parses hook stdout as JSON and extracts `additionalContext`
  *     from three supported formats (Claude Code / Copilot CLI / Cursor)
@@ -83,13 +83,13 @@ function validateHookCommand(command: string): string | undefined {
 }
 
 /**
- * Substitute `${CLAUDE_PLUGIN_ROOT}` and `${OPENKOSMOS_PLUGIN_ROOT}` in a
+ * Substitute `${CLAUDE_PLUGIN_ROOT}` and `${OpenKosmos_PLUGIN_ROOT}` in a
  * command string with the actual plugin path.
  */
 function substituteVariables(command: string, pluginPath: string): string {
   return command
     .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginPath)
-    .replace(/\$\{OPENKOSMOS_PLUGIN_ROOT\}/g, pluginPath);
+    .replace(/\$\{OpenKosmos_PLUGIN_ROOT\}/g, pluginPath);
 }
 
 /**
@@ -285,7 +285,7 @@ class HookRegistry {
       CLAUDE_PLUGIN_DATA: pluginPath,
       CLAUDE_PROJECT_DIR: context.workspacePath || '',
       // OpenKosmos env vars
-      OPENKOSMOS_PLUGIN_ROOT: pluginPath,
+      OpenKosmos_PLUGIN_ROOT: pluginPath,
       OpenKosmos_HOOK_EVENT: 'SessionStart',
       OpenKosmos_USER_ALIAS: context.userAlias ?? '',
       OpenKosmos_CHAT_ID: context.chatId ?? '',

@@ -421,31 +421,6 @@ describe('ApplyPluginToAgentsDialog – Apply failure', () => {
   });
 });
 
-// ── pm-studio brand filter ────────────────────────────────────────────────────
-
-describe('ApplyPluginToAgentsDialog – pm-studio brand filtering', () => {
-  it('renders without crash when chats contain various types', () => {
-    mockChats.push(
-      {
-        chat_id: 'cx',
-        chat_type: 'single_agent',
-        agent: { name: 'Kobi', emoji: '🤝', enabled_plugins: [] },
-      },
-      {
-        // non single_agent / non multi_agent type is ignored
-        chat_id: 'cy',
-        chat_type: 'other',
-        agent: { name: 'Other', emoji: '❓' },
-      },
-    );
-    const { container } = render(
-      <ApplyPluginToAgentsDialog open={true} onOpenChange={vi.fn()} plugin={SAMPLE_PLUGIN} />,
-    );
-    // Just verify something rendered
-    expect(container.children.length).toBeGreaterThan(0);
-  });
-});
-
 // ── dialog open/close transitions ────────────────────────────────────────────
 
 describe('ApplyPluginToAgentsDialog – open transition initializes selection', () => {

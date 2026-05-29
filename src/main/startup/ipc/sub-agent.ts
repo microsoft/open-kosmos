@@ -174,8 +174,27 @@ export default function(ctx: Context) {
     }
   });
 
+  // Manually trigger file system scan sync
+  ipcMain.handle('subAgent:syncFromDisk', async () => {
+    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
+    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
+      return { success: true, data: [] };
+    }
+    try {
+      if (!ctx.currentUserAlias) {
+        return { success: false, error: 'No current user alias set' };
+      }
+      const pcManager = await getProfileCacheManager();
+      await pcManager.syncSubAgentIndex(ctx.currentUserAlias);
+      const subAgents = await pcManager.getSubAgents();
+      return { success: true, data: subAgents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
   // ===============================
-  // Sub-Agent Task IPC handlers
+  // Sub-Agent Task Streaming IPC handlers
   // ===============================
 
   // List all tasks for a session (metadata only)
@@ -241,25 +260,4 @@ export default function(ctx: Context) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
-
-  // Manually trigger file system scan sync
-  ipcMain.handle('subAgent:syncFromDisk', async () => {
-    // 🔒 Feature Flag check: openkosmosFeatureSubAgent
-    if (!isFeatureEnabled('openkosmosFeatureSubAgent')) {
-      return { success: true, data: [] };
-    }
-    try {
-      if (!ctx.currentUserAlias) {
-        return { success: false, error: 'No current user alias set' };
-      }
-      const pcManager = await getProfileCacheManager();
-      await pcManager.syncSubAgentIndex(ctx.currentUserAlias);
-      const subAgents = await pcManager.getSubAgents();
-      return { success: true, data: subAgents };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
 }
-

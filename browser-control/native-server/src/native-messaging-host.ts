@@ -5,7 +5,7 @@ import { NativeMessageType, DEFAULT_SERVER_PORT } from 'chrome-mcp-shared';
 import { TIMEOUTS } from './constant';
 import fileHandler from './file-handler';
 import { browserConfig } from './config/browser-config';
-import { notifyServerDown } from './kosmos-notifier';
+import { notifyServerDown } from './openkosmos-notifier';
 
 interface PendingRequest {
   resolve: (value: any) => void;
@@ -344,7 +344,7 @@ export class NativeMessagingHost {
     });
     this.pendingRequests.clear();
 
-    // Notify Kosmos before stopping server and exiting
+    // Notify OpenKosmos before stopping server and exiting
     notifyServerDown('browser-closed')
       .finally(() => {
         if (this.associatedServer && this.associatedServer.isRunning) {

@@ -1,10 +1,12 @@
 import { applySkillToAgents } from './applySkillToAgents';
 import { getSkillAvailability } from './skillAvailability';
 import { addSkillFromDevice } from './skillDeviceImporter';
+import { SkillLibraryFetcher } from './skillLibraryFetcher';
 import { profileCacheManager } from '../userDataADO';
 
 type SkillSource =
-  | { type: 'device-path'; value: string };
+  | { type: 'device-path'; value: string }
+  | { type: 'library-name'; value: string };
 
 type ActivationMode = 'current-agent' | 'selected-agents' | 'all-agents' | 'install-only';
 
@@ -59,6 +61,8 @@ export interface InstallAndActivateSkillResult {
   skillVersion?: string;
   inputType?: 'zip' | 'skill' | 'folder';
 }
+
+
 
 function resolveCurrentAgentTarget(userAlias: string, chatId?: string, agentName?: string): SkillActivationTarget | null {
   if (!chatId) {
@@ -140,7 +144,7 @@ export async function installAndActivateSkill(
     if (args.source.type === 'device-path') {
       const installResult = await addSkillFromDevice(args.source.value, args.userAlias, args.confirmOverwrite);
       if (!installResult.success || !installResult.skillName) {
-        return buildResult({
+        const result = buildResult({
           success: false,
           skillName: installResult.skillName || '',
           installSuccess: false,
@@ -148,12 +152,33 @@ export async function installAndActivateSkill(
           message: installResult.error || 'Failed to install skill from device.',
           error: installResult.error || 'INSTALL_FAILED',
         });
+        return result;
       }
 
       skillName = installResult.skillName;
       skillVersion = installResult.skillVersion;
       inputType = installResult.inputType;
       isOverwrite = !!installResult.isOverwrite;
+    } else {
+      const fetcher = SkillLibraryFetcher.getInstance();
+      const installResult = await fetcher.addSkill(args.source.value, args.userAlias, {
+        overwrite: args.overwrite,
+      });
+      if (!installResult.success || !installResult.skillName) {
+        const result = buildResult({
+          success: false,
+          skillName: args.source.value,
+          installSuccess: false,
+          resolution: 'failed',
+          message: installResult.error || `Failed to install skill "${args.source.value}" from library.`,
+          error: installResult.error || 'INSTALL_FAILED',
+        });
+        return result;
+      }
+
+      skillName = installResult.skillName;
+      skillVersion = installResult.skillVersion;
+      isOverwrite = installResult.installAction === 'update';
     }
 
     const availabilityBeforeApply = getSkillAvailability({
@@ -164,7 +189,7 @@ export async function installAndActivateSkill(
     });
 
     if (args.activation.mode === 'install-only') {
-      return buildResult({
+      const result = buildResult({
         success: true,
         skillName,
         skillVersion,
@@ -179,13 +204,14 @@ export async function installAndActivateSkill(
           ? `Skill "${skillName}" is already available for the current agent${availabilityBeforeApply.currentAgentName ? ` (${availabilityBeforeApply.currentAgentName})` : ''}.`
           : `Successfully added skill "${skillName}" to the profile skill library.`,
       });
+      return result;
     }
 
     let targets: SkillActivationTarget[] | undefined;
     if (args.activation.mode === 'current-agent') {
       const currentTarget = resolveCurrentAgentTarget(args.userAlias, args.activation.chatId, args.activation.agentName);
       if (!currentTarget) {
-        return buildResult({
+        const result = buildResult({
           success: true,
           skillName,
           skillVersion,
@@ -198,6 +224,7 @@ export async function installAndActivateSkill(
           resolution: 'installed_but_needs_target_selection',
           message: `Skill "${skillName}" has been installed, but I could not determine which agent should use it in the current chat.`,
         });
+        return result;
       }
       targets = [currentTarget];
     } else if (args.activation.mode === 'selected-agents') {
@@ -214,7 +241,7 @@ export async function installAndActivateSkill(
     }
 
     if (!targets || targets.length === 0) {
-      return buildResult({
+      const result = buildResult({
         success: true,
         skillName,
         skillVersion,
@@ -227,6 +254,7 @@ export async function installAndActivateSkill(
         resolution: 'installed_but_not_applied',
         message: `Skill "${skillName}" has been installed, but no activation targets were resolved.`,
       });
+      return result;
     }
 
     const applyResult = await applySkillToAgents(args.userAlias, {
@@ -243,7 +271,7 @@ export async function installAndActivateSkill(
     });
 
     if (availabilityAfterApply.callableInCurrentChat) {
-      return buildResult({
+      const result = buildResult({
         success: true,
         skillName,
         skillVersion,
@@ -261,9 +289,10 @@ export async function installAndActivateSkill(
           ? `Skill "${skillName}" is already available for the current agent${availabilityAfterApply.currentAgentName ? ` (${availabilityAfterApply.currentAgentName})` : ''}.`
           : `Skill "${skillName}" has been installed and applied to ${availabilityAfterApply.currentAgentName || 'the current agent'}.`,
       });
+      return result;
     }
 
-    return buildResult({
+    const result = buildResult({
       success: applyResult.success,
       skillName,
       skillVersion,
@@ -282,8 +311,9 @@ export async function installAndActivateSkill(
         : applyResult.message,
       error: applyResult.error,
     });
+    return result;
   } catch (error) {
-    return buildResult({
+    const result = buildResult({
       success: false,
       skillName,
       skillVersion,
@@ -294,5 +324,6 @@ export async function installAndActivateSkill(
       message: error instanceof Error ? error.message : 'Unknown error',
       error: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
     });
+    return result;
   }
 }

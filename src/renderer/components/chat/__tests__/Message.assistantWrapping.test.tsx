@@ -33,6 +33,7 @@ vi.mock('../../ui/ToastProvider', async () => ({
   }),
 }));
 
+
 vi.mock('../../../lib/featureFlags', async () => ({
   useFeatureFlag: () => false,
 }));
@@ -55,18 +56,6 @@ vi.mock('../message/SayHiActionItems', async () => ({
     markdownBody: content,
     actionItemGroups: [],
   })),
-}));
-
-vi.mock('../message/PmProjectSayHiCards', async () => ({
-  __esModule: true,
-  default: () => null,
-  parsePmSayHiCards: vi.fn(() => null),
-}));
-
-vi.mock('../message/PmAgentSayHiCards', async () => ({
-  __esModule: true,
-  default: () => null,
-  parsePmAgentSayHiMessage: vi.fn(() => null),
 }));
 
 describe('Message assistant wrapping', () => {

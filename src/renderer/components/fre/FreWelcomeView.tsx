@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { BRAND_CONFIG, APP_NAME } from '@shared/constants/branding';
+import { getCdnBaseUrl, isCdnConfigured } from '@shared/utils/cdn';
 import { profileDataManager } from '@renderer/lib/userData';
 import { createLogger } from '../../lib/utilities/logger';
 const logger = createLogger('[FreWelcomeView]');
 
 // Windows title bar height constant (must match WindowsTitleBar.css)
 const WINDOWS_TITLE_BAR_HEIGHT = 40;
-
-// Get display name from BRAND_CONFIG, fallback to APP_NAME
-const getDisplayName = () => BRAND_CONFIG?.windowTitle || BRAND_CONFIG?.shortcutName || APP_NAME;
 
 /**
  * Agent configuration from agent_lib.json with needs_fre_promotion: true
@@ -92,10 +89,68 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
 
   const userDisplayName = getUserDisplayName();
 
-  // No promoted agents to fetch (FRE welcome view is skipped; FreOverlay starts at 'setup')
+  // Fetch promoted agents on mount
   useEffect(() => {
-    setIsLoading(false);
+    fetchPromotedAgents();
   }, []);
+
+  // When the fetch finishes with no promoted agents (and no error to surface),
+  // there is nothing to choose from — skip the Welcome View automatically rather
+  // than showing an empty "No agents available" screen the user must dismiss.
+  useEffect(() => {
+    if (!isLoading && !error && promotedAgents.length === 0) {
+      logger.debug('[FreWelcomeView] No promoted agents available; auto-skipping Welcome View');
+      onSkip();
+    }
+  }, [isLoading, error, promotedAgents.length, onSkip]);
+
+  const fetchPromotedAgents = async () => {
+    logger.debug('[FreWelcomeView] Fetching promoted agents from CDN...');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // CDN is optional; without it there are no promoted agents to show.
+      if (!isCdnConfigured()) {
+        logger.debug('[FreWelcomeView] CDN not configured; skipping promoted agents fetch');
+        setPromotedAgents([]);
+        return;
+      }
+
+      const baseCdnUrl = getCdnBaseUrl();
+      const agentLibUrl = `${baseCdnUrl}/agent/agent_lib.json`;
+      logger.debug('[FreWelcomeView] Fetching from:', agentLibUrl);
+
+      // Add cache busting timestamp
+      const urlWithTimestamp = `${agentLibUrl}?t=${Date.now()}`;
+
+      const response = await fetch(urlWithTimestamp);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      logger.debug('[FreWelcomeView] Fetched agent library:', {
+        totalAgents: data.agents?.length || 0,
+      });
+
+      // Filter agents with needs_fre_promotion: true
+      const promoted = (data.agents || []).filter(
+        (agent: any) => agent.needs_fre_promotion === true
+      );
+      logger.debug('[FreWelcomeView] Promoted agents:', {
+        count: promoted.length,
+        names: promoted.map((a: any) => a.name),
+      });
+
+      setPromotedAgents(promoted);
+    } catch (err) {
+      logger.error('[FreWelcomeView] Failed to fetch promoted agents:', err);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Render agent card
   const renderAgentCard = (agent: FrePromotedAgent, index: number) => {
@@ -387,7 +442,7 @@ const FreWelcomeView: React.FC<FreWelcomeViewProps> = ({
                   Failed to load agents: {error}
                 </div>
                 <button
-                  onClick={() => setIsLoading(false)}
+                  onClick={fetchPromotedAgents}
                   style={{
                     padding: '10px 24px',
                     background: '#0ea5e9',

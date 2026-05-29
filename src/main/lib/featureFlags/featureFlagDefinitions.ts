@@ -11,7 +11,7 @@
  *
  * defaultValue supports two forms:
  * 1. Static boolean: defaultValue: false
- * 2. Dynamic function: defaultValue: (ctx) => ctx.isDev && ctx.brandName === 'openkosmos'
+ * 2. Dynamic function: defaultValue: (ctx) => ctx.isDev
  */
 
 import { FeatureFlagConfig, FeatureFlagName, FeatureFlagContext, FeatureFlagDefaultValue } from './types';
@@ -29,18 +29,11 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     defaultValue: true,
   },
 
-  // ============== Voice Input ==============
+  // ============== Remote Channel ==============
   {
-    name: 'openkosmosFeatureVoiceInput',
-    description: 'Voice Input (Speech-to-Text) feature (dev environment only)',
-    defaultValue: (ctx) => ctx.isDev,
-  },
-
-  // ============== Memex Memory ==============
-  {
-    name: 'openkosmosFeatureMemexMemory',
-    description: 'Per-agent Zettelkasten memory via memex MCP (dev environment only)',
-    defaultValue: (ctx) => ctx.isDev,
+    name: 'openkosmosFeatureRemoteChannel',
+    description: 'Remote channel access (enabled by default in all environments)',
+    defaultValue: true,
   },
 
   // ============== Browser Control ==============
@@ -76,14 +69,6 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     defaultValue: (ctx) => ctx.isDev,
   },
 
-  // ============== Sync ==============
-  {
-    name: 'openkosmosUseSync',
-    description: 'Sync feature for syncing profile data to GitHub repository',
-    defaultValue: (ctx) => ctx.isDev, // Enable by default in dev environment for testing
-  },
-
-
   // ============== Path Portability ==============
   {
     name: 'openkosmosPathPortability',
@@ -109,7 +94,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
   {
     name: 'openkosmosFeatureBuddy',
     description: 'Enable the Buddy companion widget',
-    defaultValue:  (ctx) => ctx.isDev, // Enable by default in dev environment for testing
+    defaultValue: (ctx) => ctx.isDev,
   },
 
   // ============== External Agent ==============

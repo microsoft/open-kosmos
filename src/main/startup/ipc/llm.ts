@@ -7,6 +7,7 @@ import { McpConfigLlmFormatter } from "../../lib/llm/mcpConfigLlmFormatter";
 import { ChatSessionTitleLlmSummarizer } from "../../lib/llm/chatSessionTitleLlmSummarizer";
 import { FileNameLlmGenerator } from "../../lib/llm/fileNameLlmGenerator";
 import { DocumentSummaryLlmGenerator } from "../../lib/llm/documentSummaryLlmGenerator";
+import { textLlmEmbedder } from "../../lib/llm/textLlmEmbedder";
 import { ensureModelsReady, getAllModels, getAllOpenKosmosUsedModels, getModelById, getModelCapabilities, validateModelId, getDefaultModel, isReasoningModel } from "../../lib/llm/ghcModelsManager";
 
 export default function(ctx: Context) {
@@ -77,6 +78,25 @@ export default function(ctx: Context) {
     }
   });
 
+  // Text embedding
+  ipcMain.handle('llm:embedText', async (event, text: string) => {
+    try {
+      const result = await textLlmEmbedder.embed(text);
+      return { success: true, data: result };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Batch text embedding
+  ipcMain.handle('llm:embedBatch', async (event, texts: string[]) => {
+    try {
+      const result = await textLlmEmbedder.embedBatch(texts);
+      return { success: true, data: result };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
 
   // ===============================
   // Models related IPC handlers (GitHub Copilot Models)

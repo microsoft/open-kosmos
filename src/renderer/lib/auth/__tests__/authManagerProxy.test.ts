@@ -14,7 +14,6 @@ function makeAuthData(login = 'octocat') {
     authProvider: 'ghc',
     ghcAuth: {
       alias: login,
-      aadAccount: `${login}@github.com`,
       user: { id: '1', login, name: login, email: '', avatarUrl: '', copilotPlan: 'individual' as const },
       gitHubTokens: { timestamp: '', api_url: '', access_token: 'gh-tok', token_type: 'bearer', scope: '' },
       copilotTokens: { timestamp: '', api_url: '', expires_at: 9999999999, token: 'cplt' },

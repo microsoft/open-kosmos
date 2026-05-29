@@ -94,7 +94,7 @@ vi.mock('../../subAgent/subAgentFileManager', async () => ({
 
 import { ProfileCacheManager } from '../profileCacheManager';
 import { sanitizeProfileV2 } from '../profileSanitizer';
-import type { SubAgentConfig, ProfileV2 } from '../types/profile';
+import type { SubAgentConfig, SubAgentIndex, ProfileV2 } from '../types/profile';
 
 // ============================================================
 // Helper: create a minimal V2 profile for testing
@@ -133,9 +133,19 @@ function createTestSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubA
     name: 'test-sub-agent',
     description: 'A test sub-agent',
     system_prompt: 'You are a test sub-agent.',
-    mcp_servers: [],
+    mcpServers: [],
     skills: [],
     builtin_tools: [],
+    ...overrides,
+  };
+}
+
+function createTestSubAgentIndex(overrides: Partial<SubAgentIndex> = {}): SubAgentIndex {
+  return {
+    name: 'test-sub-agent',
+    version: '1.0.0',
+    remoteVersion: '',
+    source: 'ON-DEVICE',
     ...overrides,
   };
 }
@@ -181,7 +191,7 @@ describe('getSubAgents', () => {
   });
 
   it('should return sub_agents from cached profile', async () => {
-    const subAgent = createTestSubAgentConfig();
+    const subAgent = createTestSubAgentIndex();
     const profile = createTestProfile({ sub_agents: [subAgent] });
     (pcManager as any).cache.set('testUser', profile);
 
@@ -217,7 +227,7 @@ describe('addSubAgent', () => {
   });
 
   it('should update existing sub-agent with same name (idempotent)', async () => {
-    const existingIndex = { name: 'test-sub-agent', version: '1.0.0', source: 'ON-DEVICE' as const };
+    const existingIndex = { name: 'test-sub-agent', version: '1.0.0', remoteVersion: '', source: 'ON-DEVICE' as const };
     const profile = createTestProfile({ sub_agents: [existingIndex] });
     (pcManager as any).cache.set('testUser', profile);
 
@@ -273,7 +283,7 @@ describe('addSubAgent', () => {
 describe('updateSubAgent', () => {
   it('should update an existing sub-agent', async () => {
     // Profile stores SubAgentIndex (post-migration format)
-    const index = { name: 'test-sub-agent', version: '1.0.0', source: 'ON-DEVICE' as const };
+    const index = { name: 'test-sub-agent', version: '1.0.0', remoteVersion: '', source: 'ON-DEVICE' as const };
     const profile = createTestProfile({ sub_agents: [index] });
     (pcManager as any).cache.set('testUser', profile);
 
@@ -325,7 +335,7 @@ describe('updateSubAgent', () => {
 // ============================================================
 describe('deleteSubAgent', () => {
   it('should delete an existing sub-agent', async () => {
-    const config = createTestSubAgentConfig();
+    const config = createTestSubAgentIndex();
     const profile = createTestProfile({ sub_agents: [config] });
     (pcManager as any).cache.set('testUser', profile);
 
@@ -336,7 +346,7 @@ describe('deleteSubAgent', () => {
   });
 
   it('should cascade-clean ChatAgent references', async () => {
-    const config = createTestSubAgentConfig({ name: 'web-researcher' });
+    const config = createTestSubAgentIndex({ name: 'web-researcher' });
     const profile = createTestProfile({
       sub_agents: [config],
       chats: [{
@@ -376,9 +386,9 @@ describe('deleteSubAgent', () => {
 
   it('should handle multiple sub-agents correctly', async () => {
     const configs = [
-      createTestSubAgentConfig({ name: 'agent-1' }),
-      createTestSubAgentConfig({ name: 'agent-2' }),
-      createTestSubAgentConfig({ name: 'agent-3' }),
+      createTestSubAgentIndex({ name: 'agent-1' }),
+      createTestSubAgentIndex({ name: 'agent-2' }),
+      createTestSubAgentIndex({ name: 'agent-3' }),
     ];
     const profile = createTestProfile({ sub_agents: configs });
     (pcManager as any).cache.set('testUser', profile);
@@ -397,9 +407,9 @@ describe('sanitizeSubAgents (via sanitizeProfileV2)', () => {
   it('should deduplicate sub-agents by name', () => {
     const profile = createTestProfile({
       sub_agents: [
-        createTestSubAgentConfig({ name: 'dup-agent' }),
-        createTestSubAgentConfig({ name: 'dup-agent', description: 'second copy' }),
-        createTestSubAgentConfig({ name: 'unique-agent' }),
+        createTestSubAgentConfig({ name: 'dup-agent' }) as any,
+        createTestSubAgentConfig({ name: 'dup-agent', description: 'second copy' }) as any,
+        createTestSubAgentConfig({ name: 'unique-agent' }) as any,
       ],
     });
 
@@ -408,33 +418,10 @@ describe('sanitizeSubAgents (via sanitizeProfileV2)', () => {
     expect(sanitized.sub_agents!.map((sa: any) => sa.name)).toEqual(['dup-agent', 'unique-agent']);
   });
 
-  it('should set default values for missing fields', () => {
-    const incomplete = {
-      name: 'incomplete-agent',
-      display_name: '',
-      description: '',
-      emoji: '',
-      version: '',
-      source: '' as any,
-      system_prompt: '',
-      mcp_servers: null as any,
-      context_access: '' as any,
-    };
-    const profile = createTestProfile({ sub_agents: [incomplete as any] });
-
-    const sanitized = sanitizeProfileV2(profile);
-    const sa = sanitized.sub_agents![0] as any;
-
-    expect(sa.mcp_servers).toEqual([]);
-    expect(sa.skills).toEqual([]);
-    expect(sa.builtin_tools).toEqual([]);
-    expect(sa.inherit_mcp_servers).toBe(true);
-    expect(sa.inherit_skills).toBe(true);
-  });
 
   it('should clean dangling ChatAgent sub-agent references', () => {
     const profile = createTestProfile({
-      sub_agents: [createTestSubAgentConfig({ name: 'valid-agent' })],
+      sub_agents: [createTestSubAgentConfig({ name: 'valid-agent' }) as any],
       chats: [{
         chat_id: 'chat_001',
         chat_type: 'single_agent',
@@ -466,7 +453,7 @@ describe('sanitizeSubAgents (via sanitizeProfileV2)', () => {
     const profile = createTestProfile({
       sub_agents: [
         null as any,
-        createTestSubAgentConfig({ name: 'valid' }),
+        createTestSubAgentConfig({ name: 'valid' }) as any,
         undefined as any,
       ],
     });
@@ -476,38 +463,4 @@ describe('sanitizeSubAgents (via sanitizeProfileV2)', () => {
     expect(((sanitized.sub_agents![0]) as any).name).toBe('valid');
   });
 
-  // ─── New inheritance fields sanitization ───
-  it('should preserve inherit_mcp_servers=false', () => {
-    const config = createTestSubAgentConfig({ inherit_mcp_servers: false } as any);
-    const profile = createTestProfile({ sub_agents: [config] });
-
-    const sanitized = sanitizeProfileV2(profile);
-    expect(((sanitized.sub_agents![0]) as any).inherit_mcp_servers).toBe(false);
-  });
-
-  it('should default inherit_mcp_servers to true when undefined', () => {
-    const config = createTestSubAgentConfig();
-    delete (config as any).inherit_mcp_servers;
-    const profile = createTestProfile({ sub_agents: [config] });
-
-    const sanitized = sanitizeProfileV2(profile);
-    expect(((sanitized.sub_agents![0]) as any).inherit_mcp_servers).toBe(true);
-  });
-
-  it('should preserve inherit_skills=false', () => {
-    const config = createTestSubAgentConfig({ inherit_skills: false } as any);
-    const profile = createTestProfile({ sub_agents: [config] });
-
-    const sanitized = sanitizeProfileV2(profile);
-    expect(((sanitized.sub_agents![0]) as any).inherit_skills).toBe(false);
-  });
-
-  it('should default inherit_skills to true when undefined', () => {
-    const config = createTestSubAgentConfig();
-    delete (config as any).inherit_skills;
-    const profile = createTestProfile({ sub_agents: [config] });
-
-    const sanitized = sanitizeProfileV2(profile);
-    expect(((sanitized.sub_agents![0]) as any).inherit_skills).toBe(true);
-  });
 });

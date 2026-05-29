@@ -179,7 +179,7 @@ describe('MCPClientManager coverage2', () => {
         status: 'connected',
         tools: [
           { name: 'tool1', description: 'T1', inputSchema: {} },
-          { name: 'spawn_subagent', description: 'Spawn', inputSchema: {} },
+          { name: 'sub_agent', description: 'Sub', inputSchema: {} },
         ],
         lastError: null,
       });
@@ -188,16 +188,14 @@ describe('MCPClientManager coverage2', () => {
         status: 'connected',
         tools: [
           { name: 'builtin_tool', description: 'BT', inputSchema: {} },
-          { name: 'spawn_subagents', description: 'Spawn all', inputSchema: {} },
         ],
         lastError: null,
       });
     });
 
-    it('excludes blocked tools (spawn_subagent, spawn_subagents)', async () => {
+    it('excludes blocked tool (sub_agent)', async () => {
       const tools = await manager.getToolsForSubAgent([{ name: 'server1', tools: [] }]);
-      expect(tools.some(t => t.name === 'spawn_subagent')).toBe(false);
-      expect(tools.some(t => t.name === 'spawn_subagents')).toBe(false);
+      expect(tools.some(t => t.name === 'sub_agent')).toBe(false);
     });
 
     it('filters specific tools when tools list provided', async () => {

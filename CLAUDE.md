@@ -3,9 +3,9 @@
 ## Project
 OpenKosmos AI Studio — A desktop AI assistant that lets users create, configure, and chat with AI agents. Agents can execute tools (web search, file operations, shell commands, browser automation) via Model Context Protocol (MCP), maintain long-term memory, and spawn sub-agents for parallel tasks.
 
-**Tech Stack:** Electron 35 + React 18 + TypeScript 5, Webpack 5, TailwindCSS 3, Radix UI, Vercel AI SDK 5.x (streaming), `@modelcontextprotocol/sdk`, Monaco Editor, Playwright (browser automation).
+**Tech Stack:** Electron 35 + React 18 + TypeScript 5, Webpack 5, TailwindCSS 3, Radix UI, Vercel AI SDK 5.x (streaming), `@modelcontextprotocol/sdk`, better-sqlite3 + sqlite-vec (vector search), Monaco Editor, Playwright (browser automation).
 
-**Architecture:** Electron multi-process model — main process (Node.js: auth, chat engine, MCP runtime, data persistence, voice) + renderer process (React SPA: chat UI, agent editor, settings) + preload scripts (type-safe IPC bridge). The `openkosmos` brand is the default; npm scripts select the brand via `--brand=<name>`, with `BRAND` as the lower-level environment fallback.
+**Architecture:** Electron multi-process model — main process (Node.js: auth, chat engine, MCP runtime, data persistence, voice) + renderer process (React SPA: chat UI, agent editor, settings) + preload scripts (type-safe IPC bridge).
 
 ## Commands
 
@@ -20,12 +20,10 @@ A list of useful package.json scripts:
 ### Other commands, generally not needed
 
 ```bash
-npm run dev             # Full Vite development mode (main + renderer watch + electron), defaults to openkosmos. Note: manually kill the process when done
+npm run dev             # Full Vite development mode (main + renderer watch + electron). Note: manually kill the process when done
 npm run build           # Only used for final app release builds in the pipeline (note: this uses Webpack, will be replaced by Vite in the future)
 npm run test:e2e        # Run Playwright E2E tests
 ```
-
-For all brand-aware npm scripts, omit `--brand` only when you intentionally want the default `openkosmos` brand.
 
 ## Context Loading Guide
 Before starting a task, read the corresponding document based on the task type:
@@ -54,9 +52,9 @@ When developing and debugging locally or troubleshooting, use scripts to view lo
 See [log-analysis.md](ai.prompt/log-analysis.md) for full usage.
 
 ## Development Harness
-Kosmos includes a development logging harness that captures main-process logs and structured renderer logs into local files so AI coding assistants can inspect runtime behavior while developing and debugging. Prefer this harness over ad-hoc `console.log` edits when investigating issues.
+OpenKosmos includes a development logging harness that captures main-process logs and structured renderer logs into local files so AI coding assistants can inspect runtime behavior while developing and debugging. Prefer this harness over ad-hoc `console.log` edits when investigating issues.
 
-- Start the app in dev mode: `npm run dev` for Kosmos.
+- Start the app in dev mode: `npm run dev`
 - Dev runs write per-launch logs named `openkosmos-dev-YYYY-MM-DD-HH-mm-ss.log` in the normal app logs directory; production runs continue to use daily `openkosmos-YYYY-MM-DD.log` files.
 - If the app is still running, flush in-memory logs to disk before analyzing a runtime issue so the log file is complete. From the renderer/devtools context, call `await window.electronAPI.logger.manualFlush()`; it invokes `logger:manualFlush` and `flushToDisk()` in the main process.
 - Use `bun scripts/log-query.ts --stats`, `--sources`, `--level`, `--source`, `--grep`, `--tail`, and `--all` to inspect logs. `--today` selects the newest same-day log; use `--all` or an explicit file when you need multiple same-day logs.
@@ -108,7 +106,7 @@ Each `ai.prompt.md` must contain: **Key Files** (table with file, responsibility
 Code changes without documentation updates are incomplete. These documents are the foundation for team AI collaboration.
 
 ## Contact
-For development access or questions, contact: yanhu@microsoft.com
+For development access or questions, contact: https://github.com/microsoft/open-kosmos/issues
 
 ---
 

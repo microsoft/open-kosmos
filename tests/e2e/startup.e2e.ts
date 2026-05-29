@@ -30,7 +30,7 @@ test.describe('Startup flow tests', () => {
   test('initialization loading screen displays correctly and disappears', async ({ electronApp }) => {
     const window = await electronApp.firstWindow();
 
-    // App.tsx shows a dark background + "KOSMOS" + "Initializing Core Services..." when isAppReady=false
+    // App.tsx shows a dark background + "OpenKosmos" + "Initializing Core Services..." when isAppReady=false
     // Since the app may start quickly, the loading screen may have already disappeared — do a soft check
     const bodyText = await safeGetPageText(window, 1000);
 
@@ -62,7 +62,7 @@ test.describe('Startup flow tests', () => {
 
     const title = await mainWindow.title();
     // Title should contain the brand name (depends on BRAND config)
-    expect(title).toMatch(/KOSMOS|Kosmos/i);
+    expect(title).toMatch(/OpenKosmos|OpenKosmos/i);
   });
 
   test('StartupPage progress bar renders correctly', async ({ electronApp }) => {

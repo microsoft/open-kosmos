@@ -1,7 +1,7 @@
 import { connectRenderToMain, connectMainToRender } from './base';
 
 // ──────────────────────────────────────────────
-// External Agent IPC contract
+// External Agent IPC contract — isolated from RemoteChannel
 // ──────────────────────────────────────────────
 
 /** External Agent connection info for UI display */

@@ -14,7 +14,7 @@ import {
 // ==================== Utility functions ====================
 
 function createTestUserDataDir(): string {
-  const dirName = `kosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dirName = `openkosmos-e2e-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const dirPath = path.join(os.tmpdir(), dirName);
   fs.mkdirSync(dirPath, { recursive: true });
   return dirPath;
@@ -197,7 +197,7 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
+        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -390,8 +390,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
         env: {
           ...process.env,
           NODE_ENV: 'test',
-          DISABLE_ANALYTICS: 'true',
-          KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
+          OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
         },
         timeout: 30_000,
       });
@@ -631,7 +630,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
+        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -877,7 +876,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        KOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
+        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -1484,13 +1483,13 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       }
     });
 
-    // Wait for React to mount first ("Starting KOSMOS" disappears)
+    // Wait for React to mount first ("Starting OpenKosmos" disappears)
     console.log('[E2E Mock Chat] Waiting for React to mount...');
     try {
       await window.waitForFunction(
         () => {
           const body = document.querySelector('body');
-          // "Starting KOSMOS" is the pre-React loading text in index.html
+          // "Starting OpenKosmos" is the pre-React loading text in index.html
           // React replaces this text after mounting
           return body && !body.textContent?.includes('Starting');
         },

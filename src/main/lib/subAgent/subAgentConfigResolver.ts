@@ -87,14 +87,16 @@ export function getParentAgentConfig(
  */
 export function resolveInheritedConfig(
   subAgentConfig: SubAgentConfig,
-  parentAgentConfig?: { mcp_servers: AgentMcpServer[]; skills?: string[]; knowledgeBase?: string },
+  parentAgentConfig?: { mcpServers?: AgentMcpServer[]; mcp_servers?: AgentMcpServer[]; skills?: string[]; knowledgeBase?: string },
 ): {
   resolvedMcpServers: SubAgent['resolvedMcpServers'];
   resolvedSkills: SubAgent['resolvedSkills'];
   resolvedKnowledgeBase?: string;
 } {
   // ── MCP Servers merge ──
-  const childServers = (subAgentConfig.mcp_servers || []).map(s => ({
+  const childServers = (subAgentConfig.mcpServers || [])
+    .filter((s): s is AgentMcpServer => typeof s !== 'string')
+    .map((s: AgentMcpServer) => ({
     name: s.name,
     connected: false,
     tools: s.tools || [],
@@ -103,11 +105,11 @@ export function resolveInheritedConfig(
 
   let resolvedMcpServers = [...childServers];
 
-  if (subAgentConfig.inherit_mcp_servers !== false && parentAgentConfig?.mcp_servers) {
-    const childNames = new Set(childServers.map(s => s.name));
-    const parentInherited = parentAgentConfig.mcp_servers
-      .filter(ps => !childNames.has(ps.name))
-      .map(ps => ({
+  if (subAgentConfig.inherit_mcp_servers !== false && (parentAgentConfig?.mcpServers || parentAgentConfig?.mcp_servers)) {
+    const childNames = new Set(childServers.map((s: AgentMcpServer) => s.name));
+    const parentInherited = (parentAgentConfig.mcpServers || parentAgentConfig.mcp_servers || [])
+      .filter((ps: AgentMcpServer) => !childNames.has(ps.name))
+      .map((ps: AgentMcpServer) => ({
         name: ps.name,
         connected: false,
         tools: ps.tools || [],

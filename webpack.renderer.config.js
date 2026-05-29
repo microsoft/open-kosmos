@@ -5,7 +5,8 @@ const webpack = require('webpack');
 const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
 
-const appConfig = require('./brands/openkosmos/config.json');
+const brandConfig = require('./scripts/brand-config');
+const { config: appConfig } = brandConfig;
 
 // Load environment variables from .env.local (or DOTENV_CONFIG_PATH for E2E test builds)
 require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env.local' });
@@ -121,44 +122,13 @@ module.exports = (env, argv) => {
         'process.platform': JSON.stringify(process.platform),
         'process.versions': JSON.stringify(process.versions),
         'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(
-          process.env.DEVELOPMENT_BASE_CDN_URL,
+          process.env.DEVELOPMENT_BASE_CDN_URL || '',
         ),
         'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(
-          process.env.PRODUCTION_BASE_CDN_URL,
+          process.env.PRODUCTION_BASE_CDN_URL || '',
         ),
         'process.env.APP_NAME': JSON.stringify(appConfig.productName),
-        'process.env.BRAND_NAME': JSON.stringify('openkosmos'),
-        // Expose preset model environment variables
-        'process.env.PRESET_MODEL_GPT4O_NAME': JSON.stringify(
-          process.env.PRESET_MODEL_GPT4O_NAME,
-        ),
-        'process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME': JSON.stringify(
-          process.env.PRESET_MODEL_GPT4O_DEPLOYMENT_NAME,
-        ),
-        'process.env.PRESET_MODEL_GPT4O_ENDPOINT': JSON.stringify(
-          process.env.PRESET_MODEL_GPT4O_ENDPOINT,
-        ),
-        'process.env.PRESET_MODEL_GPT4O_API_KEY': JSON.stringify(
-          process.env.PRESET_MODEL_GPT4O_API_KEY,
-        ),
-        'process.env.PRESET_MODEL_GPT4O_API_VERSION': JSON.stringify(
-          process.env.PRESET_MODEL_GPT4O_API_VERSION,
-        ),
-        'process.env.PRESET_MODEL_GPT41_NAME': JSON.stringify(
-          process.env.PRESET_MODEL_GPT41_NAME,
-        ),
-        'process.env.PRESET_MODEL_GPT41_DEPLOYMENT_NAME': JSON.stringify(
-          process.env.PRESET_MODEL_GPT41_DEPLOYMENT_NAME,
-        ),
-        'process.env.PRESET_MODEL_GPT41_ENDPOINT': JSON.stringify(
-          process.env.PRESET_MODEL_GPT41_ENDPOINT,
-        ),
-        'process.env.PRESET_MODEL_GPT41_API_KEY': JSON.stringify(
-          process.env.PRESET_MODEL_GPT41_API_KEY,
-        ),
-        'process.env.PRESET_MODEL_GPT41_API_VERSION': JSON.stringify(
-          process.env.PRESET_MODEL_GPT41_API_VERSION,
-        ),
+        'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
         // Expose prompt history configuration
         'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(
           process.env.HISTORY_PROMPT_QUEUE_SIZE,
@@ -170,6 +140,8 @@ module.exports = (env, argv) => {
         'process.argv': '[]', // Provide an empty process.argv array
         'process.browser': 'true', // Mark as browser environment
         'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
+        'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
+        'process.env.APP_NAME': JSON.stringify(appConfig.productName),
       }),
       new webpack.ProvidePlugin({
         Buffer: ['buffer', 'Buffer'],

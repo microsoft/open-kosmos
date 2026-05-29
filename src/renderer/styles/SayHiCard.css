@@ -1,6 +1,6 @@
 /* ============================================================
    SayHiCard – generic single action card for say-hi / onboarding UX.
-   Consumed by PmProjectSayHiCards and any future card-list wrappers.
+   Consumed by say-hi card-list wrappers.
    ============================================================ */
 
 .say-hi-card {

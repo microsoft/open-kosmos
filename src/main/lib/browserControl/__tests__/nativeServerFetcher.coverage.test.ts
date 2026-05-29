@@ -137,6 +137,8 @@ describe('NativeServerFetcher', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // CDN has no built-in default; provide one so HTTP-path tests have a base URL.
+    process.env.PRODUCTION_BASE_CDN_URL = 'https://cdn.test.example.com';
 
     // Re-import after resetting modules so mocks are fresh
     const mod = await import('../nativeServerFetcher');
@@ -159,14 +161,14 @@ describe('NativeServerFetcher', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       'NativeServerFetcher initialized',
       'NativeServerFetcher',
-      expect.objectContaining({ isDevelopment: true, baseUrl: 'https://dev.cdn.example.com' }),
+      expect.objectContaining({ baseUrl: 'https://dev.cdn.example.com' }),
     );
 
     process.env.NODE_ENV = origEnv;
     process.env.DEVELOPMENT_BASE_CDN_URL = origUrl as string;
   });
 
-  it('uses default development CDN URL when env var absent', () => {
+  it('uses no CDN URL when env var absent (optional feature disabled)', () => {
     const origEnv = process.env.NODE_ENV;
     const origUrl = process.env.DEVELOPMENT_BASE_CDN_URL;
     process.env.NODE_ENV = 'development';
@@ -176,7 +178,7 @@ describe('NativeServerFetcher', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       'NativeServerFetcher initialized',
       'NativeServerFetcher',
-      expect.objectContaining({ baseUrl: 'https://cdn.kosmos-ai.com/dev' }),
+      expect.objectContaining({ baseUrl: '(none — native server download disabled)' }),
     );
 
     process.env.NODE_ENV = origEnv;
@@ -186,12 +188,13 @@ describe('NativeServerFetcher', () => {
   it('uses production CDN URL when NODE_ENV is not development', () => {
     const origEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
+    process.env.PRODUCTION_BASE_CDN_URL = 'https://prod.cdn.example.com';
 
     const fetcher = new NativeServerFetcher();
     expect(mockLogger.info).toHaveBeenCalledWith(
       'NativeServerFetcher initialized',
       'NativeServerFetcher',
-      expect.objectContaining({ isDevelopment: false }),
+      expect.objectContaining({ baseUrl: 'https://prod.cdn.example.com' }),
     );
 
     process.env.NODE_ENV = origEnv;

@@ -3,10 +3,10 @@ import React, { useState, useMemo } from 'react';
 interface AgentAvatarProps {
   /** Agent emoji */
   emoji?: string;
-  /** Agent avatar URL */
+  /** Agent avatar URL (only for IN-LIBRARY agents) */
   avatar?: string;
   /** Agent source type */
-  source?: 'ON-DEVICE' | 'EXTERNAL';
+  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL';
   /** Agent name (used to generate initials as fallback) */
   name?: string;
   /** Avatar size */
@@ -22,7 +22,7 @@ interface AgentAvatarProps {
  *
  * Rendering rules:
  * - ON-DEVICE agent: render emoji only
- * - EXTERNAL agent: prefer avatar (image), fall back to emoji if empty or failed to load
+ * - IN-LIBRARY agent: prefer avatar (image), fall back to emoji if empty or failed to load
  */
 export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   emoji = '🤖',
@@ -90,8 +90,8 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   };
 
   // Determine whether to render the avatar image
-  // Only render image when avatar exists and image hasn't errored
-  const shouldRenderAvatar = avatar && !imageError;
+  // Only render image when IN-LIBRARY, avatar exists, and image hasn't errored
+  const shouldRenderAvatar = source === 'IN-LIBRARY' && avatar && !imageError;
 
   const pixelSize = getPixelSize();
 

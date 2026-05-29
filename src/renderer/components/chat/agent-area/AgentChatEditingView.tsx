@@ -16,11 +16,10 @@ import { ChatConfig, ChatAgent } from '../../../lib/userData/types'
 import { useToast } from '../../ui/ToastProvider'
 import { useFeatureFlag } from '../../../lib/featureFlags'
 import { createLogger } from '../../../lib/utilities/logger'
-
 const logger = createLogger('[AgentChatEditingView]')
 
 const getAgentKnowledge = (agent?: ChatAgent | null) => ({
-  knowledgeBase: agent?.knowledge?.knowledgeBase ?? agent?.knowledgeBase,
+  knowledgeBase: agent?.knowledge?.knowledgeBase,
 })
 
 /**
@@ -33,13 +32,14 @@ const getAgentKnowledge = (agent?: ChatAgent | null) => ({
  *   - /agent/chat/:chatId/settings/skills
  *   - /agent/chat/:chatId/settings/schedules
  *   - /agent/chat/:chatId/settings/system_prompt
+ *   - /agent/chat/:chatId/settings/context_enhancement
  *
  * This component was refactored from AgentChatEditor (modal overlay),
  * and now renders as a normal View component in the main content area.
  *
  * Features:
  * - Loads Agent config and Tab based on URL params chatId and tab
- * - Provides multi-Tab editing interface (Basic, MCP Servers, Skills, Schedules, System Prompt)
+ * - Provides multi-Tab editing interface (Basic, MCP Servers, Skills, Schedules, System Prompt, Context Enhancement)
  * - Supports change tracking and batch saving
  * - Supports Tab-level URL routing
  */
@@ -61,7 +61,7 @@ const AgentChatEditingView: React.FC = () => {
     'plugins': 'plugins',
     'schedules': 'schedules',
     'sub_agents': 'sub_agents',
-    'system_prompt': 'prompt',
+    'system_prompt': 'prompt'
   } as const
 
   // Reverse mapping - from internal tab name to route
@@ -73,7 +73,7 @@ const AgentChatEditingView: React.FC = () => {
     'plugins': 'plugins',
     'schedules': 'schedules',
     'sub_agents': 'sub_agents',
-    'prompt': 'system_prompt',
+    'prompt': 'system_prompt'
   } as const
 
   // Get current tab from URL, default to basic
@@ -94,7 +94,7 @@ const AgentChatEditingView: React.FC = () => {
       plugins: true,
       schedules: true,
       sub_agents: true,
-      prompt: true,
+      prompt: true
     },
     agentCreated: true // Agent already exists in edit mode
   })
@@ -120,14 +120,24 @@ const AgentChatEditingView: React.FC = () => {
     getCurrentTabFromUrl() === 'knowledge'
   )
 
+  // Determine if this is an IN-LIBRARY agent
+  const isFromLibrary = agentData?.source === 'IN-LIBRARY'
+
+  // IN-LIBRARY agent editing restrictions:
+  // Read-only fields (cannot modify): agent name, avatar/emoji, system prompt, knowledgeBase path
+  // Editable fields (open for modification): model, role, mcp_servers, skills, context_enhancement, workspace
+  // - basic tab: readOnly=false, but AgentBasicTab internally disables name/avatar/emoji via isFromLibrary
+  // - knowledge tab: special handling - path is read-only but file management is available, controlled via isFromLibrary
+  // - mcp/skills/context: open for editing (user can freely modify selections)
+  // - prompt: IN-LIBRARY keeps read-only (system prompt defined by library)
   const readOnlyFlags = {
-    basic: false,
-    knowledge: false,
-    mcp: false,
-    skills: false,
-    schedules: false,
-    sub_agents: false,
-    prompt: false,
+    basic: false,             // BasicTab internally controls name/avatar read-only via isFromLibrary, model/role editable
+    knowledge: false,         // Knowledge has special handling: path is read-only but file management available, via isFromLibrary
+    mcp: false,               // MCP selection open for editing
+    skills: false,            // Skill selection open for editing
+    schedules: false,         // Schedule tab supports runtime management only
+    sub_agents: false,        // Sub-Agent selection open for editing
+    prompt: isFromLibrary    // System Prompt stays read-only for IN-LIBRARY
   }
 
   // Change tracking state - records whether each Tab has unsaved changes
@@ -148,8 +158,10 @@ const AgentChatEditingView: React.FC = () => {
     plugins: false,
     schedules: false,
     sub_agents: false,
-    prompt: false,
+    prompt: false
   })
+
+  // Cache modified data for each Tab
   const [tabChangesCache, setTabChangesCache] = useState<{
     basic: Partial<AgentConfig> | null
     knowledge: Partial<AgentConfig> | null
@@ -167,10 +179,10 @@ const AgentChatEditingView: React.FC = () => {
     plugins: null,
     schedules: null,
     sub_agents: null,
-    prompt: null,
+    prompt: null
   })
 
-  // watch URL param changes and update activeTab
+  // URL route sync - watch URL param changes and update activeTab
   useEffect(() => {
     const urlTab = getCurrentTabFromUrl()
     if (tabState.activeTab !== urlTab) {
@@ -358,7 +370,7 @@ const AgentChatEditingView: React.FC = () => {
       // Start from existing data, only update fields for the current Tab
       const updateData: ChatAgent = { ...chat.agent }
       updateData.knowledge = {
-        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? chat.agent.knowledgeBase ?? '',
+        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? '',
       }
 
       // Only update fields corresponding to current Tab
@@ -405,6 +417,8 @@ const AgentChatEditingView: React.FC = () => {
           source: chat.agent.source,
           mcpServers: chat.agent.mcp_servers,
           systemPrompt: chat.agent.system_prompt,
+          skills: chat.agent.skills,
+          subAgents: chat.agent.sub_agents,
           createdAt: new Date(),
           updatedAt: new Date()
         }
@@ -490,7 +504,7 @@ const AgentChatEditingView: React.FC = () => {
       // Start from existing data, update all modified fields
       const updateData: ChatAgent = { ...chat.agent }
       updateData.knowledge = {
-        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? chat.agent.knowledgeBase ?? '',
+        knowledgeBase: chat.agent.knowledge?.knowledgeBase ?? '',
       }
 
       // Update all modified fields
@@ -543,7 +557,7 @@ const AgentChatEditingView: React.FC = () => {
         plugins: false,
         schedules: false,
         sub_agents: false,
-        prompt: false,
+        prompt: false
       })
       setTabChangesCache({
         basic: null,
@@ -553,7 +567,7 @@ const AgentChatEditingView: React.FC = () => {
         plugins: null,
         schedules: null,
         sub_agents: null,
-        prompt: null,
+        prompt: null
       })
 
       // Force remount all Tab components
@@ -625,6 +639,9 @@ const AgentChatEditingView: React.FC = () => {
           </button>
           <span className="header-name">
            {agentData ? `${agentData.name} - Settings` : 'Agent Settings'}
+           {isFromLibrary && (
+             <span className="readonly-badge" style={{ marginLeft: '8px', fontSize: '12px', padding: '2px 8px', backgroundColor: '#dbeafe', color: '#1e40af', borderRadius: '4px' }}>Library</span>
+           )}
          </span>
         </div>
         <div className="header-actions">
@@ -658,6 +675,18 @@ const AgentChatEditingView: React.FC = () => {
        </div>
      </header>
 
+     {/* Library Agent Notice - some fields read-only */}
+     {isFromLibrary && (
+       <div className="readonly-notice" style={{
+         padding: '12px 16px',
+         backgroundColor: '#dbeafe',
+         borderBottom: '1px solid #93c5fd',
+         color: '#1e40af',
+         fontSize: '13px'
+       }}>
+         📚 Library Agent: <strong>Name, Avatar, and System Prompt</strong> are read-only. You can edit <strong>Model, MCP Servers, Skills, Knowledge Base files, and Context Enhancement</strong>.
+       </div>
+     )}
 
      {/* Content */}
      <div className="agent-editing-view-content">
@@ -782,6 +811,7 @@ const AgentChatEditingView: React.FC = () => {
               cachedData={tabChangesCache.basic}
               fieldErrors={fieldErrors}
               readOnly={readOnlyFlags.basic}
+              isFromLibrary={isFromLibrary}
             />
           )}
 
@@ -796,6 +826,7 @@ const AgentChatEditingView: React.FC = () => {
               cachedData={tabChangesCache.knowledge}
               fieldErrors={fieldErrors}
               readOnly={readOnlyFlags.knowledge}
+              isFromLibrary={isFromLibrary}
             />
           )}
 
@@ -879,6 +910,7 @@ const AgentChatEditingView: React.FC = () => {
               readOnly={readOnlyFlags.prompt}
             />
           )}
+
         </div>
       </div>
 

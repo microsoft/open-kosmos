@@ -204,8 +204,7 @@ const AgentSubAgentsTab: React.FC<TabComponentProps> = ({
                         />
                         <div className="skill-card-name-group">
                           <div className="server-title-row">
-                            <span className="sub-agent-emoji" style={{ marginRight: '6px' }}>{subAgent.emoji}</span>
-                            <span className="skill-card-name">{subAgent.display_name}</span>
+                            <span className="skill-card-name">{subAgent.name}</span>
                           </div>
                           <div
                             style={{
@@ -215,13 +214,8 @@ const AgentSubAgentsTab: React.FC<TabComponentProps> = ({
                               alignItems: 'center',
                             }}
                           >
-                            {subAgent.version && (
-                              <span className="skill-card-version">
-                                v{subAgent.version}
-                              </span>
-                            )}
                             <span className="skill-card-version">
-                              {subAgent.context_access}
+                              isolated
                             </span>
                           </div>
                         </div>

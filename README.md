@@ -74,7 +74,7 @@ It runs entirely on your desktop, provides native access to your local files and
 1. **Clone the repository**
    ```bash
    git clone https://github.com/microsoft/open-kosmos.git
-   cd open-kosmos
+   cd openkosmos
    ```
 
 2. **Configure environment variables**

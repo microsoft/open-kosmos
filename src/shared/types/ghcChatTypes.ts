@@ -64,7 +64,6 @@ export interface GhcCopilotModel {
   warning_message?: string;
 }
 
-// Backward compatibility - keep old interface for gradual migration
 export interface GhcModel {
   id: string;
   name: string;
@@ -201,15 +200,4 @@ export interface GhcResponsesRequest {
   previous_response_id?: string;
   /** OpenAI Responses API nested form for reasoning effort */
   reasoning?: { effort: ReasoningEffort };
-}
-
-// Interface compatibility with existing ChatApi
-export interface IChatApi {
-  processConversationWithMCP(
-    messages: Message[],
-    callbacks?: StartChatCallbacks
-  ): Promise<Message[]>;
-
-  executeToolCall(toolCall: any): Promise<any>;
-  saveConfig(config: any): void;
 }

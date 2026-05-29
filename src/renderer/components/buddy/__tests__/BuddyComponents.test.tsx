@@ -222,14 +222,4 @@ describe('BuddyMainPanel', () => {
     );
     expect(container.textContent).toContain('12,345');
   });
-
-  it('shows coming soon placeholder', () => {
-    const { getByText } = render(
-      <BuddyMainPanel
-        onHatchNew={vi.fn()}
-        onClose={vi.fn()}
-      />
-    );
-    expect(getByText(/Coming Soon/)).toBeTruthy();
-  });
 });

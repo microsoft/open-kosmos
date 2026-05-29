@@ -252,7 +252,6 @@ const mockAppCacheManager = {
 
 const mockProfileCacheManagerSync = {
   getAllChatConfigs: vi.fn(() => []),
-  getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: '' })),
 };
 
 vi.mock('../startup/lazy', () => ({
@@ -260,7 +259,6 @@ vi.mock('../startup/lazy', () => ({
     Promise.resolve({
       setMainWindow: vi.fn(),
       getAllChatConfigs: vi.fn(() => []),
-      getToolBarSettings: vi.fn(() => ({ autoHide: true, visibleAgents: [], shortcut: 'Ctrl+Space' })),
     }),
   ),
   getAppCacheManager: vi.fn(() => Promise.resolve(mockAppCacheManager)),
@@ -307,7 +305,6 @@ const mockAnalyticsManager = {
   shutdown: vi.fn(() => Promise.resolve()),
 };
 vi.mock('../lib/analytics', () => ({
-  appInsightsClient: { init: vi.fn() },
   analyticsManager: mockAnalyticsManager,
 }));
 
@@ -320,9 +317,6 @@ vi.mock('../lib/scheduler/SchedulerManager', () => ({
   schedulerManager: mockSchedulerManager,
 }));
 
-vi.mock('../lib/mem0/openkosmos-adapters', () => ({
-  resetOpenKosmosMemory: vi.fn(() => Promise.resolve()),
-}));
 
 vi.mock('../lib/mcpRuntime/mcpClientManager', () => ({
   mcpClientManager: {

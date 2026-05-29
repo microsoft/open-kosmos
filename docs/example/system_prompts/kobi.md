@@ -2,7 +2,7 @@
 
 > This document shows the complete System Prompt composition structure for the Kobi Agent.
 > Generated: 2026-01-11
-> Agent config source: `profile.json` (demo-user)
+> Agent config source: `profile.json` (demo_user)
 
 ---
 
@@ -118,17 +118,17 @@ Skills are specialized capabilities that extend your abilities for specific task
 1. **product-decision-maker**
    - Description: Guide end-to-end product decision workflow from feature definition through data collection, decision analysis (Continue/Pivot/Deprecate), to execution planning with intelligent routing.
    - Version: 1.0.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/product-decision-maker/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo_user/skills/product-decision-maker/skill.md`
 
 2. **product-opportunity-analyst**
    - Description: Assist product managers in mining opportunities from competitive data or technology trends and conducting value assessment (V.A.S.T Model).
    - Version: 1.1.1
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/product-opportunity-analyst/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo_user/skills/product-opportunity-analyst/skill.md`
 
 3. **titan-dynamic-query**
    - Description: Execute and analyze dynamic SQL queries on Titan platform. Triggers on raw SQL input, "run this SQL", or when no template matches.
    - Version: 3.0.2
-   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo-user/skills/titan-dynamic-query/skill.md`
+   - File Path: `/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo_user/skills/titan-dynamic-query/skill.md`
 
 **Best Practices:**
 - Load skills only when they're relevant to the current task
@@ -291,7 +291,7 @@ All four search tools above require Playwright to be properly installed and conf
 - Missing browser binaries
 - Browser launch failures
 
-Follow instructions in **https://cdn.kosmos-ai.com/setup/playwright-setup.prompt.md** to fix.
+Follow instructions in **`${CDN_BASE_URL}/setup/playwright-setup.prompt.md`** to fix.
 
 **Tool Usage:**
 
@@ -323,12 +323,12 @@ When referring to files in the workspace in your responses:
    - Configuration files, source code, documentation, etc.
 
 **Examples (macOS/Linux):**
-- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/Kosmos.app/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed /Users/pumpedgechina/repos/OpenKosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in /home/user/project/package.json`
 - ✅ Good: `The main entry point is /Users/user/repos/app/src/main/main.ts`
 
 **Examples (Windows):**
-- ✅ Good: `I've analyzed C:/Users/username/repos/Kosmos.app/src/renderer/App.tsx and found...`
+- ✅ Good: `I've analyzed C:/Users/username/repos/OpenKosmos.app/src/renderer/App.tsx and found...`
 - ✅ Good: `You can configure this in D:/projects/myapp/package.json`
 - ❌ Bad: `I've analyzed App.tsx and found...` (missing full path)
 - ❌ Bad: `You can configure this in src/renderer/App.tsx` (relative path instead of absolute)

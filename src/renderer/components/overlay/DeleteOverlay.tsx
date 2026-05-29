@@ -2,7 +2,6 @@ import { atom } from '@/atom';
 import { agentChatSessionCacheManager } from '@renderer/lib/chat/agentChatSessionCacheManager';
 import { chatOps } from '@renderer/lib/chat/chatOps';
 import { deleteChatSession } from '@renderer/lib/chat/chatSessionOps';
-import { getPmAgentSayHiMessageConfig } from '@renderer/lib/chat/pmAgentSayHi';
 import { startNewChatFor } from '@renderer/lib/chat/startNewChatFor';
 import { profileDataManager } from '@renderer/lib/userData/profileDataManager';
 import { createLogger } from '@renderer/lib/utilities/logger';
@@ -107,7 +106,7 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
               // Fix: use startNewChatFor to switch to Primary Agent (unified API)
               const result = await startNewChatFor(
                 primaryAgentChatId,
-                getPmAgentSayHiMessageConfig(primaryAgentChatId),
+                undefined,
               );
               logger.debug('startNewChatFor result:', result);
 
@@ -164,7 +163,7 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
           if (currentChatId) {
             await startNewChatFor(
               currentChatId,
-              getPmAgentSayHiMessageConfig(currentChatId),
+              undefined,
             );
             // 3c. AgentChatManager.switchToChatSession will automatically call notifyCurrentChatSessionIdChanged
             //     The renderer's agentChatSessionCacheManager listens to the IPC event and auto-syncs currentChatId/currentChatSessionId

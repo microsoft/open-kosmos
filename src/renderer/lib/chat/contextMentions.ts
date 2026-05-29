@@ -194,10 +194,6 @@ export function insertMention(
     } else if (mentionValue.startsWith('@chat-session:')) {
       prefix = '@chat-session:';
       path = mentionValue.substring('@chat-session:'.length);
-    } else if (mentionValue.startsWith('@workspace:')) {
-      // Backward compatible with old format
-      prefix = '@workspace:';
-      path = mentionValue.substring('@workspace:'.length);
     } else {
       // Determine prefix based on sourceType
       if (sourceType === MentionSourceType.KnowledgeBase) {

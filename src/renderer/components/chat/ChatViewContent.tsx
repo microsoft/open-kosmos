@@ -3,13 +3,11 @@ import ChatContainer from './ChatContainer';
 import ChatInput from './ChatInput';
 import ChatZeroStates from './ChatZeroStates';
 import { Message } from '@shared/types/chatTypes';
-import { BRAND_NAME } from '@shared/constants/branding';
 import { ZeroStates, isBuiltinAgent } from '../../lib/userData/types';
 import { useCurrentChatSessionId, useMessagesWithStream, ChatStatus } from '../../lib/chat/agentChatSessionCacheManager';
 import {
   isFrontendOnlySayHiMessage,
 } from '../../lib/chat/sessionMessageVisibility';
-import { PM_AGENT_CANONICAL_NAME } from '../../config/pmAgentSayHiConfig';
 import '../../styles/ContentView.css';
 import '../../styles/Sidepane.css';
 import { createLogger } from '../../lib/utilities/logger';
@@ -92,7 +90,7 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
     (zeroStates.quick_starts && zeroStates.quick_starts.length > 0)
   );
   const shouldDisableZeroStates =
-    agentName === PM_AGENT_CANONICAL_NAME && isBuiltinAgent(agentName, BRAND_NAME);
+    false;
   const showZeroStates = !isSessionSwitching && !shouldDisableZeroStates && isEmpty && hasValidZeroStates;
 
   const currentChatSessionId = useCurrentChatSessionId();

@@ -81,7 +81,7 @@ npm run dist:mac:x64
 npm run dist:mac:arm64
 npm run dist:mac:universal
 
-# Publish to GitHub Releases (gim-home/Kosmos)
+# Publish to GitHub Releases (gim-home/OpenKosmos)
 npm run dist:publish        # build + publish
 npm run dist:publish:win
 npm run dist:publish:mac
@@ -119,7 +119,7 @@ npx asar list <app.asar> | grep <module>
 | Category | Packaged? | When to use |
 |----------|-----------|-------------|
 | `dependencies` | Yes | Runtime modules needed by main process (e.g., `playwright-core`, `sharp`, `better-sqlite3`) |
-| `optionalDependencies` | Yes | Platform-specific or on-demand native modules (e.g., `whisper-addon`, `sherpa-onnx`) |
+| `optionalDependencies` | Yes | Platform-specific or on-demand native modules |
 | `devDependencies` | No | Build tools, test frameworks, webpack-bundled renderer-only modules (e.g., `mermaid`, `monaco-editor`, `@playwright/test`) |
 
 **`playwright` vs `playwright-core`:**
@@ -137,21 +137,13 @@ Configured via `.env.local` (copy from `.env.example`). Injected at build time v
 | `NODE_ENV` | Both | `development` / `production` |
 | `HISTORY_PROMPT_QUEUE_SIZE` | Both | Prompt history ring buffer size (default: 20) |
 | `RELEASE_CDN_URL` | Both | Custom CDN URL for auto-updates |
-| `DEVELOPMENT_BASE_CDN_URL` | Both | Dev CDN for assets (default: `https://cdn.kosmos-ai.com/dev`) |
-| `PRODUCTION_BASE_CDN_URL` | Both | Prod CDN for assets (default: `https://cdn.kosmos-ai.com`) |
-| `PRESET_MODEL_GPT4O_*` | Both | Pre-configured Azure OpenAI GPT-4o settings (ENDPOINT, DEPLOYMENT, API_KEY, API_VERSION, MODEL_NAME) |
-| `PRESET_MODEL_GPT41_*` | Both | Pre-configured Azure OpenAI GPT-4.1 settings (ENDPOINT, DEPLOYMENT, API_KEY, API_VERSION, MODEL_NAME) |
+| `DEVELOPMENT_BASE_CDN_URL` | Both | Dev CDN for optional features (no default; unset disables them gracefully) |
+| `PRODUCTION_BASE_CDN_URL` | Both | Prod CDN for optional features (no default; unset disables them gracefully) |
 | `UNWRAP_ACCESS_TOKEN` | Both | Token unwrapping configuration |
-| `ACTIVE_USER_THRESHOLD_MIN` | Main | Active user tracking threshold in minutes (default: 5) |
 
 ---
-
-## Known Limitations
 
 - **Python 3.10+** required for some MCP servers
 - **GitHub Copilot subscription** required for the primary AI provider
 - **Native module support** varies by platform (Windows / macOS / Linux)
-- **Memory system** requires local sqlite-vec setup; gated by `kosmosFeatureMemory` feature flag
 - **Browser control** is Windows-only; gated by `browserControl` feature flag
-- **Voice input** is dev-only by default; gated by `kosmosFeatureVoiceInput` feature flag
-- **Native modules** are not bundled in the installer — downloaded on demand at runtime (~127MB whisper-addon, ~13MB sherpa-onnx)

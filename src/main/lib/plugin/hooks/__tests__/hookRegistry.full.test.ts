@@ -113,10 +113,10 @@ describe('hookRegistry — substituteVariables', () => {
     expect(calledCmd).toBe('/opt/plugins/myplugin/run.sh');
   });
 
-  it('replaces ${OPENKOSMOS_PLUGIN_ROOT} in command before exec', async () => {
+  it('replaces ${OpenKosmos_PLUGIN_ROOT} in command before exec', async () => {
     makeExecSuccess();
     hookRegistry.registerPluginHooks(PLUGIN_ID, PLUGIN_PATH, 'SessionStart', [
-      { type: 'command', command: '${OPENKOSMOS_PLUGIN_ROOT}/start', async: false },
+      { type: 'command', command: '${OpenKosmos_PLUGIN_ROOT}/start', async: false },
     ]);
     await hookRegistry.execute('SessionStart', baseContext);
     const calledCmd = execMock.mock.calls[0][0];

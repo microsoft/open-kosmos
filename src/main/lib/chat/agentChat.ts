@@ -122,7 +122,16 @@ export interface AgentConfig {
   reasoningEffort?: string
   mcp_servers: Array<{name: string; tools: string[]}>
   system_prompt: string
-  context_enhancement?: Record<string, unknown>;
+  context_enhancement?: {
+    search_memory: {
+      enabled: boolean;
+      semantic_similarity_threshold: number;
+      semantic_top_n: number;
+    };
+    generate_memory: {
+      enabled: boolean;
+    };
+  };
 }
 
 interface UserMessageEditValidationResult {
@@ -175,7 +184,7 @@ export class AgentChat {
   private fullModeCompressor: FullModeCompressor
 
   // 🔥 New: Message save queue for atomic saving
-  // Flag: whether the current turn is from a remote channel
+  // Flag: whether the current turn is from a remote IM channel (e.g., Teams)
   private isRemoteSession = false
   private interactionPolicy: AgentChatInteractionPolicy = 'allow-ui'
   private blockedInteractionDetails: BlockedInteractionDetails | null = null
@@ -609,8 +618,8 @@ export class AgentChat {
       : 'continued';
   }
 
-  private trackChatSessionActivated(_message: Message, _sessionEntryType: 'new' | 'continued'): void {
-    // Analytics removed.
+  private trackChatSessionActivated(message: Message, sessionEntryType: 'new' | 'continued'): void {
+    // Analytics removed — no-op
   }
 
   /**
@@ -1114,7 +1123,7 @@ export class AgentChat {
    * Extracted from saveChatSession, executed independently after conversation turn completes
    */
   private async extractFactsFromConversation(): Promise<void> {
-    // Memory/Context Enhancement removed — no-op
+    await this.getContextService().extractFactsFromConversation();
   }
 
   async addMessageToContext(message: Message): Promise<void> {
@@ -1122,7 +1131,7 @@ export class AgentChat {
   }
 
   private async enhanceUserMessageContext(message: Message): Promise<Message> {
-    return message;
+    return this.getContextService().enhanceUserMessageContext(message);
   }
 
 
@@ -1453,6 +1462,22 @@ export class AgentChat {
 
   private async postProcessForRequestInteractiveInputTool(toolResult: any): Promise<any> {
     return this.getToolPostProcessor().postProcessForRequestInteractiveInputTool(toolResult);
+  }
+
+  /**
+   * 🔥 New: Method specifically for processing get_mcp_template_from_library tool results
+   * Checks if there are ENV parameters requiring user input, and initiates info collection flow if so
+   */
+  private async postProcessForGetMcpTemplateFromLibraryTool(toolResult: any): Promise<any> {
+    return this.getToolPostProcessor().postProcessForGetMcpTemplateFromLibraryTool(toolResult);
+  }
+
+  /**
+   * 🔥 New: Method specifically for processing get_agent_template_from_library tool results
+   * Checks if the workspace field in Agent config contains OpenKosmos placeholders or USER INPUT placeholders
+   */
+  private async postProcessForGetAgentTemplateFromLibraryTool(toolResult: any): Promise<any> {
+    return this.getToolPostProcessor().postProcessForGetAgentTemplateFromLibraryTool(toolResult);
   }
 
   /**

@@ -212,7 +212,7 @@ AgentChatManager (listener)
 ```
 
 #### Configuration
-- Feature flag: `kosmosFeatureSubAgentAutoWake` (default: enabled)
+- Feature flag: `openkosmosFeatureSubAgentAutoWake` (default: enabled)
 - Debounce: 500ms (multiple completions in quick succession only trigger one turn)
 - Recursion guard: synthetic turns that spawn new background agents do NOT trigger auto-wake on their own turn end (prevent infinite loop)
 

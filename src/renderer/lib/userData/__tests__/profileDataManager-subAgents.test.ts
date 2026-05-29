@@ -53,17 +53,11 @@ import type { SubAgentConfig } from '../../../../main/lib/userDataADO/types/prof
 function createTestSubAgent(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
   return {
     name: 'test-agent',
-    display_name: 'Test Agent',
     description: 'A test sub-agent',
-    emoji: '🧪',
-    version: '1.0.0',
-    source: 'ON-DEVICE',
     system_prompt: 'You are a test agent.',
-    mcp_servers: [],
+    mcpServers: [],
     skills: [],
     builtin_tools: [],
-    context_access: 'isolated',
-    max_turns: 25,
     ...overrides,
   };
 }
@@ -101,9 +95,9 @@ describe('ProfileDataManager - Sub-Agent Methods', () => {
 
     it('should return multiple sub-agents', () => {
       const agents = [
-        createTestSubAgent({ name: 'agent-1', display_name: 'Agent 1' }),
-        createTestSubAgent({ name: 'agent-2', display_name: 'Agent 2', source: 'ON-DEVICE' }),
-        createTestSubAgent({ name: 'agent-3', display_name: 'Agent 3' }),
+        createTestSubAgent({ name: 'agent-1' }),
+        createTestSubAgent({ name: 'agent-2' }),
+        createTestSubAgent({ name: 'agent-3' }),
       ];
       (manager as any).cache.subAgents = agents;
 
@@ -188,7 +182,8 @@ describe('ProfileDataManager - Sub-Agent Methods', () => {
       const result = manager.getSubAgentsStats();
       expect(result).toEqual({
         total: 0,
-                onDevice: 0,
+        inLibrary: 0,
+        onDevice: 0,
       });
     });
 
@@ -203,34 +198,44 @@ describe('ProfileDataManager - Sub-Agent Methods', () => {
       expect(result.total).toBe(3);
     });
 
-    it('should count all ON-DEVICE sources', () => {
+    it('should count IN-LIBRARY and ON-DEVICE sources separately', () => {
       (manager as any).cache.subAgents = [
-        createTestSubAgent({ name: 'lib-1', source: 'ON-DEVICE' }),
-        createTestSubAgent({ name: 'lib-2', source: 'ON-DEVICE' }),
-        createTestSubAgent({ name: 'dev-1', source: 'ON-DEVICE' }),
+        createTestSubAgent({ name: 'lib-1' }),
+        createTestSubAgent({ name: 'lib-2' }),
+        createTestSubAgent({ name: 'dev-1' }),
       ];
 
       const result = manager.getSubAgentsStats();
       expect(result).toEqual({
         total: 3,
-                onDevice: 3,
+        inLibrary: 0,
+        onDevice: 3,
       });
     });
 
-    it('should handle all ON-DEVICE agents', () => {
+    it('should handle all agents with no source field', () => {
       (manager as any).cache.subAgents = [
-        createTestSubAgent({ name: 'a1', source: 'ON-DEVICE' }),
-        createTestSubAgent({ name: 'a2', source: 'ON-DEVICE' }),
+        createTestSubAgent({ name: 'a1' }),
+        createTestSubAgent({ name: 'a2' }),
       ];
 
       const result = manager.getSubAgentsStats();
-      expect(result).toEqual({ total: 2, onDevice: 2 });
+      expect(result).toEqual({ total: 2, inLibrary: 0, onDevice: 2 });
+    });
+
+    it('should handle single agent with no source field', () => {
+      (manager as any).cache.subAgents = [
+        createTestSubAgent({ name: 'a1' }),
+      ];
+
+      const result = manager.getSubAgentsStats();
+      expect(result).toEqual({ total: 1, inLibrary: 0, onDevice: 1 });
     });
 
     it('should handle null subAgents gracefully', () => {
       (manager as any).cache.subAgents = null;
       const result = manager.getSubAgentsStats();
-      expect(result).toEqual({ total: 0, onDevice: 0 });
+      expect(result).toEqual({ total: 0, inLibrary: 0, onDevice: 0 });
     });
   });
 

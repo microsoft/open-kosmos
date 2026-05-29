@@ -38,7 +38,7 @@ FRONTMATTER_REGEX = re.compile(r'^---\n(.*?)\n---', re.DOTALL)
 def parse_yaml_basic(yaml_text):
     """
     Basic YAML parser fallback when pyyaml is not installed.
-    Handles simple key-value pairs and nested x-kosmos block.
+    Handles simple key-value pairs and nested x-openkosmos block.
     """
     result = {}
     current_block = None
@@ -48,13 +48,13 @@ def parse_yaml_basic(yaml_text):
         if not stripped or stripped.startswith('#'):
             continue
 
-        # Detect nested block (x-kosmos:)
-        if line.startswith('x-kosmos:'):
+        # Detect nested block (x-openkosmos:)
+        if line.startswith('x-openkosmos:'):
             current_block = {}
-            result['x-kosmos'] = current_block
+            result['x-openkosmos'] = current_block
             continue
 
-        # Nested key-value (indented under x-kosmos)
+        # Nested key-value (indented under x-openkosmos)
         if current_block is not None and (line.startswith('  ') or line.startswith('\t')):
             match = re.match(r'^\s+(\w[\w_-]*):\s*(.*)', line)
             if match:
@@ -204,30 +204,30 @@ def validate_agent(agent_path):
             warnings.append("'model' is empty — will default to 'inherit'")
 
     # context_access: must be valid value
-    x_kosmos = frontmatter.get('x-kosmos', {})
-    if isinstance(x_kosmos, dict):
-        context_access = x_kosmos.get('context_access')
+    x_openkosmos = frontmatter.get('x-openkosmos', {})
+    if isinstance(x_openkosmos, dict):
+        context_access = x_openkosmos.get('context_access')
         if context_access is not None:
             if context_access not in VALID_CONTEXT_ACCESS:
                 errors.append(
                     f"context_access must be one of: {', '.join(sorted(VALID_CONTEXT_ACCESS))}. "
                     f"Got '{context_access}'"
                 )
-    elif x_kosmos is not None:
-        warnings.append("'x-kosmos' should be a mapping — KOSMOS extension fields may not be recognized")
+    elif x_openkosmos is not None:
+        warnings.append("'x-openkosmos' should be a mapping — OpenKosmos extension fields may not be recognized")
 
-    # ===== x-kosmos namespace check =====
-    # Verify KOSMOS-specific fields are under x-kosmos, not at top level
-    kosmos_fields = {
+    # ===== x-openkosmos namespace check =====
+    # Verify OpenKosmos-specific fields are under x-openkosmos, not at top level
+    openkosmos_fields = {
         'display_name', 'emoji', 'version', 'builtin_tools', 'disallow_builtin_tools',
         'context_access', 'workspace', 'knowledgeBase',
         'inherit_mcp_servers', 'inherit_skills', 'inherit_knowledge_base'
     }
-    misplaced = kosmos_fields.intersection(frontmatter.keys())
+    misplaced = openkosmos_fields.intersection(frontmatter.keys())
     if misplaced:
         warnings.append(
-            f"KOSMOS extension field(s) found at top level: {', '.join(sorted(misplaced))}. "
-            "These should be nested under 'x-kosmos:' for Claude Code compatibility."
+            f"OpenKosmos extension field(s) found at top level: {', '.join(sorted(misplaced))}. "
+            "These should be nested under 'x-openkosmos:' for Claude Code compatibility."
         )
 
     # ===== Markdown body (system_prompt) =====

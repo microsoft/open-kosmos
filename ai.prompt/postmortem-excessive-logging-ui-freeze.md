@@ -2,7 +2,7 @@
 
 <!-- Last verified: 2026-05-14 -->
 
-**Date:** 2026-05-14 | **Severity:** P1 (frequent UI freeze during tool-calling agent chat) | **Affected:** Kosmos 2.7.14, all users running agents with tool calls
+**Date:** 2026-05-14 | **Severity:** P1 (frequent UI freeze during tool-calling agent chat) | **Affected:** OpenKosmos 2.7.14, all users running agents with tool calls
 
 ## Symptom
 Users report the frontend UI freezes (becomes unresponsive for seconds) during agent chat sessions, especially when the agent invokes tools. DevTools console shows rapid-fire `AgentChatSessionCacheManager` callback triggers. Main-process log file grows to 512KB/day with repetitive entries.

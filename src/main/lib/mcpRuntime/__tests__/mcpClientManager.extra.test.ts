@@ -174,21 +174,6 @@ describe('MCPClientManager supplementary', () => {
     (MCPClientManager as any).instance = null;
   });
 
-  // ── McpAuthService.onInteraction callback ────────────────────────────────
-
-  it('sets needs-user-interaction status when consent-requested fires', async () => {
-    const mgr = MCPClientManager.getInstance();
-    // Trigger the interaction callback registered in constructor
-    (mockOnInteraction as any)._triggerInteraction({ serverName: 'auth-server', phase: 'consent-requested' });
-    expect(mgr.getMcpServerRuntimeState('auth-server')?.status).toBe('needs-user-interaction');
-  });
-
-  it('does not update status for non consent-requested phases', async () => {
-    const mgr = MCPClientManager.getInstance();
-    (mockOnInteraction as any)._triggerInteraction({ serverName: 'auth-server', phase: 'other-phase' });
-    expect(mgr.getMcpServerRuntimeState('auth-server')).toBeUndefined();
-  });
-
   // ── _updateServerTools / _updateServerError — new state creation path ─────
 
   it('_updateServerTools creates state when it does not exist', async () => {

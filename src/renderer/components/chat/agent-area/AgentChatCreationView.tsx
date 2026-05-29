@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Library } from 'lucide-react'
 import AgentChatCreationHeaderView from './AgentChatCreationHeaderView'
 import '../../../styles/AgentChatCreation.css'
+import { isCdnConfigured } from '@shared/utils/cdn'
 import { createLogger } from '../../../lib/utilities/logger';
 const logger = createLogger('[AgentChatCreationView]');
 
@@ -11,7 +12,9 @@ const logger = createLogger('[AgentChatCreationView]');
  *
  * Route: /agent/chat/creation
  *
- * Provides a way to create an Agent by customizing it.
+ * Provides two ways to create an Agent:
+ * 1. Customize an Agent
+ * 2. Install from Agent Library
  */
 const AgentChatCreationView: React.FC = () => {
   const navigate = useNavigate()
@@ -33,6 +36,14 @@ const AgentChatCreationView: React.FC = () => {
   const handleCustomAgentClick = useCallback(() => {
     navigate('/agent/chat/creation/custom-agent')
   }, [navigate])
+
+  const handleInstallFromLib = useCallback(() => {
+    navigate('/agent/chat/creation/agent-library')
+  }, [navigate])
+
+  // The Agent Library is a CDN-backed optional feature. When no CDN is
+  // configured, hide the entry entirely instead of leading to an empty view.
+  const isAgentLibraryAvailable = isCdnConfigured()
 
   return (
     <div className="agent-creation-view" key={refreshKey}>
@@ -67,6 +78,30 @@ const AgentChatCreationView: React.FC = () => {
               </svg>
             </div>
           </button>
+
+          {/* Install from Agent Library option (only when CDN is configured) */}
+          {isAgentLibraryAvailable && (
+          <button
+            className="creation-option-card"
+            onClick={handleInstallFromLib}
+            type="button"
+          >
+            <div className="option-icon">
+              <Library size={32} strokeWidth={1.5} />
+            </div>
+            <div className="option-content">
+              <h3 className="option-title">Install from Agent Library</h3>
+              <p className="option-description">
+                Browse and install pre-configured agents from the Agent Library. Quick setup with proven configurations.
+              </p>
+            </div>
+            <div className="option-arrow">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          </button>
+          )}
         </div>
         </div>
       </div>

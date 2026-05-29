@@ -22,7 +22,7 @@ description: "[TODO: Describe what this sub-agent does and when it should be del
 model: inherit
 maxTurns: 25
 
-x-kosmos:
+x-openkosmos:
   display_name: "{agent_title}"
   emoji: "🤖"
   version: "1.0.0"
@@ -134,7 +134,7 @@ def init_agent(agent_name, path):
     print("1. Edit AGENT.md — complete all [TODO] items in the YAML front-matter and system prompt")
     print("2. Run quick_validate.py to verify the format:")
     print(f"   python quick_validate.py {agent_dir}")
-    print("3. Import into KOSMOS via 'Import from AGENT.md (Claude Code)' button")
+    print("3. Import into OpenKosmos via 'Import from AGENT.md (Claude Code)' button")
     print("4. Assign the sub-agent to a parent agent and test it")
 
     return agent_dir

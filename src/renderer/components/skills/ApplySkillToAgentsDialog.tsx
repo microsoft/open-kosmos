@@ -1,7 +1,7 @@
 /**
  * ApplySkillToAgentsDialog Component
  *
- * A unified dialog shown after a skill is added from device.
+ * A unified dialog shown after a skill is added (from device or library).
  * Displays all local agents and lets the user choose which agents to apply the skill to.
  * Agents already using the skill are pre-checked and disabled.
  */

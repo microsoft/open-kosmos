@@ -65,6 +65,7 @@ describe('ExecuteCommandTool timeout selection', () => {
   it('extends the default timeout for other interactive auth commands', () => {
     const commands = [
       'gh auth refresh -h github.com -s repo',
+      'az login',
       'npm login',
       'npm adduser',
       'pnpm login',

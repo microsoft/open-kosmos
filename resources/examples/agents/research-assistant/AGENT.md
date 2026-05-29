@@ -4,7 +4,7 @@ description: General-purpose research specialist for finding, analyzing, and syn
 model: inherit
 maxTurns: 25
 
-x-kosmos:
+x-openkosmos:
   display_name: Research Assistant
   emoji: "🔬"
   version: "1.0.0"

@@ -23,7 +23,6 @@ import { createConsoleLogger } from '../unifiedLogger';
 
 import type {
   SubAgentConfig,
-  SubAgentContextAccess,
   SubAgentMcpServerConfig,
   AgentMcpServer,
 } from '../userDataADO/types/profile';
@@ -224,7 +223,7 @@ export class SubAgentFileManager {
       const disallowedTools = this.parseToolsList(yamlData.disallowedTools);
 
       // Parse mcpServers (supports Claude Code string references and OpenKosmos inline config)
-      const mcpServers = this.parseMcpServers(yamlData.mcpServers || yamlData.mcp_servers);
+      const mcpServers = this.parseMcpServers(yamlData.mcpServers);
 
       // Parse skills
       const skills = this.parseStringArray(yamlData.skills);
@@ -248,9 +247,6 @@ export class SubAgentFileManager {
 
         // Runtime fields
         system_prompt: markdownBody,
-
-        // Compatibility fields (source is not set during file parsing; it belongs to SubAgentIndex)
-        mcp_servers: this.mcpServersToLegacy(mcpServers),
       };
 
       // === Claude Code tools → OpenKosmos builtin_tools auto-mapping ===
@@ -310,10 +306,9 @@ export class SubAgentFileManager {
       standardFields.skills = config.skills;
     }
 
-    // mcpServers (prefer mcpServers, fallback to converting mcp_servers)
-    const mcpServers = config.mcpServers ?? this.legacyToMcpServers(config.mcp_servers);
-    if (mcpServers && mcpServers.length > 0) {
-      standardFields.mcpServers = mcpServers.map(s =>
+    // mcpServers
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      standardFields.mcpServers = config.mcpServers.map(s =>
         typeof s === 'string' ? s : { name: s.name, tools: s.tools },
       );
     }
@@ -545,9 +540,8 @@ export class SubAgentFileManager {
       standardFields.skills = config.skills;
     }
     // mcpServers → export as string reference names
-    const mcpServers = config.mcpServers ?? this.legacyToMcpServers(config.mcp_servers);
-    if (mcpServers && mcpServers.length > 0) {
-      standardFields.mcpServers = mcpServers.map(s =>
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      standardFields.mcpServers = config.mcpServers.map(s =>
         typeof s === 'string' ? s : s.name,
       );
     }
@@ -727,29 +721,5 @@ export class SubAgentFileManager {
       }
     }
     return mapped;
-  }
-
-  /**
-   * Convert SubAgentMcpServerConfig[] to legacy AgentMcpServer[]
-   * Used for backward compatibility (mcp_servers field)
-   */
-  private mcpServersToLegacy(servers: SubAgentMcpServerConfig[]): AgentMcpServer[] {
-    return servers.map(s => {
-      if (typeof s === 'string') {
-        return { name: s, tools: [] };
-      }
-      return s;
-    });
-  }
-
-  /**
-   * Convert legacy AgentMcpServer[] to SubAgentMcpServerConfig[]
-   */
-  private legacyToMcpServers(servers?: AgentMcpServer[]): SubAgentMcpServerConfig[] {
-    if (!servers) return [];
-    return servers.map(s => ({
-      name: s.name,
-      tools: s.tools || [],
-    }));
   }
 }

@@ -31,7 +31,7 @@ vi.mock('../../ui/ToastProvider', () => ({
 
 vi.mock('../../userData/userDataProvider', () => ({
   useAgentConfig: () => ({
-    agent: { knowledgeBase: '/workspace/knowledge' },
+    agent: { knowledge: { knowledgeBase: '/workspace/knowledge' } },
   }),
 }));
 

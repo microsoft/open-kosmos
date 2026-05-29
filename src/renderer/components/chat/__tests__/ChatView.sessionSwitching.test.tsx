@@ -121,6 +121,7 @@ vi.mock('../../auth/AuthProvider', async () => ({
   }),
 }));
 
+
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', async () => ({
   useCurrentChatId: () => 'chat-1',
   useCurrentChatSessionId: () => mockUseCurrentChatSessionId(),
@@ -154,10 +155,6 @@ vi.mock('../../../lib/userData', async () => ({
 vi.mock('../../../lib/workspace/workspaceSearchService', async () => ({
   quickSearchFiles: vi.fn(),
   searchWorkspaceFiles: vi.fn(),
-}));
-
-vi.mock('../../../lib/chat/pmAgentSayHi', async () => ({
-  getPmAgentSayHiMessageConfig: vi.fn(() => null),
 }));
 
 vi.mock('../../../lib/chat/startNewChatFor', async () => ({

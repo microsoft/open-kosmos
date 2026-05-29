@@ -97,7 +97,7 @@ ToolbarSettingsContentView.tsx
 import React, { useState, useEffect } from 'react'
 import XxxSettingsHeaderView from './XxxSettingsHeaderView'
 import XxxSettingsContentView from './XxxSettingsContentView'
-import '../../styles/SettingsComponents.css'
+import '../../styles/ToolbarSettingsView.css'
 
 interface XxxSettings {
   enabled: boolean
@@ -237,7 +237,7 @@ export default XxxSettingsHeaderView
 ### 5.2 Card Conventions
 
 ```css
-/* Defined in: SettingsComponents.css */
+/* Defined in: ToolbarSettingsView.css */
 .toolbar-settings-card {
   background-color: white;
   border-radius: 0.75rem;    /* 12px */
@@ -289,7 +289,7 @@ When a Card has a title row, use `borderBottom` to visually separate it from con
 
 ```tsx
 import '../../styles/ContentView.css'          // Required: outer container base styles
-import '../../styles/SettingsComponents.css'   // Required: Card / Item / Toggle common styles
+import '../../styles/ToolbarSettingsView.css'   // Required: Card / Item / Toggle common styles
 import '../../styles/RuntimeSettings.css'       // Optional: Radio rows, status dots, selects, etc.
 ```
 
@@ -302,10 +302,10 @@ import '../../styles/Header.css'               // Required
 **View (container layer)** import:
 
 ```tsx
-import '../../styles/SettingsComponents.css'  // Required (contains .runtime-settings-view root)
+import '../../styles/ToolbarSettingsView.css'  // Required (contains .runtime-settings-view root)
 ```
 
-> **Do not** create a page-specific CSS file unless you need styles unique to that page (e.g. `AboutAppView.css`). Prefer extending `SettingsComponents.css` or `RuntimeSettings.css` to keep styles centralized.
+> **Do not** create a page-specific CSS file unless you need styles unique to that page (e.g. `AboutAppView.css`). Prefer extending `ToolbarSettingsView.css` or `RuntimeSettings.css` to keep styles centralized.
 
 ---
 
@@ -447,7 +447,7 @@ import ShortcutRecorder from '../ui/ShortcutRecorder'
 <p className="setting-description">A short description of this setting.</p>
 ```
 
-`.setting-description` spec (defined in `SettingsComponents.css`): `font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 2px`
+`.setting-description` spec (defined in `ToolbarSettingsView.css`): `font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 2px`
 
 ---
 
@@ -572,7 +572,7 @@ Pages that are fully shipped to all users do not need a feature flag.
   - [ ] Define a 24×24 Fluent SVG icon
 
 - [ ] Create `XxxSettingsContentView.tsx`
-  - [ ] Import `ContentView.css` + `SettingsComponents.css` (and optionally `RuntimeSettings.css`)
+  - [ ] Import `ContentView.css` + `ToolbarSettingsView.css` (and optionally `RuntimeSettings.css`)
   - [ ] Root structure: `content-view-container > toolbar-settings-content > toolbar-settings-form > toolbar-settings-form-inner`
   - [ ] Wrap feature groups in `.toolbar-settings-card`
   - [ ] Use `.toolbar-setting-item` for each setting row
@@ -580,7 +580,7 @@ Pages that are fully shipped to all users do not need a feature flag.
   - [ ] **No direct IPC calls** — all data via props
 
 - [ ] Create `XxxSettingsView.tsx` (container layer)
-  - [ ] Import `SettingsComponents.css`
+  - [ ] Import `ToolbarSettingsView.css`
   - [ ] Root element uses `runtime-settings-view`
   - [ ] Load initial data in `useEffect`
   - [ ] Define all event callbacks and pass to ContentView
@@ -603,9 +603,7 @@ Pages that are fully shipped to all users do not need a feature flag.
 |------|------|--------------|
 | About | `/settings/about` | — |
 | Screenshot | `/settings/screenshot` | `openkosmosFeatureScreenshot` |
-| Toolbar | `/settings/toolbar` | `openkosmosFeatureToolbarSettings` |
 | Runtime | `/settings/runtime` | — |
-| Voice Input | `/settings/voice-input` | `openkosmosFeatureVoiceInput` |
 | Chrome Extension | `/settings/chrome-extension` | `browserControl` |
 
 ---

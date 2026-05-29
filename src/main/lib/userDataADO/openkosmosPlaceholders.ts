@@ -3,12 +3,12 @@
  *
  * Manages preset, value computation, and replacement of OpenKosmos variable placeholders.
  *
- * Placeholder format: @OPENKOSMOS_[NAME]
- * - Starts with @OPENKOSMOS_
+ * Placeholder format: @OpenKosmos_[NAME]
+ * - Starts with @OpenKosmos_
  * - Composed of uppercase English letters, underscores, and digits
  *
  * Example:
- * @OPENKOSMOS_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
+ * @OpenKosmos_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
  */
 
 import * as path from 'path';
@@ -22,7 +22,7 @@ const logger = createLogger();
  */
 export enum OpenKosmosPlaceholder {
   /** Path to the profile's chat_workspaces folder */
-  PROFILE_WORKSPACES_FOLDER = '@OPENKOSMOS_PROFILE_WORKSPACES_FOLDER',
+  PROFILE_WORKSPACES_FOLDER = '@OpenKosmos_PROFILE_WORKSPACES_FOLDER',
 }
 
 /**
@@ -44,16 +44,16 @@ const PLACEHOLDER_METADATA: Record<string, { type: PlaceholderType }> = {
 
 /**
  * OpenKosmos placeholder regular expression
- * Match format: @OPENKOSMOS_[A-Z0-9_]+
+ * Match format: @OpenKosmos_[A-Z0-9_]+
  */
-export const OPENKOSMOS_PLACEHOLDER_REGEX = /@OPENKOSMOS_[A-Z0-9_]+/g;
+export const OpenKosmos_PLACEHOLDER_REGEX = /@OpenKosmos_[A-Z0-9_]+/g;
 
 /**
  * Check whether a string contains OpenKosmos placeholders
  */
 export function containsOpenKosmosPlaceholder(value: string): boolean {
   if (typeof value !== 'string') return false;
-  return OPENKOSMOS_PLACEHOLDER_REGEX.test(value);
+  return OpenKosmos_PLACEHOLDER_REGEX.test(value);
 }
 
 /**
@@ -62,8 +62,8 @@ export function containsOpenKosmosPlaceholder(value: string): boolean {
 export function extractOpenKosmosPlaceholders(value: string): string[] {
   if (typeof value !== 'string') return [];
   // Reset the regular expression's lastIndex
-  OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
-  const matches = value.match(OPENKOSMOS_PLACEHOLDER_REGEX);
+  OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
+  const matches = value.match(OpenKosmos_PLACEHOLDER_REGEX);
   return matches ? [...new Set(matches)] : [];
 }
 
@@ -85,7 +85,7 @@ export class OpenKosmosPlaceholderManager {
 
   /**
    * Get the actual value for a placeholder
-   * @param placeholder Placeholder name, e.g., @OPENKOSMOS_PROFILE_WORKSPACES_FOLDER
+   * @param placeholder Placeholder name, e.g., @OpenKosmos_PROFILE_WORKSPACES_FOLDER
    * @param context Context information, including required parameters such as alias
    */
   getPlaceholderValue(placeholder: string, context: { alias: string }): string | null {
@@ -157,8 +157,8 @@ export class OpenKosmosPlaceholderManager {
    * Check whether the string contains path-type placeholders
    */
   private containsPathPlaceholder(value: string): boolean {
-    OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
-    const matches = value.match(OPENKOSMOS_PLACEHOLDER_REGEX);
+    OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
+    const matches = value.match(OpenKosmos_PLACEHOLDER_REGEX);
     if (!matches) return false;
 
     return matches.some(placeholder => {
@@ -180,9 +180,9 @@ export class OpenKosmosPlaceholderManager {
     const hasPathPlaceholder = this.containsPathPlaceholder(value);
 
     // Reset the regular expression's lastIndex
-    OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+    OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
 
-    let result = value.replace(OPENKOSMOS_PLACEHOLDER_REGEX, (match) => {
+    let result = value.replace(OpenKosmos_PLACEHOLDER_REGEX, (match) => {
       const replacement = this.getPlaceholderValue(match, context);
       if (replacement !== null) {
         return replacement;
@@ -193,7 +193,7 @@ export class OpenKosmosPlaceholderManager {
     });
 
     // If the string contains path-type placeholders, format the entire result string for the current platform path.
-    // This handles cases like "@OPENKOSMOS_PROFILE_WORKSPACES_FOLDER/pm-agent"
+    // This handles cases like "@OpenKosmos_PROFILE_WORKSPACES_FOLDER/workspace"
     if (hasPathPlaceholder) {
       result = this.formatPathForPlatform(result);
     }
