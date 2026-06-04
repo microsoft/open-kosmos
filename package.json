@@ -182,7 +182,7 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-refresh": "^0.18.0",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "^6.30.4",
     "react-syntax-highlighter": "^16.1.0",
     "react-window": "^1.8.11",
     "rehype-raw": "^7.0.0",
