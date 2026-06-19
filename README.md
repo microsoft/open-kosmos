@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/microsoft-open-kosmos-badge.png)](https://mseep.ai/app/microsoft-open-kosmos)
+
 # OpenKosmos
 
 **OpenKosmos** is a local-first AI Agent Studio that empowers you to create, configure, and run personalized AI agents tailored to your own workflows — with a low-code approach that puts productivity first.
