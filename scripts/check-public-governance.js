@@ -114,14 +114,40 @@ for (const lockfile of findNamedFiles('.', 'package-lock.json')) {
   }
 }
 
+const approvedReadmeTeam = [
+  '## Team',
+  '',
+  '### Core Team',
+  '',
+  '| Name | Email |',
+  '|------|-------|',
+  '| Yang Huangfu | yanhu@microsoft.com |',
+  '| Dale Xiao | dingxiao@microsoft.com |',
+  '| Menghui Hu | menghuihu@microsoft.com |',
+  '',
+  '### Contributors',
+  '',
+  '| Name | Email |',
+  '|------|-------|',
+  '| Jiashuang Shang | jshang@microsoft.com |',
+  '| Jianli Wei | jianliwei@microsoft.com |',
+  '| Yun Ni | v-yunn@microsoft.com |',
+  '| Luna Chen | yueyingchen@microsoft.com |',
+  '| Jiajun Yan | jiajunyan@microsoft.com |',
+  '| Jiaming Mao | jiamingmao@microsoft.com |',
+  '| Juntong Liu | juntongliu@microsoft.com |',
+].join('\n')
 const approvedReadmeContact = [
   'For questions, issues, or development access requests, please contact:',
   '- **Email**: yanhu@microsoft.com',
   '- **Support**: See [SUPPORT.md](./SUPPORT.md)',
 ].join('\n')
 const readme = read('README.md')
-if (!readme.includes(approvedReadmeContact)) {
-  failures.push('The approved README contact/team attribution changed or was removed')
+const approvedReadmeAttributions = [approvedReadmeTeam, approvedReadmeContact]
+for (const attribution of approvedReadmeAttributions) {
+  if (!readme.includes(attribution)) {
+    failures.push('An approved README team or contact attribution changed or was removed')
+  }
 }
 
 const scanExclusions = JSON.parse(read('scripts/public-governance-exclusions.json'))
@@ -204,7 +230,9 @@ for (const file of allFiles) {
   let content = textContent(file)
   if (content === null) continue
   if (file === 'README.md') {
-    content = content.replace(approvedReadmeContact, '')
+    for (const attribution of approvedReadmeAttributions) {
+      content = content.replace(attribution, '')
+    }
   }
   for (const pattern of forbiddenText) {
     if (pattern.test(content)) {
