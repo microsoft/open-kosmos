@@ -4,8 +4,9 @@
     "package-lock.json",
     "packages/openclaw-openkosmos-channel/package-lock.json"
   ],
-  "packageCount": 1850,
-  "unknownLicenseCount": 4,
+  "packageCount": 1848,
+  "unknownLicenseCount": 0,
   "manifestOnlyDependencyCount": 1,
+  "unknownManifestLicenseCount": 0,
   "inventoryFile": "docs/third-party-license-inventory.csv"
 }

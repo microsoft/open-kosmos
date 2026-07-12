@@ -573,8 +573,7 @@ lockfile,@webassemblyjs/wast-printer,1.14.1,MIT,development,package-lock.json
 lockfile,@webpack-cli/configtest,2.1.1,MIT,development,package-lock.json
 lockfile,@webpack-cli/info,2.0.2,MIT,development,package-lock.json
 lockfile,@webpack-cli/serve,2.0.5,MIT,development,package-lock.json
-lockfile,@xmldom/xmldom,0.8.10,MIT,runtime,package-lock.json
-lockfile,@xmldom/xmldom,0.8.11,MIT,runtime,package-lock.json
+lockfile,@xmldom/xmldom,0.8.13,MIT,runtime,package-lock.json
 lockfile,@xtuc/ieee754,1.2.0,BSD-3-Clause,development,package-lock.json
 lockfile,@xtuc/long,4.2.2,Apache-2.0,development,package-lock.json
 lockfile,@zeit/schemas,2.36.0,MIT,development,package-lock.json
@@ -590,9 +589,9 @@ lockfile,acorn-walk,8.3.4,MIT,development,package-lock.json
 lockfile,agent-base,7.1.4,MIT,runtime,package-lock.json
 lockfile,agentkeepalive,4.6.0,MIT,runtime,package-lock.json
 lockfile,ai,5.0.121,Apache-2.0,development,package-lock.json
-lockfile,ajv,6.12.6,MIT,development,package-lock.json
+lockfile,ajv,6.15.0,MIT,development,package-lock.json
 lockfile,ajv,8.12.0,MIT,development,package-lock.json
-lockfile,ajv,8.17.1,MIT,runtime,package-lock.json
+lockfile,ajv,8.20.0,MIT,runtime,package-lock.json
 lockfile,ajv-formats,2.1.1,MIT,development,package-lock.json
 lockfile,ajv-formats,3.0.1,MIT,runtime,package-lock.json
 lockfile,ajv-keywords,3.5.2,MIT,development,package-lock.json
@@ -732,7 +731,7 @@ lockfile,clone,1.0.4,MIT,development,package-lock.json
 lockfile,clone-deep,4.0.1,MIT,development,package-lock.json
 lockfile,clone-response,1.0.3,MIT,development,package-lock.json
 lockfile,clsx,2.1.1,MIT,development,package-lock.json
-lockfile,cohere-ai,7.20.0,UNKNOWN,development,package-lock.json
+lockfile,cohere-ai,7.20.0,MIT,development,package-lock.json
 lockfile,color-convert,2.0.1,MIT,development,package-lock.json
 lockfile,color-name,1.1.4,MIT,development,package-lock.json
 lockfile,colorette,2.0.20,MIT,development,package-lock.json
@@ -952,7 +951,7 @@ lockfile,eventsource-parser,3.0.6,MIT,runtime,package-lock.json
 lockfile,evp_bytestokey,1.0.3,MIT,development,package-lock.json
 lockfile,execa,1.0.0,MIT,optional,package-lock.json
 lockfile,execa,5.1.1,MIT,development,package-lock.json
-lockfile,exif-parser,0.1.12,UNKNOWN,runtime,package-lock.json
+lockfile,exif-parser,0.1.12,MIT,runtime,package-lock.json
 lockfile,expand-template,2.0.3,(MIT OR WTFPL),runtime,package-lock.json
 lockfile,expect-type,1.3.0,Apache-2.0,development,package-lock.json
 lockfile,expect-type,1.4.0,Apache-2.0,development,packages/openclaw-openkosmos-channel/package-lock.json
@@ -990,10 +989,10 @@ lockfile,flatted,3.4.2,ISC,development,package-lock.json
 lockfile,follow-redirects,1.16.0,MIT,development,package-lock.json
 lockfile,for-each,0.3.5,MIT,development,package-lock.json
 lockfile,foreground-child,3.3.1,ISC,development,package-lock.json
-lockfile,form-data,4.0.5,MIT,runtime,package-lock.json
+lockfile,form-data,4.0.6,MIT,runtime,package-lock.json
 lockfile,form-data-encoder,1.7.2,MIT,runtime,package-lock.json
 lockfile,form-data-encoder,4.1.0,MIT,development,package-lock.json
-lockfile,format,0.2.2,UNKNOWN,development,package-lock.json
+lockfile,format,0.2.2,MIT,development,package-lock.json
 lockfile,formdata-node,4.4.1,MIT,runtime,package-lock.json
 lockfile,formdata-node,6.0.3,MIT,development,package-lock.json
 lockfile,forwarded,0.2.0,MIT,runtime,package-lock.json
@@ -1048,7 +1047,7 @@ lockfile,has-tostringtag,1.0.2,MIT,runtime,package-lock.json
 lockfile,hash-base,3.0.5,MIT,development,package-lock.json
 lockfile,hash-base,3.1.2,MIT,development,package-lock.json
 lockfile,hash.js,1.1.7,MIT,development,package-lock.json
-lockfile,hasown,2.0.2,MIT,runtime,package-lock.json
+lockfile,hasown,2.0.4,MIT,runtime,package-lock.json
 lockfile,hast-util-from-parse5,8.0.3,MIT,development,package-lock.json
 lockfile,hast-util-parse-selector,4.0.0,MIT,development,package-lock.json
 lockfile,hast-util-raw,9.1.0,MIT,development,package-lock.json
@@ -1062,7 +1061,7 @@ lockfile,hermes-parser,0.25.1,MIT,development,package-lock.json
 lockfile,highlight.js,10.7.3,BSD-3-Clause,development,package-lock.json
 lockfile,highlightjs-vue,1.0.0,CC0-1.0,development,package-lock.json
 lockfile,hmac-drbg,1.0.1,MIT,development,package-lock.json
-lockfile,hono,4.12.18,MIT,runtime,package-lock.json
+lockfile,hono,4.12.29,MIT,runtime,package-lock.json
 lockfile,hosted-git-info,4.1.0,ISC,development,package-lock.json
 lockfile,hpack.js,2.1.6,MIT,development,package-lock.json
 lockfile,html-encoding-sniffer,6.0.0,MIT,development,package-lock.json
@@ -1207,7 +1206,7 @@ lockfile,jsx-ast-utils,3.3.5,MIT,development,package-lock.json
 lockfile,jszip,3.10.1,(MIT OR GPL-3.0-or-later),runtime,package-lock.json
 lockfile,katex,0.16.28,MIT,development,package-lock.json
 lockfile,keyv,4.5.4,MIT,development,package-lock.json
-lockfile,khroma,2.1.0,UNKNOWN,development,package-lock.json
+lockfile,khroma,2.1.0,MIT,development,package-lock.json
 lockfile,kind-of,6.0.3,MIT,development,package-lock.json
 lockfile,launch-editor,2.14.1,MIT,development,package-lock.json
 lockfile,layout-base,1.0.2,MIT,development,package-lock.json
@@ -1462,7 +1461,7 @@ lockfile,path-to-regexp,8.4.1,MIT,runtime,package-lock.json
 lockfile,path-type,4.0.0,MIT,development,package-lock.json
 lockfile,pathe,2.0.3,MIT,development,package-lock.json;packages/openclaw-openkosmos-channel/package-lock.json
 lockfile,pbkdf2,3.1.5,MIT,development,package-lock.json
-lockfile,pdf2json,3.1.4,Apache-2.0,runtime,package-lock.json
+lockfile,pdf2json,4.0.3,Apache-2.0,runtime,package-lock.json
 lockfile,pdfreader,3.0.8,MIT,runtime,package-lock.json
 lockfile,pe-library,0.4.1,MIT,development,package-lock.json
 lockfile,pend,1.2.0,MIT,runtime,package-lock.json
@@ -1518,7 +1517,7 @@ lockfile,pump,3.0.3,MIT,runtime,package-lock.json
 lockfile,punycode,2.3.1,MIT,development,package-lock.json
 lockfile,pvtsutils,1.3.6,MIT,development,package-lock.json
 lockfile,pvutils,1.1.5,MIT,development,package-lock.json
-lockfile,qs,6.14.1,BSD-3-Clause,runtime,package-lock.json
+lockfile,qs,6.15.3,BSD-3-Clause,runtime,package-lock.json
 lockfile,quick-lru,5.1.1,MIT,development,package-lock.json
 lockfile,randombytes,2.1.0,MIT,development,package-lock.json
 lockfile,randomfill,1.0.4,MIT,development,package-lock.json
@@ -1627,8 +1626,8 @@ lockfile,shebang-regex,1.0.0,MIT,optional,package-lock.json
 lockfile,shebang-regex,3.0.0,MIT,runtime,package-lock.json
 lockfile,shell-quote,1.8.3,MIT,development,package-lock.json
 lockfile,shell-quote,1.8.4,MIT,development,package-lock.json
-lockfile,side-channel,1.1.0,MIT,runtime,package-lock.json
-lockfile,side-channel-list,1.0.0,MIT,runtime,package-lock.json
+lockfile,side-channel,1.1.1,MIT,runtime,package-lock.json
+lockfile,side-channel-list,1.0.1,MIT,runtime,package-lock.json
 lockfile,side-channel-map,1.0.1,MIT,runtime,package-lock.json
 lockfile,side-channel-weakmap,1.0.2,MIT,runtime,package-lock.json
 lockfile,siginfo,2.0.0,ISC,development,package-lock.json;packages/openclaw-openkosmos-channel/package-lock.json
@@ -1824,8 +1823,7 @@ lockfile,word-wrap,1.2.5,MIT,development,package-lock.json
 lockfile,wrap-ansi,7.0.0,MIT,development,package-lock.json
 lockfile,wrap-ansi,8.1.0,MIT,development,package-lock.json
 lockfile,wrappy,1.0.2,ISC,runtime,package-lock.json
-lockfile,ws,8.19.0,MIT,runtime,package-lock.json
-lockfile,ws,8.21.0,MIT,runtime,packages/openclaw-openkosmos-channel/package-lock.json
+lockfile,ws,8.21.0,MIT,runtime,package-lock.json;packages/openclaw-openkosmos-channel/package-lock.json
 lockfile,wsl-utils,0.1.0,MIT,development,package-lock.json
 lockfile,xml-name-validator,5.0.0,Apache-2.0,development,package-lock.json
 lockfile,xml-naming,0.1.0,MIT,development,package-lock.json
@@ -1849,4 +1847,4 @@ lockfile,zod,3.25.76,MIT,runtime,package-lock.json
 lockfile,zod-to-json-schema,3.25.1,ISC,runtime,package-lock.json
 lockfile,zod-validation-error,4.0.2,MIT,development,package-lock.json
 lockfile,zwitch,2.0.4,MIT,development,package-lock.json
-manifest-only,openclaw,>=0.1.0,UNKNOWN,peer,packages/openclaw-openkosmos-channel/package.json
+manifest-only,openclaw,>=0.1.0,HOST-PROVIDED,peer,packages/openclaw-openkosmos-channel/package.json

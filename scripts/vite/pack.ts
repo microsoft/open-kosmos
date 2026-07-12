@@ -11,8 +11,9 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(import.meta.dir, '../..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const VITE_PACK = path.join(ROOT, 'vite-pack');
 const DIST_VITE = path.join(ROOT, 'dist-vite');
 
@@ -49,8 +50,10 @@ export function buildVitePackPackageJson(
     version: string;
     description?: string;
     author?: string;
+    license?: string;
     dependencies?: Record<string, string>;
     optionalDependencies?: Record<string, string>;
+    overrides?: Record<string, unknown>;
   },
 ): Record<string, unknown> {
   return {
@@ -58,10 +61,14 @@ export function buildVitePackPackageJson(
     version: rootPkg.version,
     description: rootPkg.description,
     author: rootPkg.author,
+    license: rootPkg.license,
     main: 'dist/main/main.js',
     dependencies: rootPkg.dependencies ?? {},
     ...(rootPkg.optionalDependencies && Object.keys(rootPkg.optionalDependencies).length > 0
       ? { optionalDependencies: rootPkg.optionalDependencies }
+      : {}),
+    ...(rootPkg.overrides && Object.keys(rootPkg.overrides).length > 0
+      ? { overrides: rootPkg.overrides }
       : {}),
   };
 }
@@ -139,7 +146,9 @@ async function main() {
   console.log('\n=== Done ===\n');
 }
 
-main().catch(err => {
-  console.error('\n❌ Pack failed:', err.message);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch(err => {
+    console.error('\n❌ Pack failed:', err.message);
+    process.exit(1);
+  });
+}

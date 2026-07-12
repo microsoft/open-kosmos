@@ -151,7 +151,6 @@ This approach allows:
 
 ## Related Files
 
-- `.github/workflows/release.yml` — CI/CD pipeline configuration
 - `package.json` — electron-builder configuration
 - `build/entitlements.mac.plist` — Application entitlements configuration
 - `scripts/notarize.js` — Custom notarization script
