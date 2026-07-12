@@ -37,9 +37,17 @@ vi.mock('../../unifiedLogger', async () => ({
 }));
 
 const mockExecuteTool = vi.fn();
+const mockIsBuiltinTool = vi.fn();
 vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set([
+    'sub_agent',
+    'computer_use',
+    'send_to_subagent',
+  ]),
   mcpClientManager: {
     executeTool: (...args: any[]) => mockExecuteTool(...args),
+    isBuiltinTool: (...args: any[]) => mockIsBuiltinTool(...args),
   },
 }));
 
@@ -56,6 +64,7 @@ vi.mock('../../mcpRuntime/builtinTools/builtinToolsManager', async () => ({
 
 import { SubAgentToolExecutor } from '../subAgentToolExecutor';
 import type { CancellationToken } from '../../cancellation/CancellationToken';
+import { SELF_MANAGED_IDLE_TOOLS, TOOL_IDLE_TIMEOUT_MS } from '../../mcpRuntime/toolTimeoutPolicy';
 
 // ─── Helpers ───
 
@@ -63,6 +72,21 @@ function makeCancellationToken(cancelled = false): CancellationToken {
   return {
     isCancellationRequested: cancelled,
     onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+  };
+}
+
+function makeControllableCancellationToken(): CancellationToken & { cancel(): void } {
+  let handler: (() => void) | undefined;
+  return {
+    isCancellationRequested: false,
+    onCancellationRequested: vi.fn((cb: () => void) => {
+      handler = cb;
+      return { dispose: vi.fn(() => { handler = undefined; }) };
+    }),
+    cancel() {
+      this.isCancellationRequested = true;
+      handler?.();
+    },
   };
 }
 
@@ -108,6 +132,7 @@ describe('SubAgentToolExecutor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExecuteTool.mockResolvedValue('tool result');
+    mockIsBuiltinTool.mockReturnValue(true);
   });
 
   // ── setExecutionContext ──
@@ -133,19 +158,10 @@ describe('SubAgentToolExecutor', () => {
       expect(mockClearExecutionContext).toHaveBeenCalledOnce();
     });
 
-    it('getSubAgentConfig returns undefined', async () => {
-      const opts = makeOptions();
-      const executor = makeExecutor(opts);
-      await executor.executeToolCalls([], 0);
-
-      const ctx = mockSetExecutionContext.mock.calls[0][0];
-      expect(ctx.getSubAgentConfig('any')).toBeUndefined();
-    });
-
     it('getParentContextSummary resolves to empty string', async () => {
       const opts = makeOptions();
       const executor = makeExecutor(opts);
-      await executor.executeToolCalls([], 0);
+      await executor.executeToolCalls([makeToolCall('web_search', { query: 'test' })], 0);
 
       const ctx = mockSetExecutionContext.mock.calls[0][0];
       await expect(ctx.getParentContextSummary()).resolves.toBe('');
@@ -188,6 +204,181 @@ describe('SubAgentToolExecutor', () => {
       const content = results[0].content?.[0]?.text ?? results[0].content;
       expect(typeof content === 'string' ? content : JSON.stringify(content)).toContain('cancelled');
       expect(mockExecuteTool).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Sub-agent builtin idle watchdog ──
+  describe('executeToolCalls — builtin no-response watchdog', () => {
+    it('aborts silent builtin tools after the shared idle budget', async () => {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let observedSignal: AbortSignal | undefined;
+      let lateReject!: (reason: unknown) => void;
+      mockExecuteTool.mockImplementation(({ signal }) => {
+        observedSignal = signal;
+        return new Promise((_resolve, reject) => { lateReject = reject; });
+      });
+
+      const executor = makeExecutor();
+      vi.useFakeTimers();
+      try {
+        const resultsPromise = executor.executeToolCalls(
+          [makeToolCall('execute_command', { command: 'sleep 600' })],
+          0,
+        );
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+        const results = await resultsPromise;
+
+        expect(observedSignal?.aborted).toBe(true);
+        const content = results[0].content?.[0]?.text ?? results[0].content;
+        expect(typeof content === 'string' ? content : '').toContain('produced no response');
+        lateReject(new Error('late tool rejection'));
+        await Promise.resolve();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('resets the sub-agent builtin idle budget when the tool reports activity', async () => {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let resolveTool!: (value: string) => void;
+      mockExecuteTool.mockImplementation(() => new Promise<string>((resolve) => {
+        resolveTool = resolve;
+      }));
+
+      const executor = makeExecutor();
+      vi.useFakeTimers();
+      try {
+        const resultsPromise = executor.executeToolCalls(
+          [makeToolCall('execute_command', { command: 'long-running-with-output' })],
+          0,
+        );
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+        const ctx = mockSetExecutionContext.mock.calls[0][0];
+        ctx.reportActivity();
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+        resolveTool('done');
+
+        const results = await resultsPromise;
+        const content = results[0].content?.[0]?.text ?? results[0].content;
+        expect(typeof content === 'string' ? content : '').toContain('done');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not double-watch self-managed builtin tools', async () => {
+      expect(SELF_MANAGED_IDLE_TOOLS.has('coding_agent')).toBe(true);
+      mockIsBuiltinTool.mockReturnValue(true);
+      let resolveTool!: (value: string) => void;
+      mockExecuteTool.mockImplementation(() => new Promise<string>((resolve) => {
+        resolveTool = resolve;
+      }));
+
+      const executor = makeExecutor();
+      vi.useFakeTimers();
+      try {
+        const resultsPromise = executor.executeToolCalls(
+          [makeToolCall('coding_agent', { task: 'work', cwd: '/tmp' })],
+          0,
+        );
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+        resolveTool('self-managed result');
+
+        const results = await resultsPromise;
+        const content = results[0].content?.[0]?.text ?? results[0].content;
+        expect(typeof content === 'string' ? content : '').toContain('self-managed result');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('uses sub-agent scoped routing when deciding whether to arm the builtin watchdog', async () => {
+      mockIsBuiltinTool.mockImplementation((_toolName, agentServers) => !agentServers?.includes('agent-server'));
+      let resolveTool!: (value: string) => void;
+      let observedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }) => {
+        observedSignal = signal;
+        return new Promise<string>((resolve) => { resolveTool = resolve; });
+      });
+      const opts = makeOptions({
+        subAgent: {
+          ...makeOptions().subAgent,
+          resolvedMcpServers: [{ name: 'agent-server', tools: ['shared_tool'] }],
+        },
+      });
+
+      const executor = makeExecutor(opts);
+      vi.useFakeTimers();
+      try {
+        const resultsPromise = executor.executeToolCalls(
+          [makeToolCall('shared_tool', { query: 'active external tool' })],
+          0,
+        );
+
+        expect(mockIsBuiltinTool).toHaveBeenCalledWith('shared_tool', ['agent-server'], true);
+        const ctx = mockSetExecutionContext.mock.calls[0][0];
+        expect(ctx.reportActivity).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+        expect(observedSignal?.aborted).toBe(false);
+
+        resolveTool('external result');
+        const results = await resultsPromise;
+        const content = results[0].content?.[0]?.text ?? results[0].content;
+        expect(typeof content === 'string' ? content : '').toContain('external result');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('runs registered cancellation handlers when the parent cancellation token fires', async () => {
+      mockIsBuiltinTool.mockReturnValue(true);
+      const cancellationToken = makeControllableCancellationToken();
+      const handler = vi.fn();
+      let observedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }) => {
+        observedSignal = signal;
+        const ctx = mockSetExecutionContext.mock.calls[0][0];
+        ctx.registerCancellationHandler(handler);
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted by token')), { once: true });
+        });
+      });
+
+      const executor = makeExecutor(makeOptions({ cancellationToken }));
+      const resultsPromise = executor.executeToolCalls(
+        [makeToolCall('execute_command', { command: 'sleep 600' })],
+        0,
+      );
+      cancellationToken.cancel();
+      const results = await resultsPromise;
+
+      expect(observedSignal?.aborted).toBe(true);
+      expect(handler).toHaveBeenCalledOnce();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain('aborted by token');
+    });
+
+    it('does not run disposed cancellation handlers', async () => {
+      mockIsBuiltinTool.mockReturnValue(true);
+      const cancellationToken = makeControllableCancellationToken();
+      const handler = vi.fn();
+      mockExecuteTool.mockImplementation(async () => {
+        const ctx = mockSetExecutionContext.mock.calls[0][0];
+        const registration = ctx.registerCancellationHandler(handler);
+        registration.dispose();
+        cancellationToken.cancel();
+        return 'completed after disposed handler';
+      });
+
+      const executor = makeExecutor(makeOptions({ cancellationToken }));
+      const results = await executor.executeToolCalls(
+        [makeToolCall('execute_command', { command: 'echo ok' })],
+        0,
+      );
+
+      expect(handler).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain('completed after disposed handler');
     });
   });
 
@@ -275,6 +466,16 @@ describe('SubAgentToolExecutor', () => {
       const content = results[0].content?.[0]?.text ?? results[0].content;
       expect(typeof content === 'string' ? content : '').toContain('tool_exploded');
     });
+
+    it('stringifies non-Error tool failures', async () => {
+      const executor = makeExecutor();
+      mockExecuteTool.mockRejectedValueOnce('plain failure');
+
+      const results = await executor.executeToolCalls([makeToolCall('bad_tool', {})], 0);
+
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain('plain failure');
+    });
   });
 
   // ── MCP server name resolution ──
@@ -297,17 +498,138 @@ describe('SubAgentToolExecutor', () => {
       await executor.executeToolCalls([makeToolCall('tool1', {})], 0);
 
       expect(mockExecuteTool).toHaveBeenCalledWith(
-        expect.objectContaining({ agentMcpServerNames: ['server-a'] }),
+        expect.objectContaining({
+          agentMcpServerNames: ['server-a'],
+          strictAgentMcpServerNames: true,
+        }),
       );
     });
 
-    it('uses empty agentMcpServerNames when both are empty', async () => {
+    it('falls back to config.mcp_servers when resolvedMcpServers is empty', async () => {
+      const opts = makeOptions({
+        subAgent: {
+          inheritedModel: 'gpt-4o',
+          parentSessionId: 'session-1',
+          parentChatId: 'chat-1',
+          userAlias: 'testUser',
+          resolvedMcpServers: [],
+          config: { mcp_servers: [{ name: 'fallback-server', tools: ['some_tool'] }] },
+          taskId: 'sa-1',
+        },
+      });
+      const executor = makeExecutor(opts);
+      await executor.executeToolCalls([makeToolCall('some_tool', {})], 0);
+
+      expect(mockExecuteTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentMcpServerNames: ['fallback-server'],
+          strictAgentMcpServerNames: true,
+        }),
+      );
+    });
+
+    it('rejects config MCP servers that do not explicitly list the called tool', async () => {
+      mockIsBuiltinTool.mockReturnValue(false);
+      const opts = makeOptions({
+        subAgent: {
+          inheritedModel: 'gpt-4o',
+          parentSessionId: 'session-1',
+          parentChatId: 'chat-1',
+          userAlias: 'testUser',
+          resolvedMcpServers: [],
+          config: { mcp_servers: [{ name: 'fallback-server', tools: [] }] },
+          taskId: 'sa-1',
+        },
+      });
+      const executor = makeExecutor(opts);
+
+      const results = await executor.executeToolCalls([makeToolCall('some_tool', {})], 0);
+
+      expect(mockExecuteTool).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain(
+        "Tool 'some_tool' is not available to this sub-agent",
+      );
+    });
+
+    it('uses builtin-only routing when no external MCP servers are allowed', async () => {
       const opts = makeOptions();
       const executor = makeExecutor(opts);
       await executor.executeToolCalls([makeToolCall('some_tool', {})], 0);
 
       expect(mockExecuteTool).toHaveBeenCalledWith(
-        expect.objectContaining({ agentMcpServerNames: [] }),
+        expect.objectContaining({
+          agentMcpServerNames: ['builtin-tools'],
+          strictAgentMcpServerNames: true,
+        }),
+      );
+    });
+
+    it('rejects non-builtin tools when no external MCP servers are allowed', async () => {
+      mockIsBuiltinTool.mockReturnValue(false);
+      const opts = makeOptions();
+      const executor = makeExecutor(opts);
+
+      const results = await executor.executeToolCalls([makeToolCall('web_search', {})], 0);
+
+      expect(mockExecuteTool).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain(
+        "Tool 'web_search' is not available to this sub-agent",
+      );
+    });
+
+    it('rejects tool calls outside the explicit ad-hoc allowlist', async () => {
+      const opts = makeOptions({
+        allowedToolNames: new Set(['read_file']),
+      });
+      const executor = makeExecutor(opts);
+
+      const results = await executor.executeToolCalls([makeToolCall('write_file', {})], 0);
+
+      expect(mockExecuteTool).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain(
+        "Tool 'write_file' is not allowed for this sub-agent",
+      );
+    });
+
+    it('rejects blocked builtin tools even when the builtin server exposes them', async () => {
+      const opts = makeOptions();
+      const executor = makeExecutor(opts);
+
+      const results = await executor.executeToolCalls([makeToolCall('sub_agent', {})], 0);
+
+      expect(mockExecuteTool).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain(
+        "Tool 'sub_agent' is unavailable to sub-agents",
+      );
+    });
+
+    it('rejects blocked tools before matching external MCP server bindings', async () => {
+      const opts = makeOptions({
+        allowedToolNames: new Set(['computer_use']),
+        subAgent: {
+          inheritedModel: 'gpt-4o',
+          parentSessionId: 'session-1',
+          parentChatId: 'chat-1',
+          userAlias: 'testUser',
+          resolvedMcpServers: [
+            { name: 'external-server', connected: true, tools: ['computer_use'], inherited: true },
+          ],
+          config: { mcp_servers: [] },
+          taskId: 'sa-1',
+        },
+      });
+      const executor = makeExecutor(opts);
+
+      const results = await executor.executeToolCalls([makeToolCall('computer_use', {})], 0);
+
+      expect(mockExecuteTool).not.toHaveBeenCalled();
+      const content = results[0].content?.[0]?.text ?? results[0].content;
+      expect(typeof content === 'string' ? content : '').toContain(
+        "Tool 'computer_use' is unavailable to sub-agents",
       );
     });
   });
@@ -413,6 +735,13 @@ describe('SubAgentToolExecutor', () => {
       expect(deliverables).toContain('C:\\Users\\user\\Downloads\\report.pdf');
     });
 
+    it('tracks download_file with save_directory alias', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('download_file', { save_directory: '/downloads', filename: 'alias.csv' });
+      expect(deliverables).toContain('/downloads/alias.csv');
+    });
+
     it('skips download_file when directory or filename missing', () => {
       const deliverables: string[] = [];
       const executor = makeExecutor(undefined, deliverables);
@@ -454,6 +783,64 @@ describe('SubAgentToolExecutor', () => {
     it('handles exceptions without throwing', () => {
       const executor = makeExecutor();
       expect(() => executor.trackDeliverables('write_file', null as any)).not.toThrow();
+    });
+
+    it('excludes missingFiles from present_deliverables when toolResult has them', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/good.txt', '/out/missing.txt', '/out/also-good.txt'],
+      }, { missingFiles: ['/out/missing.txt'] });
+      expect(deliverables).toContain('/out/good.txt');
+      expect(deliverables).toContain('/out/also-good.txt');
+      expect(deliverables).not.toContain('/out/missing.txt');
+    });
+
+    it('excludes missingFiles when toolResult is a JSON string (runtime shape)', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/good.txt', '/out/missing.txt'],
+      }, JSON.stringify({ missingFiles: ['/out/missing.txt'] }));
+      expect(deliverables).toContain('/out/good.txt');
+      expect(deliverables).not.toContain('/out/missing.txt');
+    });
+
+    it('tracks all files when toolResult is an unparseable string', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/a.txt'],
+      }, 'not json');
+      expect(deliverables).toContain('/out/a.txt');
+    });
+
+    it('tracks all files when toolResult has no missingFiles', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/a.txt', '/out/b.txt'],
+      }, {});
+      expect(deliverables).toContain('/out/a.txt');
+      expect(deliverables).toContain('/out/b.txt');
+    });
+
+    it('tracks all files when toolResult is undefined', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/a.txt'],
+      });
+      expect(deliverables).toContain('/out/a.txt');
+    });
+
+    it('excludes all files when all are missing', () => {
+      const deliverables: string[] = [];
+      const executor = makeExecutor(undefined, deliverables);
+      executor.trackDeliverables('present_deliverables', {
+        filePaths: ['/out/a.txt', '/out/b.txt'],
+      }, { missingFiles: ['/out/a.txt', '/out/b.txt'] });
+      expect(deliverables).toHaveLength(0);
     });
   });
 
@@ -544,8 +931,8 @@ describe('SubAgentToolExecutor', () => {
       const executor = makeExecutor();
       const results = await executor.executeToolCalls([], 0);
       expect(results).toEqual([]);
-      expect(mockSetExecutionContext).toHaveBeenCalledOnce();
-      expect(mockClearExecutionContext).toHaveBeenCalledOnce();
+      expect(mockSetExecutionContext).not.toHaveBeenCalled();
+      expect(mockClearExecutionContext).not.toHaveBeenCalled();
     });
   });
 });

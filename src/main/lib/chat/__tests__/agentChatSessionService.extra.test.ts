@@ -62,12 +62,8 @@ function makeSimpleDeps(overrides: Partial<AgentChatSessionServiceDeps> = {}): {
     setSaveChain: (next) => { saveChain.value = next; },
     addMessageToChatHistory: vi.fn((msg) => { currentChatSession.chat_history.push(msg); }),
     addMessageToContext: vi.fn().mockResolvedValue(undefined),
-    shouldTrackChatSessionActivatedForUserMessage: () => false,
-    getChatSessionEntryTypeForUserMessage: () => 'continued',
-    trackChatSessionActivated: vi.fn(),
     exitNewChatSessionState: vi.fn(),
     calculateAndNotifyContext: vi.fn().mockResolvedValue(undefined),
-    startChat: vi.fn().mockResolvedValue(undefined),
     getDisplayMessages: () => [{ id: 'u1', role: 'user' } as any],
     getSkipPersistence: () => false,
     ...overrides,
@@ -125,7 +121,81 @@ describe('AgentChatSessionService.editUserMessage', () => {
     const updatedMsg = { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'updated' }] } as any;
     const result = await service.editUserMessage('u1', updatedMsg);
     expect(Array.isArray(result)).toBe(true);
-    expect(deps.startChat).toHaveBeenCalled();
+    expect(currentChatSession.chat_history[0].content[0].text).toBe('updated');
+    expect(deps.calculateAndNotifyContext).toHaveBeenCalled();
+  });
+
+  it('uses the updated timestamp when the original message has no timestamp', () => {
+    const userMsg = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'original' }] };
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [userMsg];
+    currentChatSession.context_history = [userMsg];
+    const service = new AgentChatSessionService(deps);
+
+    const edit = service.prepareEditedUserMessage(
+      'u1',
+      { id: 'u1', role: 'user', timestamp: 42, content: [{ type: 'text', text: 'updated' }] } as any,
+    );
+
+    expect(edit.normalizedMessage.timestamp).toBe(42);
+  });
+
+  it('uses Date.now when neither original nor updated message has a timestamp', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'));
+    const userMsg = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'original' }] };
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [userMsg];
+    currentChatSession.context_history = [userMsg];
+    const service = new AgentChatSessionService(deps);
+
+    const edit = service.prepareEditedUserMessage(
+      'u1',
+      { id: 'u1', role: 'user', content: [{ type: 'text', text: 'updated' }] } as any,
+    );
+
+    expect(edit.normalizedMessage.timestamp).toBe(Date.parse('2026-06-15T12:00:00.000Z'));
+    vi.useRealTimers();
+  });
+
+  it('uses the generic validation error when validation fails without a message', () => {
+    const { deps } = makeSimpleDeps();
+    const service = new AgentChatSessionService(deps);
+    vi.spyOn(service, 'validateUserMessageEditable').mockReturnValueOnce({
+      canEdit: false,
+      targetUserIndex: -1,
+      targetUserMessage: null,
+      targetContextUserIndex: -1,
+    });
+
+    expect(() => service.prepareEditedUserMessage(
+      'u1',
+      { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'updated' }] } as any,
+    )).toThrow('User message cannot be edited');
+  });
+
+  it('throws CancellationError when applying an edit with a cancelled token', async () => {
+    const { deps } = makeSimpleDeps();
+    const service = new AgentChatSessionService(deps);
+    const edit = {
+      normalizedMessage: { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'updated' }] },
+      targetUserIndex: 0,
+      targetContextUserIndex: 0,
+    } as any;
+
+    await expect(service.applyEditedUserMessage(edit, { isCancellationRequested: true } as any)).rejects.toThrow('cancelled');
+  });
+
+  it('throws when applying an edit without a current session', async () => {
+    const { deps } = makeSimpleDeps({ getCurrentChatSession: () => null });
+    const service = new AgentChatSessionService(deps);
+    const edit = {
+      normalizedMessage: { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'updated' }] },
+      targetUserIndex: 0,
+      targetContextUserIndex: 0,
+    } as any;
+
+    await expect(service.applyEditedUserMessage(edit)).rejects.toThrow('No current ChatSession');
   });
 
   it('resets title to New Chat and setFirstUserMessage when editing the first message (index 0)', async () => {
@@ -217,6 +287,36 @@ describe('AgentChatSessionService.replaceFilePathInSession — content type cove
     expect(result.replacedCount).toBe(0);
   });
 
+  it('does not replace in office, others, image, or tool-call parts when paths do not match', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [
+      {
+        id: 'u1',
+        role: 'user',
+        timestamp: 1,
+        content: [
+          { type: 'office', file: { filePath: '/other/office.txt' } },
+          { type: 'others', file: { filePath: '/other/other.txt' } },
+          { type: 'image', image_url: { url: '/other/image.png' } },
+        ],
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        timestamp: 2,
+        content: [{ type: 'text', text: '' }],
+        tool_calls: [{ id: 'tc1', function: { name: 'read_file', arguments: '{"filePath":"/other/file.txt"}' } }],
+      },
+    ];
+    currentChatSession.context_history = [];
+    const service = new AgentChatSessionService(deps);
+
+    const result = await service.replaceFilePathInSession('/old/file.txt', '/new/file.txt');
+
+    expect(result.replacedCount).toBe(0);
+  });
+
   it('handles message.content that is not an array', async () => {
     (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
     const { deps, currentChatSession } = makeSimpleDeps();
@@ -273,26 +373,8 @@ describe('AgentChatSessionService.generateChatSessionTitle — empty message tex
   });
 });
 
-// ─── addMessageToSession — first user message tracking ────────────────────────────
-
-describe('AgentChatSessionService.addMessageToSession — tracking', () => {
+describe('AgentChatSessionService.addMessageToSession — first message state', () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it('calls trackChatSessionActivated when shouldTrack returns true', async () => {
-    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
-    const { deps } = makeSimpleDeps({
-      shouldTrackChatSessionActivatedForUserMessage: () => true,
-      getChatSessionEntryTypeForUserMessage: () => 'new',
-    });
-    const service = new AgentChatSessionService(deps);
-    const msg = { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'hello' }] } as any;
-
-    await service.addMessageToSession(msg);
-    // Allow microtasks to flush
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    expect(deps.trackChatSessionActivated).toHaveBeenCalledWith(msg, 'new');
-  });
 
   it('calls exitNewChatSessionState on first user message save success', async () => {
     (chatSessionStore.saveSession as Mock).mockResolvedValue(true);

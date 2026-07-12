@@ -147,7 +147,7 @@ The system must distinguish these states:
 
 The system must support a unified flow that:
 
-1. installs the Skill from device or library
+1. installs the Skill from a local device package
 2. determines whether immediate activation is expected
 3. resolves the target Agent if possible
 4. applies the Skill when the target is unambiguous
@@ -204,7 +204,7 @@ The following requests are treated as install-and-activate intent:
 
 The following requests are treated as install-only:
 
-1. "install this Skill to the library"
+1. "install this Skill for this profile"
 2. "add this Skill first"
 3. "just install it"
 4. "do not apply it yet"
@@ -230,9 +230,9 @@ Installing from a file tree node must use the same activation resolution logic a
 
 Installing from generated-file attachments must use the same activation resolution logic as chat-based installation.
 
-### 10.4 Settings And Library Path
+### 10.4 Settings Path
 
-Installing from Settings or Skill library views must use the same post-install resolver so the product remains consistent.
+Installing from Settings must use the same post-install resolver so the product remains consistent.
 
 ## 11. Success Metrics
 
@@ -277,7 +277,7 @@ Installed and callable:
 
 Installed but not yet applied:
 
-1. "pdf has been installed to your Skill library, but it is not enabled for the current Agent yet. Do you want me to apply it to Kobi?"
+1. "pdf has been installed for this profile, but it is not enabled for the current Agent yet. Do you want me to apply it to Kobi?"
 
 Target selection required:
 
@@ -291,7 +291,7 @@ Already callable:
 
 UI toasts, dialogs, and status badges should clearly separate:
 
-1. installed in library
+1. installed in the local profile registry
 2. enabled for current Agent
 
 ## 14. Risks And Mitigations
@@ -307,7 +307,7 @@ Mitigation:
 
 Mitigation:
 
-1. update legacy install-only responses to say "installed to library"
+1. update legacy install-only responses to say "installed for this profile"
 2. add tests for response wording and resolution states
 
 ### 14.3 Risk: Different Entry Points Drift Again

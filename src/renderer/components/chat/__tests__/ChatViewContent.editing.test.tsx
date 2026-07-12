@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @vitest-environment happy-dom
  */
@@ -138,6 +139,7 @@ vi.mock('../ChatInput', () => ({ default: (props: any) => (
 vi.mock('../ChatZeroStates', () => ({ default: () => <div data-testid="zero-states" /> }));
 vi.mock('../workspace/WorkspaceExplorerSidepane', () => ({ default: () => <div data-testid="workspace-sidepane" /> }));
 vi.mock('../SchedulesSidepane', () => ({ default: () => <div data-testid="schedules-sidepane" /> }));
+vi.mock('../MemexMemorySidepane', () => ({ default: () => <div data-testid="memex-sidepane" />, ToggleMemexMemory: () => null }));
 vi.mock('../InlineFilePreviewPanel', () => ({ default: () => <div data-testid="inline-preview" /> }));
 
 import ChatViewContent from '../ChatViewContent';
@@ -246,7 +248,7 @@ describe('ChatViewContent user-message editing', () => {
       <ChatViewContent
         chatId="chat-1"
         chatStatus="idle"
-        agentName="Research Agent"
+        agentName="Demo Agent"
       />,
     );
 
@@ -258,7 +260,7 @@ describe('ChatViewContent user-message editing', () => {
       <ChatViewContent
         chatId="chat-2"
         chatStatus="idle"
-        agentName="Research Agent"
+        agentName="Demo Agent"
       />,
     );
 
@@ -274,7 +276,7 @@ describe('ChatViewContent user-message editing', () => {
     render(
       <ChatViewContent
         chatStatus="idle"
-        agentName="Research Agent"
+        agentName="Demo Agent"
       />,
     );
 

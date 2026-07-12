@@ -20,7 +20,7 @@ import { AgentChatInteractionService } from '../agentChatInteractionService';
 import { NonInteractiveRuntimeInteractionError } from '../agentChatInteractionPolicy';
 import { interactiveRequestManager } from '../interactiveRequestManager';
 
-function createService(overrides?: { interactionPolicy?: 'allow-ui' | 'plain-text-only' | 'forbid' }) {
+function createService(overrides?: { interactionPolicy?: 'allow-ui' | 'forbid' }) {
   const currentChatSession = {
     interaction_history: [] as any[],
   } as any;
@@ -46,6 +46,10 @@ function createService(overrides?: { interactionPolicy?: 'allow-ui' | 'plain-tex
 }
 
 describe('AgentChatInteractionService', () => {
+  beforeEach(() => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockReset();
+  });
+
   it('builds approval summaries with mixed outcomes', () => {
     const { service } = createService();
     const request: ApprovalInteractionRequest = {
@@ -345,6 +349,85 @@ describe('AgentChatInteractionService', () => {
     expect(result.get('tc-2')).toBe(true);
   });
 
+  it('requestHookApprovalInteraction prompts and returns an approve decision', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'approval_hook',
+      chatSessionId: 'session-1',
+      requestType: 'approval',
+      action: 'approve',
+      approvalItemDecisions: [{ itemId: 'tc1', approved: true }],
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const decisions = await service.requestHookApprovalInteraction([
+      { toolCallId: 'tc1', toolName: 'execute_command', reason: 'Confirm before running hostname' },
+    ]);
+
+    expect(decisions.get('tc1')).toBe(true);
+    const sent = (interactiveRequestManager.createPendingRequest as Mock).mock.calls.at(-1)![0];
+    expect(sent.requestType).toBe('approval');
+    expect(sent.title).toBe('Hook requested confirmation');
+    expect(sent.items[0]).toEqual(expect.objectContaining({
+      itemId: 'tc1',
+      toolCallId: 'tc1',
+      toolName: 'execute_command',
+      message: 'Confirm before running hostname',
+      paths: [],
+    }));
+  });
+
+  it('requestHookApprovalInteraction falls back to a default message when reason is missing or blank', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'approval_hook',
+      chatSessionId: 'session-1',
+      requestType: 'approval',
+      action: 'approve',
+      approvalItemDecisions: [
+        { itemId: 'tc1', approved: true },
+        { itemId: 'tc2', approved: false },
+      ],
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const decisions = await service.requestHookApprovalInteraction([
+      { toolCallId: 'tc1', toolName: 'whoami' },
+      { toolCallId: 'tc2', toolName: 'hostname', reason: '   ' },
+    ]);
+
+    expect(decisions.get('tc1')).toBe(true);
+    expect(decisions.get('tc2')).toBe(false);
+    const sent = (interactiveRequestManager.createPendingRequest as Mock).mock.calls.at(-1)![0];
+    expect(sent.items[0].message).toBe('A hook requested your confirmation before running "whoami".');
+    expect(sent.items[1].message).toBe('A hook requested your confirmation before running "hostname".');
+  });
+
+  it('requestHookApprovalInteraction fails closed (reject) when the prompt cannot be delivered', async () => {
+    const { service } = createService();
+    const decisions = await service.requestHookApprovalInteraction([
+      { toolCallId: 'tc1', toolName: 'execute_command', reason: 'Confirm' },
+    ]);
+    expect(decisions.get('tc1')).toBe(false);
+  });
+
+  it('requestHookApprovalInteraction fails closed when runtime policy forbids interaction', async () => {
+    const { service, reportBlockedInteraction } = createService({ interactionPolicy: 'forbid' });
+
+    const decisions = await service.requestHookApprovalInteraction([
+      { toolCallId: 'tc1', toolName: 'execute_command', reason: 'Confirm' },
+      { toolCallId: 'tc2', toolName: 'read_file' },
+    ]);
+
+    expect(decisions.get('tc1')).toBe(false);
+    expect(decisions.get('tc2')).toBe(false);
+    expect(reportBlockedInteraction).toHaveBeenCalledWith(expect.objectContaining({
+      policy: 'forbid',
+      requestType: 'approval',
+      title: 'Hook requested confirmation',
+    }));
+  });
+
   it('rethrows errors from createPendingRequest that are not a normal resolution', async () => {
     (interactiveRequestManager.createPendingRequest as Mock).mockRejectedValueOnce(new Error('connection lost'));
     const { service } = createService();
@@ -385,5 +468,130 @@ describe('AgentChatInteractionService', () => {
 
     expect(decisions.get('tool-1')).toBe(false);
     expect(decisions.get('tool-2')).toBe(false);
+  });
+
+  it('builds summary for an all-approved batch with multiple tools', () => {
+    const { service } = createService();
+    const request: any = {
+      requestType: 'approval', interactionId: 'a1', title: 't', createdAt: 0,
+      items: [
+        { itemId: '1', toolName: 'tool-a', message: 'a', paths: [] },
+        { itemId: '2', toolName: 'tool-b', message: 'b', paths: [] },
+      ],
+    };
+    const response: any = {
+      action: 'submit', requestType: 'approval', chatSessionId: 's', interactionId: 'a1',
+      approvalItemDecisions: [
+        { itemId: '1', approved: true },
+        { itemId: '2', approved: true },
+      ],
+    };
+    expect(service.buildInteractionSummary(request, response)).toBe('Approved 2 tool requests.');
+  });
+
+  it('builds summary for a submitted choice when selectedValues is absent', () => {
+    const { service } = createService();
+    const request: any = { requestType: 'choice', interactionId: 'c1', title: 't', createdAt: 0, items: [] };
+    const response: any = { action: 'submit', requestType: 'choice', chatSessionId: 's', interactionId: 'c1' };
+    expect(service.buildInteractionSummary(request, response)).toBe('Submitted the selection request without any selected value.');
+  });
+
+  it('builds summary for a submitted form when formValues is absent', () => {
+    const { service } = createService();
+    const request: any = { requestType: 'form', interactionId: 'f1', title: 't', createdAt: 0, items: [] };
+    const response: any = { action: 'submit', requestType: 'form', chatSessionId: 's', interactionId: 'f1' };
+    expect(service.buildInteractionSummary(request, response)).toBe('Submitted the form request.');
+  });
+
+  it('requestApprovalInteraction renders a pluralized path message for multi-path tools', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'approval_multi',
+      chatSessionId: 'session-1',
+      requestType: 'approval',
+      action: 'approve',
+      approvalItemDecisions: [{ itemId: 'tc1', approved: true }],
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    await service.requestApprovalInteraction([
+      { toolCallId: 'tc1', toolName: 'read_file', paths: [{ path: '/a' }, { path: '/b' }] },
+    ] as any);
+
+    const sent = (interactiveRequestManager.createPendingRequest as Mock).mock.calls.at(-1)![0];
+    expect(sent.items[0].message).toBe('Tool "read_file" needs approval to access 2 paths outside the workspace.');
+  });
+
+  it('returns form values from a submitted requestUserInfoInput', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'form_submit',
+      chatSessionId: 'session-1',
+      requestType: 'form',
+      action: 'submit',
+      formValues: { name: 'Alice' },
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const result = await service.requestUserInfoInput({
+      header: { title: 'Profile' },
+      body: { description: 'Fill it in' },
+      fields: [{ key: 'name', label: 'Name', type: 'string' }],
+    } as any);
+
+    expect(result).toEqual({ name: 'Alice' });
+  });
+
+  it('returns an empty object when a submitted requestUserInfoInput has no values', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'form_submit_empty',
+      chatSessionId: 'session-1',
+      requestType: 'form',
+      action: 'submit',
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const result = await service.requestUserInfoInput({
+      header: { title: 'Profile' },
+      body: { description: 'Fill it in' },
+      fields: [],
+    } as any);
+
+    expect(result).toEqual({});
+  });
+
+  it('returns null when a requestUserInfoInput is skipped', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'form_skip',
+      chatSessionId: 'session-1',
+      requestType: 'form',
+      action: 'skip',
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const result = await service.requestUserInfoInput({
+      header: { title: 'Profile' },
+      body: { description: 'Fill it in' },
+      fields: [],
+    } as any);
+
+    expect(result).toBeNull();
+  });
+
+  it('returns an empty selection for a submitted multi-select requestUserChoice without values', async () => {
+    (interactiveRequestManager.createPendingRequest as Mock).mockResolvedValueOnce({
+      interactionId: 'choice_multi',
+      chatSessionId: 'session-1',
+      requestType: 'choice',
+      action: 'submit',
+    });
+    const { service } = createService();
+    (service as any).deps.getEventSender = () => ({} as any);
+
+    const result = await service.requestUserChoice('Pick some', 'Desc', [{ value: 'a', label: 'A' }], 'multi');
+
+    expect(result).toEqual([]);
   });
 });

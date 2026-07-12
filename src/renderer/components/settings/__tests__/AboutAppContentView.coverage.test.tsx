@@ -1,167 +1,79 @@
-// @ts-nocheck
 /**
  * @vitest-environment happy-dom
- *
- * Coverage tests for AboutAppContentView.tsx
  */
 
 import React from 'react';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
-
-const mockSilentCheckForUpdates = vi.fn();
-const mockInstallUpdate = vi.fn().mockResolvedValue(undefined);
-
-vi.mock('../../autoUpdate/UpdateProvider', () => ({
-  useUpdate: () => ({
-    silentCheckForUpdates: mockSilentCheckForUpdates,
-    installUpdate: mockInstallUpdate,
-    updateInfo: null,
-    status: 'no-update',
-    progress: null,
-  }),
-}));
-
-vi.mock('@shared/constants/branding', () => ({
-  APP_NAME: 'OpenKosmos',
-  BRAND_NAME: 'openkosmos',
-  BRAND_CONFIG: { productName: 'OpenKosmos AI Studio' },
-}));
+import { render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../styles/ContentView.css', () => ({}));
-vi.mock('../../../styles/SettingsShared.css', () => ({}));
+vi.mock('../../../styles/ToolbarSettingsView.css', () => ({}));
 vi.mock('../../../styles/AboutAppView.css', () => ({}));
-
 vi.mock('../../../lib/brandIcon', () => ({ appIcon: 'icon.png' }));
-
-vi.mock('../../../lib/utilities/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
+const mockLoggerError = vi.hoisted(() => vi.fn());
+vi.mock('@shared/constants/branding', () => ({
+  APP_NAME: 'OpenKosmos',
+  BRAND_CONFIG: {
+    productName: 'OpenKosmos',
+    feedbackLink: '',
+  },
+}));
+vi.mock('../../../lib/i18n/useI18n', () => ({
+  useI18n: () => ({
+    t: (_key: string, values?: { productName?: string }) => `Learn more about ${values?.productName}`,
   }),
+}));
+vi.mock('../../../lib/utilities/logger', () => ({
+  createLogger: () => ({ error: mockLoggerError }),
 }));
 
 import AboutAppContentView from '../AboutAppContentView';
 
-function setupElectronAPI(opts: { version?: string; platform?: string; arch?: string } = {}) {
-  Object.defineProperty(window, 'electronAPI', {
-    writable: true,
-    configurable: true,
-    value: {
-      getVersion: vi.fn().mockResolvedValue(opts.version ?? '1.2.3'),
-      getPlatformInfo: vi.fn().mockResolvedValue({
-        platform: opts.platform ?? 'win32',
-        arch: opts.arch ?? 'x64',
-      }),
-    },
-  });
-}
-
-describe('AboutAppContentView - basic rendering', () => {
+describe('AboutAppContentView', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    setupElectronAPI();
-  });
-
-  it('renders without crashing', async () => {
-    render(<AboutAppContentView />);
-    await act(async () => {});
-    expect(screen.getAllByText(/OpenKosmos AI Studio/).length).toBeGreaterThan(0);
-  });
-
-  it('shows brand name', async () => {
-    render(<AboutAppContentView />);
-    await waitFor(() => {
-      expect(screen.getAllByText('OpenKosmos AI Studio').length).toBeGreaterThan(0);
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        getVersion: vi.fn().mockResolvedValue('2.8.17'),
+        getPlatformInfo: vi.fn().mockResolvedValue({ platform: 'darwin', arch: 'arm64' }),
+      },
     });
   });
 
-  it('shows version after load', async () => {
+  it('renders local application and platform information', async () => {
     render(<AboutAppContentView />);
-    await waitFor(() => {
-      expect(screen.getByText(/1\.2\.3/)).toBeInTheDocument();
-    });
+
+    await waitFor(() => expect(screen.getByText('2.8.17')).toBeTruthy());
+    expect(screen.getByText('macOS arm64')).toBeTruthy();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('calls silentCheckForUpdates on mount', async () => {
+  it('maps Windows platform information', async () => {
+    window.electronAPI.getPlatformInfo = vi.fn().mockResolvedValue({ platform: 'win32', arch: 'x64' });
     render(<AboutAppContentView />);
-    await waitFor(() => {
-      expect(mockSilentCheckForUpdates).toHaveBeenCalled();
-    });
+
+    await waitFor(() => expect(screen.getByText('Windows x64')).toBeTruthy());
   });
 
-  it('shows copyright text', async () => {
+  it('shows placeholders when application APIs are unavailable', () => {
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: {} });
     render(<AboutAppContentView />);
-    await act(async () => {});
-    expect(screen.getByText(/Copyright/)).toBeInTheDocument();
+
+    expect(screen.getAllByText('-')).toHaveLength(2);
   });
 
-  it('shows brand icon', async () => {
+  it('maps Linux platform information', async () => {
+    window.electronAPI.getPlatformInfo = vi.fn().mockResolvedValue({ platform: 'linux', arch: 'x64' });
     render(<AboutAppContentView />);
-    await act(async () => {});
-    const img = screen.getByAltText('OpenKosmos AI Studio');
-    expect(img).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('Linux x64')).toBeTruthy());
   });
 
-  it('shows platform arch', async () => {
-    setupElectronAPI({ arch: 'arm64' });
+  it('logs and keeps placeholders when app info loading fails', async () => {
+    window.electronAPI.getVersion = vi.fn().mockRejectedValue(new Error('version failed'));
     render(<AboutAppContentView />);
-    await waitFor(() => {
-      expect(screen.getByText(/arm64/)).toBeInTheDocument();
-    });
-  });
 
-  it('shows arch in version detail', async () => {
-    setupElectronAPI({ arch: 'x64' });
-    render(<AboutAppContentView />);
-    await waitFor(() => {
-      expect(screen.getByText((content, el) => content.includes('x64'))).toBeInTheDocument();
-    });
-  });
-
-  it('renders copyright text', async () => {
-    render(<AboutAppContentView />);
-    await act(async () => {});
-    // Copyright always rendered
-    const containers = document.querySelectorAll('.about-legal-text');
-    expect(containers.length).toBeGreaterThan(0);
-  });
-
-  it('shows up-to-date by default (no-update status)', async () => {
-    render(<AboutAppContentView />);
-    await waitFor(() => {
-      // The span text is split, check via container
-      const container = document.querySelector('.about-version-status-text');
-      expect(container).not.toBeNull();
-    });
-  });
-});
-
-describe('AboutAppContentView - update statuses', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setupElectronAPI();
-  });
-
-  it('shows checking status', async () => {
-    vi.mocked(vi.importActual).mockImplementation?.(() => {});
-    vi.mock('../../autoUpdate/UpdateProvider', () => ({
-      useUpdate: () => ({
-        silentCheckForUpdates: mockSilentCheckForUpdates,
-        installUpdate: mockInstallUpdate,
-        updateInfo: null,
-        status: 'checking',
-        progress: null,
-      }),
-    }));
-  });
-
-  it('shows Install Update Now button when status=downloaded', async () => {
-    render(<AboutAppContentView />);
-    await act(async () => {});
-    // The version status span should exist
-    const container = document.querySelector('.about-version-status-text');
-    expect(container).not.toBeNull();
+    await waitFor(() => expect(mockLoggerError).toHaveBeenCalled());
+    expect(screen.getAllByText('-')).toHaveLength(2);
   });
 });

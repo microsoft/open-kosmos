@@ -62,7 +62,7 @@ async function renderComp(props: any = {}) {
 describe('ApplyMcpToAgentsDialog — coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockChatsRef.current = []
+    mockChatsRef.current.length = 0
     mockMcpRuntimeServersRef.current = []
     mockUpdateChatAgent.mockResolvedValue({ success: true })
   })
@@ -105,6 +105,19 @@ describe('ApplyMcpToAgentsDialog — coverage', () => {
     expect(screen.getByText('My Agent')).toBeInTheDocument()
   })
 
+  it('treats missing single-agent mcp_servers as not already applied', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-no-mcp',
+        chat_type: 'single_agent',
+        agent: { name: 'No MCP', emoji: '🧩' },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    expect(screen.getByText('No MCP')).toBeInTheDocument()
+    expect(screen.queryByText('Applied')).not.toBeInTheDocument()
+  })
+
   it('shows multi_agent chats as agent items', async () => {
     mockChatsRef.current = [
       {
@@ -119,6 +132,21 @@ describe('ApplyMcpToAgentsDialog — coverage', () => {
     await act(async () => { await renderComp() })
     expect(screen.getByText('Agent A')).toBeInTheDocument()
     expect(screen.getByText('Agent B')).toBeInTheDocument()
+  })
+
+  it('treats missing multi-agent mcp_servers as not already applied', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-2',
+        chat_type: 'multi_agent',
+        agents: [
+          { name: 'No MCP Multi', emoji: '🧩' },
+        ],
+      },
+    ]
+    await act(async () => { await renderComp() })
+    expect(screen.getByText('No MCP Multi')).toBeInTheDocument()
+    expect(screen.queryByText('Applied')).not.toBeInTheDocument()
   })
 
   it('shows Applied badge when agent already has the MCP server', async () => {
@@ -260,6 +288,66 @@ describe('ApplyMcpToAgentsDialog — coverage', () => {
     })
   })
 
+  it('applies MCP server to a selected multi-agent entry', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-multi',
+        chat_type: 'multi_agent',
+        agents: [
+          { name: 'Nested', emoji: '🧠', mcp_servers: [] },
+        ],
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('Nested').closest('[role="checkbox"]')!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockUpdateChatAgent).toHaveBeenCalledWith('chat-multi', {
+        mcp_servers: [{ name: 'test-server', tools: [] }],
+      })
+    })
+  })
+
+  it('skips selected item when the backing chat disappears before apply', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: { name: 'My Agent', emoji: '🤖', mcp_servers: [] },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('My Agent').closest('[role="checkbox"]')!)
+    mockChatsRef.current.length = 0
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    expect(mockUpdateChatAgent).not.toHaveBeenCalled()
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('skips selected multi-agent item when the named agent disappears before apply', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-multi',
+        chat_type: 'multi_agent',
+        agents: [
+          { name: 'Nested', emoji: '🧠', mcp_servers: [] },
+        ],
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('Nested').closest('[role="checkbox"]')!)
+    mockChatsRef.current[0].agents = []
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    expect(mockUpdateChatAgent).not.toHaveBeenCalled()
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+  })
+
   it('shows error when updateChatAgent fails', async () => {
     mockUpdateChatAgent.mockResolvedValue({ success: false })
     mockChatsRef.current = [
@@ -276,6 +364,30 @@ describe('ApplyMcpToAgentsDialog — coverage', () => {
     })
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalled()
+    })
+  })
+
+  it('shows plural error when multiple selected agents fail', async () => {
+    mockUpdateChatAgent.mockResolvedValue({ success: false })
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: { name: 'Agent 1', emoji: '1️⃣', mcp_servers: [] },
+      },
+      {
+        chat_id: 'chat-2',
+        chat_type: 'single_agent',
+        agent: { name: 'Agent 2', emoji: '2️⃣', mcp_servers: [] },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('Select All'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith('Failed to apply MCP server(s) to 2 agents')
     })
   })
 
@@ -409,6 +521,165 @@ describe('ApplyMcpToAgentsDialog — coverage', () => {
     })
     await waitFor(() => {
       expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('2 MCP servers'))
+    })
+  })
+
+  it('shows plural success when a single server is applied to multiple agents', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: { name: 'Agent 1', emoji: '1️⃣', mcp_servers: [] },
+      },
+      {
+        chat_id: 'chat-2',
+        chat_type: 'single_agent',
+        agent: { name: 'Agent 2', emoji: '2️⃣', mcp_servers: [] },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('Select All'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalledWith('MCP server "test-server" applied to 2 agents')
+    })
+  })
+
+  it('skips servers already present while adding the remaining server', async () => {
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'My Agent',
+          emoji: '🤖',
+          mcp_servers: [{ name: 'server-a', tools: [] }],
+        },
+      },
+    ]
+    await act(async () => { await renderComp({ mcpServerNames: ['server-a', 'server-b'] }) })
+    fireEvent.click(screen.getByText('My Agent').closest('[role="checkbox"]')!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockUpdateChatAgent).toHaveBeenCalledWith('chat-1', {
+        mcp_servers: [
+          { name: 'server-a', tools: [] },
+          { name: 'server-b', tools: [] },
+        ],
+      })
+    })
+  })
+
+  it('adds server with empty tools when runtime tools have no conflicts', async () => {
+    mockMcpRuntimeServersRef.current = [
+      { name: 'test-server', tools: [{ name: 'fresh' }] },
+    ]
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: { name: 'My Agent', emoji: '🤖', mcp_servers: [] },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('My Agent').closest('[role="checkbox"]')!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockUpdateChatAgent).toHaveBeenCalledWith('chat-1', {
+        mcp_servers: [{ name: 'test-server', tools: [] }],
+      })
+    })
+  })
+
+  it('handles runtime server entries with missing tools arrays', async () => {
+    mockMcpRuntimeServersRef.current = [
+      { name: 'test-server' },
+    ]
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: { name: 'My Agent', emoji: '🤖', mcp_servers: [] },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('My Agent').closest('[role="checkbox"]')!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(mockUpdateChatAgent).toHaveBeenCalledWith('chat-1', {
+        mcp_servers: [{ name: 'test-server', tools: [] }],
+      })
+    })
+  })
+
+  it('reports zero-added conflicts when one selected agent fully conflicts and another succeeds', async () => {
+    mockMcpRuntimeServersRef.current = [
+      { name: 'test-server', tools: [{ name: 'search' }] },
+      { name: 'existing-mcp', tools: [{ name: 'search' }] },
+    ]
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-conflict',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'Conflict Agent',
+          emoji: '⚠️',
+          mcp_servers: [{ name: 'existing-mcp', tools: [] }],
+        },
+      },
+      {
+        chat_id: 'chat-ok',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'OK Agent',
+          emoji: '✅',
+          mcp_servers: [],
+        },
+      },
+    ]
+    await act(async () => { await renderComp() })
+    fireEvent.click(screen.getByText('Select All'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Tool Conflict Report')).toBeInTheDocument()
+      expect(screen.getByText('MCP server not added (all tools conflict)')).toBeInTheDocument()
+    })
+  })
+
+  it('counts unknown runtime tools as zero when conflicts are reported', async () => {
+    mockMcpRuntimeServersRef.current = [
+      { name: 'existing-server', tools: [{ name: 'search' }] },
+      { name: 'new-conflicting-server', tools: [{ name: 'search' }] },
+    ]
+    mockChatsRef.current = [
+      {
+        chat_id: 'chat-1',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'My Agent',
+          emoji: '🤖',
+          mcp_servers: [{ name: 'existing-server', tools: [] }],
+        },
+      },
+    ]
+    await act(async () => { await renderComp({ mcpServerNames: ['test-server', 'new-conflicting-server'] }) })
+    fireEvent.click(screen.getByText('My Agent').closest('[role="checkbox"]')!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Tool Conflict Report')).toBeInTheDocument()
+      expect(screen.getByText('MCP server not added (all tools conflict)')).toBeInTheDocument()
     })
   })
 

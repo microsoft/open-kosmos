@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings, RotateCw } from 'lucide-react';
+import { Settings } from 'lucide-react';
 
 import '../../../styles/Agent.css';
 import { TabComponentProps } from './types';
@@ -10,12 +10,8 @@ import { isBuiltinSkill } from '../../../../shared/constants/builtinSkills';
 import { isBuiltinAgent } from '../../../lib/userData/types';
 import ListSearchBox from '../../ui/ListSearchBox';
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[AgentSkillsTab]');
-
-/** Check if a skill is provided by a plugin (source === 'PLUGIN' or name starts with 'plugin:') */
-function isPluginSkill(skillName: string, skillSource?: string): boolean {
-  return skillSource === 'PLUGIN' || skillName.startsWith('plugin--');
-}
 
 /**
  * AgentSkillsTab - Agent Skills configuration tab
@@ -29,7 +25,7 @@ function isPluginSkill(skillName: string, skillSource?: string): boolean {
  */
 const AgentSkillsTab: React.FC<TabComponentProps> = ({
   mode,
-  agentId,
+  chatId,
   agentData,
   onSave,
   onDataChange,
@@ -39,6 +35,7 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
   const { skills: globalSkills, isLoading } = useSkills();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
 
   // Store selected skill names
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
@@ -172,91 +169,22 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
     [navigate, location.pathname],
   );
 
-  /**
-   * Navigate to Skill Library View and select the given Skill
-   * Follows ChatViewHeader's approach: use URL query parameters to pass the selection
-   * Also pass returnPath state so the SettingsPage Back button can return correctly
-   */
-  const handleUpdateSkill = useCallback(
-    (skillName: string) => {
-      if (!skillName) {
-        logger.warn('Update button clicked but skill name is not available');
-        return;
-      }
-
-      logger.debug('Update button clicked for Skill:', skillName);
-
-      // Navigate to the Skill Library page, passing the skill name as a query parameter
-      // Use encodeURIComponent to ensure special characters in the name are correctly encoded
-      // Route path reference AppRoutes.tsx: /settings/skills/skill-library
-      const skillLibraryUrl = `/settings/skills/skill-library?selectSkill=${encodeURIComponent(skillName)}`;
-
-      // Pass returnPath state so the SettingsPage Back button can return to the current page
-      navigate(skillLibraryUrl, { state: { returnPath: location.pathname } });
-    },
-    [navigate, location.pathname],
-  );
-
-  /**
-   * Compare version strings; returns 1 if v1 > v2
-   * Supports semantic versioning format (e.g. 1.0.0, 2.1.3)
-   */
-  const compareVersions = useCallback((v1: string, v2: string): number => {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-
-    const maxLength = Math.max(parts1.length, parts2.length);
-
-    for (let i = 0; i < maxLength; i++) {
-      const p1 = parts1[i] || 0;
-      const p2 = parts2[i] || 0;
-
-      if (p1 > p2) return 1;
-      if (p1 < p2) return -1;
-    }
-
-    return 0;
-  }, []);
-
-  // Determine whether to show the Update button for a Skill
-  const shouldShowUpdateButton = useCallback((skill: any) => {
-    const { version, remoteVersion, source } = skill;
-
-    // ON-DEVICE skills should not show the Update button
-    // ON-DEVICE skills are user-created and have no remote library version to update from
-    if (source === 'ON-DEVICE') {
-      return false;
-    }
-
-    // Only consider showing button when remoteVersion is non-empty
-    if (!remoteVersion || remoteVersion.trim() === '') {
-      return false;
-    }
-
-    // Show button if version is empty or remoteVersion > version
-    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
-      return true;
-    }
-
-    return false;
-  }, [compareVersions]);
-
   return (
     <div className="agent-tab">
       {/* Tab Header */}
       <div className="tab-header">
         <div className="header-summary">
           <span className="summary-text">
-            {selectedCount} selected from available skills
+            {t('agent.skills.selectedCount', { count: selectedCount })}
           </span>
         </div>
         <div className="header-actions">
           <button
             className="manage-servers-btn"
             onClick={handleManageSkills}
-            title="Manage available skills"
+            title={t('agent.skills.manageAvailableTitle')}
           >
-            Manage Available Skills
+            {t('agent.skills.manageAvailable')}
           </button>
         </div>
       </div>
@@ -266,7 +194,7 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
         {isLoading ? (
           <div className="loading-state">
             <div className="spinner">🔄</div>
-            <span>Loading Skills...</span>
+            <span>{t('agent.skills.loading')}</span>
           </div>
         ) : globalSkills && globalSkills.length > 0 ? (
           <>
@@ -275,32 +203,27 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
               <ListSearchBox
                 value={agentSkillSearchQuery}
                 onChange={setAgentSkillSearchQuery}
-                placeholder="Search skills..."
+                placeholder={t('agent.skills.searchPlaceholder')}
               />
               {[...globalSkills].sort((a, b) => {
                 const aBuiltin = isBuiltinSkill(a.name);
                 const bBuiltin = isBuiltinSkill(b.name);
                 if (aBuiltin && !bBuiltin) return -1;
                 if (!aBuiltin && bBuiltin) return 1;
-                const aPlugin = isPluginSkill(a.name, a.source);
-                const bPlugin = isPluginSkill(b.name, b.source);
-                if (aPlugin && !bPlugin) return 1;
-                if (!aPlugin && bPlugin) return -1;
                 return 0;
               })
               .filter(skill => !agentSkillSearchQuery || skill.name.includes(agentSkillSearchQuery))
               .map((skill) => {
                 const isSelected = selectedSkills.has(skill.name);
                 const isSkillBuiltin = isBuiltinSkill(skill.name);
-                const isSkillFromPlugin = isPluginSkill(skill.name, skill.source);
-                const isSkillLocked = (isSkillBuiltin && isBuiltinAgent(agentData?.name)) || isSkillFromPlugin;
+                const isSkillLocked = isSkillBuiltin && isBuiltinAgent(agentData?.name);
 
                 return (
                   <div
                     key={skill.name}
-                    className={`skill-card ${isSelected ? 'selected' : ''} ${readOnly ? 'readonly' : ''} ${isSkillFromPlugin ? 'plugin-skill' : ''}`}
-                    onClick={() => !readOnly && !isSkillFromPlugin && handleSkillToggle(skill.name)}
-                    style={readOnly || isSkillFromPlugin ? { cursor: 'default', opacity: 0.75 } : undefined}
+                    className={`skill-card ${isSelected ? 'selected' : ''} ${readOnly ? 'readonly' : ''}`}
+                    onClick={() => !readOnly && handleSkillToggle(skill.name)}
+                    style={readOnly ? { cursor: 'default', opacity: 0.75 } : undefined}
                   >
                     <div className="skill-card-header">
                       <div className="skill-info">
@@ -320,8 +243,7 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
                         <div className="skill-card-name-group">
                           <div className="server-title-row">
                             <span className="skill-card-name">{skill.name}</span>
-                            {isSkillBuiltin && <span className="builtin-badge">Built-in</span>}
-                            {isSkillFromPlugin && <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)', opacity: 0.85 }}>Plugin</span>}
+                            {isSkillBuiltin && <span className="builtin-badge">{t('common.builtIn')}</span>}
                           </div>
                           <div
                             style={{
@@ -338,38 +260,23 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
                             )}
                             {skill.source && (
                               <span className="skill-card-version">
-                                {skill.source}
+                                ON-DEVICE
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
                       <div className="skill-actions">
-                        {!isSkillFromPlugin && shouldShowUpdateButton(skill) && (
-                          <button
-                            className="update-skill-button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUpdateSkill(skill.name);
-                            }}
-                            title="Update to the latest version in library"
-                          >
-                            <RotateCw size={14} className="update-skill-icon" />
-                            <span className="update-skill-text">Update</span>
-                          </button>
-                        )}
-                        {!isSkillFromPlugin && (
-                          <button
-                            className="manage-btn always-visible"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleManageSkill(skill.name);
-                            }}
-                            title="Manage Skill"
-                          >
-                            <Settings size={14} />
-                          </button>
-                        )}
+                        <button
+                          className="manage-btn always-visible"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleManageSkill(skill.name);
+                          }}
+                          title={t('agent.skills.manageSkill')}
+                        >
+                          <Settings size={14} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -379,9 +286,9 @@ const AgentSkillsTab: React.FC<TabComponentProps> = ({
           </>
         ) : (
           <div className="empty-state">
-            <h4>No available Skills to select</h4>
+            <h4>{t('agent.skills.noAvailable')}</h4>
             <button className="manage-servers-btn" onClick={handleManageSkills}>
-              Go to Manage Available Skills
+              {t('agent.skills.goToManage')}
             </button>
           </div>
         )}

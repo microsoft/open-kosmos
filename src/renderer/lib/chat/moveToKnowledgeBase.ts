@@ -53,7 +53,7 @@ export function shouldShowMoveToKnowledgeBaseOption(
 export async function moveFileToKnowledgeBase(
   filePath: string,
   knowledgeBasePath: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; replaceExistingConfirm?: (fileName: string) => string }
 ): Promise<{ success: boolean; newPath?: string; error?: string }> {
   try {
     // Step 1: Move the file via IPC
@@ -61,12 +61,14 @@ export async function moveFileToKnowledgeBase(
       return { success: false, error: 'Move file API not available' };
     }
 
-    let result = await window.electronAPI.workspace.movePath(filePath, knowledgeBasePath, options);
+    const moveOptions = options?.force ? { force: true } : undefined;
+    let result = await window.electronAPI.workspace.movePath(filePath, knowledgeBasePath, moveOptions);
 
     // Handle TARGET_EXISTS - prompt user for force override
     if (!result?.success && result?.error === 'TARGET_EXISTS') {
       const fileName = result?.data?.sourceName || filePath.split(/[/\\]/).pop();
       const confirmed = window.confirm(
+        options?.replaceExistingConfirm?.(fileName || '') ??
         `A file named "${fileName}" already exists in Knowledge Base.\n\nDo you want to replace it?`
       );
       if (!confirmed) {

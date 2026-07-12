@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import React from 'react';
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SkillListPanel from '../SkillListPanel';
 import type { SkillConfig } from '../../../lib/userData/types';
 
@@ -30,7 +30,6 @@ const makeSkill = (name: string, extra: Partial<SkillConfig> = {}): SkillConfig 
 
 const builtinSkill = makeSkill('builtin-skill');
 const customSkill = makeSkill('my-custom-skill');
-const pluginSkill = makeSkill('plugin--foo', { source: 'PLUGIN' as any });
 
 describe('SkillListPanel – loading state', () => {
   it('shows loading spinner when isLoading is true', () => {
@@ -84,31 +83,6 @@ describe('SkillListPanel – skill list', () => {
       />
     );
     expect(screen.getByText('Built-in')).toBeInTheDocument();
-  });
-
-  it('shows Plugin badge for plugin skills', () => {
-    render(
-      <SkillListPanel
-        skills={[pluginSkill]}
-        selectedSkill={null}
-        isLoading={false}
-        onSelectSkill={vi.fn()}
-      />
-    );
-    expect(screen.getByText('Plugin')).toBeInTheDocument();
-  });
-
-  it('does not render menu button for plugin skills', () => {
-    render(
-      <SkillListPanel
-        skills={[pluginSkill]}
-        selectedSkill={null}
-        isLoading={false}
-        onSelectSkill={vi.fn()}
-      />
-    );
-    // There should be no menu buttons for plugin skills
-    expect(document.querySelectorAll('.skill-menu-btn').length).toBe(0);
   });
 
   it('renders menu button for non-plugin skills', () => {
@@ -238,5 +212,127 @@ describe('SkillListPanel – version and source display', () => {
       />
     );
     expect(screen.getByText('ON-DEVICE')).toBeInTheDocument();
+  });
+
+  it('omits version and source spans when a skill has neither', () => {
+    const bare = makeSkill('bare-skill', { version: undefined, source: undefined });
+    render(
+      <SkillListPanel
+        skills={[bare]}
+        selectedSkill={bare}
+        isLoading={false}
+        onSelectSkill={vi.fn()}
+      />
+    );
+    expect(screen.getByText('bare-skill')).toBeInTheDocument();
+    expect(document.querySelectorAll('.skill-card-version').length).toBe(0);
+  });
+});
+
+describe('SkillListPanel – sort ordering branches', () => {
+  it('keeps a builtin-first array ordered with builtin on top', () => {
+    render(
+      <SkillListPanel
+        skills={[builtinSkill, customSkill]}
+        selectedSkill={null}
+        isLoading={false}
+        onSelectSkill={vi.fn()}
+      />
+    );
+    const names = Array.from(document.querySelectorAll('.skill-card-name')).map(el => el.textContent);
+    expect(names[0]).toBe('builtin-skill');
+    expect(names[1]).toBe('my-custom-skill');
+  });
+
+  it('preserves order for two non-builtin skills (comparator returns 0)', () => {
+    const a = makeSkill('custom-a');
+    const b = makeSkill('custom-b');
+    render(
+      <SkillListPanel
+        skills={[a, b]}
+        selectedSkill={null}
+        isLoading={false}
+        onSelectSkill={vi.fn()}
+      />
+    );
+    const names = Array.from(document.querySelectorAll('.skill-card-name')).map(el => el.textContent);
+    expect(names).toEqual(['custom-a', 'custom-b']);
+  });
+});
+
+describe('SkillListPanel – selection sync', () => {
+  it('preserves search query when user typing filters out all skills', async () => {
+    const onSelect = vi.fn();
+    render(
+      <SkillListPanel
+        skills={[customSkill]}
+        selectedSkill={customSkill}
+        isLoading={false}
+        onSelectSkill={onSelect}
+      />
+    );
+    fireEvent.change(screen.getByTestId('search-box'), { target: { value: 'zzz-no-match' } });
+    await act(async () => {});
+    expect(screen.getByTestId('search-box')).toHaveValue('zzz-no-match');
+    expect(onSelect).not.toHaveBeenCalledWith(null);
+  });
+
+  it('does not clear selection on empty results when nothing is selected', async () => {
+    const onSelect = vi.fn();
+    render(
+      <SkillListPanel
+        skills={[customSkill]}
+        selectedSkill={null}
+        isLoading={false}
+        onSelectSkill={onSelect}
+      />
+    );
+    fireEvent.change(screen.getByTestId('search-box'), { target: { value: 'zzz-no-match' } });
+    await act(async () => {});
+    expect(onSelect).not.toHaveBeenCalledWith(null);
+  });
+
+  it('selects first filtered skill when user typing excludes current selection', async () => {
+    const onSelect = vi.fn();
+    render(
+      <SkillListPanel
+        skills={[customSkill, builtinSkill]}
+        selectedSkill={customSkill}
+        isLoading={false}
+        onSelectSkill={onSelect}
+      />
+    );
+    fireEvent.change(screen.getByTestId('search-box'), { target: { value: 'builtin' } });
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith(builtinSkill);
+    });
+  });
+
+  it('selects the first filtered skill when the selected one is no longer present', () => {
+    const onSelect = vi.fn();
+    const ghost = makeSkill('ghost-skill');
+    render(
+      <SkillListPanel
+        skills={[customSkill, builtinSkill]}
+        selectedSkill={ghost}
+        isLoading={false}
+        onSelectSkill={onSelect}
+      />
+    );
+    // sorted order puts builtin-skill first
+    expect(onSelect).toHaveBeenCalledWith(builtinSkill);
+  });
+
+  it('does not throw when the menu button is clicked without an onSkillMenuToggle handler', () => {
+    render(
+      <SkillListPanel
+        skills={[customSkill]}
+        selectedSkill={customSkill}
+        isLoading={false}
+        onSelectSkill={vi.fn()}
+      />
+    );
+    const btn = document.querySelector('.skill-menu-btn') as HTMLElement;
+    expect(() => fireEvent.click(btn)).not.toThrow();
   });
 });

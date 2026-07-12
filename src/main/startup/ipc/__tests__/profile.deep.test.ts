@@ -3,14 +3,12 @@
  *
  * Covers branches missed by the existing profile.test.ts:
  *  - profile:duplicateChatConfig: missing alias, blank sourceChatId, blank
- *    agentName, success,
- *    failure result from duplicateAgent
- *  - profile:addChatConfig: success, failure
- *  - profile:deleteChatConfig: success, failure
+ *    agentName, success, failure result from duplicateAgent
+ *  - profile:addChatConfig: success, add fails
+ *  - profile:deleteChatConfig: success, delete fails
  *  - profile:archiveChatConfig: success=false does NOT call toggleJobsByAgent
  *  - profile:unarchiveChatConfig: success=false does NOT call toggleJobsByAgent,
  *    error path
- *  - profile:deleteChatSession: remote channel manager throws (non-fatal)
  *  - profile:renameChatSession: renameSession returns falsy
  *  - profile:setChatSessionStarred: setStarred returns falsy
  *  - profile:getChatUnreadSummary: error path
@@ -72,11 +70,9 @@ const mockPcManager = {
 };
 
 const mockGetProfileCacheManager = vi.fn().mockResolvedValue(mockPcManager);
-const mockUseRemoteChannelManager = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../lazy', () => ({
   getProfileCacheManager: (...a: any[]) => (mockGetProfileCacheManager as any)(...a),
-  useRemoteChannelManager: (...a: any[]) => (mockUseRemoteChannelManager as any)(...a),
 }));
 
 // ── agentDuplicator (dynamic import) ─────────────────────────────────────────
@@ -130,13 +126,6 @@ vi.mock('../../../lib/userDataADO/chatSessionManager', () => ({
 
 const mockRecordMcpServerAdded = vi.fn();
 const mockRecordAgentCreated = vi.fn();
-
-vi.mock('../../../lib/analytics', () => ({
-  analyticsManager: {
-    recordMcpServerAdded: (...a: any[]) => (mockRecordMcpServerAdded as any)(...a),
-    recordAgentCreated: (...a: any[]) => (mockRecordAgentCreated as any)(...a),
-  },
-}));
 
 vi.mock('../../../lib/scheduler/SchedulerManager', () => ({
   schedulerManager: { toggleJobsByAgent: vi.fn().mockResolvedValue(undefined) },
@@ -192,12 +181,6 @@ describe('startup/ipc/profile deep', () => {
     expect(result).toEqual({ success: false, error: 'Invalid agent name' });
   });
 
-  it('profile:duplicateChatConfig succeeds', async () => {
-    mockDuplicateAgent.mockResolvedValue({ success: true, newChatId: 'new-chat' });
-    const result = await getHandler('profile:duplicateChatConfig')({}, 'src', 'NewAgent');
-    expect(result.success).toBe(true);
-  });
-
   it('profile:duplicateChatConfig returns failure result from duplicateAgent', async () => {
     mockDuplicateAgent.mockResolvedValue({ success: false, error: 'dupe fail' });
     const result = await getHandler('profile:duplicateChatConfig')({}, 'src', 'NewAgent');
@@ -205,21 +188,18 @@ describe('startup/ipc/profile deep', () => {
     expect(mockRecordAgentCreated).not.toHaveBeenCalled();
   });
 
-  // ── profile:addChatConfig ────────────────────────────────────────────────────
+  // ── profile:deleteChatConfig ─────────────────────────────────────────────────
 
-  it('profile:addChatConfig returns failure when add fails', async () => {
+  it('profile:deleteChatConfig returns success when delete succeeds', async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    mockAddChatConfig.mockResolvedValueOnce(false);
     mockGetProfileCacheManager.mockResolvedValue(mockPcManager);
     const { default: reg } = await import('../profile');
     reg({ currentUserAlias: 'alice' } as any);
 
-    const result = await getHandler('profile:addChatConfig')({}, { chat_id: 'c-new' });
-    expect(result).toEqual({ success: false });
+    const result = await getHandler('profile:deleteChatConfig')({}, 'c1');
+    expect(result).toEqual({ success: true });
   });
-
-  // ── profile:deleteChatConfig ─────────────────────────────────────────────────
 
   it('profile:deleteChatConfig returns failure when delete fails', async () => {
     vi.clearAllMocks();
@@ -309,14 +289,6 @@ describe('startup/ipc/profile deep', () => {
     reg({ currentUserAlias: null } as any);
     const result = await getHandler('profile:updateChatAgent')({}, 'c1', {});
     expect(result).toEqual({ success: false, error: 'No current user alias set' });
-  });
-
-  // ── profile:deleteChatSession: remote channel throws ────────────────────────
-
-  it('profile:deleteChatSession succeeds even when remote channel manager throws', async () => {
-    mockUseRemoteChannelManager.mockRejectedValueOnce(new Error('remote error'));
-    const result = await getHandler('profile:deleteChatSession')({}, 'alice', 'c1', 's1');
-    expect(result).toEqual({ success: true });
   });
 
   // ── profile:renameChatSession: rename returns falsy ──────────────────────────

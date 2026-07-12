@@ -12,6 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // --- CSS stubs ---
 vi.mock('../../../styles/StreamingV2Message.css', () => ({}));
 vi.mock('../../../styles/markdown-render.css', () => ({}));
+vi.mock('../../../lib/userData/useEmbeddedBrowserEnabled', () => ({
+  useEmbeddedBrowserEnabled: () => false,
+}));
 
 // --- Heavy deps ---
 vi.mock('react-syntax-highlighter', () => ({

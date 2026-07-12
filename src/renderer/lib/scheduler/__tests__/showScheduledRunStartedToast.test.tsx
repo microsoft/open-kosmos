@@ -1,14 +1,14 @@
 import { showScheduledRunStartedToast } from '../showScheduledRunStartedToast'
 
 describe('showScheduledRunStartedToast', () => {
-  it('shows a persistent toast with an open-session action when chatSessionId is available', () => {
+  it('shows a toast with auto-dismiss and an open-session action when chatSessionId is available', () => {
     const navigate = vi.fn()
     const showToast = vi.fn()
     const showSuccess = vi.fn()
 
     showScheduledRunStartedToast({
       result: { chatSessionId: 'session-42' },
-      agentId: 'chat-123',
+      chatId: 'chat-123',
       navigate,
       showToast,
       showSuccess,
@@ -17,9 +17,8 @@ describe('showScheduledRunStartedToast', () => {
     expect(showToast).toHaveBeenCalledWith(
       'Scheduled run started.',
       'success',
-      undefined,
+      5000,
       expect.objectContaining({
-        persistent: true,
         actions: [
           expect.objectContaining({
             label: 'Open schedule run',
@@ -51,7 +50,7 @@ describe('showScheduledRunStartedToast', () => {
 
     showScheduledRunStartedToast({
       result: {},
-      agentId: 'chat-123',
+      chatId: 'chat-123',
       navigate,
       showToast,
       showSuccess,

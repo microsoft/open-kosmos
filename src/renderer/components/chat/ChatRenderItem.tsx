@@ -23,9 +23,6 @@ export type ChatRenderItem =
   | { type: 'interactive-request'; interactiveRequest: InteractiveRequest; sectionKey: string; index: number }
   | { type: 'interactive-auth'; interactiveAuth: { hint: ExecuteCommandInteractiveAuthHint; command?: string; chatSessionId?: string | null }; sectionKey: string; sourceMessageIndex?: number; index: number };
 
-function assertNever(item: never): never {
-  throw new Error('Function not implemented.');
-}
 export const getChatRenderItemStableKey = (item?: ChatRenderItem): string => {
   if (!item) {
     return 'none';
@@ -46,8 +43,6 @@ export const getChatRenderItemStableKey = (item?: ChatRenderItem): string => {
     case 'activity-loading':
     case 'activity-placeholder':
       return `${item.type}:${item.sectionKey || item.index}`;
-    default:
-      assertNever(item);
   }
 };
 
@@ -102,25 +97,7 @@ const parseExecuteCommandToolResult = (message: Message): ExecuteCommandToolResu
 };
 
 // Helper: extract present_deliverables tool calls as PresentedFiles
-const extractPresentedFiles = (toolCalls: ToolCall[]): PresentedFile[] => {
-  const files: PresentedFile[] = [];
-  toolCalls.forEach(tc => {
-    if (tc.function.name === 'present_deliverables') {
-      try {
-        const args = JSON.parse(tc.function.arguments || '{}');
-        if (args.filePaths && Array.isArray(args.filePaths)) {
-          files.push({
-            filePath: JSON.stringify(args.filePaths),
-            description: args.description || 'Final deliverables'
-          });
-        }
-      } catch {
-        // Skip on parse failure
-      }
-    }
-  });
-  return files;
-};
+import { extractPresentedFiles } from './extractPresentedFiles';
 
 const extractInteractiveAuthCards = (
   toolCalls: ToolCall[],
@@ -215,7 +192,7 @@ export function useRenderItems(
     const flushPendingItems = () => {
       if (pendingToolCalls.length > 0) {
         // Extract present tool calls first
-        const newPresentedFiles = extractPresentedFiles(pendingToolCalls);
+        const newPresentedFiles = extractPresentedFiles(pendingToolCalls, allMessages);
         pendingPresentedFiles.push(...newPresentedFiles);
 
         items.push({
@@ -261,6 +238,9 @@ export function useRenderItems(
       } else if (message.role === 'user') {
         // Skip synthetic messages (e.g. sub-agent task-notification triggers)
         if ((message as any).metadata?.synthetic) return;
+        // Fallback: also skip messages whose only text is the trigger tag (legacy sessions without metadata)
+        const textParts = message.content.filter(p => p.type === 'text').map(p => (p.text || '').trim()).join('');
+        if (textParts === '<task-notification-trigger/>') return;
         // Flush pending tool calls and presented files before a user message
         flushPendingItems();
         items.push({ type: 'user', message, index: sourceMessageIndex });
@@ -276,7 +256,7 @@ export function useRenderItems(
         } else if (derived.hasText) {
           // Assistant message that has text content — flush accumulated tool calls first
           if (pendingToolCalls.length > 0) {
-            const newPresentedFiles = extractPresentedFiles(pendingToolCalls);
+            const newPresentedFiles = extractPresentedFiles(pendingToolCalls, allMessages);
             pendingPresentedFiles.push(...newPresentedFiles);
 
             items.push({
@@ -467,7 +447,6 @@ export function ChatRenderItemComponent(props: ChatRenderItemProps) {
             onCancelEdit={onCancelEdit}
             warningMessage={editingMessage?.warningMessage}
             chatSessionId={null}
-            isReadOnly={false}
           />
         </div>
       );
@@ -515,4 +494,3 @@ export function ChatRenderItemComponent(props: ChatRenderItemProps) {
 
   return null;
 }
-

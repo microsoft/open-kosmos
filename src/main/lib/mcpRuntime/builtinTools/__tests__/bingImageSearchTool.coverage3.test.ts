@@ -252,21 +252,14 @@ describe('BingImageSearchTool.execute — abort signal', () => {
   });
 });
 
-// ── execute: state save failure ───────────────────────────────────────────────
+// ── execute: shared browser, isolation, retry (parallel-degradation fix) ──────
 
-describe('BingImageSearchTool.execute — state save failure', () => {
-  it('warns but succeeds when storageState throws during save', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    mockStorageState.mockRejectedValueOnce(new Error('disk full'));
-    setupBrowserChain();
+const iuscAnchor = (n: number) =>
+  `<a class="iusc" m="{&quot;murl&quot;:&quot;https://example.com/img${n}.jpg&quot;,&quot;turl&quot;:&quot;https://tbn.com/thumb${n}.jpg&quot;,&quot;purl&quot;:&quot;https://example.com/p${n}&quot;,&quot;t&quot;:&quot;Image ${n}&quot;,&quot;s&quot;:&quot;example.com&quot;,&quot;w&quot;:800,&quot;h&quot;:600}">img</a>`;
+const SINGLE_RESULT_HTML = `<html><body>${iuscAnchor(1)}</body></html>`;
+const MULTI_RESULT_HTML = `<html><body>${iuscAnchor(1)}${iuscAnchor(2)}${iuscAnchor(3)}</body></html>`;
 
-    const result = await BingImageSearchTool.execute(baseArgs);
-    expect(result.success).toBe(true);
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to save browser state')
-    );
-  });
-
+describe('BingImageSearchTool.execute — shared browser and isolation', () => {
   it('handles navigation error in performSingleImageSearch', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     const page = makePage({ goto: vi.fn().mockRejectedValue(new Error('nav failed')) });
@@ -278,34 +271,136 @@ describe('BingImageSearchTool.execute — state save failure', () => {
     expect(result).toBeDefined();
     expect(result.errors).toBeDefined();
   });
-});
 
-// ── execute: corrupted state file ─────────────────────────────────────────────
+  it('launches exactly one shared browser and closes it once for a multi-query call', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML) });
 
-describe('BingImageSearchTool.execute — corrupted state file', () => {
-  it('deletes corrupted state file and continues', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error('corrupt'); });
-    setupBrowserChain();
+    const result = await BingImageSearchTool.execute({ ...baseArgs, queries: ['q1', 'q2', 'q3'] });
+    expect(result.totalQueries).toBe(3);
+    expect(mockLaunchBrowser).toHaveBeenCalledTimes(1);
+    expect(mockBrowserClose).toHaveBeenCalledTimes(1);
+    // A fresh isolated context per query; no shared state file is ever written.
+    expect(mockNewContext).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
+    expect(mockStorageState).not.toHaveBeenCalled();
+  });
+
+  it('returns a failure result when the shared browser cannot launch', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockLaunchBrowser.mockRejectedValueOnce(new Error('no chromium'));
 
     const result = await BingImageSearchTool.execute(baseArgs);
-    expect(result).toBeDefined();
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toContain('Failed to launch browser');
+    expect(mockBrowserClose).not.toHaveBeenCalled();
+  });
+
+  it('retries once in a fresh context when a query yields <=1 result and keeps the better attempt', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const content = vi.fn()
+      .mockResolvedValueOnce(SINGLE_RESULT_HTML)
+      .mockResolvedValueOnce(MULTI_RESULT_HTML);
+    setupBrowserChain({ content });
+
+    const result = await BingImageSearchTool.execute(baseArgs);
+    expect(content).toHaveBeenCalledTimes(2);
+    expect(mockNewContext).toHaveBeenCalledTimes(2);
+    expect(result.totalResults).toBeGreaterThan(1);
     expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Browser state file is corrupted')
+      expect.stringContaining('retrying once in a fresh context')
     );
   });
 
-  it('warns when unlinkSync fails on corrupted state', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error('corrupt'); });
-    vi.mocked(fs.unlinkSync).mockImplementation(() => { throw new Error('locked'); });
-    setupBrowserChain();
+  it('does not retry a successful one-result search when maxResults is 1', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const content = vi.fn().mockResolvedValue(SINGLE_RESULT_HTML);
+    setupBrowserChain({ content });
 
+    const result = await BingImageSearchTool.execute({ ...baseArgs, maxResults: 1 });
+    expect(content).toHaveBeenCalledTimes(1);
+    expect(mockNewContext).toHaveBeenCalledTimes(1);
+    expect(result.totalResults).toBe(1);
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('retrying once in a fresh context')
+    );
+  });
+
+  it('throws inside attempt when the signal aborts after the launch gate', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain();
+    let reads = 0;
+    const fakeSignal: any = {
+      get aborted() { reads++; return reads > 1; },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+
+    const result = await BingImageSearchTool.execute(baseArgs, { signal: fakeSignal });
+    expect(result.errors).toBeDefined();
+    expect(result.errors?.[0]).toContain('failed');
+  });
+
+  it('closes the page via the abort handler when the signal fires mid-flight', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const controller = new AbortController();
+    const page = makePage({
+      goto: vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return { url: () => 'https://www.bing.com/images/search?q=test' };
+      }),
+      content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
+
+    const result = await BingImageSearchTool.execute(baseArgs, { signal: controller.signal });
+    expect(result).toBeDefined();
+    expect(mockPageClose).toHaveBeenCalled();
+  });
+});
+
+// ── execute: close() failures are swallowed ──────────────────────────────────
+describe('BingImageSearchTool.execute — close() failures', () => {
+  it('warns but still returns when the shared browser fails to close', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML) });
+    mockBrowserClose.mockRejectedValue(new Error('browser close boom'));
     const result = await BingImageSearchTool.execute(baseArgs);
     expect(result).toBeDefined();
     expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Unable to delete corrupted state file')
+      expect.stringContaining('Failed to close shared browser')
     );
+  });
+
+  it('swallows page and context close rejection in the per-query finally', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML) });
+    mockPageClose.mockRejectedValue(new Error('page close boom'));
+    mockContextClose.mockRejectedValue(new Error('context close boom'));
+    const result = await BingImageSearchTool.execute(baseArgs);
+    expect(result.success).toBe(true);
+    expect(mockPageClose).toHaveBeenCalled();
+    expect(mockContextClose).toHaveBeenCalled();
+  });
+
+  it('swallows page.close rejection triggered by the mid-flight abort handler', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const controller = new AbortController();
+    const page = makePage({
+      goto: vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return { url: () => 'https://www.bing.com/images/search?q=test' };
+      }),
+      content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML),
+      close: vi.fn().mockRejectedValue(new Error('page close boom')),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
+    const result = await BingImageSearchTool.execute(baseArgs, { signal: controller.signal });
+    expect(result).toBeDefined();
   });
 });
 
@@ -382,5 +477,50 @@ describe('BingImageSearchTool — getRandomDelay', () => {
       expect(delay).toBeGreaterThanOrEqual(100);
       expect(delay).toBeLessThanOrEqual(200);
     }
+  });
+});
+
+// ── execute: no-response watchdog activity reporting ──────────────────────────
+
+describe('BingImageSearchTool.execute — reportActivity wiring', () => {
+  it('reports activity once per query as each query settles (success path)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML) });
+    const reportActivity = vi.fn();
+
+    const result = await BingImageSearchTool.execute(
+      { ...baseArgs, queries: ['q1', 'q2', 'q3'] },
+      { executionContext: { reportActivity } as any },
+    );
+
+    expect(result.totalQueries).toBe(3);
+    expect(reportActivity).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports activity even when a query fails (finally path)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const page = makePage({
+      goto: vi.fn().mockRejectedValue(new Error('navigation failed')),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
+    const reportActivity = vi.fn();
+
+    const result = await BingImageSearchTool.execute(
+      { ...baseArgs, queries: ['q1', 'q2'] },
+      { executionContext: { reportActivity } as any },
+    );
+
+    expect(result.errors!.length).toBeGreaterThan(0);
+    expect(reportActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs without an execution context (reportActivity is optional)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(MULTI_RESULT_HTML) });
+
+    const result = await BingImageSearchTool.execute({ ...baseArgs, queries: ['q1'] }, {});
+    expect(result.totalQueries).toBe(1);
   });
 });

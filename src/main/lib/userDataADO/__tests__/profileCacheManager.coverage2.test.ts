@@ -4,15 +4,13 @@
  * Targets uncovered branches in profileCacheManager.ts:
  * - clearCache: no alias (clear all), alias with hadCache=false, alias with profile
  * - getCachedAliases
- * - updateMcpServerInUse: server found / not found, profile missing
  * - getMcpServerInfo / getAllMcpServerInfo: no profile, profile without mcpClientManager
  * - executeToolCall: not initialized / no alias errors
- * - cleanupMem0Resources
  * - clearUserRuntimeStates: with/without mcpClientManager
  * - clearMcpServerRuntimeState
  * - getMcpServerRuntimeState / getAllMcpServerRuntimeStates: without mcpClientManager
  * - deprecated updateMcpServerStatus/Tools/Error
- * - setMainWindow, setRemoteChannelManagerGetter
+ * - setMainWindow
  * - notifyProfileDataManager batched path
  */
 
@@ -33,6 +31,8 @@ vi.mock('fs', () => ({
   promises: {
     readFile: vi.fn().mockResolvedValue('{}'),
     writeFile: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn().mockResolvedValue(undefined),
+    unlink: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -74,17 +74,9 @@ vi.mock('../../mcpRuntime/mcpClientManager', () => ({
   },
 }));
 
-vi.mock('../../plugin/pluginManager', () => ({
-  pluginManager: { initialize: vi.fn().mockResolvedValue({ errors: [] }) },
-}));
-
 
 vi.mock('../../chat/agentChatManager', () => ({
   agentChatManager: { initialize: vi.fn().mockResolvedValue(undefined) },
-}));
-
-vi.mock('../../remoteChannel/credentialStore', () => ({
-  credentialStore: { hasCredential: vi.fn().mockResolvedValue(false) },
 }));
 
 vi.mock('../../featureFlags/featureFlagManager', () => ({
@@ -97,7 +89,7 @@ vi.mock('../../startup/lazy', () => ({
 
 vi.mock('../profileSanitizer', () => ({
   sanitizeProfileV2: vi.fn((p: any) => p),
-  sanitizeSubAgents: vi.fn((a: any) => a),
+  sanitizeHooks: vi.fn((h: any) => (Array.isArray(h) ? h : [])),
   sanitizeStarredChatSessions: vi.fn((a: any) => a),
   buildStarredChatSessionIndexItem: vi.fn(() => null),
   sanitizeChatSkillSnapshot: vi.fn(),
@@ -121,14 +113,15 @@ vi.mock('../profileMigration', () => ({
 vi.mock('../profileSettingsCrud', () => ({
   getConfirmationSettings: vi.fn(() => ({})),
   updateConfirmationSettings: vi.fn().mockResolvedValue(true),
-  updateRemoteChannelsConfig: vi.fn().mockResolvedValue(true),
+  getVoiceInputSettings: vi.fn(() => ({})),
+  updateVoiceInputSettings: vi.fn().mockResolvedValue(true),
   updatePrimaryAgent: vi.fn().mockResolvedValue(true),
   updateFreDone: vi.fn().mockResolvedValue(true),
   getFreDone: vi.fn(() => false),
-  getBrowserControlSettings: vi.fn(() => ({})),
-  updateBrowserControlSettings: vi.fn().mockResolvedValue(true),
   getDevToolsMcpSettings: vi.fn(() => ({})),
   updateDevToolsMcpSettings: vi.fn().mockResolvedValue(true),
+  getSyncSettings: vi.fn(() => ({})),
+  updateSyncSettings: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../profileArchiveManager', () => ({
@@ -138,18 +131,28 @@ vi.mock('../profileArchiveManager', () => ({
 }));
 
 vi.mock('../profileEntityCrud', () => ({
+  withProfileWriteLock: vi.fn(async (_alias: string, operation: () => Promise<unknown>) => operation()),
+  writeProfileThenCommitCache: vi.fn(async (
+    ctx: any,
+    alias: string,
+    currentProfile: any,
+    nextProfile: any,
+    immediate = false,
+    notify = true,
+  ) => {
+    const success = await ctx.writeProfileToFile(alias, nextProfile);
+    if (!success) return false;
+    Object.assign(currentProfile, nextProfile);
+    ctx.cache.set(alias, currentProfile);
+    if (notify) await ctx.notifyProfileDataManager(alias, immediate);
+    return true;
+  }),
   addMcpServerConfig: vi.fn().mockResolvedValue(true),
   updateMcpServerConfig: vi.fn().mockResolvedValue(true),
   deleteMcpServerConfig: vi.fn().mockResolvedValue(true),
   addSkill: vi.fn().mockResolvedValue(true),
   updateSkill: vi.fn().mockResolvedValue(true),
   deleteSkill: vi.fn().mockResolvedValue(true),
-  getSubAgents: vi.fn().mockResolvedValue([]),
-  getSubAgentIndex: vi.fn(() => []),
-  addSubAgent: vi.fn().mockResolvedValue(true),
-  updateSubAgent: vi.fn().mockResolvedValue(true),
-  deleteSubAgent: vi.fn().mockResolvedValue(true),
-  syncSubAgentIndex: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../profileChatCrud', () => ({
@@ -171,7 +174,63 @@ vi.mock('../profileChatSessionOps', () => ({
 }));
 
 vi.mock('../appCacheManager', () => ({
-  appCacheManager: { },
+  appCacheManager: {
+    initialize: vi.fn().mockResolvedValue(undefined),
+    getMemexSettings: vi.fn(() => ({ enabled: false })),
+    updateConfig: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+const mcpManagerStore = vi.hoisted(() => ({ servers: new Map<string, any[]>() }));
+const mcpManagerMock = vi.hoisted(() => ({
+  getServers: vi.fn((alias: string) => mcpManagerStore.servers.get(alias) ?? []),
+  getServerInfo: vi.fn((alias: string, name: string) =>
+    (mcpManagerStore.servers.get(alias) ?? []).find((s: any) => s.name === name) ?? null),
+  hasServersLoaded: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  hasPersistedServers: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    mcpManagerStore.servers.set(alias, legacySlice ?? mcpManagerStore.servers.get(alias) ?? []);
+  }),
+  commitResolvedServers: vi.fn(async (alias: string, servers: any[]) => {
+    mcpManagerStore.servers.set(alias, servers ?? []);
+  }),
+  addServer: vi.fn(async (alias: string, cfg: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    if (cur.some((s: any) => s.name === cfg.name)) return false;
+    mcpManagerStore.servers.set(alias, [...cur, cfg]);
+    return true;
+  }),
+  updateServer: vi.fn(async (alias: string, name: string, updates: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], ...updates };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  deleteServer: vi.fn(async (alias: string, name: string) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    mcpManagerStore.servers.set(alias, cur.filter((_: any, j: number) => j !== i));
+    return true;
+  }),
+  setServerInUse: vi.fn(async (alias: string, name: string, inUse: boolean) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], in_use: inUse };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  clearCache: vi.fn((alias?: string) => {
+    if (alias === undefined) mcpManagerStore.servers.clear();
+    else mcpManagerStore.servers.delete(alias);
+  }),
+}));
+vi.mock('../mcpConfigManager', () => ({
+  mcpConfigManager: mcpManagerMock,
+  McpConfigManager: class {},
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -203,6 +262,7 @@ function makeProfile(alias = 'test-user'): any {
 describe('ProfileCacheManager — clearCache', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('clearCache(alias) when alias exists in cache deletes it', async () => {
@@ -235,6 +295,7 @@ describe('ProfileCacheManager — clearCache', () => {
 describe('ProfileCacheManager — getCachedAliases', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('returns list of cached aliases', async () => {
@@ -247,36 +308,10 @@ describe('ProfileCacheManager — getCachedAliases', () => {
   });
 });
 
-describe('ProfileCacheManager — updateMcpServerInUse', () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  it('updates in_use when server is found', async () => {
-    const mgr = await getManager();
-    const profile = makeProfile('u1');
-    (mgr as any).cache.set('u1', profile);
-    mgr.updateMcpServerInUse('u1', 'server1', true);
-    const updated = mgr.getCachedProfile('u1') as any;
-    expect(updated.mcp_servers[0].in_use).toBe(true);
-  });
-
-  it('does nothing when server is not found', async () => {
-    const mgr = await getManager();
-    const profile = makeProfile('u1');
-    (mgr as any).cache.set('u1', profile);
-    expect(() => mgr.updateMcpServerInUse('u1', 'nonexistent', true)).not.toThrow();
-  });
-
-  it('does nothing when profile not in cache', async () => {
-    const mgr = await getManager();
-    expect(() => mgr.updateMcpServerInUse('noone', 'server1', true)).not.toThrow();
-  });
-});
-
 describe('ProfileCacheManager — getMcpServerRuntimeState / getAllMcpServerRuntimeStates', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('returns null when mcpClientManager not set', async () => {
@@ -301,6 +336,7 @@ describe('ProfileCacheManager — getMcpServerRuntimeState / getAllMcpServerRunt
 describe('ProfileCacheManager — clearMcpServerRuntimeState / clearUserRuntimeStates', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('clearMcpServerRuntimeState does nothing without mcpClientManager', async () => {
@@ -335,6 +371,7 @@ describe('ProfileCacheManager — clearMcpServerRuntimeState / clearUserRuntimeS
 describe('ProfileCacheManager — getMcpServerInfo / getAllMcpServerInfo', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('getMcpServerInfo returns null config when not in profile', async () => {
@@ -351,7 +388,9 @@ describe('ProfileCacheManager — getMcpServerInfo / getAllMcpServerInfo', () =>
 
   it('getAllMcpServerInfo maps servers from cached profile', async () => {
     const mgr = await getManager();
-    (mgr as any).cache.set('u1', makeProfile('u1'));
+    const profile = makeProfile('u1');
+    (mgr as any).cache.set('u1', profile);
+    mcpManagerStore.servers.set('u1', profile.mcp_servers);
     (mgr as any).mcpClientManager = {
       getMcpServerRuntimeState: vi.fn(() => null),
     };
@@ -364,6 +403,7 @@ describe('ProfileCacheManager — getMcpServerInfo / getAllMcpServerInfo', () =>
 describe('ProfileCacheManager — executeToolCall', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('throws when mcpClientManager not initialized', async () => {
@@ -390,20 +430,32 @@ describe('ProfileCacheManager — executeToolCall', () => {
   });
 });
 
-describe('ProfileCacheManager — cleanupMem0Resources', () => {
+describe('ProfileCacheManager — deprecated MCP methods', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
-  it('resolves without throwing', async () => {
+  it('updateMcpServerStatus does not throw', async () => {
     const mgr = await getManager();
-    await expect(mgr.cleanupMem0Resources()).resolves.toBeUndefined();
+    expect(() => mgr.updateMcpServerStatus('u1', 'server1', 'connected')).not.toThrow();
+  });
+
+  it('updateMcpServerTools does not throw', async () => {
+    const mgr = await getManager();
+    expect(() => mgr.updateMcpServerTools('u1', 'server1', [])).not.toThrow();
+  });
+
+  it('updateMcpServerError does not throw', async () => {
+    const mgr = await getManager();
+    expect(() => mgr.updateMcpServerError('u1', 'server1', new Error('err'))).not.toThrow();
   });
 });
 
-describe('ProfileCacheManager — setMainWindow and setRemoteChannelManagerGetter', () => {
+describe('ProfileCacheManager — setMainWindow', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('setMainWindow stores window reference', async () => {
@@ -413,17 +465,12 @@ describe('ProfileCacheManager — setMainWindow and setRemoteChannelManagerGette
     expect((mgr as any).mainWindow).toBe(fakeWindow);
   });
 
-  it('setRemoteChannelManagerGetter stores getter', async () => {
-    const mgr = await getManager();
-    const getter = vi.fn();
-    mgr.setRemoteChannelManagerGetter(getter);
-    expect((mgr as any).getRemoteChannelManager).toBe(getter);
-  });
 });
 
 describe('ProfileCacheManager — forceNotifyProfileDataManager', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('resolves without throwing even with no window', async () => {
@@ -435,6 +482,7 @@ describe('ProfileCacheManager — forceNotifyProfileDataManager', () => {
 describe('ProfileCacheManager — notifyProfileDataManager batched path', () => {
   beforeEach(() => {
     vi.resetModules();
+    mcpManagerStore.servers.clear();
   });
 
   it('batches multiple non-immediate calls and deduplicates aliases', async () => {

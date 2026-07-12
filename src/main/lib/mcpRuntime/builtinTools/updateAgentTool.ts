@@ -5,32 +5,31 @@
  * Workflow:
  * 1. Receive Agent configuration object
  * 2. Validate that the Agent is installed (by name lookup)
- * 3. Process update according to source and version rules
+ * 3. Apply the local update
  * 4. Call profileCacheManager to update the configuration
  *
- * Source and Version update rules:
- * 2.1. If original source is ON-DEVICE
- *      2.1.1. If new source is ON-DEVICE => ignore new version, use original source, auto-increment original version patch
- *      2.1.2. If new source is IN-LIBRARY => new version must not be empty && new version > original version, override with new source and version
- *      2.1.3. If new source is not provided => ignore new version, use original source, auto-increment original version patch
- *
- * 2.2. If original source is IN-LIBRARY
- *      2.2.1. If new source is ON-DEVICE => not allowed to overwrite IN-LIBRARY config with ON-DEVICE config
- *      2.2.2. If new source is IN-LIBRARY => new version must not be empty && new version > original version, override with new source and version
- *      2.2.3. If new source is not provided => must specify new source and new version
+ * Existing remote metadata is accepted for compatibility but never consulted.
  */
 
 import { BuiltinToolDefinition } from './types';
 import {
   ChatAgent,
+  ChatConfig,
   AgentMcpServer,
   AgentKnowledge,
-  ContextEnhancement,
-  DEFAULT_CONTEXT_ENHANCEMENT,
-  DEFAULT_CHAT_AGENT
+  DEFAULT_CHAT_AGENT,
+  type ZeroStates,
 } from '../../userDataADO/types/profile';
+import { randomUUID } from 'crypto';
 import { profileCacheManager } from "../../userDataADO/profileCacheManager";
-import { mergeAgentMcpServers, mergeAgentSkills } from "../../startupUpdate/startupUpdateService";
+import { agentIdOf, getChatAgents, getChatPrimaryAgent } from "../../userDataADO/agentAccessor";
+import {
+  AGENT_SYSTEM_PROMPT_AGENTS_FILE,
+  AGENT_SYSTEM_PROMPT_BASE_FILE,
+  mergeAgentSystemPromptUpdate,
+  setAgentSystemPromptFile,
+  type AgentSystemPrompt,
+} from '@shared/types/agentSystemPrompt';
 
 /**
  * Agent MCP Server configuration input interface
@@ -40,26 +39,6 @@ interface AgentMcpServerInput {
   name: string;
   /** List of selected tools (optional; empty or not provided means use all tools) */
   tools?: string[];
-}
-
-/**
- * Context Enhancement configuration input interface
- */
-interface ContextEnhancementInput {
-  /** Memory search configuration */
-  search_memory?: {
-    /** Whether to enable memory search */
-    enabled?: boolean;
-    /** Semantic similarity threshold, range [0,1] */
-    semantic_similarity_threshold?: number;
-    /** Number of top-N semantic similarity results */
-    semantic_top_n?: number;
-  };
-  /** Memory generation configuration */
-  generate_memory?: {
-    /** Whether to enable memory generation */
-    enabled?: boolean;
-  };
 }
 
 interface AgentKnowledgeInput {
@@ -76,7 +55,7 @@ interface UpdateAgentByConfigArgs {
     name: string;
     /** Agent emoji (optional) */
     emoji?: string;
-    /** Agent avatar URL (optional; only for IN-LIBRARY agents, should be empty for ON-DEVICE agents) */
+    /** Agent avatar URL (optional) */
     avatar?: string;
     /** Agent role description (optional) */
     role?: string;
@@ -84,28 +63,49 @@ interface UpdateAgentByConfigArgs {
     model?: string;
     /** List of MCP servers dedicated to this Agent (optional) */
     mcp_servers?: AgentMcpServerInput[];
-    /** System prompt (optional) */
-    system_prompt?: string;
-    /** Context Enhancement configuration (optional) */
-    context_enhancement?: ContextEnhancementInput;
+    /**
+     * How to apply mcp_servers against the existing list (optional).
+     * 'merge' (default): union by server name — additive, never drops existing servers.
+     * 'replace': overwrite the entire list with the provided one.
+     */
+    mcp_servers_mode?: 'merge' | 'replace';
+    /** System prompt file map (optional; legacy string is accepted and stored as Base.md) */
+    system_prompt?: AgentSystemPrompt | string;
+    /** Agent Identity prompt content. Updates Base.md without touching AGENTS.md. */
+    agent_identity_prompt?: string;
+    /** Project Context prompt content. Updates AGENTS.md without touching Base.md. */
+    project_context_prompt?: string;
     /** List of Skill names used by the Agent (optional) */
     skills?: string[];
-    /** Agent working directory path (optional) */
-    workspace?: string;
+    /**
+     * How to apply skills against the existing list (optional).
+     * 'merge' (default): union by skill name — additive, never drops existing skills.
+     * 'replace': overwrite the entire list with the provided one.
+     */
+    skills_mode?: 'merge' | 'replace';
+    /** Agent Hook ids bound to this Agent (optional) */
+    hooks?: string[];
+    /**
+     * How to apply hooks against the existing list (optional).
+     * 'merge' (default): union by Hook id — additive, never drops existing hooks.
+     * 'replace': overwrite the entire list with the provided one.
+     */
+    hooks_mode?: 'merge' | 'replace';
     /** Knowledge Base directory path (optional) */
     knowledgeBase?: string;
     /** Agent knowledge settings (optional) */
     knowledge?: AgentKnowledgeInput;
-    /** Agent version (required when source is IN-LIBRARY) */
+    /** Legacy metadata accepted but ignored. */
     version?: string;
-    /** Agent source */
+    /** Legacy metadata accepted but ignored. */
     source?: 'IN-LIBRARY' | 'ON-DEVICE';
-    /** 🆕 Remote CDN version (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
+    /** Legacy metadata accepted but ignored. */
     remoteVersion?: string;
     /** 🆕 Zero States configuration (optional, for initial chat experience) */
     zero_states?: {
       greeting?: string;
       quick_starts?: Array<{
+        id?: string;
         title: string;
         image?: string;
         description: string;
@@ -148,41 +148,19 @@ function incrementPatchVersion(version: string): string {
   return `${major}.${minor}.${patch + 1}`;
 }
 
-/**
- * Compare two semantic version numbers
- * @param newVersion new version
- * @param oldVersion original version
- * @returns 1 if newVersion > oldVersion, -1 if newVersion < oldVersion, 0 if equal
- */
-function compareVersions(newVersion: string, oldVersion: string): number {
-  const parseVersion = (version: string): number[] => {
-    const parts = version.split('.');
-    return [
-      parseInt(parts[0], 10) || 0,
-      parseInt(parts[1], 10) || 0,
-      parseInt(parts[2], 10) || 0
-    ];
-  };
-
-  const newParts = parseVersion(newVersion);
-  const oldParts = parseVersion(oldVersion);
-
-  for (let i = 0; i < 3; i++) {
-    if (newParts[i] > oldParts[i]) return 1;
-    if (newParts[i] < oldParts[i]) return -1;
+function mergeAgentMcpServers(
+  existing: AgentMcpServer[],
+  incoming: AgentMcpServer[],
+): AgentMcpServer[] {
+  const merged = new Map(existing.map(server => [server.name, server]));
+  for (const server of incoming) {
+    merged.set(server.name, { ...merged.get(server.name), ...server });
   }
-
-  return 0;
+  return Array.from(merged.values());
 }
 
-/**
- * Check whether the new version is greater than the original version
- * @param newVersion new version
- * @param oldVersion original version
- * @returns true if newVersion > oldVersion
- */
-function isVersionGreater(newVersion: string, oldVersion: string): boolean {
-  return compareVersions(newVersion, oldVersion) > 0;
+function mergeStrings(existing: string[], incoming: string[]): string[] {
+  return Array.from(new Set([...existing, ...incoming]));
 }
 
 function normalizeKnowledgeInput(input: AgentKnowledgeInput | undefined, existingAgent: ChatAgent): AgentKnowledge {
@@ -192,7 +170,24 @@ function normalizeKnowledgeInput(input: AgentKnowledgeInput | undefined, existin
     ...existingKnowledge,
     knowledgeBase: input?.knowledgeBase !== undefined
       ? input.knowledgeBase
-      : (existingKnowledge.knowledgeBase ?? existingAgent.knowledge?.knowledgeBase),
+      : (existingKnowledge.knowledgeBase ?? existingAgent.knowledgeBase),
+  };
+}
+
+function normalizeZeroStatesUpdate(update: UpdateAgentByConfigArgs['agent_config']['zero_states'] | undefined, existingAgent: ChatAgent): ZeroStates | undefined {
+  if (update === undefined) {
+    return existingAgent.zero_states;
+  }
+
+  return {
+    ...(existingAgent.zero_states || {}),
+    ...update,
+    quick_starts: update.quick_starts !== undefined
+      ? update.quick_starts.map(qs => ({
+          ...qs,
+          id: qs.id || randomUUID().slice(0, 8),
+        }))
+      : existingAgent.zero_states?.quick_starts,
   };
 }
 
@@ -207,7 +202,7 @@ export class UpdateAgentTool {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'update_agent',
-      description: 'Update an existing AI agent configuration. The agent must be already installed (checked by name). Follows specific rules for source and version updates.',
+      description: 'Update an existing locally configured AI agent.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -225,7 +220,7 @@ export class UpdateAgentTool {
               },
               avatar: {
                 type: 'string',
-                description: 'The avatar image URL for the agent (optional, only used for IN-LIBRARY agents, should be empty for ON-DEVICE agents)'
+                description: 'The optional avatar image URL for the agent'
               },
               role: {
                 type: 'string',
@@ -256,41 +251,32 @@ export class UpdateAgentTool {
                   required: ['name']
                 }
               },
-              system_prompt: {
+              mcp_servers_mode: {
                 type: 'string',
-                description: 'The system prompt that defines the agent\'s behavior and personality (optional)'
+                enum: ['merge', 'replace'],
+                description: 'How to apply mcp_servers. "merge" (default) adds to the existing list without dropping any; "replace" overwrites the whole list.'
               },
-              context_enhancement: {
-                type: 'object',
-                description: 'Context enhancement settings for memory search and generation (optional)',
-                properties: {
-                  search_memory: {
+              system_prompt: {
+                anyOf: [
+                  {
                     type: 'object',
                     properties: {
-                      enabled: {
-                        type: 'boolean',
-                        description: 'Enable memory search'
-                      },
-                      semantic_similarity_threshold: {
-                        type: 'number',
-                        description: 'Semantic similarity threshold (0-1)'
-                      },
-                      semantic_top_n: {
-                        type: 'number',
-                        description: 'Number of top results to retrieve'
-                      }
-                    }
+                      'Base.md': { type: 'string' },
+                      'AGENTS.md': { type: 'string' },
+                    },
+                    additionalProperties: false,
                   },
-                  generate_memory: {
-                    type: 'object',
-                    properties: {
-                      enabled: {
-                        type: 'boolean',
-                        description: 'Enable memory generation'
-                      }
-                    }
-                  }
-                }
+                  { type: 'string' },
+                ],
+                description: 'System prompt files for the agent. On update, omitted files are preserved; legacy string input updates Base.md only.'
+              },
+              agent_identity_prompt: {
+                type: 'string',
+                description: 'Safe shortcut for updating Base.md / Agent Identity only. Does not modify AGENTS.md.'
+              },
+              project_context_prompt: {
+                type: 'string',
+                description: 'Safe shortcut for updating AGENTS.md / Project Context only. Does not modify Base.md.'
               },
               skills: {
                 type: 'array',
@@ -299,9 +285,22 @@ export class UpdateAgentTool {
                   type: 'string'
                 }
               },
-              workspace: {
+              skills_mode: {
                 type: 'string',
-                description: 'The workspace directory path for this agent (optional, keeps existing if not provided)'
+                enum: ['merge', 'replace'],
+                description: 'How to apply skills. "merge" (default) adds to the existing list without dropping any; "replace" overwrites the whole list.'
+              },
+              hooks: {
+                type: 'array',
+                description: 'List of Hook ids to bind to this agent (optional)',
+                items: {
+                  type: 'string'
+                }
+              },
+              hooks_mode: {
+                type: 'string',
+                enum: ['merge', 'replace'],
+                description: 'How to apply hooks. "merge" (default) adds to the existing list without dropping any; "replace" overwrites the whole list.'
               },
               knowledgeBase: {
                 type: 'string',
@@ -317,26 +316,13 @@ export class UpdateAgentTool {
                   }
                 }
               },
-              version: {
-                type: 'string',
-                description: 'Agent version (required when source is IN-LIBRARY)'
-              },
-              source: {
-                type: 'string',
-                enum: ['IN-LIBRARY', 'ON-DEVICE'],
-                description: 'Agent source'
-              },
-              remoteVersion: {
-                type: 'string',
-                description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
-              },
               zero_states: {
                 type: 'object',
-                description: 'Zero states configuration for chat initial experience (optional)',
+                description: 'Partial zero states configuration for chat initial experience. Omitted fields are preserved on update; quick_starts replaces the full quick start list when provided.',
                 properties: {
                   greeting: {
                     type: 'string',
-                    description: 'Greeting message shown when chat is empty'
+                    description: 'Greeting message shown when chat is empty. Preserves existing quick_starts when this is the only zero_states field provided.'
                   },
                   quick_starts: {
                     type: 'array',
@@ -404,6 +390,14 @@ export class UpdateAgentTool {
         };
       }
 
+      if (Object.prototype.hasOwnProperty.call(config as object, 'workspace')) {
+        return {
+          success: false,
+          message: 'Invalid input: workspace is chat-owned and derived from the chat id; it cannot be updated through agent configuration.',
+          error: 'INVALID_INPUT'
+        };
+      }
+
       const agentName = config.name.trim();
 
       // Get profileCacheManager to check whether the Agent is installed
@@ -420,178 +414,121 @@ export class UpdateAgentTool {
 
       // Check whether the Agent is installed (by name lookup)
       const existingChats = profileCacheManager.getAllChatConfigs(currentUserAlias);
-      const existingChat = existingChats.find(chat =>
-        chat.agent && chat.agent.name === agentName
-      );
+      let existingChat: ChatConfig | undefined = undefined;
+      let existingAgents: ChatAgent[] = [];
+      let existingAgent: ChatAgent | undefined = undefined;
+      for (const chat of existingChats) {
+        const chatAgents = getChatAgents(chat);
+        const matchingAgent = chatAgents.find(agent => agent?.name === agentName);
+        if (matchingAgent) {
+          existingChat = chat;
+          existingAgents = chatAgents;
+          existingAgent = matchingAgent;
+          break;
+        }
+      }
 
-      if (!existingChat || !existingChat.agent) {
+      if (!existingChat || !existingAgent) {
         return {
           success: false,
           message: `Agent "${agentName}" is not installed. Use create_agent_from_config to install it first.`,
           error: 'NOT_INSTALLED'
         };
       }
+      const targetAgent = existingAgent;
 
-      const existingAgent = existingChat.agent;
       const chatId = existingChat.chat_id;
-      const oldSource = existingAgent.source || 'ON-DEVICE';
-      const oldVersion = existingAgent.version || '1.0.0';
-      const newSource = config.source;
-      const newVersion = config.version;
-
-      // Process update according to source and version rules
-      let finalSource: 'IN-LIBRARY' | 'ON-DEVICE' = oldSource as 'IN-LIBRARY' | 'ON-DEVICE';
-      let finalVersion: string = oldVersion;
-
-      // 2.1. If original source is ON-DEVICE
-      if (oldSource === 'ON-DEVICE') {
-        if (newSource === 'ON-DEVICE' || newSource === undefined) {
-          // 2.1.1 or 2.1.3: ignore new version, use original source, auto-increment original version patch
-          finalSource = 'ON-DEVICE';
-          finalVersion = incrementPatchVersion(oldVersion);
-        } else if (newSource === 'IN-LIBRARY') {
-          // 2.1.2: new version must not be empty && new version > original version, override with new source and version
-          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
-            return {
-              success: false,
-              message: 'When changing source from ON-DEVICE to IN-LIBRARY, version must be provided',
-              error: 'VERSION_REQUIRED'
-            };
-          }
-          const trimmedNewVersion = newVersion.trim();
-          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
-            return {
-              success: false,
-              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating to IN-LIBRARY`,
-              error: 'VERSION_NOT_GREATER'
-            };
-          }
-          finalSource = 'IN-LIBRARY';
-          finalVersion = trimmedNewVersion;
-        }
-      }
-      // 2.2. If original source is IN-LIBRARY
-      else if (oldSource === 'IN-LIBRARY') {
-        if (newSource === 'ON-DEVICE') {
-          // 2.2.1: not allowed to overwrite IN-LIBRARY config with ON-DEVICE config
-          return {
-            success: false,
-            message: 'Cannot override IN-LIBRARY configuration with ON-DEVICE configuration. IN-LIBRARY Agents must be updated from the library.',
-            error: 'SOURCE_OVERRIDE_NOT_ALLOWED'
-          };
-        } else if (newSource === 'IN-LIBRARY') {
-          // 2.2.2: new version must not be empty && new version > original version, override with new source and version
-          if (!newVersion || typeof newVersion !== 'string' || !newVersion.trim()) {
-            return {
-              success: false,
-              message: 'When updating IN-LIBRARY Agent, version must be provided',
-              error: 'VERSION_REQUIRED'
-            };
-          }
-          const trimmedNewVersion = newVersion.trim();
-          if (!isVersionGreater(trimmedNewVersion, oldVersion)) {
-            return {
-              success: false,
-              message: `New version (${trimmedNewVersion}) must be greater than old version (${oldVersion}) when updating IN-LIBRARY Agent`,
-              error: 'VERSION_NOT_GREATER'
-            };
-          }
-          finalSource = 'IN-LIBRARY';
-          finalVersion = trimmedNewVersion;
-        } else {
-          // 2.2.3: if new source is not provided => must specify new source and new version
-          return {
-            success: false,
-            message: 'When updating IN-LIBRARY Agent without specifying source, both source and version must be provided',
-            error: 'SOURCE_AND_VERSION_REQUIRED'
-          };
-        }
-      }
+      const oldVersion = targetAgent.version || '1.0.0';
+      const finalVersion = incrementPatchVersion(oldVersion);
 
       const normalizedKnowledge = normalizeKnowledgeInput({
         ...knowledgeInput,
         knowledgeBase: knowledgeInput?.knowledgeBase ?? config.knowledgeBase,
-      }, existingAgent);
+      }, targetAgent);
 
-      // Build the updated ChatAgent
-      // Build mcp_servers array (if new ones are provided)
-      // IN-LIBRARY update: merge strategy — keep local tool selection, add remote new servers
-      // ON-DEVICE update: full replacement
+      // Build mcp_servers array (if new ones are provided).
+      // Rationale: callers typically mean "add this server", not "set the list to only this".
+      // Full replacement here previously wiped existing bindings (see regression: chrome-devtools
+      // overwrote all of Kobi's MCP servers).
+      const mcpServersMode = config.mcp_servers_mode === 'replace' ? 'replace' : 'merge';
       let finalMcpServers: AgentMcpServer[] | undefined;
       if (config.mcp_servers !== undefined) {
         const newMcpServers = (config.mcp_servers || []).map(server => ({
           name: server.name,
           tools: Array.isArray(server.tools) ? server.tools : []
         }));
-        if (finalSource === 'IN-LIBRARY') {
-          // IN-LIBRARY: merge — preserve local tools selections, add new remote servers
+        if (mcpServersMode === 'merge') {
+          // Merge — preserve existing servers/tool selections, add new ones
           finalMcpServers = mergeAgentMcpServers(existingAgent.mcp_servers || [], newMcpServers);
         } else {
-          // ON-DEVICE: complete replacement
           finalMcpServers = newMcpServers;
         }
       }
 
-      // Build skills array
-      // IN-LIBRARY update: merge strategy — keep local skills, add remote new skills
-      // ON-DEVICE update: full replacement
+      // Build skills array.
+      const skillsMode = config.skills_mode === 'replace' ? 'replace' : 'merge';
       let finalSkills: string[] | undefined;
       if (config.skills !== undefined) {
-        if (finalSource === 'IN-LIBRARY') {
-          // IN-LIBRARY: merge — union of local and remote skills
-          finalSkills = mergeAgentSkills(existingAgent.skills || [], config.skills || []);
+        if (skillsMode === 'merge') {
+          finalSkills = mergeStrings(existingAgent.skills || [], config.skills || []);
         } else {
-          // ON-DEVICE: complete replacement
           finalSkills = config.skills;
         }
       }
 
-      // Build context_enhancement (if new ones are provided)
-      let contextEnhancement: ContextEnhancement | undefined;
-      if (config.context_enhancement !== undefined) {
-        const existingCE = existingAgent.context_enhancement || DEFAULT_CONTEXT_ENHANCEMENT;
-        contextEnhancement = {
-          search_memory: {
-            enabled: config.context_enhancement?.search_memory?.enabled ?? existingCE.search_memory.enabled,
-            semantic_similarity_threshold: config.context_enhancement?.search_memory?.semantic_similarity_threshold ?? existingCE.search_memory.semantic_similarity_threshold,
-            semantic_top_n: config.context_enhancement?.search_memory?.semantic_top_n ?? existingCE.search_memory.semantic_top_n
-          },
-          generate_memory: {
-            enabled: config.context_enhancement?.generate_memory?.enabled ?? existingCE.generate_memory.enabled
-          }
-        };
+      const hooksMode = config.hooks_mode === 'replace' ? 'replace' : 'merge';
+      let finalHooks: string[] | undefined;
+      if (config.hooks !== undefined) {
+        if (hooksMode === 'merge') {
+          finalHooks = mergeStrings(existingAgent.hooks || [], config.hooks || []);
+        } else {
+          finalHooks = config.hooks;
+        }
+      }
+
+      let finalSystemPrompt = mergeAgentSystemPromptUpdate(targetAgent.system_prompt, config.system_prompt);
+      if (config.agent_identity_prompt !== undefined) {
+        finalSystemPrompt = setAgentSystemPromptFile(finalSystemPrompt, AGENT_SYSTEM_PROMPT_BASE_FILE, config.agent_identity_prompt);
+      }
+      if (config.project_context_prompt !== undefined) {
+        finalSystemPrompt = setAgentSystemPromptFile(finalSystemPrompt, AGENT_SYSTEM_PROMPT_AGENTS_FILE, config.project_context_prompt);
       }
 
       // Build agent update object
       const agentUpdates: Partial<ChatAgent> = {
         // Basic attributes: use new value if provided, otherwise keep original
-        emoji: config.emoji || existingAgent.emoji,
-        avatar: config.avatar !== undefined ? config.avatar : (existingAgent.avatar || ''),
-        role: config.role || existingAgent.role,
-        // model defers to local: keep local model for IN-LIBRARY, allow remote override for ON-DEVICE
-        model: finalSource === 'IN-LIBRARY' ? (existingAgent.model || config.model) : (config.model || existingAgent.model),
-        system_prompt: config.system_prompt !== undefined ? config.system_prompt : existingAgent.system_prompt,
-        workspace: config.workspace !== undefined ? config.workspace : existingAgent.workspace,
+        emoji: config.emoji || targetAgent.emoji,
+        avatar: config.avatar !== undefined ? config.avatar : (targetAgent.avatar || ''),
+        role: config.role || targetAgent.role,
+        model: config.model || targetAgent.model,
+        system_prompt: finalSystemPrompt,
         knowledge: normalizedKnowledge,
-        // mcp_servers and skills have already been merged or replaced based on source type
-        mcp_servers: finalMcpServers !== undefined ? finalMcpServers : existingAgent.mcp_servers,
-        // Use new context_enhancement if provided; otherwise keep original
-        context_enhancement: contextEnhancement !== undefined ? contextEnhancement : existingAgent.context_enhancement,
-        // skills have already been merged or replaced based on source type
-        skills: finalSkills !== undefined ? finalSkills : existingAgent.skills,
-        // Version and source use the result after rule processing
+        // Bindings have already been merged or replaced based on the requested mode.
+        mcp_servers: finalMcpServers !== undefined ? finalMcpServers : targetAgent.mcp_servers,
+        skills: finalSkills !== undefined ? finalSkills : targetAgent.skills,
+        hooks: finalHooks !== undefined ? finalHooks : targetAgent.hooks,
         version: finalVersion,
-        source: finalSource,
-        // 🆕 remoteVersion: use the passed value or keep original for IN-LIBRARY; clear for ON-DEVICE
-        remoteVersion: finalSource === 'IN-LIBRARY'
-          ? (config.remoteVersion || existingAgent.remoteVersion || '')
-          : '',
-        // 🆕 zero_states: use new value if provided; otherwise keep original
-        zero_states: config.zero_states !== undefined ? config.zero_states : existingAgent.zero_states
+        source: 'ON-DEVICE',
+        remoteVersion: targetAgent.remoteVersion,
+        // zero_states is a partial object: omitted greeting/quick_starts stay intact.
+        zero_states: normalizeZeroStatesUpdate(config.zero_states, targetAgent)
       };
 
-      // Call profileCacheManager to update Agent
-      const updateResult = await profileCacheManager.updateChatAgent(currentUserAlias, chatId, agentUpdates);
+      // updateChatAgent edits only the primary agent. Secondary agents in a
+      // multi-agent chat use the plural store-aware updateChatConfig path.
+      const primaryAgent = getChatPrimaryAgent(existingChat);
+      const targetAgentId = agentIdOf(targetAgent);
+      const primaryAgentId = primaryAgent ? agentIdOf(primaryAgent) : undefined;
+      const updateResult = primaryAgentId === targetAgentId
+        ? await profileCacheManager.updateChatAgent(currentUserAlias, chatId, agentUpdates)
+        : await profileCacheManager.updateChatConfig(currentUserAlias, chatId, {
+            agent: primaryAgent ?? existingAgents[0],
+            agents: existingAgents.map(agent =>
+              agentIdOf(agent) === targetAgentId
+                ? { ...targetAgent, ...agentUpdates }
+                : agent
+            ),
+          });
 
       if (!updateResult) {
         return {
@@ -604,13 +541,13 @@ export class UpdateAgentTool {
       // Successfully updated
       return {
         success: true,
-        message: `Successfully updated Agent "${agentName}". Version: ${oldVersion} -> ${finalVersion}, Source: ${oldSource} -> ${finalSource}.`,
+        message: `Successfully updated Agent "${agentName}".`,
         agent_name: agentName,
         chat_id: chatId,
         old_version: oldVersion,
         new_version: finalVersion,
-        old_source: oldSource,
-        new_source: finalSource
+        old_source: targetAgent.source,
+        new_source: 'ON-DEVICE'
       };
 
     } catch (error) {
@@ -642,9 +579,8 @@ export class UpdateAgentTool {
       return { valid: false, error: 'Cannot change agent name during update' };
     }
 
-    // Validate source if provided
-    if (config.source && !['IN-LIBRARY', 'ON-DEVICE'].includes(config.source)) {
-      return { valid: false, error: 'Source must be IN-LIBRARY or ON-DEVICE' };
+    if (Object.prototype.hasOwnProperty.call(config, 'workspace')) {
+      return { valid: false, error: 'workspace is chat-owned and derived from the chat id' };
     }
 
     return { valid: true };

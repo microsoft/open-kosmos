@@ -1,0 +1,370 @@
+/* ===========================
+   Shared settings page styles
+   Used by settings *View / *ContentView components across the app
+   (RuntimeSettings, Screenshot, Sync, AboutApp, etc.)
+   =========================== */
+
+/* ===========================
+   Content area layout
+   =========================== */
+
+.toolbar-settings-content {
+  max-width: 56rem;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* ===========================
+   Message prompt box
+   =========================== */
+
+/* Error message */
+.toolbar-settings-error {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-danger-200);
+  border-radius: var(--radius-xl);
+  color: var(--color-danger-700);
+}
+
+.toolbar-settings-error .message-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-settings-error .message-indicator {
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--radius-full);
+  background-color: var(--color-danger-500);
+  flex-shrink: 0;
+}
+
+.toolbar-settings-error .message-label {
+  font-weight: 500;
+}
+
+.toolbar-settings-error .message-text {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* ===========================
+   Settings form
+   =========================== */
+
+.toolbar-settings-form {
+  transition: all 0.3s ease-in-out;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.toolbar-settings-form-inner {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+}
+
+.toolbar-settings-form-inner > * + * {
+  margin-top: 1.5rem;
+}
+
+/* ===========================
+   Settings card
+   =========================== */
+
+.toolbar-settings-card {
+  background-color: var(--toolbar-settings-card-bg);
+  border-radius: var(--radius-xl);
+  padding: 8px;
+  border: 1px solid var(--color-border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ===========================
+   Settings item
+   =========================== */
+
+.toolbar-setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+}
+
+.toolbar-setting-item .setting-label-container {
+  flex: 1;
+}
+
+.toolbar-setting-item .setting-label {
+  display: block;
+  color: var(--toolbar-settings-label-fg);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.field-requirement {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  vertical-align: middle;
+}
+
+.field-requirement--required {
+  background: var(--color-warning-100);
+  color: var(--color-warning-800);
+}
+
+.field-requirement--optional {
+  background: var(--toolbar-field-optional-bg);
+  color: var(--toolbar-field-optional-fg);
+}
+
+/* ===========================
+   Toggle component
+   =========================== */
+
+.toolbar-toggle-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  margin-left: 1rem;
+}
+
+.toolbar-toggle-wrapper input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.toolbar-toggle-track {
+  width: 36px;
+  height: 20px;
+  background-color: var(--toolbar-toggle-track-bg);
+  border-radius: var(--radius-full);
+  position: relative;
+  transition: background-color 0.2s;
+  box-shadow: inset 0 0 0 1px var(--toolbar-toggle-track-border);
+}
+
+.toolbar-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: var(--toolbar-toggle-thumb-bg);
+  border: 1px solid var(--toolbar-toggle-thumb-border);
+  border-radius: var(--radius-full);
+  transition: transform 0.2s;
+}
+
+.toolbar-toggle-wrapper input:checked + .toolbar-toggle-track {
+  background-color: var(--toolbar-toggle-checked-bg);
+  box-shadow: inset 0 0 0 1px var(--toolbar-toggle-checked-track-border);
+}
+
+.toolbar-toggle-wrapper input:checked + .toolbar-toggle-track::after {
+  transform: translateX(100%);
+  background-color: var(--toolbar-toggle-checked-thumb-bg);
+  border-color: var(--toolbar-toggle-checked-border);
+}
+
+.toolbar-toggle-wrapper:hover input:checked + .toolbar-toggle-track {
+  background-color: var(--toolbar-toggle-checked-hover-bg);
+}
+
+.toolbar-toggle-wrapper input:disabled + .toolbar-toggle-track {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.toolbar-toggle-wrapper:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+/* ===========================
+   Select component
+   =========================== */
+
+.toolbar-select-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 1rem;
+}
+
+.toolbar-select {
+  appearance: none;
+  background-color: var(--toolbar-select-bg);
+  border: 1px solid var(--toolbar-select-border);
+  border-radius: var(--radius-lg);
+  padding: 0.25rem 2rem 0.25rem 0.75rem;
+  font-size: 14px;
+  color: var(--toolbar-select-fg);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+.toolbar-select:hover {
+  border-color: var(--toolbar-select-focus-border);
+}
+
+.toolbar-select:focus {
+  border-color: var(--toolbar-select-focus-border);
+  box-shadow: 0 0 0 1px var(--toolbar-select-focus-border);
+}
+
+.toolbar-select option {
+  background-color: var(--toolbar-select-bg);
+  color: var(--toolbar-select-fg);
+}
+
+/* ===========================
+   Shortcut key settings
+   =========================== */
+
+.toolbar-shortcut-section .shortcut-label {
+  display: block;
+  color: var(--toolbar-settings-label-fg);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 10px 4px;
+}
+
+/* ===========================
+   Loading state
+   =========================== */
+
+.toolbar-loading-state {
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.toolbar-loading-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid transparent;
+  border-bottom-color: var(--toolbar-loading-fg);
+  border-radius: var(--radius-full);
+  margin: 0 auto;
+  animation: toolbar-spin 1s linear infinite;
+}
+
+@keyframes toolbar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toolbar-loading-state .loading-text {
+  color: var(--toolbar-loading-fg);
+  margin-top: 0.75rem;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* ===========================
+   Shortcut key recorder container
+   =========================== */
+
+.shortcut-recorder-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 4px 10px 4px;
+}
+
+/* ── Computer Use always-allowed apps list ── */
+.toolbar-settings-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--toolbar-settings-input-border);
+  background: var(--toolbar-settings-input-bg);
+  color: var(--toolbar-settings-input-fg);
+  font-size: 13px;
+}
+
+.toolbar-settings-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar-settings-button {
+  padding: 6px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--toolbar-settings-button-border);
+  background: var(--toolbar-settings-button-bg);
+  color: var(--toolbar-settings-button-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toolbar-settings-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar-settings-list {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toolbar-settings-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-lg);
+  background: var(--toolbar-settings-list-item-bg);
+  font-size: 13px;
+}
+
+.appearance-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.appearance-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+}
+
+.appearance-option-row[data-active='true'] {
+  background: var(--appearance-option-active-bg);
+}

@@ -194,4 +194,43 @@ describe('StatusBadges', () => {
 
     expect(screen.getByText(/tools: 1/)).toBeDefined();
   });
+
+  it('recalculates tools and skills when the profile subscription fires', () => {
+    const profileCallbacks: Array<() => void> = [];
+    mockSubscribeProfile.mockImplementation((cb: () => void) => {
+      profileCallbacks.push(cb);
+      return () => {};
+    });
+    mockGetCurrentChatId.mockReturnValue('chat-3');
+    mockGetChatConfigs.mockReturnValue([
+      { chat_id: 'chat-3', agent: { mcp_servers: ['s1'], skills: ['skill1'] } }
+    ]);
+    mockGetAgentSpecificTools.mockReturnValue([{ name: 't1' }, { name: 't2' }]);
+    mockGetSkills.mockReturnValue([{ name: 'skill1' }]);
+
+    render(<StatusBadges />);
+    act(() => {
+      profileCallbacks.forEach(cb => cb());
+    });
+
+    expect(screen.getByText(/tools: 2/)).toBeDefined();
+    expect(screen.getByText(/skills: 1/)).toBeDefined();
+  });
+
+  it('ignores profile subscription updates when there is no current chat', () => {
+    const profileCallbacks: Array<() => void> = [];
+    mockSubscribeProfile.mockImplementation((cb: () => void) => {
+      profileCallbacks.push(cb);
+      return () => {};
+    });
+    mockGetCurrentChatId.mockReturnValue(null);
+
+    render(<StatusBadges />);
+    act(() => {
+      profileCallbacks.forEach(cb => cb());
+    });
+
+    expect(screen.getByText(/tools: 0/)).toBeDefined();
+    expect(screen.getByText(/skills: 0/)).toBeDefined();
+  });
 });

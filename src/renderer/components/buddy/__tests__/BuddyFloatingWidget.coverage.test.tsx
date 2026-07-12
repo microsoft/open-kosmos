@@ -165,7 +165,7 @@ describe('BuddyFloatingWidget – normal (undocked) render', () => {
       levelUp: { level: 3, statGained: 'WISDOM' },
       reaction: { text: 'Reaction text' },
     });
-    expect(screen.getByText('Level 3! +1 WISDOM')).toBeTruthy();
+    expect(screen.getByText('Level 3! +1 Wisdom')).toBeTruthy();
   });
 
   it('shows milestone effect when milestone is set', () => {

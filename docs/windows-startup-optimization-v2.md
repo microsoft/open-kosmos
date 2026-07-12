@@ -26,7 +26,6 @@ The following issues still exist and will severely impact startup performance on
 import { profileCacheManager } from './lib/userDataADO';
 import { runtimeManager } from './lib/runtime/RuntimeManager';
 import { createLogger, resetGlobalLogger } from './lib/unifiedLogger';
-import { UpdateManager } from './lib/autoUpdate/updateManager';
 import { safeConsole, exitSafeLog } from './lib/utilities/safeConsole';
 import { mainAuthManager } from './lib/auth/authManager';
 import { mainTokenMonitor } from './lib/auth';
@@ -240,7 +239,6 @@ constructor() {
   })();
   
   this.setupEventHandlers();  // 🔥 Registers many IPC handlers
-  setImmediate(() => this.initSelectionHook());  // ✅ Already optimized
   
   // 🔥 Logger initialization
   (() => {

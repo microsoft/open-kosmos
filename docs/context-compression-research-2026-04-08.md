@@ -8,7 +8,7 @@ Date: 2026-04-08
 
 This report answers three immediate questions:
 
-1. Why did the oversized OpenKosmos session not trigger compression early enough and still overflow the API limit?
+1. Why did the oversized OpenKosmos/OpenKosmos session not trigger compression early enough and still overflow the API limit?
 2. Why is the current `context_history` effectively uncompressed and unsafe to send to a compression LLM once it already exceeds the target model's context window?
 3. What compression strategy should OpenKosmos adopt after studying Claude Code and OpenClaw?
 

@@ -6,6 +6,8 @@
  */
 
 import { BuiltinToolDefinition } from '../types';
+import type { AgentHookEvent, HttpHookMethod } from '../../../../../shared/agentHooks/profileTypes';
+import type { AgentSystemPrompt } from '../../../../../shared/types/agentSystemPrompt';
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -28,7 +30,7 @@ export interface FacadeResult {
 export interface ManageSkillsInput {
   action: 'install' | 'uninstall' | 'bind' | 'unbind';
   skill_names: string[];
-  source?: 'library' | 'device' | 'clawhub' | 'github';
+  source?: 'device';
   path?: string;
   agent_names?: string[];
   all_agents?: boolean;
@@ -42,25 +44,55 @@ export interface ManageMcpInput {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
-  from_library?: boolean;
 }
 
 export interface ManageAgentsInput {
-  action: 'create' | 'update' | 'remove' | 'list' | 'set_primary' | 'status';
+  action: 'create' | 'update' | 'list' | 'set_primary' | 'status';
   name?: string;
   emoji?: string;
   role?: string;
   model?: string;
-  system_prompt?: string;
-  workspace?: string;
+  system_prompt?: AgentSystemPrompt | string;
+  agent_identity_prompt?: string;
+  project_context_prompt?: string;
   knowledge_base?: string;
   mcp_servers?: string[];
+  mcp_servers_mode?: 'merge' | 'replace';
   mcp_tool_filter?: Record<string, string[]>;
   skills?: string[];
-  memory_enabled?: boolean;
-  from_library?: boolean;
+  skills_mode?: 'merge' | 'replace';
+  hooks?: string[];
+  hooks_mode?: 'merge' | 'replace';
   greeting?: string;
-  quick_starts?: Array<{ title: string; description: string; prompt: string }>;
+  quick_starts?: Array<{ id?: string; title: string; description: string; prompt: string }>;
+  quick_starts_mode?: 'merge' | 'replace';
+}
+
+export interface ManageHooksInput {
+  action:
+    | 'status'
+    | 'list'
+    | 'create'
+    | 'update'
+    | 'delete'
+    | 'disable';
+  hook_id?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  event?: AgentHookEvent;
+  matcher?: string;
+  action_type?: 'command' | 'http';
+  if?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  method?: HttpHookMethod;
+  headers?: Record<string, string>;
+  body?: string;
+  timeout?: number;
+  timeoutMs?: number;
+  async?: boolean;
 }
 
 export interface SearchMcpInput {

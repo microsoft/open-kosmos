@@ -130,13 +130,10 @@ export const Selectors = {
   SETTINGS_NAV_SKILLS: 'a[href*="settings/skills"]',
   SETTINGS_NAV_MEMORY: 'a[href*="settings/memory"]',
   SETTINGS_NAV_ABOUT: 'a[href*="settings/about"]',
-SETTINGS_NAV_SCREENSHOT: 'a[href*="settings/screenshot"]',
-  SETTINGS_NAV_BROWSER: 'a[href*="settings/browser-control"]',
-  SETTINGS_NAV_TOOLBAR: 'a[href*="settings/toolbar"]',
-
+  SETTINGS_NAV_VOICE: 'a[href*="settings/voice-input"]',
+  SETTINGS_NAV_SCREENSHOT: 'a[href*="settings/screenshot"]',
   // ==================== MCP management ====================
   MCP_ADD_SERVER_BUTTON: 'button:has-text("Add")',
-  MCP_LIBRARY: 'a[href*="mcp-library"]',
 
   // ==================== Common UI ====================
   DIALOG_OVERLAY: '[role="dialog"]',

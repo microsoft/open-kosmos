@@ -20,6 +20,7 @@ process.stderr?.on?.('error', (err: NodeJS.ErrnoException) => {
   }
 });
 
+import * as electron from 'electron';
 import { app, BrowserWindow, Menu, shell, protocol, powerMonitor, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -45,8 +46,7 @@ protocol.registerSchemesAsPrivileged([
 // The following modules perform heavy initialization on import (singleton creation, file I/O, config reading, etc.)
 // Changed to on-demand loading, significantly improving Windows startup speed
 
-// Type imports (no code execution, used for type checking only)
-import { UpdateManager } from './lib/autoUpdate/updateManager';
+import type { ThemeSource } from './lib/userDataADO/types/app';
 
 const DEV_SERVER_PORT = process.env.DEV_SERVER_PORT || '39017';
 const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] || `http://localhost:${DEV_SERVER_PORT}`;
@@ -59,6 +59,9 @@ import { getDebugInfoEntries } from './lib/utilities/debugInfoEntries';
 import { buildDebugInfoManifest } from './lib/utilities/debugInfoManifest';
 import { createRedactor, isTextFile, redactFileContent } from './lib/utilities/redact';
 import { featureFlagManager, isFeatureEnabled } from './lib/featureFlags';
+import { getWindowBackgroundColor } from './lib/windowTheme';
+import { buildInitialThemeSourceArgument } from '@shared/constants/startupTheme';
+import { appCacheManager } from './lib/userDataADO/appCacheManager';
 
 import {
   getProfileCacheManager,
@@ -66,25 +69,16 @@ import {
   getMainAuthManager,
   getMainTokenMonitor,
   getAdvancedLogger,
-  useRemoteChannelManager,
   useAdvancedLogger,
 } from './startup/lazy';
 import { setUpIPC } from './startup/ipc';
 import { startEvalMode } from './startup/evalMode';
-import { ghcModelsManager } from "./lib/llm/ghcModelsManager";
-import { assetsLibraryManager } from "./lib/assetsFetcher/assetsLibraryManager";
 import { schedulerManager } from "./lib/scheduler/SchedulerManager";
 import { mcpClientManager } from "./lib/mcpRuntime/mcpClientManager";
 import { agentChatManager } from "./lib/chat/agentChatManager";
 import { chatSessionStore } from "./lib/chat/chatSessionStore";
 import { scheduleStore } from "./lib/scheduler/scheduleStore";
 import { SubAgentTaskStore } from "./lib/subAgent/subAgentTaskStore";
-
-
-// 🚀 Dynamically create UpdateManager (avoid import type limitation)
-async function createUpdateManager(getMainWindow: () => BrowserWindow | null): Promise<UpdateManager> {
-  return new UpdateManager(getMainWindow);
-}
 
 console.timeEnd('[Startup] Module imports');
 
@@ -139,6 +133,14 @@ if (process.env.NODE_ENV === 'development') {
 
 const isEvalMode = process.argv.includes('--eval-mode');
 
+function getElectronNativeThemeState(): { shouldUseDarkColors?: boolean } | undefined {
+  try {
+    return (electron as typeof electron & { nativeTheme?: { shouldUseDarkColors?: boolean } }).nativeTheme;
+  } catch {
+    return undefined;
+  }
+}
+
 const hasSingleInstanceLock = isEvalMode
   ? true  // Skip single-instance lock in eval mode — allow running alongside GUI
   : app.requestSingleInstanceLock();
@@ -156,16 +158,21 @@ if (!hasSingleInstanceLock) {
 class ElectronApp {
   private mainWindow: BrowserWindow | null = null;
   private debugWindow: BrowserWindow | null = null;
-  private selectedText: string = ''; // Store captured selected text
   private isDev: boolean = false;
   private currentUserAlias: string | null = null;
-  private updateManager: UpdateManager | null = null;
-
   // 🚀 State tracking: app component initialization status
-  private isAnalyticsReady: boolean = false;
   private isAgentChatReady: boolean = false;
   private powerMonitorLoggingRegistered: boolean = false;
   private lastSuspendAt: number | null = null;
+
+  private getInitialThemeSourceForWindow(): ThemeSource {
+    try {
+      return appCacheManager.readStartupThemeSourceSync();
+    } catch (error) {
+      safeConsole.error('[Startup] Failed to load initial theme source for window:', error);
+      return 'light';
+    }
+  }
 
   private logSchedulerLifecycleState(event: string, extra?: Record<string, unknown>): void {
     if (!isFeatureEnabled('openkosmosFeatureScheduler')) return;
@@ -225,7 +232,7 @@ class ElectronApp {
     // 🚀 Optimization: deferred log initialization, non-blocking constructor
     setImmediate(() => {
       const logger = getAdvancedLogger();
-      logger.info('ElectronApp initialized', 'main', { isDev: this.isDev });
+      logger.info('ElectronApp initialized', 'main', { isDev: this.isDev, version: app.getVersion() });
       logger.debug('PATH environment variable', 'main', { path: process.env.PATH });
     });
 
@@ -267,6 +274,7 @@ class ElectronApp {
         });
       } catch (error) {
         // Ignore cleanup errors to avoid preventing app exit
+        safeConsole.warn('[APP-EXIT] Error during before-quit cleanup:', error);
       }
     });
 
@@ -277,6 +285,7 @@ class ElectronApp {
         });
       } catch (error) {
         // Ignore cleanup errors, ensure app can exit normally
+        safeConsole.warn('[APP-EXIT] Final cleanup error (ignored):', error);
       }
     });
     app.on('before-quit', this.onBeforeQuit.bind(this));
@@ -289,78 +298,33 @@ class ElectronApp {
       get mainWindow() { return host.mainWindow; }
       get debugWindow() { return host.debugWindow; }
       get isDev() { return host.isDev; }
-      get isAnalyticsReady() { return host.isAnalyticsReady; }
       get isAgentChatReady() { return host.isAgentChatReady; }
-      get selectedText() { return host.selectedText; }
 
-      get updateManager() {
-        if (host.updateManager) {
-          return Promise.resolve(host.updateManager);
-        }
-        return createUpdateManager(() => host.mainWindow).then((manager) => {
-          manager.startPeriodicCheck(360); // Check every 6 hours
-          host.updateManager = manager;
-          return manager;
-        });
-      }
-
-      onBeforeQuit = host.onBeforeQuit.bind(host);      registerGlobalShortcuts = host.registerGlobalShortcuts.bind(host);
+      onBeforeQuit = host.onBeforeQuit.bind(host);
+      registerGlobalShortcuts = host.registerGlobalShortcuts.bind(host);
       getPersistedWindowZoomLevel = host.getPersistedWindowZoomLevel.bind(host);
       applyWindowZoomLevel = host.applyWindowZoomLevel.bind(host);
       stepWindowZoomLevel = host.stepWindowZoomLevel.bind(host);
       resetWindowZoomLevel = host.resetWindowZoomLevel.bind(host);
       getMenuTemplate = host.getMenuTemplate.bind(host);
-      handleWebSearch = host.handleWebSearch.bind(host);
       unregisterGlobalShortcuts = host.unregisterGlobalShortcuts.bind(host);
       createDebugWindow = host.createDebugWindow.bind(host);
-      checkAssetsLibrariesAsync = host.checkAssetsLibrariesAsync.bind(host);
+      cleanupSelectionHook = () => {};
+      handleWebSearch = async (_chatId: string) => ({ success: false, error: 'Search pseudo agent is unavailable' });
+      get selectedText() { return ''; }
+      getToolBarAutoHide = () => false;
+      hideToolBar = () => {};
     }
     setUpIPC(new Injection());
-  }
-
-  /**
-   * 🆕 Asynchronously check remote assets libraries (agent_lib.json, mcp_lib.json, skills_lib.json)
-   * Called during silent check after user login
-   */
-  private async checkAssetsLibrariesAsync(): Promise<void> {
-    try {
-      safeConsole.log('[UPDATE] Starting assets library check...');
-
-      // 🆕 Also refresh remote model list (non-blocking, failure does not affect subsequent assets check)
-      try {
-        const refreshed = await ghcModelsManager.refreshFromRemote();
-        if (refreshed) {
-          safeConsole.log('[UPDATE] GitHub Copilot models refreshed from remote');
-        }
-      } catch (modelsError) {
-        safeConsole.warn('[UPDATE] Models refresh failed (non-fatal):', modelsError);
-      }
-
-      // Dynamically import AssetsLibraryManager to avoid circular dependency
-
-      // Execute check and update
-      const result = await assetsLibraryManager.checkAndUpdateLibraries(this.currentUserAlias || undefined);
-
-      // Log results
-      const successCount = result.fetchResults.filter(r => r.success).length;
-      safeConsole.log(`[UPDATE] Assets library check completed: ${successCount}/${result.fetchResults.length} libraries successful`);
-
-      if (result.updateResult) {
-        safeConsole.log(`[UPDATE] Profile updates - Agents: ${result.updateResult.updatedAgents}, MCP: ${result.updateResult.updatedMcpServers}, Skills: ${result.updateResult.updatedSkills}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      safeConsole.error(`[UPDATE] Assets library check failed: ${errorMessage}`);
-    }
   }
 
   /**
    * Check if app is fully ready, if so, notify renderer process
    */
   private checkAppReadiness() {
-    if (this.isAnalyticsReady && this.isAgentChatReady) {
+    if (this.isAgentChatReady) {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        safeConsole.log('[Startup] App fully ready (Analytics + AgentChat), notifying renderer');
+        safeConsole.log('[Startup] App fully ready (AgentChat), notifying renderer');
         this.mainWindow.webContents.send('app:ready', true);
       }
     }
@@ -488,7 +452,38 @@ class ElectronApp {
       getAdvancedLogger().info('scheduler.lifecycle.startup-recovery-context', 'main:onReady', { previousSessionId: crashStatus.recoveredCrash?.previousSessionId ?? null, currentSessionId: crashStatus.currentSessionId, recoveredCrashDetected: crashStatus.hasRecoveredCrash, alias: this.currentUserAlias, schedulerWillInit: isFeatureEnabled('openkosmosFeatureScheduler') });
       this.registerPowerMonitorLogging();
 
-      // 🚀 Highest priority: warm up AppCacheManager (read app.json)
+      // 🧹 Cleanup: remove playwright-profiles directory and legacy session state
+      // files on every startup.  Playwright persistent contexts may leave behind
+      // lock files or corrupted state that causes launch failures on subsequent
+      // runs.  Wiping the directory ensures a fresh browser context each time.
+      // The session-state JSON files (browser-session-state.json,
+      // cdp-session-state.json, openkosmos-token-cache.json) are legacy token caches
+      // that must stay removed. Browser auth now persists only via the
+      // profile-scoped OpenKosmosTokenCache path.
+      try {
+        const userDataPath = app.getPath('userData');
+
+        // 1. Remove playwright-profiles directory
+        const playwrightProfilesDir = path.join(userDataPath, 'playwright-profiles');
+        if (fs.existsSync(playwrightProfilesDir)) {
+          fs.rmSync(playwrightProfilesDir, { recursive: true, force: true });
+          safeConsole.info('[Startup] 🧹 Removed playwright-profiles directory');
+        }
+
+        // 2. Remove legacy session state files
+        const legacyFiles = ['browser-session-state.json', 'cdp-session-state.json', 'openkosmos-token-cache.json'];
+        for (const filename of legacyFiles) {
+          const filePath = path.join(userDataPath, filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            safeConsole.info(`[Startup] 🧹 Removed legacy session state file: ${filename}`);
+          }
+        }
+      } catch (cleanupErr) {
+        safeConsole.warn('[Startup] Failed to clean up playwright/session state files:', cleanupErr);
+      }
+
+      // 🚀 Highest priority: warm up AppCacheManager (read app.json / migrate runtimeConfig.json)
       // Fire-and-forget, fully parallel with all subsequent tasks, ensure earlier than profile.json initialization
       getAppCacheManager().catch((e) => {
         safeConsole.warn('[Startup] AppCacheManager pre-warm failed:', e);
@@ -497,10 +492,6 @@ class ElectronApp {
       safeConsole.time('[Startup] createMainWindow');
       // 🚀 Optimization: start window creation task immediately
       const windowCreationTask = this.createMainWindow();
-
-      // Analytics removed — mark as ready immediately
-      this.isAnalyticsReady = true;
-      this.checkAppReadiness();
 
       // Wait for window creation to complete (subsequent logic depends on this.mainWindow)
       await windowCreationTask;
@@ -518,23 +509,6 @@ class ElectronApp {
         safeConsole.error('[Startup] Menu/Shortcuts initialization failed:', e);
         createLogger().error('[Startup] Menu/Shortcuts initialization failed', 'main', { error: e });
       }
-
-      // 🚀 Optimization: deferred update manager initialization, non-blocking startup
-      setImmediate(async () => {
-        try {
-          if (this.mainWindow) {
-            this.updateManager = await createUpdateManager(() => this.getMainWindow());
-            // Always enable periodic check
-            this.updateManager.startPeriodicCheck(360); // Check every 6 hours
-            safeConsole.log('[Startup] UpdateManager periodic check started', { intervalMinutes: 360 });
-            getAdvancedLogger().info('[Startup] UpdateManager periodic check started', 'main', { intervalMinutes: 360 });
-          } else {
-            safeConsole.warn('[Startup] mainWindow not available for UpdateManager initialization');
-          }
-        } catch (e) {
-          safeConsole.error('[Startup] UpdateManager initialization failed:', e);
-        }
-      });
 
       safeConsole.timeEnd('[Startup] onReady');
     } catch (error) {
@@ -617,21 +591,6 @@ class ElectronApp {
         }
       }
 
-      // Phase 1.5: Clean up Remote Channels
-      exitSafeLog('Phase 1.5: Cleaning up Remote Channels');
-      try {
-        await useRemoteChannelManager(m => Promise.race([
-          m.stopAll(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('RemoteChannel cleanup timeout')), 10000)
-          ),
-        ]));
-        exitSafeLog('Remote channel cleanup completed successfully');
-      } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        safeConsole.warn(`Remote channel cleanup failed or timed out: ${errorMessage}`);
-      }
-
       // Phase 2: Clean up MCP clients and child processes
       exitSafeLog('Phase 2: Cleaning up MCP clients and child processes');
       try {
@@ -654,13 +613,6 @@ class ElectronApp {
           exitSafeLog('Attempting force cleanup of remaining child processes');
           await this.forceCleanupChildProcesses(exitId);
         }
-      }
-
-      // Phase 3: Clean up update manager
-      exitSafeLog('Phase 3: Cleaning up UpdateManager');
-      if (this.updateManager) {
-        this.updateManager.destroy();
-        exitSafeLog('UpdateManager destroyed');
       }
 
       // Clean up global shortcuts
@@ -749,6 +701,11 @@ class ElectronApp {
   }
 
   private async createMainWindow(): Promise<void> {
+    const initialThemeSource = this.getInitialThemeSourceForWindow();
+    const initialWindowBackgroundColor = getWindowBackgroundColor(
+      initialThemeSource,
+      getElectronNativeThemeState(),
+    );
 
     // Create the browser window
     this.mainWindow = new BrowserWindow({
@@ -760,10 +717,11 @@ class ElectronApp {
       titleBarStyle: process.platform === 'win32' ? 'hidden' : process.platform === 'darwin' ? 'hiddenInset' : 'default',
       trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 12 } : undefined,
       titleBarOverlay: undefined,
+      backgroundColor: initialWindowBackgroundColor,
       // frame: defaults to true, no need to set explicitly
       icon: app.isPackaged
         ? path.join(process.resourcesPath, 'brand-assets/win/app.ico')
-        : path.join(__dirname, `../../brands/${process.env.BRAND_NAME}/assets/win/app.ico`),
+        : path.join(__dirname, '../../brands/openkosmos/assets/win/app.ico'),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -778,6 +736,9 @@ class ElectronApp {
         spellcheck: false,
         webgl: false,
         plugins: false,
+        additionalArguments: [
+          buildInitialThemeSourceArgument(initialThemeSource),
+        ],
       },
     });
     crashCaptureManager.attachToMainWindow(this.mainWindow);
@@ -1126,10 +1087,7 @@ class ElectronApp {
       modal: false,
       icon: app.isPackaged
         ? path.join(process.resourcesPath, 'brand-assets/win/app.ico')
-        : path.join(
-            __dirname,
-            `../../brands/${process.env.BRAND_NAME}/assets/win/app.ico`,
-          ),
+        : path.join(__dirname, '../../brands/openkosmos/assets/win/app.ico'),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -1205,6 +1163,7 @@ class ElectronApp {
 
   /**
    * Register global shortcuts
+   * Registers the screenshot capture shortcut.
    */
   private async registerGlobalShortcuts(): Promise<void> {
     // Unregister existing shortcuts to prevent duplicates or stale shortcuts
@@ -1224,31 +1183,7 @@ class ElectronApp {
     globalShortcut.unregisterAll();
   }
 
-  private async handleWebSearch(chatId: string): Promise<{ success: boolean; error?: string }> {
-    const logger = getAdvancedLogger();
-    try {
-      const selectedText = this.selectedText ? this.selectedText.trim() : '';
-      logger.info(`[WEB-SEARCH] Performing web search for chatId: ${chatId} with selected text: ${selectedText.substring(0, 50)}...`);
-      const query = encodeURIComponent(selectedText);
-      let url = '';
 
-      if (chatId === 'pseudo-agent-search-bing') {
-        url = selectedText ? `https://www.bing.com/search?q=${query}` : 'https://www.bing.com';
-      } else {
-        // Default to Google
-        url = selectedText ? `https://www.google.com/search?q=${query}` : 'https://www.google.com';
-      }
-
-
-
-      await shell.openExternal(url);
-
-      return { success: true };
-    } catch (error) {
-      safeConsole.error('Failed to perform web search:', error);
-      return { success: false, error: String(error) };
-    }
-  }
 
   private normalizeWindowZoomLevel(level: number): number {
     const zoomStep = 0.5;

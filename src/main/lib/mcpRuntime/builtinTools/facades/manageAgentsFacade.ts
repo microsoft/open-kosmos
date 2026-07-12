@@ -2,16 +2,15 @@
  * manage_agents facade — unified agent management tool.
  *
  * Merges the legacy tools:
- *   get_agent_template_from_library, create_agent_from_config, update_agent,
+ *   create_agent_from_config, update_agent,
  *   get_agent_status, list_agents, set_primary_agent
  * into a single action-based interface.
  *
  * Key simplifications:
  * - Flat parameters (no nested agent_config wrapper)
  * - mcp_servers as string[] (not [{name, tools}])
- * - memory_enabled boolean (not nested context_enhancement)
  * - knowledge_base unified field (not dual knowledgeBase / knowledge.knowledgeBase)
- * - source/version/remoteVersion managed internally
+ * - Local configuration only; legacy source metadata is treated as inert
  */
 
 import {
@@ -20,26 +19,36 @@ import {
   FacadeResult,
   errorResult,
 } from './types';
-import { GetAgentTemplateFromLibraryTool } from '../getAgentTemplateFromLibraryTool';
 import { CreateAgentFromConfigTool } from '../createAgentFromConfigTool';
 import { UpdateAgentTool } from '../updateAgentTool';
 import { GetAgentStatusTool } from '../getAgentStatusTool';
 import { ListAgentsTool } from '../listAgentsTool';
 import { SetPrimaryAgentTool } from '../setPrimaryAgentTool';
+import { randomUUID } from 'crypto';
 import { profileCacheManager } from '../../../userDataADO/profileCacheManager';
+import { getChatAgents } from '../../../userDataADO/agentAccessor';
+import type { ChatAgent, ZeroStates } from '../../../userDataADO/types/profile';
+import {
+  AGENT_SYSTEM_PROMPT_AGENTS_FILE,
+  AGENT_SYSTEM_PROMPT_BASE_FILE,
+  mergeAgentSystemPromptUpdate,
+  normalizeAgentSystemPrompt,
+  setAgentSystemPromptFile,
+  type AgentSystemPrompt,
+} from '@shared/types/agentSystemPrompt';
 
-const VALID_ACTIONS = ['create', 'update', 'remove', 'list', 'set_primary', 'status'] as const;
+const VALID_ACTIONS = ['create', 'update', 'list', 'set_primary', 'status'] as const;
 
 export class ManageAgentsFacade {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'manage_agents',
       description:
-        'Create, update, remove, list, set_primary, or check status of agents. ' +
-        'Use "from_library: true" with a library agent name to auto-fetch base config. ' +
-        'Library agents have read-only fields: name, avatar (emoji), and system_prompt. ' +
-        'You can edit model, mcp_servers, skills, knowledge_base, workspace, greeting, quick_starts. ' +
-        'MCP servers can be specified as a simple name list; memory is a single boolean toggle.',
+        'Create, update, list, set_primary, or check status of agents. ' +
+        'MCP servers can be specified as a simple name list. ' +
+        'Prefer agent_identity_prompt or project_context_prompt when changing only one prompt file. ' +
+        'On update, greeting preserves existing quick_starts and quick_starts merge by default. ' +
+        'Deleting an agent is not supported here — remove the chat that references it instead.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -65,12 +74,26 @@ export class ManageAgentsFacade {
             description: 'AI model identifier (uses system default if omitted)',
           },
           system_prompt: {
-            type: 'string',
-            description: 'Custom system prompt for the agent',
+            anyOf: [
+              {
+                type: 'object',
+                properties: {
+                  'Base.md': { type: 'string' },
+                  'AGENTS.md': { type: 'string' },
+                },
+                additionalProperties: false,
+              },
+              { type: 'string' },
+            ],
+            description: 'Advanced system prompt file input. On update, omitted files are preserved; legacy string input updates Base.md only. Prefer agent_identity_prompt/project_context_prompt for safer partial edits.',
           },
-          workspace: {
+          agent_identity_prompt: {
             type: 'string',
-            description: 'Workspace directory path',
+            description: 'Safe shortcut for Base.md / Agent Identity content. Use this to define who the agent is without modifying AGENTS.md.',
+          },
+          project_context_prompt: {
+            type: 'string',
+            description: 'Safe shortcut for AGENTS.md / Project Context content. Use this to define what the agent works on and how to work in that context without modifying Base.md.',
           },
           knowledge_base: {
             type: 'string',
@@ -80,6 +103,11 @@ export class ManageAgentsFacade {
             type: 'array',
             items: { type: 'string' },
             description: 'MCP server names to bind (all tools enabled by default)',
+          },
+          mcp_servers_mode: {
+            type: 'string',
+            enum: ['merge', 'replace'],
+            description: 'How to apply mcp_servers during update. Defaults to merge.',
           },
           mcp_tool_filter: {
             type: 'object',
@@ -95,14 +123,24 @@ export class ManageAgentsFacade {
             items: { type: 'string' },
             description: 'Skill names to attach to this agent',
           },
-          from_library: {
-            type: 'boolean',
-            description:
-              'true = fetch base config from Agent Library by name, then apply overrides',
+          skills_mode: {
+            type: 'string',
+            enum: ['merge', 'replace'],
+            description: 'How to apply skills during update. Defaults to merge.',
+          },
+          hooks: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Hook ids to bind to this agent',
+          },
+          hooks_mode: {
+            type: 'string',
+            enum: ['merge', 'replace'],
+            description: 'How to apply hooks during update. Defaults to merge.',
           },
           greeting: {
             type: 'string',
-            description: 'Welcome message shown when chat starts',
+            description: 'Welcome message shown when chat starts. On update, this preserves existing quick_starts.',
           },
           quick_starts: {
             type: 'array',
@@ -115,7 +153,12 @@ export class ManageAgentsFacade {
               },
               required: ['title', 'description', 'prompt'],
             },
-            description: 'Quick start cards for the chat zero state',
+            description: 'Quick start cards for the chat zero state. On update, new cards are merged by default; set quick_starts_mode="replace" to overwrite the whole list.',
+          },
+          quick_starts_mode: {
+            type: 'string',
+            enum: ['merge', 'replace'],
+            description: 'How to apply quick_starts during update. Defaults to merge.',
           },
         },
         required: ['action'],
@@ -144,15 +187,18 @@ export class ManageAgentsFacade {
 
     const name = args.name?.trim() || '';
 
+    if (Object.prototype.hasOwnProperty.call(args as object, 'workspace')) {
+      return errorResult(
+        '"workspace" is no longer supported by manage_agents.',
+        'Chat workspace is derived from the chat id and cannot be configured through agent tools.',
+      );
+    }
+
     switch (args.action) {
       case 'create':
-        return args.from_library
-          ? ManageAgentsFacade.createFromLibrary(name, args)
-          : ManageAgentsFacade.createDirect(name, args);
+        return ManageAgentsFacade.createDirect(name, args);
       case 'update':
         return ManageAgentsFacade.update(name, args);
-      case 'remove':
-        return ManageAgentsFacade.remove(name);
       case 'list':
         return ManageAgentsFacade.list();
       case 'set_primary':
@@ -163,85 +209,6 @@ export class ManageAgentsFacade {
   }
 
   // ---- Action handlers ----
-
-  private static async createFromLibrary(
-    name: string,
-    args: ManageAgentsInput,
-  ): Promise<FacadeResult> {
-    // 1. Fetch template
-    const templateResult = await GetAgentTemplateFromLibraryTool.execute({
-      agent_name: name,
-    });
-
-    if (!templateResult.success || !templateResult.config) {
-      return {
-        success: false,
-        message: templateResult.message || `Agent "${name}" not found in library.`,
-        error: 'LIBRARY_FETCH_FAILED',
-        hint: 'Use search_agents to browse available agents, or create a custom agent without from_library.',
-      };
-    }
-
-    const template = templateResult.config;
-    const config = template.configuration || {};
-
-    // 2. Build create params: start from template, apply user overrides
-    const createArgs: any = {
-      name: config.name || template.name || name,
-      emoji: args.emoji || config.emoji,
-      role: args.role || (config as any).role,
-      model: args.model || config.model,
-      system_prompt: args.system_prompt || config.system_prompt,
-      workspace: args.workspace || config.workspace,
-      skills: args.skills || config.skills,
-      source: 'IN-LIBRARY',
-      version: template.version || '1.0.0',
-      remoteVersion: template.version || '1.0.0',
-    };
-
-    // MCP servers: user override wins, else template
-    if (args.mcp_servers) {
-      createArgs.mcp_servers = ManageAgentsFacade.buildMcpServersArray(
-        args.mcp_servers,
-        args.mcp_tool_filter,
-      );
-    } else if (config.mcp_servers) {
-      createArgs.mcp_servers = config.mcp_servers;
-    }
-
-    // Context enhancement: user override wins, else template
-    if (args.memory_enabled !== undefined) {
-      createArgs.context_enhancement = ManageAgentsFacade.buildContextEnhancement(
-        args.memory_enabled,
-      );
-    } else if (config.context_enhancement) {
-      createArgs.context_enhancement = config.context_enhancement;
-    }
-
-    // Knowledge base
-    if (args.knowledge_base) {
-      createArgs.knowledgeBase = args.knowledge_base;
-    }
-
-    // Zero states
-    if (args.greeting || args.quick_starts) {
-      createArgs.zero_states = ManageAgentsFacade.buildZeroStates(
-        args.greeting,
-        args.quick_starts,
-        config.zero_states,
-      );
-    } else if (config.zero_states) {
-      createArgs.zero_states = config.zero_states;
-    }
-
-    // Avatar from template
-    if ((config as any).avatar) {
-      createArgs.avatar = (config as any).avatar;
-    }
-
-    const result = await CreateAgentFromConfigTool.execute(createArgs);
-    return result as unknown as FacadeResult;
-  }
 
   private static async createDirect(
     name: string,
@@ -257,8 +224,8 @@ export class ManageAgentsFacade {
     if (args.emoji) createArgs.emoji = args.emoji;
     if (args.role) createArgs.role = args.role;
     if (args.model) createArgs.model = args.model;
-    if (args.system_prompt) createArgs.system_prompt = args.system_prompt;
-    if (args.workspace) createArgs.workspace = args.workspace;
+    const createSystemPrompt = ManageAgentsFacade.buildSystemPromptUpdate(undefined, args);
+    if (createSystemPrompt) createArgs.system_prompt = createSystemPrompt;
     if (args.skills) createArgs.skills = args.skills;
 
     if (args.knowledge_base) {
@@ -269,12 +236,6 @@ export class ManageAgentsFacade {
       createArgs.mcp_servers = ManageAgentsFacade.buildMcpServersArray(
         args.mcp_servers,
         args.mcp_tool_filter,
-      );
-    }
-
-    if (args.memory_enabled !== undefined) {
-      createArgs.context_enhancement = ManageAgentsFacade.buildContextEnhancement(
-        args.memory_enabled,
       );
     }
 
@@ -301,110 +262,63 @@ export class ManageAgentsFacade {
 
     // Find existing agent
     const allChats = profileCacheManager.getAllChatConfigs(currentUserAlias);
-    const existingChat = allChats.find(c => c.agent && c.agent.name === name);
+    let existingChat: typeof allChats[number] | undefined = undefined;
+    let existing: ChatAgent | undefined = undefined;
+    for (const chat of allChats) {
+      const matchingAgent = getChatAgents(chat).find(agent => agent?.name === name);
+      if (matchingAgent) {
+        existingChat = chat;
+        existing = matchingAgent;
+        break;
+      }
+    }
 
-    if (!existingChat || !existingChat.agent) {
+    if (!existingChat || !existing) {
       return errorResult(
         `Agent "${name}" not found.`,
         'Use manage_agents with action="list" to see installed agents.',
       );
     }
-
-    const existing = existingChat.agent;
-    const existingSource = (existing as any).source || 'ON-DEVICE';
-    const existingVersion = (existing as any).version || '1.0.0';
-
-    // Library agents: name, avatar (emoji), and system_prompt are read-only
-    if (existingSource === 'IN-LIBRARY') {
-      const readOnlyViolations: string[] = [];
-      if (args.emoji !== undefined) readOnlyViolations.push('emoji (avatar)');
-      if (args.system_prompt !== undefined) readOnlyViolations.push('system_prompt');
-      if (readOnlyViolations.length > 0) {
-        return errorResult(
-          `Cannot modify read-only fields on a Library agent: ${readOnlyViolations.join(', ')}.`,
-          'Library agents only allow editing: model, mcp_servers, skills, knowledge_base, workspace, greeting, quick_starts.',
-        );
-      }
-    }
-
     // Build update payload
     const agentConfig: any = { name };
 
     if (args.emoji !== undefined) agentConfig.emoji = args.emoji;
     if (args.role !== undefined) agentConfig.role = args.role;
     if (args.model !== undefined) agentConfig.model = args.model;
-    if (args.system_prompt !== undefined) agentConfig.system_prompt = args.system_prompt;
-    if (args.workspace !== undefined) agentConfig.workspace = args.workspace;
-    if (args.skills !== undefined) agentConfig.skills = args.skills;
+    const promptUpdate = ManageAgentsFacade.buildSystemPromptUpdate(existing.system_prompt, args);
+    if (promptUpdate) agentConfig.system_prompt = promptUpdate;
+    if (args.skills !== undefined) {
+      agentConfig.skills = args.skills;
+      agentConfig.skills_mode = args.skills_mode === 'replace' ? 'replace' : 'merge';
+    }
+    if (args.hooks !== undefined) {
+      agentConfig.hooks = args.hooks;
+      agentConfig.hooks_mode = args.hooks_mode === 'replace' ? 'replace' : 'merge';
+    }
 
     if (args.knowledge_base !== undefined) {
       agentConfig.knowledgeBase = args.knowledge_base;
     }
 
-    if (args.mcp_servers) {
+    if (args.mcp_servers !== undefined) {
       agentConfig.mcp_servers = ManageAgentsFacade.buildMcpServersArray(
         args.mcp_servers,
         args.mcp_tool_filter,
       );
-    }
-
-    if (args.memory_enabled !== undefined) {
-      agentConfig.context_enhancement = ManageAgentsFacade.buildContextEnhancement(
-        args.memory_enabled,
-      );
+      agentConfig.mcp_servers_mode = args.mcp_servers_mode === 'replace' ? 'replace' : 'merge';
     }
 
     if (args.greeting !== undefined || args.quick_starts !== undefined) {
       agentConfig.zero_states = ManageAgentsFacade.buildZeroStates(
         args.greeting,
         args.quick_starts,
+        existing.zero_states,
+        args.quick_starts_mode === 'replace' ? 'replace' : 'merge',
       );
-    }
-
-    // Auto-manage version/source
-    agentConfig.source = existingSource;
-    if (existingSource === 'ON-DEVICE') {
-      agentConfig.version = ManageAgentsFacade.incrementPatch(existingVersion);
-    } else {
-      agentConfig.version = existingVersion;
     }
 
     const result = await UpdateAgentTool.execute({ agent_config: agentConfig });
     return result as unknown as FacadeResult;
-  }
-
-  private static async remove(name: string): Promise<FacadeResult> {
-    try {
-      const currentUserAlias = ManageAgentsFacade.getCurrentUserAlias();
-      if (!currentUserAlias) {
-        return errorResult('No current user session found.');
-      }
-
-      const allChats = profileCacheManager.getAllChatConfigs(currentUserAlias);
-      const targetChat = allChats.find(c => c.agent && c.agent.name === name);
-
-      if (!targetChat) {
-        return errorResult(
-          `Agent "${name}" not found.`,
-          'Use manage_agents with action="list" to see installed agents.',
-        );
-      }
-
-      await profileCacheManager.deleteChatConfig(currentUserAlias, targetChat.chat_id);
-
-      return {
-        success: true,
-        message: `Agent "${name}" has been removed.`,
-        agent_name: name,
-        chat_id: targetChat.chat_id,
-      };
-    } catch (err) {
-      return {
-        success: false,
-        message: `Failed to remove agent "${name}": ${err instanceof Error ? err.message : String(err)}`,
-        error: 'REMOVE_FAILED',
-      };
-    }
   }
 
   private static async list(): Promise<FacadeResult> {
@@ -439,40 +353,69 @@ export class ManageAgentsFacade {
   }
 
   /**
-   * Expand boolean memory_enabled into full context_enhancement structure.
-   */
-  private static buildContextEnhancement(enabled: boolean): Record<string, unknown> {
-    if (enabled) {
-      return {
-        search_memory: {
-          enabled: true,
-          semantic_similarity_threshold: 0.7,
-          semantic_top_n: 5,
-        },
-        generate_memory: {
-          enabled: true,
-        },
-      };
-    }
-    return {
-      search_memory: { enabled: false },
-      generate_memory: { enabled: false },
-    };
-  }
-
-  /**
    * Build zero_states from flat greeting + quick_starts, with optional template fallback.
    */
   private static buildZeroStates(
     greeting?: string,
-    quickStarts?: Array<{ title: string; description: string; prompt: string }>,
-    templateZeroStates?: Record<string, unknown>,
-  ): Record<string, unknown> {
+    quickStarts?: Array<{ id?: string; title: string; description: string; prompt: string }>,
+    templateZeroStates?: ZeroStates,
+    quickStartsMode: 'merge' | 'replace' = 'replace',
+  ): ZeroStates {
     const base = templateZeroStates || {};
-    const result: Record<string, unknown> = { ...base };
+    const result: ZeroStates = { ...base };
     if (greeting !== undefined) result.greeting = greeting;
-    if (quickStarts !== undefined) result.quick_starts = quickStarts;
+    if (quickStarts !== undefined) {
+      const normalizedQuickStarts = quickStarts.map(qs => ({
+        ...qs,
+        id: qs.id || randomUUID().slice(0, 8),
+      }));
+      if (quickStartsMode === 'merge' && Array.isArray(base.quick_starts)) {
+        const incomingById = new Map(
+          normalizedQuickStarts.map(qs => [qs.id, qs] as const),
+        );
+        const updatedExisting = base.quick_starts.map(existing => {
+          const existingId = typeof existing.id === 'string' ? existing.id : undefined;
+          return existingId && incomingById.has(existingId)
+            ? incomingById.get(existingId)!
+            : existing;
+        });
+        const existingIds = new Set(
+          base.quick_starts
+            .map(existing => (typeof existing.id === 'string' ? existing.id : undefined))
+            .filter((id): id is string => Boolean(id)),
+        );
+        result.quick_starts = [
+          ...updatedExisting,
+          ...normalizedQuickStarts.filter(qs => !qs.id || !existingIds.has(qs.id)),
+        ];
+      } else {
+        result.quick_starts = normalizedQuickStarts;
+      }
+    }
     return result;
+  }
+
+  private static buildSystemPromptUpdate(
+    existingPrompt: unknown,
+    args: Pick<ManageAgentsInput, 'system_prompt' | 'agent_identity_prompt' | 'project_context_prompt'>,
+  ): AgentSystemPrompt | undefined {
+    const hasPromptUpdate = args.system_prompt !== undefined ||
+      args.agent_identity_prompt !== undefined ||
+      args.project_context_prompt !== undefined;
+    if (!hasPromptUpdate) return undefined;
+
+    let prompt = args.system_prompt !== undefined
+      ? mergeAgentSystemPromptUpdate(existingPrompt, args.system_prompt)
+      : normalizeAgentSystemPrompt(existingPrompt);
+
+    if (args.agent_identity_prompt !== undefined) {
+      prompt = setAgentSystemPromptFile(prompt, AGENT_SYSTEM_PROMPT_BASE_FILE, args.agent_identity_prompt);
+    }
+    if (args.project_context_prompt !== undefined) {
+      prompt = setAgentSystemPromptFile(prompt, AGENT_SYSTEM_PROMPT_AGENTS_FILE, args.project_context_prompt);
+    }
+
+    return prompt;
   }
 
   // ---- Utility ----
@@ -485,10 +428,4 @@ export class ManageAgentsFacade {
     }
   }
 
-  private static incrementPatch(version: string): string {
-    const parts = version.split('.');
-    if (parts.length !== 3) return '1.0.1';
-    const patch = parseInt(parts[2], 10);
-    return `${parts[0]}.${parts[1]}.${isNaN(patch) ? 1 : patch + 1}`;
-  }
 }

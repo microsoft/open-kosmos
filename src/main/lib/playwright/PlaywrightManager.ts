@@ -4,7 +4,7 @@
  * Responsibilities:
  * 1. Browser installation detection and auto-install
  * 2. Temporary browser instance launch (headless chromium for search tools)
- * 3. Persistent browser context management (Edge + SSO cookies for browser auth)
+ * 3. Persistent browser context management with public Edge support
  * 4. Close all browsers on app exit
  *
  * IMPORTANT — Packaging Lessons Learned (March 2026):
@@ -33,7 +33,7 @@
  *
  * Historical context: Commit 7ea925e moved "playwright" from dependencies
  * to devDependencies to reduce installer size, but forgot that the main
- * process requires it at runtime for browser auth and web search tools.
+ * process requires it at runtime for persistent browser and web search tools.
  * This silently broke all browser automation in packaged builds while
  * working fine in development (where devDeps are installed in node_modules).
  * Fixed in commit 09521ea.
@@ -531,83 +531,100 @@ export class PlaywrightManager {
   }
 
   // ══════════════════════════════════════════════════════════════
-  // Persistent Context (for browser auth)
+  // Persistent Context
   // ══════════════════════════════════════════════════════════════
 
   /**
    * Launch a persistent browser context.
-   * Prefers Edge (channel: "msedge") for enterprise SSO, falls back to bundled chromium.
+   * Prefers Edge (channel: "msedge"), then falls back to bundled Chromium.
    * Caller is responsible for closing the returned BrowserContext.
    */
   async launchPersistentContext(options: PersistentContextOptions): Promise<BrowserContext> {
-    const chromium = await this._importChromium();
-    const profilePath = this.profiles.ensureProfileDir(options.profileName);
+    const releaseProfileLease = await this.profiles.acquireProfileLease(options.profileName);
+    let contextOwnsProfileLease = false;
 
-    const launchArgs: string[] = [...(options.args || [])];
-    if (options.offscreen) {
-      launchArgs.push('--window-position=-32000,-32000', '--window-size=1,1');
-    }
-
-    const launchOpts = {
-      headless: options.headless ?? false,
-      timeout: options.timeout ?? 30_000,
-      args: launchArgs.length > 0 ? launchArgs : undefined,
-      viewport: options.viewport,
-    };
-
-    // Try Edge first (better SSO in enterprise)
-    const channel = options.channel || 'msedge';
     try {
-      const ctx = await chromium.launchPersistentContext(profilePath, {
-        channel,
-        ...launchOpts,
-      });
-      this.activeContexts.add(ctx);
-      ctx.on('close', () => this.activeContexts.delete(ctx));
-      logger.info(`[PlaywrightManager] Persistent context launched (channel=${channel}, profile=${options.profileName})`);
-      return ctx;
-    } catch (edgeError) {
-      if (channel !== 'msedge') throw edgeError;
-      const errMsg = edgeError instanceof Error ? edgeError.message : String(edgeError);
-      const isNotInstalled = errMsg.includes('ENOENT') || errMsg.includes("Executable doesn't exist");
-      if (isNotInstalled) {
-        logger.warn(`[PlaywrightManager] Edge not installed, falling back to bundled chromium: ${errMsg}`);
-      } else {
-        logger.warn(`[PlaywrightManager] Edge launch failed (installed but unusable in this environment), falling back to bundled chromium: ${errMsg}`);
+      const chromium = await this._importChromium();
+      const profilePath = this.profiles.ensureProfileDir(options.profileName);
+
+      const launchArgs: string[] = [...(options.args || [])];
+      if (options.offscreen) {
+        launchArgs.push('--window-position=-32000,-32000', '--window-size=1,1');
       }
-    }
 
-    // Fallback to bundled chromium — ensure it is installed first
-    const installCheck = await this.ensureBrowserInstalled();
-    if (!installCheck.installed) {
-      throw new Error(`[PlaywrightManager] Chromium fallback unavailable: browser install failed (${installCheck.error ?? 'unknown'})`);
-    }
-    try {
-      const ctx = await chromium.launchPersistentContext(profilePath, launchOpts);
-      this.activeContexts.add(ctx);
-      ctx.on('close', () => this.activeContexts.delete(ctx));
-      logger.info(`[PlaywrightManager] Persistent context launched (bundled chromium, profile=${options.profileName})`);
-      return ctx;
-    } catch (chromiumError) {
-      const chromiumErrMsg = chromiumError instanceof Error ? chromiumError.message : String(chromiumError);
-      if (chromiumErrMsg.includes('exitCode=33') || chromiumErrMsg.includes('Access is denied') || chromiumErrMsg.includes('downgrade')) {
-        logger.warn(`[PlaywrightManager] Chromium launch failed due to corrupted profile, clearing and retrying: ${chromiumErrMsg.substring(0, 300)}`);
-        try {
-          await this.profiles.deleteProfile(options.profileName);
-          this.profiles.ensureProfileDir(options.profileName);
-        } catch (cleanupErr) {
-          logger.warn(`[PlaywrightManager] Failed to clean corrupted profile: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
-          throw chromiumError;
-        }
-        const freshPath = this.profiles.getProfilePath(options.profileName);
-        const ctx = await chromium.launchPersistentContext(freshPath, launchOpts);
-        this.activeContexts.add(ctx);
-        ctx.on('close', () => this.activeContexts.delete(ctx));
-        logger.info(`[PlaywrightManager] Persistent context launched after profile reset (bundled chromium, profile=${options.profileName})`);
+      const launchOpts = {
+        headless: options.headless ?? false,
+        timeout: options.timeout ?? 30_000,
+        args: launchArgs.length > 0 ? launchArgs : undefined,
+        viewport: options.viewport,
+      };
+
+      // Prefer the installed public Edge channel when available.
+      const channel = options.channel || 'msedge';
+      try {
+        const ctx = await chromium.launchPersistentContext(profilePath, {
+          channel,
+          ...launchOpts,
+        });
+        this.trackPersistentContext(ctx, releaseProfileLease);
+        contextOwnsProfileLease = true;
+        logger.info(`[PlaywrightManager] Persistent context launched (channel=${channel}, profile=${options.profileName})`);
         return ctx;
+      } catch (edgeError) {
+        if (channel !== 'msedge') throw edgeError;
+        const errMsg = edgeError instanceof Error ? edgeError.message : String(edgeError);
+        const isNotInstalled = errMsg.includes('ENOENT') || errMsg.includes("Executable doesn't exist");
+        if (isNotInstalled) {
+          logger.warn(`[PlaywrightManager] Edge not installed, falling back to bundled chromium: ${errMsg}`);
+        } else {
+          logger.warn(`[PlaywrightManager] Edge launch failed (installed but unusable in this environment), falling back to bundled chromium: ${errMsg}`);
+        }
       }
-      throw chromiumError;
+
+      // Fallback to bundled chromium — ensure it is installed first
+      const installCheck = await this.ensureBrowserInstalled();
+      if (!installCheck.installed) {
+        throw new Error(`[PlaywrightManager] Chromium fallback unavailable: browser install failed (${installCheck.error ?? 'unknown'})`);
+      }
+      try {
+        const ctx = await chromium.launchPersistentContext(profilePath, launchOpts);
+        this.trackPersistentContext(ctx, releaseProfileLease);
+        contextOwnsProfileLease = true;
+        logger.info(`[PlaywrightManager] Persistent context launched (bundled chromium, profile=${options.profileName})`);
+        return ctx;
+      } catch (chromiumError) {
+        const chromiumErrMsg = chromiumError instanceof Error ? chromiumError.message : String(chromiumError);
+        if (chromiumErrMsg.includes('exitCode=33') || chromiumErrMsg.includes('Access is denied') || chromiumErrMsg.includes('downgrade')) {
+          logger.warn(`[PlaywrightManager] Chromium launch failed due to corrupted profile, clearing and retrying: ${chromiumErrMsg.substring(0, 300)}`);
+          try {
+            await this.profiles.deleteProfile(options.profileName);
+            this.profiles.ensureProfileDir(options.profileName);
+          } catch (cleanupErr) {
+            logger.warn(`[PlaywrightManager] Failed to clean corrupted profile: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
+            throw cleanupErr;
+          }
+          const freshPath = this.profiles.getProfilePath(options.profileName);
+          const ctx = await chromium.launchPersistentContext(freshPath, launchOpts);
+          this.trackPersistentContext(ctx, releaseProfileLease);
+          contextOwnsProfileLease = true;
+          logger.info(`[PlaywrightManager] Persistent context launched after profile reset (bundled chromium, profile=${options.profileName})`);
+          return ctx;
+        }
+        throw chromiumError;
+      }
+    } finally {
+      if (!contextOwnsProfileLease) {
+        releaseProfileLease();
+      }
     }
+  }
+
+  private trackPersistentContext(context: BrowserContext, releaseProfileLease: () => void): void {
+    this.activeContexts.add(context);
+    context.on('close', () => {
+      this.activeContexts.delete(context);
+      releaseProfileLease();
+    });
   }
 
   // ══════════════════════════════════════════════════════════════

@@ -12,13 +12,11 @@ In `src/renderer/App.tsx`, the rendering logic mainly depends on these states:
 *   `showStartup`: whether to show the startup page.
 *   `startupValidationResult`: startup validation result, used to decide whether to show the login page, error page, or auto-login.
 *   `dataReady`: whether data has finished loading.
-*   `window.location.hash`: used only to determine whether this is a ToolBar window (`#/toolbar`).
 
 The rendering logic is filled with a large number of `if/else` conditions:
 
 ```tsx
 // Pseudocode example
-if (isToolBarWindow) return <ToolBarPage />;
 if (!isAuthenticated && !showStartup) return <SignInPage />;
 if (showStartup) return <StartupPage />;
 if (startupValidationResult) return <SignInPage ... />; // or other handling
@@ -72,11 +70,8 @@ Recommended route structure:
   /agent/chat       -> Chat view (ChatView)
   /agent/mcp        -> MCP management view (McpView)
   /agent/skills     -> Skills management view (SkillsView)
-  /agent/memory     -> Memory management view (MemoryView)
   /agent/settings   -> Settings page (SettingsPage)
 ```
-
-**Note**: The `ToolBar` window has its own independent entry file (`toolbar.html` / `toolbar.tsx`) and does not share the main window's routing system, so no configuration is needed here.
 
 ### 3.4 Route Guards
 
@@ -103,7 +98,6 @@ import { AgentPage } from '../components/pages/AgentPage';
 import { ChatView } from '../components/chat/ChatView';
 import { McpView } from '../components/mcp/McpView';
 import { SkillsView } from '../components/skills/SkillsView';
-import { MemoryView } from '../components/memory/MemoryView';
 import { SettingsPage } from '../components/pages/SettingsPage';
 import { RequireAuth } from './RequireAuth'; // needs to be created
 
@@ -123,7 +117,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="chat" element={<ChatView />} />
           <Route path="mcp" element={<McpView />} />
           <Route path="skills" element={<SkillsView />} />
-          <Route path="memory" element={<MemoryView />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
@@ -261,9 +254,8 @@ This pattern forces `ContentContainer` to receive all Props needed by sub-views 
 ## 6. Risks and Notes
 
 1.  **State passing**: The original `startupValidationResult` was passed via Props. After migration, it needs to be passed via React Router's `state` attribute, or placed in a global Context (such as `StartupContext`). For complex startup data, using Context or a global Store is recommended.
-2.  **ToolBar window**: The ToolBar window is a standalone Electron window that may load with a specific hash. Ensure `HashRouter` can correctly recognize and render the `/toolbar` route.
-3.  **Lifecycle**: Route switching causes components to unmount and remount. Check whether any components rely on the assumption of "always being present" (e.g., some `useEffect` that runs only once when the app starts). If state needs to be preserved, it may be necessary to lift state to Context or use a state management library.
-4.  **Style compatibility**: Ensure routing containers (`Routes`, `Outlet`) do not break existing CSS layouts (e.g., `flex`, `h-screen`, etc.).
+2.  **Lifecycle**: Route switching causes components to unmount and remount. Check whether any components rely on the assumption of "always being present" (e.g., some `useEffect` that runs only once when the app starts). If state needs to be preserved, it may be necessary to lift state to Context or use a state management library.
+3.  **Style compatibility**: Ensure routing containers (`Routes`, `Outlet`) do not break existing CSS layouts (e.g., `flex`, `h-screen`, etc.).
 
 ## 7. Summary
 
@@ -290,7 +282,6 @@ By introducing `react-router-dom`, the OpenKosmos project will gain standard rou
     - [x] `StartupPage`: replace `onComplete` callback with `useNavigate` navigation.
     - [x] `SignInPage`: use `useNavigate` to navigate to `/agent` after login.
     - [x] `DataLoadingPage`: navigate after loading completes.
-    - [x] Verify `/toolbar` standalone window route works correctly.
 
 ### Phase 2: Sub-routes and Layout Refactoring (AgentPage)
 
@@ -309,7 +300,7 @@ By introducing `react-router-dom`, the OpenKosmos project will gain standard rou
 - [ ] **Sub-view component adaptation**
     - [ ] `ChatView`: adapt to get data from `useOutletContext`.
     - [ ] `McpView`: adapt to route parameters (if any).
-    - [ ] `SkillsView`, `MemoryView`, `SettingsPage`: ensure they render correctly as sub-routes.
+    - [ ] `SkillsView` and `SettingsPage`: ensure they render correctly as sub-routes.
 
 ## 5. Implementation Summary (Completed)
 
@@ -329,7 +320,6 @@ The router migration was successfully completed on December 24, 2025.
         *   `/agent/chat/:chatId/:sessionId`: Chat view with specific session
         *   `/agent/mcp`: MCP management
         *   `/agent/skills`: Skills management
-        *   `/agent/memory`: Memory view
         *   `/agent/settings`: Settings page
 3.  **Auth Protection**: Implemented `RequireAuth` component in `src/renderer/routes/RequireAuth.tsx` to protect `/agent` routes.
 4.  **App Component**: Refactored `src/renderer/App.tsx` to remove complex state management (`showStartup`, `startupValidationResult`, etc.) and use `HashRouter` with `AppRoutes`.

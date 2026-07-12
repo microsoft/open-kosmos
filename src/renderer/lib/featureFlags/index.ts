@@ -32,5 +32,10 @@ export {
 
 export {
   useFeatureFlag,
+  useFeatureFlagState,
   useFeatureFlags,
+} from './useFeatureFlag';
+
+export type {
+  FeatureFlagState,
 } from './useFeatureFlag';

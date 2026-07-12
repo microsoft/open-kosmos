@@ -30,10 +30,10 @@ describe('applyUserInputsToArgs', () => {
     ];
     const result = applyUserInputsToArgs(
       ['mcp', 'bluebird', '--organization', '@USER_INPUT_ORG'],
-      { org: 'myorg' },
+      { org: 'microsoft' },
       fields,
     );
-    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'myorg']);
+    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'microsoft']);
   });
 
   it('removes --flag and placeholder for optional empty input', () => {
@@ -56,10 +56,10 @@ describe('applyUserInputsToArgs', () => {
     ];
     const result = applyUserInputsToArgs(
       ['mcp', 'bluebird', '--organization', '@USER_INPUT_ORG', '--project', '@USER_INPUT_PROJ'],
-      { org: 'myorg', proj: '' },
+      { org: 'microsoft', proj: '' },
       fields,
     );
-    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'myorg']);
+    expect(result).toEqual(['mcp', 'bluebird', '--organization', 'microsoft']);
   });
 
   it('keeps required field placeholder when input is empty', () => {

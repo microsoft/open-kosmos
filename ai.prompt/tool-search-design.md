@@ -2,7 +2,7 @@
 
 ## Problem
 
-When Agency CLI and many MCP servers are connected, every LLM request includes all tool definitions. With 30–50+ tools this leads to:
+When many MCP servers are connected, every LLM request includes all tool definitions. With 30–50+ tools this leads to:
 - Token overhead from tool schemas in every request
 - Degraded model tool-selection quality (too many choices)
 - Risk of hitting the 128-tool API limit
@@ -10,6 +10,10 @@ When Agency CLI and many MCP servers are connected, every LLM request includes a
 ## Solution
 
 Replicate Claude Code's **Tool Search** pattern: external MCP tools are **deferred by default** — not sent to the LLM. A `tool_search` meta-tool lets the model discover tools on-demand. Discovered tools are included in subsequent turns.
+
+### Hard Cap (MAX_INLINE_TOOLS = 128)
+
+All return paths in `filterToolsForRequest` enforce a hard cap of 128 tools via `enforceHardCap()`. This guarantees the API 128-tool limit is never exceeded, regardless of whether tool search is enabled, disabled, or has no deferrable tools. When tool search is enabled, discovered deferred tools are additionally capped so that `inlineTools + discoveredDeferred` never exceeds 128 before `enforceHardCap` runs.
 
 ## Architecture
 
@@ -32,8 +36,9 @@ filterToolsForRequest(allTools, messageHistory)
   - Inline:   builtin tools (serverName === 'builtin-tools') + tool_search
   - Deferred: all external MCP tools (unless alwaysLoad === true)
   - Discovered: deferred tools found in previous tool_search results
-  → filteredTools = inline + discovered
+  → filteredTools = inline + discovered (discovered capped so total ≤ 128)
   → deferredTools = all deferred (for tool_search to search against)
+  → enforceHardCap: final filteredTools truncated to ≤ 128 on ALL paths
     ↓
 setDeferredToolsContext(chatSessionId, deferredTools)
   → stored in BuiltinToolsManager.deferredToolsContextMap
@@ -56,14 +61,14 @@ LLM can call the discovered tools directly
 ### Tool Filtering Detail
 
 ```
-getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
+getCurrentAvailableTools() for Agent A (Weather + Slack + Kusto)
     │
     ▼
 ┌──────────────────┬──────────────────────────────┐
 │   Inline (sent)  │   Deferred (NOT sent)        │
 ├──────────────────┼──────────────────────────────┤
-│ read_file        │ ado_query                    │
-│ write_file       │ ado_create_work_item         │
+│ read_file        │ weather_current              │
+│ write_file       │ weather_forecast             │
 │ execute_command  │ slack_send_message            │
 │ tool_search      │ slack_list_channels           │
 │ ...builtin       │ kusto_query                  │
@@ -79,8 +84,8 @@ getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
 │ LLM                                                       │
 │                                                           │
 │ Sees: tool_search + <available-deferred-tools> list      │
-│ Wants to query ADO                                        │
-│ → calls tool_search({ query: "ado work item" })          │
+│ Wants to query the weather                                │
+│ → calls tool_search({ query: "weather forecast" })       │
 └───────────────────────┬───────────────────────────────────┘
                         ▼
 ┌───────────────────────────────────────────────────────────┐
@@ -91,9 +96,9 @@ getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
 │ 3. Match query:                                           │
 │    ┌───────────────────┬────────────────────────────┐    │
 │    │ "select:a,b"      │ Exact name match           │    │
-│    │ "ado_query"       │ Fast path: exact name      │    │
-│    │ "ado work item"   │ Keyword scored search      │    │
-│    │ "+ado query"      │ Require server prefix      │    │
+│    │ "weather_query"   │ Fast path: exact name      │    │
+│    │ "weather forecast"│ Keyword scored search      │    │
+│    │ "+weather query"  │ Require server prefix      │    │
 │    └───────────────────┴────────────────────────────┘    │
 │ 4. Return full schemas as JSON                            │
 │    { matches: [{ name, description, inputSchema }] }     │
@@ -104,10 +109,10 @@ getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
 │                                                           │
 │ extractDiscoveredToolNames(messages)                      │
 │   → scans tool_search results in history                 │
-│   → returns Set { "ado_query", "ado_create_work_item" }  │
+│   → returns Set { "issue_query", "issue_create" }        │
 │                                                           │
 │ filterToolsForRequest includes discovered tools inline   │
-│ → LLM can now call ado_query directly                    │
+│ → LLM can now call issue_query directly                  │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -115,10 +120,10 @@ getCurrentAvailableTools() for Agent A (ADO + Slack + Kusto)
 
 ```
 Before compress:
-  extractDiscoveredToolNames() → { "ado_query", "slack_send" }
+  extractDiscoveredToolNames() → { "issue_query", "calendar_list" }
 
 After compress (injected into summary message):
-  <discovered-tools>ado_query,slack_send</discovered-tools>
+  <discovered-tools>issue_query,calendar_list</discovered-tools>
 
 Next turn: extractDiscoveredToolNames reads BOTH sources:
   1. tool_search result messages (if still in history)
@@ -133,7 +138,7 @@ BuiltinToolsManager.deferredToolsContextMap:
   ┌────────────────┬──────────────────────────────┐
   │ chatSessionId  │ McpTool[]                    │
   ├────────────────┼──────────────────────────────┤
-  │ session-abc    │ [ado_query, slack_send, ...]  │  ← Agent A
+  │ session-abc    │ [issue_query, calendar_list]   │  ← Agent A
   │ session-xyz    │ [github_pr, github_issue]     │  ← Agent B
   └────────────────┴──────────────────────────────┘
 
@@ -153,7 +158,7 @@ Lifecycle:
 | `src/main/lib/mcpRuntime/builtinTools/builtinToolsManager.ts` | Registers `tool_search`, manages per-session `deferredToolsContextMap` for ToolSearchTool execution |
 | `src/main/lib/chat/agentChatContextService.ts` | Token estimation with tool search awareness; context compaction protection via `<discovered-tools>` tag |
 | `src/main/lib/chat/agentChatManager.ts` | Clears `deferredToolsContextMap` entry on session disposal |
-| `src/main/lib/featureFlags/types.ts` | `openkosmosFeatureToolSearch` flag (dev-only default) |
+| `src/main/lib/featureFlags/types.ts` | `openkosmosFeatureToolSearch` flag (enabled by default) |
 
 ## MCP Metadata Support
 
@@ -181,10 +186,10 @@ When context is compressed, tool_search result messages get discarded. Without p
 
 | Query | Behavior | Example |
 |-------|----------|---------|
-| `select:name1,name2` | Exact name match (comma-separated) | `select:ado_query,ado_create_work_item` |
+| `select:name1,name2` | Exact name match (comma-separated) | `select:weather_query,weather_alerts` |
 | Exact tool name | Fast path: if query matches a tool name (case-insensitive), return immediately | `ListCalendarView` |
-| `keywords` | Fuzzy search by name/description/serverName/searchHint | `github issue query` |
-| `+prefix keywords` | Require server name match, rank by remaining terms | `+ado query` |
+| `keywords` | Fuzzy search by name/description/serverName/searchHint | `weather forecast` |
+| `+prefix keywords` | Require server name match, rank by remaining terms | `+weather query` |
 
 Scoring: name exact match (10) > name contains (5) > server contains (3) > description/searchHint contains (2) > all-terms bonus (5).
 
@@ -202,6 +207,7 @@ When no matches found and MCP servers are still connecting, `pending_mcp_servers
 | `<available-deferred-tools>` format | Name-only, one tool per line (no descriptions) |
 | Prompt cache stability | Sort builtin first (stable prefix), then MCP tools |
 | Auto-enable threshold | Token-based: deferred tool tokens > 10% of context window |
+| Hard cap | `MAX_INLINE_TOOLS = 128`: `filterToolsForRequest` enforces on all return paths via `enforceHardCap()` |
 | `alwaysLoad` / `searchHint` | Same `_meta` keys, same semantics |
 | Compaction protection | Preserve discovered tools across context compression |
 | tool_search prompt | Aligned description and query form documentation |

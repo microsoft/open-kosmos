@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { getString } from '../../../common/localString';
 import { css } from '../../../common/styled';
 import { handleDrag } from '../../../common/utils/drag';
 import { shapesAtom } from '../../../state';
 import { useModel } from '../../../context';
+import { useI18n } from '../../../../../lib/i18n/useI18n';
 
 const SFlexCenter = css`
   display: flex;
@@ -82,6 +82,7 @@ interface Props {
   onChange: (value: number) => void;
 }
 function SliderThumb(props: Props) {
+  const { t } = useI18n();
   const { min, max, value, onChange } = props;
   const slider = useRef<HTMLDivElement>(null);
   const sliderCursor = useRef<HTMLDivElement>(null);
@@ -185,7 +186,7 @@ function SliderThumb(props: Props) {
   return (
     <div  className={`${SSlider} ${SFlexCenter}`}
           ref={slider}
-          aria-label='slider'
+          aria-label={t('screenshot.editor.slider')}
           onPointerDown={onSliderClick}>
       <div  className={SSliderRunway}>
         <div className={SSliderBar} style={{width: `${(value - min) / (max - min) * 100}%`}}></div>
@@ -193,7 +194,7 @@ function SliderThumb(props: Props) {
               style={{left: `${(value - min) / (max - min) * 100}%`}}
               tabIndex={0}
               role="slider"
-              aria-label={getString('size')}
+              aria-label={t('screenshot.editor.size')}
               aria-valuemin={min}
               aria-valuemax={max}
               aria-valuenow={value}

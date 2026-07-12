@@ -29,32 +29,38 @@ type ShowSuccessFn = (message: string | React.ReactNode, duration?: number) => v
 
 interface ShowScheduledRunStartedToastParams {
   result?: SchedulerManualRunResult
-  agentId?: string
+  chatId?: string
   navigate: NavigateWithOptionsFn
   showToast: ShowToastFn
   showSuccess: ShowSuccessFn
+  t?: (key: 'chat.schedule.runStarted' | 'chat.schedule.openRun') => string
+}
+
+const defaultTranslate: NonNullable<ShowScheduledRunStartedToastParams['t']> = (key) => {
+  if (key === 'chat.schedule.openRun') return 'Open schedule run'
+  return 'Scheduled run started.'
 }
 
 export function showScheduledRunStartedToast({
   result,
-  agentId,
+  chatId,
   navigate,
   showToast,
   showSuccess,
+  t = defaultTranslate,
 }: ShowScheduledRunStartedToastParams): void {
-  if (agentId && result?.chatSessionId) {
-    showToast('Scheduled run started.', 'success', undefined, {
-      persistent: true,
+  if (chatId && result?.chatSessionId) {
+    showToast(t('chat.schedule.runStarted'), 'success', 5000, {
       actions: [
         {
-          label: 'Open schedule run',
+          label: t('chat.schedule.openRun'),
           variant: 'primary',
           onClick: () => {
-            navigate(`/agent/chat/${agentId}/${result.chatSessionId}`, {
+            navigate(`/agent/chat/${chatId}/${result.chatSessionId}`, {
               state: {
                 intent: 'open-session',
                 source: 'schedule-run-toast',
-                targetChatId: agentId,
+                targetChatId: chatId,
                 targetSessionId: result.chatSessionId,
                 openSchedulesSidepane: true,
               },
@@ -66,7 +72,7 @@ export function showScheduledRunStartedToast({
     return
   }
 
-  showSuccess('Scheduled run started.')
+  showSuccess(t('chat.schedule.runStarted'))
 }
 
 export default showScheduledRunStartedToast

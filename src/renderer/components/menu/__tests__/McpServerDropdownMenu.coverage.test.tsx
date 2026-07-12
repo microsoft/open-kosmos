@@ -61,18 +61,6 @@ describe('McpServerDropdownMenu', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('returns null for plugin server with PLUGIN source', () => {
-    mockMcpServers.mockReturnValue([{ name: 'my-server', source: 'PLUGIN' }]);
-    const { container } = renderMenu({ serverName: 'my-server' });
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('returns null for server with plugin-- name prefix', () => {
-    mockMcpServers.mockReturnValue([{ name: 'plugin--foo', source: 'USER' }]);
-    const { container } = renderMenu({ serverName: 'plugin--foo' });
-    expect(container.firstChild).toBeNull();
-  });
-
   // ── no actions hint ──────────────────────────────────────────────────────────
   it('shows "No actions available" when no action handlers provided', () => {
     renderMenu({ serverName: 'my-server' });

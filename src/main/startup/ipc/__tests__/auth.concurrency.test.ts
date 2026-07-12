@@ -7,7 +7,7 @@
  * 3. Init failure does not block sign-out
  *
  * We test the contract directly rather than through the full auth IPC handler
- * to avoid mocking the entire Electron/analytics/auth stack.
+ * to avoid mocking the entire Electron and auth stack.
  */
 
 interface MockContext {

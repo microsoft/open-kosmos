@@ -29,6 +29,7 @@ export interface VSCodeMCPServerConfig {
   args?: string[]
   url?: string
   env?: Record<string, string>
+  headers?: Record<string, string>
   disabled?: boolean
 }
 
@@ -89,9 +90,10 @@ export interface OpenKosmosAppMCPServerConfig {
   url: string
   in_use: boolean
   version?: string
-  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
-  /** 🆕 Remote CDN version number; equals version when source is IN-LIBRARY, empty string when source is ON-DEVICE */
+  source?: 'IN-LIBRARY' | 'ON-DEVICE'
+  /** Inert legacy version metadata retained for persisted profile compatibility. */
   remoteVersion?: string
+  headers?: Record<string, string>
 }
 
 // Import dialog state

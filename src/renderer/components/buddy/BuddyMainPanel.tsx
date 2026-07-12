@@ -11,6 +11,8 @@ import { BuddyXPBar } from './BuddyXPBar';
 import { BuddyCard } from './BuddyCard';
 import { BuddyStatsModal } from './BuddyStatsModal';
 import './BuddyMainPanel.css';
+import { useI18n } from '../../lib/i18n/useI18n';
+import { getBuddyMergeErrorMessage, getBuddyMilestoneLabel, getBuddySpeciesLabel } from './buddyLabels';
 
 interface BuddyMainPanelProps {
   onHatchNew: () => void;
@@ -21,6 +23,7 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
   onHatchNew,
   onClose,
 }) => {
+  const { t } = useI18n();
   const [buddy, actions] = BuddyAtom.use();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [statsBuddyId, setStatsBuddyId] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
   const petTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const activeBuddy = buddy.roster.find((b) => b.id === buddy.activeBuddyId) ?? null;
-  const rarityColor = buddy.companion ? RARITY_COLORS[buddy.companion.rarity] : '#9ca3af';
+  const rarityColor = buddy.companion ? RARITY_COLORS[buddy.companion.rarity] : 'var(--color-neutral-400)';
 
   // --- Backpack interactions (migrated from BuddyCollectionPanel) ---
   const handleSelect = useCallback((id: string) => {
@@ -82,26 +85,26 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
       keepId = b2.id; deleteId = a.id; keepName = b2.soul.name; deleteName = a.soul.name;
     } else return;
 
-    if (window.confirm(`Merge ${deleteName} into ${keepName}?\n${deleteName} will be deleted forever.\n${keepName} will upgrade rarity.`)) {
+    if (window.confirm(t('buddy.mergeConfirm', { deleteName, keepName }))) {
       actions.mergeBuddies(keepId, deleteId);
       setSelectedIds([]);
     }
-  }, [selectedIds, buddy]);
+  }, [actions, selectedIds, buddy, t]);
 
   const handleRelease = useCallback(
     (id: string) => {
       const entry = buddy.roster.find((b) => b.id === id);
       if (!entry) return;
       if (id === buddy.activeBuddyId) {
-        window.alert('Cannot release the active buddy!');
+        window.alert(t('buddy.releaseActiveBlocked'));
         return;
       }
-      if (window.confirm(`Release ${entry.soul.name}? This cannot be undone.`)) {
+      if (window.confirm(t('buddy.releaseConfirm', { name: entry.soul.name }))) {
         actions.releaseBuddy(id);
         setSelectedIds((prev) => prev.filter((x) => x !== id));
       }
     },
-    [buddy],
+    [actions, buddy, t],
   );
 
   const handlePet = useCallback(() => {
@@ -141,6 +144,9 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
 
   const currentMilestone = getCurrentMilestone(buddy.userTotalTokens);
   const nextMilestone = getNextMilestone(buddy.userTotalTokens);
+  const currentMilestoneLabel = getBuddyMilestoneLabel(t, currentMilestone);
+  const nextMilestoneLabel = getBuddyMilestoneLabel(t, nextMilestone);
+  const translatedMergeError = mergeError ? getBuddyMergeErrorMessage(t, mergeError) : '';
   const milestoneProgress = nextMilestone
     ? ((buddy.userTotalTokens - (currentMilestone?.threshold ?? 0)) /
        (nextMilestone.threshold - (currentMilestone?.threshold ?? 0))) * 100
@@ -152,7 +158,7 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
 
         {/* Header */}
         <div className="buddy-main-header">
-          <h2>🎒 Backpack</h2>
+          <h2>🎒 {t('buddy.backpack')}</h2>
           <button className="buddy-main-close" onClick={onClose}>✕</button>
         </div>
 
@@ -194,7 +200,7 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
                 </span>
               </div>
               <div className="buddy-main-player-level">
-                Lv. {xpToLevel(activeBuddy.xp)} · {buddy.companion.species}
+                {t('buddy.level', { level: xpToLevel(activeBuddy.xp) })} · {getBuddySpeciesLabel(t, buddy.companion.species)}
               </div>
               {buddy.xpData && (
                 <div className="buddy-main-player-xp">
@@ -205,9 +211,9 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
                 &ldquo;{buddy.companion.personality}&rdquo;
               </div>
               <div className="buddy-main-player-actions">
-                <button className="buddy-main-action-btn" onClick={handlePet}>❤️ Pet</button>
-                <button className="buddy-main-action-btn" onClick={handleRename}>✏️ Rename</button>
-                <button className="buddy-main-action-btn" onClick={() => setStatsBuddyId(buddy.activeBuddyId)}>📊 Stats</button>
+                <button className="buddy-main-action-btn" onClick={handlePet}>❤️ {t('buddy.pet')}</button>
+                <button className="buddy-main-action-btn" onClick={handleRename}>✏️ {t('buddy.rename')}</button>
+                <button className="buddy-main-action-btn" onClick={() => setStatsBuddyId(buddy.activeBuddyId)}>📊 {t('buddy.stats')}</button>
               </div>
             </div>
           </div>
@@ -216,7 +222,7 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
         {/* Section 2: Backpack Grid */}
         <div className="buddy-main-backpack">
           <div className="buddy-main-backpack-header">
-            <span className="buddy-main-backpack-title">Collection</span>
+            <span className="buddy-main-backpack-title">{t('buddy.collection')}</span>
             <span className="buddy-main-backpack-count">{buddy.roster.length}/{MAX_ROSTER_SIZE}</span>
           </div>
           <div className="buddy-card-grid">
@@ -233,42 +239,42 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
             ))}
           </div>
           <div className="buddy-main-backpack-actions">
-            <button className="buddy-main-backpack-btn" onClick={onHatchNew}>🥚 Hatch New</button>
+            <button className="buddy-main-backpack-btn" onClick={onHatchNew}>🥚 {t('buddy.hatchNew')}</button>
             <button
               className="buddy-main-backpack-btn"
               disabled={!mergeValid}
               onClick={handleMergeClick}
-              title={mergeError || 'Select 2 same-species same-rarity buddies'}
+              title={translatedMergeError || t('buddy.selectMergeTitle')}
             >
-              🔮 Merge
+              🔮 {t('buddy.merge')}
             </button>
             {selectedIds.length === 1 && selectedIds[0] !== buddy.activeBuddyId && (
               <button
                 className="buddy-main-backpack-btn buddy-main-backpack-btn-danger"
                 onClick={() => handleRelease(selectedIds[0])}
               >
-                Release
+                {t('buddy.release')}
               </button>
             )}
           </div>
           <div className="buddy-main-backpack-tip">
-            {selectedIds.length === 0 && 'Click to activate · Shift-click to select for merge'}
-            {selectedIds.length === 1 && 'Shift-click one more buddy to merge'}
-            {selectedIds.length === 2 && !mergeValid && mergeError}
-            {selectedIds.length === 2 && mergeValid && 'Ready to merge!'}
+            {selectedIds.length === 0 && t('buddy.selectTip')}
+            {selectedIds.length === 1 && t('buddy.selectOneMore')}
+            {selectedIds.length === 2 && !mergeValid && translatedMergeError}
+            {selectedIds.length === 2 && mergeValid && t('buddy.readyToMerge')}
           </div>
         </div>
 
         {/* Section 3: Stats */}
         <div className="buddy-main-stats">
           <div className="buddy-main-stats-row">
-            <span className="buddy-main-stats-label">Total Tokens Used</span>
+            <span className="buddy-main-stats-label">{t('buddy.totalTokensUsed')}</span>
             <span className="buddy-main-stats-value">{buddy.userTotalTokens.toLocaleString()}</span>
           </div>
           <div className="buddy-main-stats-row">
-            <span className="buddy-main-stats-label">Milestone</span>
+            <span className="buddy-main-stats-label">{t('buddy.milestone')}</span>
             <span className="buddy-main-stats-label">
-              {currentMilestone?.name ?? 'Newcomer'} → {nextMilestone?.name ?? 'Max'}
+              {currentMilestoneLabel ?? t('buddy.newcomer')} → {nextMilestoneLabel ?? t('buddy.max')}
             </span>
           </div>
           <div className="buddy-main-milestone-bar">
@@ -278,8 +284,11 @@ export const BuddyMainPanel: React.FC<BuddyMainPanelProps> = ({
             />
           </div>
           <div className="buddy-main-milestone-labels">
-            <span>{currentMilestone?.name ?? 'Start'}</span>
-            <span>{nextMilestone ? `${nextMilestone.threshold.toLocaleString()} tokens` : 'Complete!'}</span>
+            <span>{currentMilestoneLabel ?? t('buddy.start')}</span>
+            <span>{nextMilestone ? t('buddy.tokens', { count: nextMilestone.threshold.toLocaleString() }) : t('buddy.complete')}</span>
+          </div>
+          <div className="buddy-main-coming-soon">
+            📊 {t('buddy.usageAnalyticsComingSoon')}
           </div>
         </div>
       </div>

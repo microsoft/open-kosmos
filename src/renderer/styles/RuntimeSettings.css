@@ -9,19 +9,19 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #FFFFFF;
+  background: var(--runtime-view-bg);
 }
 
 .runtime-settings-loading {
   padding: 24px;
-  color: #6b7280;
+  color: var(--runtime-loading-fg);
 }
 
 /* ── Card description text (subtitle inside card header) ── */
 
 .runtime-card-desc {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--runtime-card-desc-fg);
   margin: 2px 0 0 0;
   line-height: 1.5;
 }
@@ -30,12 +30,12 @@
 
 .runtime-mode-row {
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background 0.12s ease;
 }
 
 .runtime-mode-row:hover {
-  background: #f9fafb;
+  background: var(--runtime-row-hover-bg);
 }
 
 
@@ -44,7 +44,7 @@
 .runtime-radio {
   width: 16px;
   height: 16px;
-  accent-color: #272320;
+  accent-color: var(--runtime-radio-accent);
   cursor: pointer;
   flex-shrink: 0;
   margin-left: 12px;
@@ -66,7 +66,7 @@
 .runtime-component-tag {
   font-size: 11px;
   font-weight: 400;
-  color: #9ca3af;
+  color: var(--runtime-component-tag-fg);
   margin-left: 6px;
 }
 
@@ -76,11 +76,11 @@
 }
 
 .runtime-status-dot--ok {
-  color: #059669;
+  color: var(--color-success-600);
 }
 
 .runtime-status-dot--off {
-  color: #dc2626;
+  color: var(--color-danger-600);
 }
 
 .runtime-component-actions {
@@ -95,16 +95,16 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  background: #F3F4F6;
-  border: 1px solid #E5E7EB;
-  border-radius: 6px;
+  background: var(--runtime-field-bg);
+  border: 1px solid var(--runtime-field-border);
+  border-radius: var(--radius-md);
   padding: 0 8px;
   height: 32px;
 }
 
 .runtime-version-prefix {
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--runtime-field-prefix-fg);
 }
 
 .runtime-version-input-sm {
@@ -113,7 +113,7 @@
   border: none;
   outline: none;
   font-size: 13px;
-  color: #272320;
+  color: var(--runtime-field-fg);
 }
 
 /* Primary action button */
@@ -122,17 +122,17 @@
   height: 32px;
   font-size: 13px;
   font-weight: 500;
-  color: #ffffff;
-  background: #272320;
+  color: var(--runtime-action-fg);
+  background: var(--runtime-action-bg);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background 0.15s ease;
   white-space: nowrap;
 }
 
 .runtime-action-btn:hover:not(:disabled) {
-  background: #3d3836;
+  background: var(--runtime-action-hover-bg);
 }
 
 .runtime-action-btn:disabled {
@@ -144,10 +144,10 @@
 .runtime-loading-bar {
   padding: 10px 12px;
   font-size: 13px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
+  color: var(--color-accent-stronger);
+  background: var(--color-info-surface);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-lg);
   margin-top: 4px;
 }
 
@@ -160,16 +160,16 @@
   padding: 0 12px;
   height: 32px;
   font-size: 14px;
-  background: #F3F4F6;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
-  color: #272320;
+  background: var(--runtime-field-bg);
+  border: 1px solid var(--runtime-field-border);
+  border-radius: var(--radius-lg);
+  color: var(--runtime-field-fg);
 }
 
 .runtime-python-input:focus {
   outline: none;
-  border-color: #272320;
-  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
+  border-color: var(--runtime-python-focus-border);
+  box-shadow: var(--runtime-python-focus-shadow);
 }
 
 /* Per-version list row */
@@ -183,25 +183,25 @@
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 500;
-  border-radius: 4px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
 .runtime-python-badge--installed {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--color-success-100);
+  color: var(--color-success-800);
 }
 
 .runtime-python-badge--available {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--runtime-badge-available-bg);
+  color: var(--runtime-badge-available-fg);
 }
 
 /* Version label */
 .runtime-python-version {
   font-size: 14px;
   font-weight: 500;
-  color: #272320;
+  color: var(--runtime-field-fg);
   flex-shrink: 0;
   min-width: 60px;
 }
@@ -209,7 +209,7 @@
 /* Truncated path */
 .runtime-python-path {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--runtime-loading-fg);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -227,7 +227,7 @@
 
 .runtime-pin-text {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--runtime-loading-fg);
 }
 
 /* Icon-only delete button */
@@ -239,16 +239,16 @@
   height: 28px;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--runtime-component-tag-fg);
   transition: all 0.12s ease;
   flex-shrink: 0;
 }
 
 .runtime-icon-btn:hover:not(:disabled) {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-50);
+  color: var(--color-danger-600);
 }
 
 .runtime-icon-btn:disabled {
@@ -259,7 +259,7 @@
 /* Text-only button (e.g. Clean Cache) */
 .runtime-text-btn {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--runtime-loading-fg);
   background: none;
   border: none;
   cursor: pointer;
@@ -269,7 +269,7 @@
 }
 
 .runtime-text-btn:hover:not(:disabled) {
-  color: #374151;
+  color: var(--runtime-text-hover-fg);
 }
 
 .runtime-text-btn:disabled {
@@ -281,11 +281,67 @@
 .runtime-empty-hint {
   padding: 12px 4px;
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--runtime-component-tag-fg);
   text-align: center;
 }
 
-/* ── Model list row (Voice Input / TTS) ── */
+/* ── Python packages ── */
+.runtime-package-input {
+  width: 200px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--runtime-field-fg);
+  background: var(--runtime-package-input-bg);
+  border: 1px solid var(--runtime-package-input-border);
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+.runtime-package-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.runtime-package-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12px;
+  background: var(--runtime-package-item-bg);
+  border-radius: var(--radius-lg);
+}
+
+.runtime-package-version {
+  margin-left: 6px;
+  color: var(--runtime-component-tag-fg);
+}
+
+.runtime-package-remove {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--runtime-loading-fg);
+  padding: 2px;
+}
+
+.runtime-package-remove:hover:not(:disabled) {
+  color: var(--color-danger-600);
+}
+
+.runtime-package-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Model list row (Voice Input) ── */
 /* Three-column grid: [badge 90px] [info 1fr] [actions 168px] */
 .settings-model-row {
   display: grid;
@@ -318,7 +374,7 @@
   flex-shrink: 0;
 }
 
-/* ── Model download progress (Voice Input / TTS) ── */
+/* ── Model download progress (Voice Input) ── */
 
 .settings-model-progress {
   display: flex;
@@ -330,70 +386,15 @@
 .settings-model-progress-bar {
   width: 80px;
   height: 6px;
-  background: #e5e7eb;
-  border-radius: 3px;
+  background: var(--settings-model-progress-bg);
+  border-radius: var(--radius-scrollbar);
   overflow: hidden;
   flex-shrink: 0;
 }
 
 .settings-model-progress-fill {
   height: 100%;
-  background: #272320;
-  border-radius: 3px;
+  background: var(--settings-model-progress-fill-bg);
+  border-radius: var(--radius-scrollbar);
   transition: width 0.15s ease;
 }
-
-/* ── Speech speed slider (TTS settings) ── */
-
-.settings-speed-control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  margin-left: 16px;
-}
-
-.settings-speed-slider {
-  width: 120px;
-  height: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e5e7eb;
-  border-radius: 3px;
-  outline: none;
-  cursor: pointer;
-}
-
-.settings-speed-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #272320;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: background 0.15s ease;
-}
-
-.settings-speed-slider::-webkit-slider-thumb:hover {
-  background: #3d3836;
-}
-
-.settings-speed-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  background: #272320;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-}
-
-.settings-speed-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: #272320;
-  min-width: 36px;
-  text-align: center;
-}
-

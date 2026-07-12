@@ -1,13 +1,11 @@
 import { atom } from '@/atom';
 import { memo, useEffect, useRef } from 'react';
-import { Settings, LogOut, RotateCw, MessageSquareText, Hospital } from 'lucide-react';
+import { Settings, LogOut, MessageSquareText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useUpdate } from '../autoUpdate/UpdateProvider';
 import { useAuthContext } from '../auth/AuthProvider';
 import { createLogger } from '@/lib/utilities/logger';
 import { BRAND_CONFIG } from '@shared/constants/branding';
-import { doctorInquiryAtom } from '@/states/doctor.atom';
-import { useFeatureFlag } from '@/lib/featureFlags/useFeatureFlag';
+import { useI18n } from '@/lib/i18n/useI18n';
 
 const logger = createLogger('[UserMenu]');
 
@@ -15,41 +13,13 @@ export const userMenuVisibleAtom = atom(false);
 
 interface UserMenuProps {}
 
-function ReportBug(props: {
-  setVisible: (v: boolean) => void;
-}) {
-  const [state, actions] = doctorInquiryAtom.use();
-  const doctorEnabled = useFeatureFlag('openkosmosFeatureDoctor');
-
-  if (!doctorEnabled) return null;
-  if (state.type !== 'idle') return null;
-
-  function onReportBug() {
-    props.setVisible(false);
-    actions.show();
-  }
-
-  return (
-    <button
-      className="dropdown-menu-item"
-      onClick={onReportBug}
-      title="Report a bug"
-    >
-      <span className="dropdown-menu-item-icon">
-        <Hospital size={16} strokeWidth={1.5} />
-      </span>
-      <span className="dropdown-menu-item-text">Report Bug</span>
-    </button>
-  )
-}
-
 function Menu(props: UserMenuProps) {
   const [visible, setVisible] = userMenuVisibleAtom.use();
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut } = useAuthContext();
-  const { checkForUpdates, showUpdateDialog } = useUpdate();
+  const { t } = useI18n();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -67,14 +37,6 @@ function Menu(props: UserMenuProps) {
     sessionStorage.setItem('previousPath', location.pathname);
     navigate('/settings');
     setVisible(false);
-  }
-
-  async function onCheckForUpdates() {
-    setVisible(false);
-    try {
-      await checkForUpdates();
-      showUpdateDialog();
-    } catch (error) {}
   }
 
   async function onLogout() {
@@ -104,39 +66,28 @@ function Menu(props: UserMenuProps) {
       <button
         className="dropdown-menu-item"
         onClick={onOpenSettings}
-        title="Open Settings"
+        title={t('userMenu.openSettings')}
       >
         <span className="dropdown-menu-item-icon">
           <Settings size={16} strokeWidth={1.5} />
         </span>
-        <span className="dropdown-menu-item-text">Settings</span>
-      </button>
-      <button
-        className="dropdown-menu-item"
-        onClick={onCheckForUpdates}
-        title="Check for app updates"
-      >
-        <span className="dropdown-menu-item-icon">
-          <RotateCw size={16} strokeWidth={1.5} />
-        </span>
-        <span className="dropdown-menu-item-text">Check Updates</span>
+        <span className="dropdown-menu-item-text">{t('userMenu.settings')}</span>
       </button>
       <button
         className="dropdown-menu-item"
         onClick={onSendFeedback}
-        title="Send feedback"
+        title={t('userMenu.sendFeedbackTitle')}
       >
         <span className="dropdown-menu-item-icon">
           <MessageSquareText size={16} strokeWidth={1.5} />
         </span>
-        <span className="dropdown-menu-item-text">Send Feedback</span>
+        <span className="dropdown-menu-item-text">{t('userMenu.sendFeedback')}</span>
       </button>
-      <ReportBug setVisible={setVisible} />
       <button className="dropdown-menu-item danger" onClick={onLogout}>
         <span className="dropdown-menu-item-icon">
           <LogOut size={16} strokeWidth={1.5} />
         </span>
-        <span className="dropdown-menu-item-text">Logout</span>
+        <span className="dropdown-menu-item-text">{t('userMenu.logout')}</span>
       </button>
     </div>
   );

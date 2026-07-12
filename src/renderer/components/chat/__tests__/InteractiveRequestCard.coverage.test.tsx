@@ -190,7 +190,11 @@ describe('InteractiveRequestCard - Choice (single)', () => {
     const input = await screen.findByPlaceholderText('Enter a custom value');
     fireEvent.change(input, { target: { value: 'my-custom' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ selectedValues: ['my-custom'] }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      selectedValues: ['my-custom'],
+      selectedPresetValues: [],
+      customValues: ['my-custom'],
+    }));
   });
 });
 
@@ -203,7 +207,11 @@ describe('InteractiveRequestCard - Choice (multi)', () => {
     fireEvent.click(screen.getByText('Option A').closest('button')!);
     fireEvent.click(screen.getByText('Option B').closest('button')!);
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ selectedValues: ['a', 'b'] }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      selectedValues: ['a', 'b'],
+      selectedPresetValues: ['a', 'b'],
+      customValues: [],
+    }));
   });
 
   it('toggling deselects an option in multi mode', async () => {
@@ -213,7 +221,18 @@ describe('InteractiveRequestCard - Choice (multi)', () => {
     fireEvent.click(screen.getByText('Option A').closest('button')!); // deselect
     fireEvent.click(screen.getByText('Option B').closest('button')!);
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ selectedValues: ['b'] }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      selectedValues: ['b'],
+      selectedPresetValues: ['b'],
+      customValues: [],
+    }));
+  });
+
+  it('disables Continue when choice maxSelections is exceeded', async () => {
+    render(<InteractiveRequestCard request={makeChoiceRequest({ mode: 'multi', maxSelections: 1 })} onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByText('Option A').closest('button')!);
+    fireEvent.click(screen.getByText('Option B').closest('button')!);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled());
   });
 });
 
@@ -254,10 +273,10 @@ describe('InteractiveRequestCard - Form', () => {
 
   it('renders boolean checkbox control', () => {
     const req = makeFormRequest({
-      fields: [{ key: 'enabled', label: 'Enabled', type: 'boolean', control: 'checkbox' }],
+      fields: [{ key: 'enabled', label: 'Enabled', type: 'boolean', control: 'checkbox', defaultValue: true }],
     });
     render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
   it('renders boolean select control', () => {
@@ -272,12 +291,23 @@ describe('InteractiveRequestCard - Form', () => {
     const req = makeFormRequest({
       fields: [{
         key: 'color', label: 'Color', type: 'string', control: 'select',
-        options: [{ value: 'red', label: 'Red' }, { value: 'blue', label: 'Blue' }],
+        description: 'Pick a color',
+        options: [{ value: 'red', label: 'Red', description: 'Warm color' }, { value: 'blue', label: 'Blue' }],
       }],
     });
     render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+    expect(screen.getByText('Pick a color')).toBeInTheDocument();
     expect(screen.getByText('Red')).toBeInTheDocument();
+    expect(screen.getByText('Warm color')).toBeInTheDocument();
     expect(screen.getByText('Blue')).toBeInTheDocument();
+  });
+
+  it('renders a select field without preset options', () => {
+    const req = makeFormRequest({
+      fields: [{ key: 'color', label: 'Color', type: 'string', control: 'select' }],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Other/ })).toBeInTheDocument();
   });
 
   it('uses custom submitLabel and skipLabel', () => {
@@ -302,6 +332,183 @@ describe('InteractiveRequestCard - Form', () => {
     render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
     // time inputs don't have a named role but exist
     expect(document.querySelector('input[type="time"]')).toBeTruthy();
+  });
+
+  it('submits parsed numeric form values and preserves empty optional numeric values', () => {
+    const onSubmit = vi.fn();
+    const req = makeFormRequest({
+      fields: [
+        { key: 'age', label: 'Age', type: 'int' },
+        { key: 'ratio', label: 'Ratio', type: 'double' },
+        { key: 'optional', label: 'Optional', type: 'int' },
+      ],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText('Age'), { target: { value: '42' } });
+    fireEvent.change(screen.getByLabelText('Ratio'), { target: { value: '3.5' } });
+    fireEvent.change(screen.getByLabelText('Optional'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      formValues: { age: 42, ratio: 3.5, optional: '' },
+    }));
+  });
+
+  it('shows validation errors for invalid integer and double values', async () => {
+    const req = makeFormRequest({
+      fields: [
+        { key: 'age', label: 'Age', type: 'int', control: 'textarea' },
+        { key: 'ratio', label: 'Ratio', type: 'double', control: 'textarea' },
+      ],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Age'), { target: { value: 'abc' } });
+    fireEvent.change(screen.getByLabelText('Ratio'), { target: { value: 'def' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Please enter a valid integer')).toBeInTheDocument();
+    expect(screen.getByText('Please enter a valid number')).toBeInTheDocument();
+  });
+
+  it('validates multiselect min and max selections', async () => {
+    const req = makeFormRequest({
+      fields: [{
+        key: 'labels',
+        label: 'Labels',
+        type: 'string',
+        control: 'multiselect',
+        minSelections: 2,
+        maxSelections: 2,
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+          { value: 'c', label: 'C' },
+        ],
+      }],
+    });
+    const { rerender } = render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Please select at least 2 options')).toBeInTheDocument();
+
+    rerender(<InteractiveRequestCard request={{ ...req, interactionId: 'form-2' }} onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'B' }));
+    fireEvent.click(screen.getByRole('button', { name: 'C' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Please select no more than 2 options')).toBeInTheDocument();
+  });
+
+  it('toggles form multiselect options and submits custom values', () => {
+    const onSubmit = vi.fn();
+    const req = makeFormRequest({
+      fields: [{
+        key: 'labels',
+        label: 'Labels',
+        type: 'string',
+        control: 'multiselect',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+      }],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'B' }));
+    fireEvent.click(screen.getByRole('button', { name: /Other/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom option' }), { target: { value: 'custom' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      formValues: { labels: ['b', 'custom'] },
+    }));
+  });
+
+  it('initializes preset and custom select defaults', () => {
+    const req = makeFormRequest({
+      fields: [
+        {
+          key: 'mode',
+          label: 'Mode',
+          type: 'string',
+          control: 'select',
+          defaultValue: 'manual',
+          options: [{ value: 'auto', label: 'Auto' }],
+        },
+        {
+          key: 'labels',
+          label: 'Labels',
+          type: 'string',
+          control: 'multiselect',
+          defaultValue: ['a', 'custom'],
+          options: [{ value: 'a', label: 'A' }],
+        },
+      ],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+    expect(screen.getAllByRole('textbox', { name: 'Custom option' })).toHaveLength(2);
+    expect(screen.getByDisplayValue('manual')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('custom')).toBeInTheDocument();
+  });
+
+  it('submits boolean select values', () => {
+    const onSubmit = vi.fn();
+    const req = makeFormRequest({
+      fields: [{ key: 'active', label: 'Active', type: 'boolean' }],
+    });
+    render(<InteractiveRequestCard request={req} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'true' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      formValues: { active: true },
+    }));
+  });
+
+  it('selects folder and file paths through electron APIs', async () => {
+    const originalElectronAPI = (window as any).electronAPI;
+    (window as any).electronAPI = {
+      workspace: { selectFolder: vi.fn(async () => ({ success: true, folderPath: '/tmp/work' })) },
+      fs: { selectFile: vi.fn(async () => ({ success: true, filePath: '/tmp/file.txt' })) },
+    };
+    const req = makeFormRequest({
+      fields: [
+        { key: 'folder', label: 'Folder', type: 'string', control: 'folder' },
+        { key: 'file', label: 'File', type: 'string', control: 'file' },
+      ],
+    });
+    try {
+      render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+      fireEvent.click(screen.getAllByRole('button').find((button) => button.querySelector('svg'))!);
+      fireEvent.click(screen.getAllByRole('button').filter((button) => button.querySelector('svg'))[1]);
+      await waitFor(() => expect(screen.getByDisplayValue('/tmp/work')).toBeInTheDocument());
+      expect(screen.getByDisplayValue('/tmp/file.txt')).toBeInTheDocument();
+    } finally {
+      (window as any).electronAPI = originalElectronAPI;
+    }
+  });
+
+  it('ignores unsuccessful folder and file selections', async () => {
+    const originalElectronAPI = (window as any).electronAPI;
+    (window as any).electronAPI = {
+      workspace: { selectFolder: vi.fn(async () => ({ success: false })) },
+      fs: { selectFile: vi.fn(async () => ({ success: true })) },
+    };
+    const req = makeFormRequest({
+      fields: [
+        { key: 'folder', label: 'Folder', type: 'string', control: 'folder' },
+        { key: 'file', label: 'File', type: 'string', control: 'file' },
+      ],
+    });
+    try {
+      render(<InteractiveRequestCard request={req} onSubmit={vi.fn()} />);
+      const pickerButtons = screen.getAllByRole('button').filter((button) => button.querySelector('svg'));
+      fireEvent.click(pickerButtons[0]);
+      fireEvent.click(pickerButtons[1]);
+      await waitFor(() => expect((window as any).electronAPI.fs.selectFile).toHaveBeenCalled());
+      expect(screen.queryByDisplayValue('/tmp/work')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('/tmp/file.txt')).not.toBeInTheDocument();
+    } finally {
+      (window as any).electronAPI = originalElectronAPI;
+    }
   });
 });
 

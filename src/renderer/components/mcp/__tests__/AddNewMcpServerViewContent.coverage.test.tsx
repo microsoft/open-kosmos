@@ -675,8 +675,7 @@ describe('AddNewMcpServerViewContent — extended coverage', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/settings/mcp'), { timeout: 2000 });
   });
 
-  // ---- edit mode: IN-LIBRARY source preserves version ----
-  it('IN-LIBRARY source preserves version on update', async () => {
+  it('normalizes legacy source metadata when updating', async () => {
     vi.mocked(useMCPServers).mockReturnValue({
       servers: [],
       addServer: mockAddServer,
@@ -707,10 +706,13 @@ describe('AddNewMcpServerViewContent — extended coverage', () => {
     await waitFor(() => screen.getByRole('button', { name: /Update Server/i }));
     fireEvent.click(screen.getByRole('button', { name: /Update Server/i }));
     await waitFor(() => expect(mockMcpOpsUpdate).toHaveBeenCalled());
-    // For IN-LIBRARY, version stays at '2.0.0' (not incremented)
     expect(mockMcpOpsUpdate).toHaveBeenCalledWith(
       'lib-srv',
-      expect.objectContaining({ version: '2.0.0' })
+      expect.objectContaining({
+        source: 'ON-DEVICE',
+        version: '2.0.1',
+        remoteVersion: '',
+      })
     );
   });
 
@@ -932,5 +934,88 @@ describe('AddNewMcpServerViewContent — extended coverage', () => {
     // Name input is disabled in edit mode, but just check no crash
     const nameInput = screen.getByDisplayValue('edit-me');
     expect((nameInput as HTMLInputElement).disabled).toBe(true);
+  });
+
+  // ---- validateServerConfig: SSE config with valid headers passes ----
+  it('accepts SSE config with valid headers', async () => {
+    const sseWithHeaders = JSON.stringify({ url: 'http://localhost:8080/sse', headers: { 'x-apikey': 'secret' } });
+    mockFormatMcpConfig.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        transportType: 'sse',
+        serverName: 'sse-hdr',
+        config: { url: 'http://localhost:8080/sse', headers: { 'x-apikey': 'secret' } },
+      },
+    });
+    render(<AddNewMcpServerViewContent />);
+    await verifyConfig(sseWithHeaders);
+    const nameInput = screen.getByPlaceholderText(/Server Name/i);
+    fireEvent.change(nameInput, { target: { value: 'sse-hdr' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add Server/i }));
+    await waitFor(() => expect(mockMcpOpsAdd).toHaveBeenCalled());
+  });
+
+  // ---- validateServerConfig: headers is array (invalid) ----
+  it('shows validation error when headers is array', async () => {
+    const badHeaders = JSON.stringify({ url: 'http://localhost:8080/sse', headers: [] });
+    mockFormatMcpConfig.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        transportType: 'sse',
+        serverName: 'srv',
+        config: { url: 'http://localhost:8080/sse', headers: [] },
+      },
+    });
+    render(<AddNewMcpServerViewContent />);
+    await verifyConfig(badHeaders);
+    const nameInput = screen.getByPlaceholderText(/Server Name/i);
+    fireEvent.change(nameInput, { target: { value: 'srv' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add Server/i }));
+    await waitFor(() => expect(document.querySelector('.validation-error')).not.toBeNull());
+  });
+
+  // ---- validateServerConfig: headers with non-string value ----
+  it('shows validation error when headers has non-string value', async () => {
+    const badHeaderVal = JSON.stringify({ url: 'http://localhost:9000/mcp', headers: { key: 123 } });
+    mockFormatMcpConfig.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        transportType: 'StreamableHttp',
+        serverName: 'srv',
+        config: { url: 'http://localhost:9000/mcp', headers: { key: 123 } },
+      },
+    });
+    render(<AddNewMcpServerViewContent />);
+    await verifyConfig(badHeaderVal);
+    const nameInput = screen.getByPlaceholderText(/Server Name/i);
+    fireEvent.change(nameInput, { target: { value: 'srv' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add Server/i }));
+    await waitFor(() => expect(document.querySelector('.validation-error')).not.toBeNull());
+  });
+
+  // ---- save: headers passed through to McpOps ----
+  it('passes headers to McpOps.add when present', async () => {
+    const configWithHeaders = JSON.stringify({ url: 'https://api.example.com/mcp', headers: { 'x-apikey': 'key123' } });
+    mockFormatMcpConfig.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        transportType: 'StreamableHttp',
+        serverName: 'hdr-srv',
+        config: { url: 'https://api.example.com/mcp', headers: { 'x-apikey': 'key123' } },
+      },
+    });
+    mockMcpOpsAdd.mockResolvedValue({ success: true });
+    render(<AddNewMcpServerViewContent />);
+    await verifyConfig(configWithHeaders);
+    const nameInput = screen.getByPlaceholderText(/Server Name/i);
+    fireEvent.change(nameInput, { target: { value: 'hdr-srv' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add Server/i }));
+    await waitFor(() => expect(mockMcpOpsAdd).toHaveBeenCalled());
+    const addedConfig = mockMcpOpsAdd.mock.calls[mockMcpOpsAdd.mock.calls.length - 1][0];
+    expect(addedConfig.headers).toEqual({ 'x-apikey': 'key123' });
   });
 });

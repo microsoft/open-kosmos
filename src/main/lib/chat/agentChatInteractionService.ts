@@ -1,4 +1,5 @@
 import {
+  ApprovalInteractionItem,
   ApprovalInteractionRequest,
   ChoiceInteractionOption,
   ChoiceInteractionRequest,
@@ -229,6 +230,58 @@ export class AgentChatInteractionService {
   }
 
   async requestApprovalInteraction(requests: ApprovalRequestItem[]): Promise<Map<string, boolean>> {
+    return this.runApprovalInteraction(
+      {
+        title: 'Review tool access requests',
+        description: 'The assistant needs your approval before continuing with tools that access paths outside the workspace.',
+      },
+      requests.map((item) => ({
+        itemId: item.toolCallId,
+        toolCallId: item.toolCallId,
+        toolName: item.toolName,
+        message: `Tool "${item.toolName}" needs approval to access ${item.paths.length} path${item.paths.length > 1 ? 's' : ''} outside the workspace.`,
+        paths: item.paths,
+      })),
+    );
+  }
+
+  /**
+   * Force a user confirmation prompt for tool calls flagged by a PreToolUse hook
+   * with `permissionDecision: ask`. Routes directly through the interaction layer,
+   * so it surfaces even when the normal batch approval path is bypassed. Fails
+   * closed (reject) when interaction is unavailable.
+   */
+  async requestHookApprovalInteraction(
+    items: Array<{ toolCallId: string; toolName: string; reason?: string }>,
+  ): Promise<Map<string, boolean>> {
+    try {
+      return await this.runApprovalInteraction(
+        {
+          title: 'Hook requested confirmation',
+          description: 'An agent hook asked you to confirm before these tools run.',
+        },
+        items.map((item) => ({
+          itemId: item.toolCallId,
+          toolCallId: item.toolCallId,
+          toolName: item.toolName,
+          message: item.reason && item.reason.trim()
+            ? item.reason
+            : `A hook requested your confirmation before running "${item.toolName}".`,
+          paths: [],
+        })),
+      );
+    } catch (error) {
+      if (!(error instanceof NonInteractiveRuntimeInteractionError)) {
+        throw error;
+      }
+      return new Map(items.map((item) => [item.toolCallId, false]));
+    }
+  }
+
+  private async runApprovalInteraction(
+    presentation: { title: string; description: string },
+    items: ApprovalInteractionItem[],
+  ): Promise<Map<string, boolean>> {
     const interactionId = this.buildInteractionId('approval');
     const request: ApprovalInteractionRequest = {
       interactionId,
@@ -236,17 +289,11 @@ export class AgentChatInteractionService {
       chatSessionId: this.deps.getChatSessionId(),
       requestType: 'approval',
       status: 'pending',
-      title: 'Review tool access requests',
-      description: 'The assistant needs your approval before continuing with tools that access paths outside the workspace.',
+      title: presentation.title,
+      description: presentation.description,
       createdAt: Date.now(),
       source: 'tool',
-      items: requests.map((item) => ({
-        itemId: item.toolCallId,
-        toolCallId: item.toolCallId,
-        toolName: item.toolName,
-        message: `Tool "${item.toolName}" needs approval to access ${item.paths.length} path${item.paths.length > 1 ? 's' : ''} outside the workspace.`,
-        paths: item.paths,
-      })),
+      items,
     };
 
     const fallbackResponse: InteractiveResponse = {

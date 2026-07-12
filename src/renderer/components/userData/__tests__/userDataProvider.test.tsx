@@ -21,8 +21,6 @@ const {
   mockProfileDataManagerGetSkillsStats,
   mockProfileDataManagerGetSkillByName,
   mockProfileDataManagerGetCurrentAgentSkills,
-  mockProfileDataManagerGetSubAgentsStats,
-  mockProfileDataManagerGetSubAgentByName,
   mockMcpClientCacheManagerSubscribe,
   mockMcpClientCacheManagerGetMCPServers,
   mockMcpClientCacheManagerGetMCPStats,
@@ -37,6 +35,7 @@ const {
   mockChatOpsUpdateChatConfig,
   mockChatOpsDeleteChatConfig,
   mockChatOpsUpdateChatAgent,
+  mockAgentClientCacheManagerInitialize,
   mockAddServer,
   mockUpdateServer,
   mockDeleteServer,
@@ -64,8 +63,6 @@ const {
     mockProfileDataManagerGetSkillsStats: vi.fn(() => ({ total: 0 })),
     mockProfileDataManagerGetSkillByName: vi.fn(() => null),
     mockProfileDataManagerGetCurrentAgentSkills: vi.fn(() => []),
-    mockProfileDataManagerGetSubAgentsStats: vi.fn(() => ({ total: 0 })),
-    mockProfileDataManagerGetSubAgentByName: vi.fn(() => null),
     mockMcpClientCacheManagerSubscribe: vi.fn(() => vi.fn()),
     mockMcpClientCacheManagerGetMCPServers: vi.fn(() => []),
     mockMcpClientCacheManagerGetMCPStats: vi.fn(() => ({
@@ -82,6 +79,7 @@ const {
     mockChatOpsUpdateChatConfig: vi.fn(async () => ({ success: true })),
     mockChatOpsDeleteChatConfig: vi.fn(async () => ({ success: true })),
     mockChatOpsUpdateChatAgent: vi.fn(async () => ({ success: true })),
+    mockAgentClientCacheManagerInitialize: vi.fn(async () => {}),
     mockAddServer: vi.fn(async () => ({ success: true })),
     mockUpdateServer: vi.fn(async () => ({ success: true })),
     mockDeleteServer: vi.fn(async () => ({ success: true })),
@@ -103,8 +101,6 @@ vi.mock('../../../lib/userData', () => ({
     getSkillsStats: () => mockProfileDataManagerGetSkillsStats(),
     getSkillByName: (...a: any[]) => mockProfileDataManagerGetSkillByName(...a),
     getCurrentAgentSkills: () => mockProfileDataManagerGetCurrentAgentSkills(),
-    getSubAgentsStats: () => mockProfileDataManagerGetSubAgentsStats(),
-    getSubAgentByName: (...a: any[]) => mockProfileDataManagerGetSubAgentByName(...a),
   },
   ProfileCacheData: {},
 }));
@@ -138,6 +134,12 @@ vi.mock('../../../lib/chat/chatOps', () => ({
   },
 }));
 
+vi.mock('../../../lib/agent', () => ({
+  agentClientCacheManager: {
+    initialize: (...a: any[]) => mockAgentClientCacheManagerInitialize(...a),
+  },
+}));
+
 vi.mock('../../auth/AuthProvider', () => ({
   useAuthContext: () => ({ user: mockUserRef.value }),
 }));
@@ -167,7 +169,6 @@ import {
   useAgentConfig,
   useProfileDataRefresh,
   useSkills,
-  useSubAgents,
 } from '../userDataProvider';
 
 // ── Test helper: Consumer component ──────────────────────────────────────────
@@ -251,7 +252,7 @@ describe('ProfileDataProvider', () => {
 
   it('does not initialize when data is already initialized', () => {
     mockUserRef.value = { login: 'user' };
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
     renderWithProvider(<div />);
     expect(mockProfileDataManagerInitialize).not.toHaveBeenCalled();
   });
@@ -263,6 +264,14 @@ describe('ProfileDataProvider', () => {
     renderWithProvider(<div />);
     await waitFor(() => {
       expect(mockChatOpsInitialize).toHaveBeenCalledWith('testuser');
+    });
+  });
+
+  it('calls agentClientCacheManager.initialize when user is present', async () => {
+    mockUserRef.value = { login: 'testuser' };
+    renderWithProvider(<div />);
+    await waitFor(() => {
+      expect(mockAgentClientCacheManagerInitialize).toHaveBeenCalledWith('testuser');
     });
   });
 
@@ -312,7 +321,7 @@ describe('ProfileDataProvider', () => {
 
     renderWithProvider(<div />);
 
-    const newData = { isInitialized: true, lastUpdated: 9999, chats: ['chat1'], skills: [], subAgents: [] };
+    const newData = { isInitialized: true, lastUpdated: 9999, chats: ['chat1'], skills: [] };
     act(() => {
       callback!(newData);
     });
@@ -336,9 +345,56 @@ describe('ProfileDataProvider', () => {
     const updatedAgent = { ...initialAgent, name: 'b' };
     mockProfileDataManagerGetCurrentAgent.mockReturnValue(updatedAgent);
     act(() => {
-      callback!({ isInitialized: true, lastUpdated: 1, chats: [], skills: [], subAgents: [] });
+      callback!({ isInitialized: true, lastUpdated: 1, chats: [], skills: [] });
     });
     // No crash expected
+  });
+
+  it('handles profile updates when agent, model, and MCP assignments are unchanged', async () => {
+    mockUserRef.value = { login: 'testuser' };
+    const stableAgent = {
+      name: 'stable',
+      role: 'assistant',
+      emoji: '🤖',
+      system_prompt: 'prompt',
+      version: 1,
+      remoteVersion: 2,
+      skills: [{ name: 'skill-a' }],
+    } as any;
+    const stableServers = [{ name: 'mcp1' }];
+    const callbacks: Array<(data: any) => void> = [];
+    mockAgentChatSessionGetCurrentChatId.mockReturnValue(null);
+    mockProfileDataManagerGetCurrentAgent.mockReturnValue(stableAgent);
+    mockProfileDataManagerGetCurrentModel.mockReturnValue('gpt-4o');
+    mockProfileDataManagerGetAssignedMcpServers.mockReturnValue(stableServers);
+    mockProfileDataManagerSubscribe.mockImplementation((cb) => {
+      callbacks.push(cb);
+      return vi.fn();
+    });
+
+    renderWithProvider(<TestConsumer hook={useProfileData} />);
+
+    await waitFor(() => {
+      expect(mockProfileDataManagerInitialize).toHaveBeenCalledWith('testuser');
+    });
+
+    act(() => {
+      callbacks.at(-1)!({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
+    });
+
+    await waitFor(() => {
+      expect(callbacks.length).toBeGreaterThan(1);
+    });
+
+    const stableCallback = callbacks.at(-1)!;
+    act(() => {
+      stableCallback({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
+    });
+    act(() => {
+      stableCallback({ isInitialized: true, lastUpdated: 1, chats: ['chat-1'], skills: [] });
+    });
+
+    expect(mockProfileDataManagerGetCurrentAgent).toHaveBeenCalled();
   });
 
   it('triggers chat session change handler via agentChatSession subscribe', async () => {
@@ -362,6 +418,18 @@ describe('ProfileDataProvider', () => {
     // Should not throw
     await act(async () => {
       renderWithProvider(<div />);
+    });
+  });
+
+  it('handles agentClientCacheManager.initialize error gracefully', async () => {
+    mockUserRef.value = { login: 'testuser' };
+    mockAgentClientCacheManagerInitialize.mockRejectedValue(new Error('agent init failed'));
+    // Should not throw; the rejected initialize is caught and logged.
+    await act(async () => {
+      renderWithProvider(<div />);
+    });
+    await waitFor(() => {
+      expect(mockAgentClientCacheManagerInitialize).toHaveBeenCalledWith('testuser');
     });
   });
 
@@ -392,6 +460,13 @@ describe('ProfileDataProvider', () => {
     expect(mockAddServer).toHaveBeenCalled();
   });
 
+  it('addMCPServer returns false when electronAPI reports failure', async () => {
+    mockAddServer.mockResolvedValue({ success: false });
+    const { result } = renderHookWithProvider(() => useProfileData());
+    const success = await result.addMCPServer({ name: 'srv', transport: 'stdio' } as any);
+    expect(success).toBe(false);
+  });
+
   it('addMCPServer returns false on exception', async () => {
     mockAddServer.mockRejectedValue(new Error('network error'));
     const { result } = renderHookWithProvider(() => useProfileData());
@@ -406,6 +481,13 @@ describe('ProfileDataProvider', () => {
     expect(mockUpdateServer).toHaveBeenCalled();
   });
 
+  it('updateMCPServer returns false when electronAPI reports failure', async () => {
+    mockUpdateServer.mockResolvedValue({ success: false });
+    const { result } = renderHookWithProvider(() => useProfileData());
+    const success = await result.updateMCPServer('srv', { command: 'node' });
+    expect(success).toBe(false);
+  });
+
   it('updateMCPServer returns false on exception', async () => {
     mockUpdateServer.mockRejectedValue(new Error('err'));
     const { result } = renderHookWithProvider(() => useProfileData());
@@ -418,6 +500,13 @@ describe('ProfileDataProvider', () => {
     const success = await result.deleteMCPServer('srv');
     expect(success).toBe(true);
     expect(mockDeleteServer).toHaveBeenCalled();
+  });
+
+  it('deleteMCPServer returns false when electronAPI reports failure', async () => {
+    mockDeleteServer.mockResolvedValue({ success: false });
+    const { result } = renderHookWithProvider(() => useProfileData());
+    const success = await result.deleteMCPServer('srv');
+    expect(success).toBe(false);
   });
 
   it('deleteMCPServer returns false on exception', async () => {
@@ -484,7 +573,7 @@ function renderHookWithProvider<T>(hook: () => T): { result: T } {
 describe('useMCPServers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
     mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
     mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
@@ -532,14 +621,14 @@ describe('useProfileDataReady', () => {
   });
 
   it('returns isReady=false when not initialized', () => {
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: false, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: false, lastUpdated: 0, chats: [], skills: [] });
     const { result } = renderHookWithProvider(() => useProfileDataReady());
     expect(result.isReady).toBe(false);
     expect(result.isInitialized).toBe(false);
   });
 
   it('returns isReady=true when initialized and not loading', () => {
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
     const { result } = renderHookWithProvider(() => useProfileDataReady());
     expect(result.isReady).toBe(true);
   });
@@ -548,7 +637,7 @@ describe('useProfileDataReady', () => {
 describe('useChats', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: ['c1', 'c2'] as any, skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: ['c1', 'c2'] as any, skills: [] });
     mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
     mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
@@ -572,6 +661,12 @@ describe('useChats', () => {
     expect(mockChatOpsUpdateChatConfig).toHaveBeenCalledWith('chat-id', { name: 'updated' });
   });
 
+  it('updateChatAgent delegates to chatOps', async () => {
+    const { result } = renderHookWithProvider(() => useChats());
+    await result.updateChatAgent('chat-id', { name: 'Renamed' } as any);
+    expect(mockChatOpsUpdateChatAgent).toHaveBeenCalledWith('chat-id', { name: 'Renamed' });
+  });
+
   it('deleteChat delegates to chatOps', async () => {
     const { result } = renderHookWithProvider(() => useChats());
     await result.deleteChat('chat-id');
@@ -582,11 +677,12 @@ describe('useChats', () => {
 describe('useAgentConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
     mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
     mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionGetCurrentChatId.mockReturnValue('chat-1');
+    mockChatOpsUpdateChatAgent.mockResolvedValue({ success: true });
     (window as any).electronAPI = mockElectronAPI;
   });
 
@@ -614,6 +710,14 @@ describe('useAgentConfig', () => {
     expect(res.error).toBe('update failed');
   });
 
+  it('updateModel stringifies non-Error exceptions', async () => {
+    mockChatOpsUpdateChatAgent.mockRejectedValue('update failed');
+    const { result } = renderHookWithProvider(() => useAgentConfig());
+    const res = await result.updateModel('gpt-4');
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('update failed');
+  });
+
   it('updateMcpServers calls chatOps.updateChatAgent', async () => {
     const { result } = renderHookWithProvider(() => useAgentConfig());
     await result.updateMcpServers([{ name: 'mcp' }] as any);
@@ -632,6 +736,14 @@ describe('useAgentConfig', () => {
     const { result } = renderHookWithProvider(() => useAgentConfig());
     const res = await result.updateMcpServers([]);
     expect(res.success).toBe(false);
+  });
+
+  it('updateMcpServers stringifies non-Error exceptions', async () => {
+    mockChatOpsUpdateChatAgent.mockRejectedValue('mcp update failed');
+    const { result } = renderHookWithProvider(() => useAgentConfig());
+    const res = await result.updateMcpServers([]);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('mcp update failed');
   });
 
   it('updateConfig calls chatOps.updateChatAgent', async () => {
@@ -654,22 +766,31 @@ describe('useAgentConfig', () => {
     expect(res.success).toBe(false);
   });
 
+  it('updateConfig stringifies non-Error exceptions', async () => {
+    mockChatOpsUpdateChatAgent.mockRejectedValue('config update failed');
+    const { result } = renderHookWithProvider(() => useAgentConfig());
+    const res = await result.updateConfig({});
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('config update failed');
+  });
+
   it('subscribes to chat session id changes', () => {
     renderHookWithProvider(() => useAgentConfig());
     expect(mockAgentChatSessionSubscribe).toHaveBeenCalled();
   });
 
   it('updates currentChatId when chat session changes', async () => {
-    let chatCallback: (() => void) | undefined;
+    const chatCallbacks: Array<() => void> = [];
     mockAgentChatSessionSubscribe.mockImplementation((cb) => {
-      chatCallback = cb;
+      chatCallbacks.push(cb);
       return vi.fn();
     });
-    renderHookWithProvider(() => useAgentConfig());
-    mockAgentChatSessionGetCurrentChatId.mockReturnValue('chat-2');
-    act(() => { chatCallback!(); });
-    // updateModel should now use chat-2
     const { result } = renderHookWithProvider(() => useAgentConfig());
+    mockAgentChatSessionGetCurrentChatId.mockReturnValue('chat-2');
+    act(() => { chatCallbacks.forEach((callback) => callback()); });
+    await waitFor(() => {
+      expect(mockAgentChatSessionGetCurrentChatId).toHaveBeenCalled();
+    });
     await result.updateModel('m');
     expect(mockChatOpsUpdateChatAgent).toHaveBeenCalledWith(expect.any(String), { model: 'm' });
   });
@@ -678,7 +799,7 @@ describe('useAgentConfig', () => {
 describe('useProfileDataRefresh', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [] });
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
     mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
     mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
@@ -702,75 +823,31 @@ describe('useProfileDataRefresh', () => {
 describe('useSkills', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [{ name: 'skill1' }] as any, subAgents: [] });
     mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
     mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
     mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
+    mockProfileDataManagerGetSkillsStats.mockReturnValue({ total: 1 });
+    mockProfileDataManagerGetSkillByName.mockReturnValue({ name: 'skill-a' });
+    mockProfileDataManagerGetCurrentAgentSkills.mockReturnValue([{ name: 'skill-a' }]);
     (window as any).electronAPI = mockElectronAPI;
   });
 
-  it('returns skills from data', () => {
+  it('returns skills from profile data and delegates skill helpers', () => {
+    const skills = [{ name: 'skill-a' }];
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills });
     const { result } = renderHookWithProvider(() => useSkills());
-    expect(result.skills).toEqual([{ name: 'skill1' }]);
+
+    expect(result.skills).toEqual(skills);
+    expect(result.stats).toEqual({ total: 1 });
+    expect(result.getSkillByName('skill-a')).toEqual({ name: 'skill-a' });
+    expect(result.getCurrentAgentSkills()).toEqual([{ name: 'skill-a' }]);
+    expect(mockProfileDataManagerGetSkillByName).toHaveBeenCalledWith('skill-a');
   });
 
-  it('returns stats from profileDataManager', () => {
-    mockProfileDataManagerGetSkillsStats.mockReturnValue({ total: 5 });
+  it('falls back to an empty skills array when profile data omits skills', () => {
+    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [] });
     const { result } = renderHookWithProvider(() => useSkills());
-    expect(result.stats).toEqual({ total: 5 });
-  });
 
-  it('getSkillByName delegates to profileDataManager', () => {
-    const skill = { name: 'skill1' } as any;
-    mockProfileDataManagerGetSkillByName.mockReturnValue(skill);
-    const { result } = renderHookWithProvider(() => useSkills());
-    expect(result.getSkillByName('skill1')).toEqual(skill);
-  });
-
-  it('getCurrentAgentSkills delegates to profileDataManager', () => {
-    mockProfileDataManagerGetCurrentAgentSkills.mockReturnValue([{ name: 'sk' }] as any);
-    const { result } = renderHookWithProvider(() => useSkills());
-    expect(result.getCurrentAgentSkills()).toHaveLength(1);
-  });
-
-  it('returns empty skills array when data.skills is undefined', () => {
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], subAgents: [] });
-    const { result } = renderHookWithProvider(() => useSkills());
     expect(result.skills).toEqual([]);
-  });
-});
-
-describe('useSubAgents', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [], subAgents: [{ name: 'sub1' }] as any });
-    mockProfileDataManagerSubscribe.mockReturnValue(vi.fn());
-    mockMcpClientCacheManagerSubscribe.mockReturnValue(vi.fn());
-    mockAgentChatSessionSubscribe.mockReturnValue(vi.fn());
-    (window as any).electronAPI = mockElectronAPI;
-  });
-
-  it('returns subAgents from data', () => {
-    const { result } = renderHookWithProvider(() => useSubAgents());
-    expect(result.subAgents).toEqual([{ name: 'sub1' }]);
-  });
-
-  it('returns stats from profileDataManager', () => {
-    mockProfileDataManagerGetSubAgentsStats.mockReturnValue({ total: 2 });
-    const { result } = renderHookWithProvider(() => useSubAgents());
-    expect(result.stats).toEqual({ total: 2 });
-  });
-
-  it('getSubAgentByName delegates to profileDataManager', () => {
-    const sub = { name: 'sub1' } as any;
-    mockProfileDataManagerGetSubAgentByName.mockReturnValue(sub);
-    const { result } = renderHookWithProvider(() => useSubAgents());
-    expect(result.getSubAgentByName('sub1')).toEqual(sub);
-  });
-
-  it('returns empty subAgents array when data.subAgents is undefined', () => {
-    mockProfileDataManagerGetCache.mockReturnValue({ isInitialized: true, lastUpdated: 0, chats: [], skills: [] });
-    const { result } = renderHookWithProvider(() => useSubAgents());
-    expect(result.subAgents).toEqual([]);
   });
 });

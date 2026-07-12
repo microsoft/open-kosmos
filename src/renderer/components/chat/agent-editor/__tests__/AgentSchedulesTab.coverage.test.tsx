@@ -83,22 +83,20 @@ vi.mock('../AddScheduleOverlay', () => ({
     open ? (
       <div data-testid="add-schedule-overlay">
         <button data-testid="overlay-close" onClick={() => onOpenChange(false)}>Close</button>
-        <button data-testid="overlay-create" onClick={() => onCreated({ id: 'new-job', name: 'New Job', agentId: 'agent-1', enabled: true })}>Create</button>
-        {onUpdated && <button data-testid="overlay-update" onClick={() => onUpdated({ id: 'job-1', name: 'Updated Job', agentId: 'agent-1', enabled: true })}>Update</button>}
+        <button data-testid="overlay-open" onClick={() => onOpenChange(true)}>ReOpen</button>
+        <button data-testid="overlay-create" onClick={() => onCreated({ id: 'new-job', name: 'New Job', chat_id: 'agent-1', enabled: true })}>Create</button>
+        {onUpdated && <button data-testid="overlay-update" onClick={() => onUpdated({ id: 'job-1', name: 'Updated Job', chat_id: 'agent-1', enabled: true })}>Update</button>}
         {editingJob && <span data-testid="editing-job-name">{editingJob.name}</span>}
       </div>
     ) : null
   ),
 }))
 
-// BRAND mock - default to 'openkosmos'
-vi.mock('@shared/constants/branding', () => ({
-  BRAND_NAME: 'openkosmos',
-}))
-
-// scheduleTemplates mock
-vi.mock('../scheduleTemplates', () => ({
-  SCHEDULE_TEMPLATES: [],
+// ScheduleCleanupSection mock
+vi.mock('../../../settings/ScheduleCleanupSection', () => ({
+  ScheduleCleanupSection: ({ chatId, disabled }: any) => (
+    <div data-testid="schedule-cleanup-section" data-agent-id={chatId} data-disabled={disabled} />
+  ),
 }))
 
 import AgentSchedulesTab from '../AgentSchedulesTab'
@@ -110,7 +108,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
   return {
     id: 'job-1',
     name: 'Test Job',
-    agentId: 'agent-1',
+    chat_id: 'agent-1',
     enabled: true,
     scheduleType: 'cron',
     cronExpression: '0 9 * * *',
@@ -128,7 +126,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
     role: 'assistant',
     model: 'gpt-4',
     mcpServers: [],
-    systemPrompt: '',
+    systemPrompt: { 'Base.md': '', 'AGENTS.md': '' },
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -138,7 +136,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
 function defaultProps(overrides: Partial<TabComponentProps> = {}): TabComponentProps {
   return {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: makeAgentData(),
     onSave: vi.fn().mockResolvedValue(makeAgentData()),
     readOnly: false,
@@ -183,6 +181,15 @@ describe('AgentSchedulesTab', () => {
     })
   })
 
+  it('shows ScheduleCleanupSection in empty state', async () => {
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => {
+      const cleanup = screen.getByTestId('schedule-cleanup-section')
+      expect(cleanup).toBeInTheDocument()
+      expect(cleanup).toHaveAttribute('data-agent-id', 'agent-1')
+    })
+  })
+
   it('shows jobs in SchedulesContentView when jobs exist', async () => {
     const job = makeJob()
     mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
@@ -202,9 +209,9 @@ describe('AgentSchedulesTab', () => {
     })
   })
 
-  it('filters jobs by agentId', async () => {
-    const job1 = makeJob({ id: 'job-1', agentId: 'agent-1' })
-    const job2 = makeJob({ id: 'job-2', name: 'Other Job', agentId: 'agent-2' })
+  it('filters jobs by chatId', async () => {
+    const job1 = makeJob({ id: 'job-1', chat_id: 'agent-1' })
+    const job2 = makeJob({ id: 'job-2', name: 'Other Job', chat_id: 'agent-2' })
     mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job1, job2] })
     render(<AgentSchedulesTab {...defaultProps()} />)
     await waitFor(() => {
@@ -357,17 +364,8 @@ describe('AgentSchedulesTab', () => {
     })
   })
 
-  it('disables "Add New Schedule" button when isFromLibrary', async () => {
-    render(<AgentSchedulesTab {...defaultProps({ isFromLibrary: true })} />)
-    await waitFor(() => screen.getAllByText('Add New Schedule'))
-    const btns = screen.getAllByText('Add New Schedule')
-    btns.forEach(btn => {
-      expect(btn.closest('button')).toBeDisabled()
-    })
-  })
-
-  it('sets jobs to empty when agentId is undefined', async () => {
-    render(<AgentSchedulesTab {...defaultProps({ agentId: undefined })} />)
+  it('sets jobs to empty when chatId is undefined', async () => {
+    render(<AgentSchedulesTab {...defaultProps({ chatId: undefined })} />)
     await waitFor(() => {
       expect(screen.getByText('0 enabled schedules')).toBeInTheDocument()
     })
@@ -393,7 +391,7 @@ describe('AgentSchedulesTab', () => {
     const newJob = makeJob({ id: 'job-2', name: 'New Job' })
     mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [newJob] })
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('schedule:created', { detail: { agentId: 'agent-1' } }))
+      window.dispatchEvent(new CustomEvent('schedule:created', { detail: { chatId: 'agent-1' } }))
     })
     await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(2))
   })
@@ -404,7 +402,7 @@ describe('AgentSchedulesTab', () => {
     const updatedJob = makeJob({ name: 'Updated' })
     mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [updatedJob] })
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('schedule:updated', { detail: { agentId: 'agent-1' } }))
+      window.dispatchEvent(new CustomEvent('schedule:updated', { detail: { chatId: 'agent-1' } }))
     })
     await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(2))
   })
@@ -423,5 +421,297 @@ describe('AgentSchedulesTab', () => {
       subscriberCallback?.()
     })
     await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(2))
+  })
+
+  // --- handleToggle error/catch branches ---
+
+  it('shows error when toggleJob throws an Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiToggleJob.mockRejectedValue(new Error('Network failure'))
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('toggle-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('toggle-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Network failure')
+    })
+  })
+
+  it('shows error when toggleJob throws a non-Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiToggleJob.mockRejectedValue('string error')
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('toggle-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('toggle-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('string error')
+    })
+  })
+
+  // --- handleDelete error/catch branches ---
+
+  it('shows error when deleteJob returns failure', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiDeleteJob.mockResolvedValue({ success: false, error: 'Delete failed' })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('delete-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('delete-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Delete failed')
+    })
+  })
+
+  it('shows error when deleteJob throws an Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiDeleteJob.mockRejectedValue(new Error('Delete network error'))
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('delete-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('delete-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Delete network error')
+    })
+  })
+
+  it('shows error when deleteJob throws a non-Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiDeleteJob.mockRejectedValue('delete string error')
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('delete-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('delete-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('delete string error')
+    })
+  })
+
+  // --- handleUpdate error/catch branches ---
+
+  it('shows error when updateJob returns failure', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiUpdateJob.mockResolvedValue({ success: false, error: 'Update failed' })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('update-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('update-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Update failed')
+    })
+  })
+
+  it('shows error when updateJob throws an Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiUpdateJob.mockRejectedValue(new Error('Update network error'))
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('update-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('update-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Update network error')
+    })
+  })
+
+  it('shows error when updateJob throws a non-Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiUpdateJob.mockRejectedValue('update string error')
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('update-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('update-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('update string error')
+    })
+  })
+
+  // --- handleRunNow catch branches ---
+
+  it('shows error when runJobNow throws an Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiRunJobNow.mockRejectedValue(new Error('Run network error'))
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('run-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('run-job-1'))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Run network error'))
+    })
+  })
+
+  it('shows error when runJobNow throws a non-Error', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiRunJobNow.mockRejectedValue('run string error')
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('run-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('run-job-1'))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('run string error'))
+    })
+  })
+
+  // --- handleRunNow success path details ---
+
+  it('calls loadJobs after successful runJobNow', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('run-job-1'))
+    mockSchedulerApiListJobs.mockClear()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('run-job-1'))
+    })
+    await waitFor(() => {
+      expect(mockSchedulerApiListJobs).toHaveBeenCalled()
+    })
+  })
+
+  // --- availableScheduleAgents memo with profile chats ---
+
+  it('builds availableScheduleAgents from profile chats', async () => {
+    mockProfileDataManagerGetProfile.mockReturnValue({
+      chats: [
+        { chat_id: 'agent-1', agent: { name: 'Test Agent' } },
+        { chat_id: 'agent-2', agent: { name: 'Second Agent' } },
+        { chat_id: null, agent: { name: 'No ID' } },
+        { chat_id: 'agent-3', agent: null },
+      ],
+    })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getAllByText('Add New Schedule'))
+    fireEvent.click(screen.getAllByText('Add New Schedule')[0])
+    expect(screen.getByTestId('add-schedule-overlay')).toBeInTheDocument()
+  })
+
+  it('uses chat_id as name fallback when agent.name is empty', async () => {
+    mockProfileDataManagerGetProfile.mockReturnValue({
+      chats: [
+        { chat_id: 'agent-1', agent: { name: '' } },
+        { chat_id: 'agent-2', agent: { name: 'Has Name' } },
+      ],
+    })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getAllByText('Add New Schedule'))
+    fireEvent.click(screen.getAllByText('Add New Schedule')[0])
+    expect(screen.getByTestId('add-schedule-overlay')).toBeInTheDocument()
+  })
+
+  it('handles profile with no chats', async () => {
+    mockProfileDataManagerGetProfile.mockReturnValue({ chats: null })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => {
+      expect(screen.getByText('0 enabled schedules')).toBeInTheDocument()
+    })
+  })
+
+  // --- listJobs catch branches ---
+
+  it('shows error when listJobs throws an Error', async () => {
+    mockSchedulerApiListJobs.mockRejectedValue(new Error('List network error'))
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('List network error')
+    })
+  })
+
+  it('shows error when listJobs throws a non-Error', async () => {
+    mockSchedulerApiListJobs.mockRejectedValue('list string error')
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('list string error')
+    })
+  })
+
+  // --- schedule:created/updated edge cases ---
+
+  it('reloads on schedule:created event with no chatId in detail', async () => {
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('schedule:created', { detail: {} }))
+    })
+    await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(2))
+  })
+
+  it('does not reload on schedule:created for different chatId', async () => {
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('schedule:created', { detail: { chatId: 'other-agent' } }))
+    })
+    expect(mockSchedulerApiListJobs).toHaveBeenCalledTimes(1)
+  })
+
+  // --- agentNames memo with agentData.name not in profile ---
+
+  it('adds agentData.name to agentNames when not in profile', async () => {
+    mockProfileDataManagerGetProfile.mockReturnValue({ chats: [] })
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => {
+      expect(screen.getByTestId('schedules-content-view')).toBeInTheDocument()
+    })
+  })
+
+  // --- handleOpenAddSchedule from empty state button ---
+
+  it('opens overlay from empty state Add New Schedule button', async () => {
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByText(/Add one-time or recurring schedules/i))
+    const buttons = screen.getAllByText('Add New Schedule')
+    fireEvent.click(buttons[buttons.length - 1])
+    expect(screen.getByTestId('add-schedule-overlay')).toBeInTheDocument()
+  })
+
+  // --- toggleJob/runJobNow with Unknown error ---
+
+  it('shows Unknown error when toggleJob response has no error field', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiToggleJob.mockResolvedValue({ success: false })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('toggle-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('toggle-job-1'))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('error-msg').textContent).toContain('Unknown error')
+    })
+  })
+
+  it('shows Unknown error when runJobNow response has no error field', async () => {
+    const job = makeJob()
+    mockSchedulerApiListJobs.mockResolvedValue({ success: true, data: [job] })
+    mockSchedulerApiRunJobNow.mockResolvedValue({ success: false })
+    render(<AgentSchedulesTab {...defaultProps()} />)
+    await waitFor(() => screen.getByTestId('run-job-1'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('run-job-1'))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'))
+    })
   })
 })

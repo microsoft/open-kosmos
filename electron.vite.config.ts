@@ -27,8 +27,17 @@ export default defineConfig(({ command, mode }) => {
     main: {
       build: {
         outDir: 'dist-vite/main',
-        rolldownOptions: {
-          external: ['bufferutil', 'utf-8-validate'],
+        rollupOptions: {
+          // `@nut-tree-fork/*` (Computer Use's synthetic-input driver) is in
+          // optionalDependencies, so electron-vite's default externalizer (which
+          // only externalizes `dependencies`) would BUNDLE it. Bundling inlines
+          // its native loader (`libnut-darwin/permissionCheck.js` →
+          // `require("bindings")("libnut")`); once inlined, `bindings` resolves
+          // from the app root instead of the package dir and cannot find
+          // `libnut.node`, so every pointer/keyboard action fails with
+          // "Input driver unavailable: Could not locate the bindings file".
+          // Keep the whole scope external so it loads from node_modules at runtime.
+          external: ['bufferutil', 'utf-8-validate', /^@nut-tree-fork\//],
           input: {
             main: resolve(__dirname, 'src/main/bootstrap.ts'),
           },
@@ -36,7 +45,10 @@ export default defineConfig(({ command, mode }) => {
             // Keep chunks flat alongside main.js (no chunks/ subdirectory).
             // This ensures __dirname in any chunk === dist-vite/main/,
             // so path.join(__dirname, 'preload.*.js') resolves correctly.
-            chunkFileNames: '[name]-[hash].js',
+            // Main-process dynamic imports can fire long after app startup.
+            // Keep chunk names stable so rebuilding while Electron is running
+            // does not leave the in-memory main.js pointing at deleted hashes.
+            chunkFileNames: '[name].js',
           },
         },
         sourcemap: isDev ? true : false,
@@ -75,7 +87,7 @@ export default defineConfig(({ command, mode }) => {
         outDir: resolve(__dirname, 'dist-vite/renderer'),
         minify: isDev ? false : 'esbuild',
         cssMinify: isDev ? false : 'esbuild',
-        rolldownOptions: {
+        rollupOptions: {
           input: {
             index: resolve(__dirname, 'src/renderer/index.html'),
             screenshot: resolve(__dirname, 'src/renderer/screenshot.html'),

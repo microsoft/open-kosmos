@@ -56,7 +56,6 @@ describe('importChatSessionFromFile edge cases', () => {
         title: 'Test Session',
         last_updated: '2026-03-19T01:01:01.000Z',
         readStatus: 'read',
-        source: { type: 'local' },
       },
     });
   });
@@ -91,6 +90,12 @@ describe('importChatSessionFromFile edge cases', () => {
     expect(result.error).toContain('Invalid');
   });
 
+  it('returns error when file content is JSON null', async () => {
+    (fs.promises.readFile as any).mockResolvedValue('null');
+    const result = await importChatSessionFromFile('alice', 'chat_1', '/tmp/file.json');
+    expect(result).toEqual({ success: false, error: 'Invalid chat session JSON structure' });
+  });
+
   it('returns error when chatSession_id format is invalid', async () => {
     const { isValidChatSessionId } = await import('../pathUtils');
     (isValidChatSessionId as any).mockReturnValueOnce(false);
@@ -114,5 +119,11 @@ describe('importChatSessionFromFile edge cases', () => {
     const result = await importChatSessionFromFile('alice', 'chat_1', '/tmp/file.json');
     expect(result.success).toBe(false);
     expect(result.error).toContain('Disk read error');
+  });
+
+  it('catches and returns non-Error failures from readFile', async () => {
+    (fs.promises.readFile as any).mockRejectedValue('read failed');
+    const result = await importChatSessionFromFile('alice', 'chat_1', '/tmp/file.json');
+    expect(result).toEqual({ success: false, error: 'read failed' });
   });
 });

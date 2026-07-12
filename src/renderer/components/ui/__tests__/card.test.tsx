@@ -22,7 +22,7 @@ describe('Card', () => {
 
   it('applies default classes', () => {
     const { container } = render(<Card />);
-    expect(container.firstChild).toHaveClass('rounded-lg', 'border-gray-200', 'bg-white');
+    expect(container.firstChild).toHaveClass('rounded-lg', 'border-neutral-200', 'bg-white');
   });
 
   it('applies custom className', () => {
@@ -68,7 +68,7 @@ describe('CardDescription', () => {
     render(<CardDescription>Description text</CardDescription>);
     const el = screen.getByText('Description text');
     expect(el.tagName).toBe('P');
-    expect(el).toHaveClass('text-sm', 'text-gray-500');
+    expect(el).toHaveClass('text-sm', 'text-neutral-500');
   });
 });
 

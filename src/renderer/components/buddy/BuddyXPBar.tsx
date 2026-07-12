@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { BuddyXPData, Milestone } from '../../../main/lib/buddy/types';
 import { MILESTONES, RARITY_COLORS } from '../../../main/lib/buddy/types';
+import { useI18n } from '../../lib/i18n/useI18n';
+import { getBuddyMilestoneLabel } from './buddyLabels';
 
 interface Props {
   xpData: BuddyXPData;
@@ -8,17 +10,21 @@ interface Props {
 }
 
 export const BuddyXPBar: React.FC<Props> = ({ xpData, rarityColor }) => {
+  const { t } = useI18n();
   const [showDelta, setShowDelta] = useState(false);
-  const [lastGain, setLastGain] = useState(0);
+  // Track the last shown gain in a ref so updating it does not re-run the effect.
+  // Keeping it in the effect deps previously caused the cleanup to clear the
+  // hide timer before it could fire, so the float never auto-dismissed.
+  const lastGainRef = useRef(0);
 
   useEffect(() => {
-    if (xpData.lastXPGain > 0 && xpData.lastXPGain !== lastGain) {
-      setLastGain(xpData.lastXPGain);
+    if (xpData.lastXPGain > 0 && xpData.lastXPGain !== lastGainRef.current) {
+      lastGainRef.current = xpData.lastXPGain;
       setShowDelta(true);
       const timer = setTimeout(() => setShowDelta(false), 1500);
       return () => clearTimeout(timer);
     }
-  }, [xpData.lastXPGain, lastGain]);
+  }, [xpData.lastXPGain]);
 
   const currentMilestone = getCurrentMilestone(xpData.totalXP);
   const nextMilestone = getNextMilestone(xpData.totalXP);
@@ -30,13 +36,13 @@ export const BuddyXPBar: React.FC<Props> = ({ xpData, rarityColor }) => {
     : 100;
 
   const fillColor = rarityColor ?? RARITY_COLORS.common;
-  const milestoneLabel = currentMilestone?.name ?? 'Hatchling';
+  const milestoneLabel = getBuddyMilestoneLabel(t, currentMilestone) ?? t('buddy.hatchling');
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#94a3b8' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--color-neutral-400)' }}>
         <span>{milestoneLabel}</span>
-        <span>+{xpData.sessionXP.toLocaleString()} this session</span>
+        <span>{t('buddy.sessionXp', { xp: xpData.sessionXP.toLocaleString() })}</span>
       </div>
       <div className="buddy-xp-bar">
         <div

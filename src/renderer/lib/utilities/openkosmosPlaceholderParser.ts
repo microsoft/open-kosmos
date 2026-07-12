@@ -4,22 +4,22 @@ const logger = createLogger('[OpenKosmosPlaceholderParser]');
 /**
  * OpenKosmos placeholder parsing utility (renderer side)
  *
- * Used in the renderer process to detect and replace @OpenKosmos_ placeholder variables.
+ * Used in the renderer process to detect and replace @OPENKOSMOS_ placeholder variables.
  * Actual value computation is performed in the main process.
  *
- * Placeholder format: @OpenKosmos_[NAME]
- * - Must start with @OpenKosmos_
+ * Placeholder format: @OPENKOSMOS_[NAME]
+ * - Must start with @OPENKOSMOS_
  * - Composed of uppercase letters, underscores, and digits
  *
  * Example:
- * @OpenKosmos_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
+ * @OPENKOSMOS_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
  */
 
 /**
  * OpenKosmos placeholder regular expression
- * Matches format: @OpenKosmos_[A-Z0-9_]+
+ * Matches format: @OPENKOSMOS_[A-Z0-9_]+
  */
-export const OpenKosmos_PLACEHOLDER_REGEX = /@OpenKosmos_[A-Z0-9_]+/g;
+export const OPENKOSMOS_PLACEHOLDER_REGEX = /@OPENKOSMOS_[A-Z0-9_]+/g;
 
 /**
  * Check whether a string contains OpenKosmos placeholders
@@ -27,8 +27,8 @@ export const OpenKosmos_PLACEHOLDER_REGEX = /@OpenKosmos_[A-Z0-9_]+/g;
 export function containsOpenKosmosPlaceholder(value: string): boolean {
   if (typeof value !== 'string') return false;
   // Reset the regex lastIndex
-  OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
-  return OpenKosmos_PLACEHOLDER_REGEX.test(value);
+  OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+  return OPENKOSMOS_PLACEHOLDER_REGEX.test(value);
 }
 
 /**
@@ -51,8 +51,8 @@ export function hasOpenKosmosPlaceholdersInObject(obj: Record<string, any>): boo
 export function extractOpenKosmosPlaceholders(value: string): string[] {
   if (typeof value !== 'string') return [];
   // Reset the regex lastIndex
-  OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
-  const matches = value.match(OpenKosmos_PLACEHOLDER_REGEX);
+  OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+  const matches = value.match(OPENKOSMOS_PLACEHOLDER_REGEX);
   return matches ? [...new Set(matches)] : [];
 }
 

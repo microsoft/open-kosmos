@@ -3,8 +3,10 @@ import { Badge } from '../ui/badge';
 import { useMCPServers } from '../userData/userDataProvider';
 import ContextBadge from './ContextBadge';
 import { profileDataManager } from '../../lib/userData';
+import { resolveChatAgent } from '../../lib/agent';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { mcpClientCacheManager } from '../../lib/mcp/mcpClientCacheManager';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface StatusBadgesProps {
   onOpenMcpTools?: () => void;
@@ -18,9 +20,10 @@ interface AvailableToolsBadgeProps {
 const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
   onOpenMcpTools
 }) => {
+  const { t } = useI18n();
   const { servers } = useMCPServers();
 
-  // 🔥 New architecture: get currentChatId from agentChatSessionCacheManager
+  // Get currentChatId from agentChatSessionCacheManager.
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     agentChatSessionCacheManager.getCurrentChatId()
   );
@@ -38,15 +41,16 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
   // 🆕 Refactor: use mcpClientCacheManager to get available tools
   const getAvailableToolsCount = (chatId: string): number => {
     const chat = profileDataManager.getChatConfigs().find(c => c.chat_id === chatId);
-    if (!chat || !chat.agent) {
+    const agent = resolveChatAgent(chat);
+    if (!chat || !agent) {
       return 0;
     }
-    const agentMcpServers = chat.agent.mcp_servers || [];
+    const agentMcpServers = agent.mcp_servers || [];
     const tools = mcpClientCacheManager.getAgentSpecificTools(agentMcpServers);
     return tools.length;
   };
 
-  // 🔥 Core logic: listen to currentChatId and servers changes, use mcpClientCacheManager to calculate tool count
+  // Listen to currentChatId and server changes, then calculate the tool count.
   useEffect(() => {
     if (!currentChatId) {
       setToolsCount(0);
@@ -57,7 +61,7 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
     setToolsCount(count);
   }, [currentChatId, servers]); // Recalculate when servers change
 
-  // 🔥 Listen to ProfileDataManager data changes (includes agent.mcp_servers config changes)
+  // Listen to ProfileDataManager changes, including agent.mcp_servers updates.
   useEffect(() => {
     const unsubscribe = profileDataManager.subscribe((newData) => {
       if (!currentChatId) {
@@ -76,10 +80,12 @@ const AvailableToolsBadge: React.FC<AvailableToolsBadgeProps> = ({
     <Badge
       variant="normal"
       className={`text-xs ${onOpenMcpTools ? 'cursor-pointer' : 'cursor-help'}`}
-      title={`Current Agent has ${toolsCount} available tools${onOpenMcpTools ? ' (Click to manage tools)' : ''}`}
+      title={onOpenMcpTools
+        ? t('status.tools.titleManage', { count: toolsCount })
+        : t('status.tools.title', { count: toolsCount })}
       onClick={onOpenMcpTools}
     >
-      tools: {toolsCount}
+      {t('status.tools.label', { count: toolsCount })}
     </Badge>
   );
 };
@@ -91,7 +97,8 @@ interface AvailableSkillsBadgeProps {
 const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
   onOpenSkills
 }) => {
-  // 🔥 Get currentChatId from agentChatSessionCacheManager
+  const { t } = useI18n();
+  // Get currentChatId from agentChatSessionCacheManager.
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     agentChatSessionCacheManager.getCurrentChatId()
   );
@@ -110,20 +117,21 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
   // Only count skills that actually exist in the global skills list
   const getAvailableSkillsCount = (chatId: string): number => {
     const chat = profileDataManager.getChatConfigs().find(c => c.chat_id === chatId);
-    if (!chat || !chat.agent) {
+    const agent = resolveChatAgent(chat);
+    if (!chat || !agent) {
       return 0;
     }
-    const agentSkillNames = chat.agent.skills || [];
+    const agentSkillNames = agent.skills || [];
     const globalSkills = profileDataManager.getSkills();
 
-    // 🔥 Key fix: filter out actually existing skills (consistent with getCurrentAgentSkills logic)
+    // Filter out missing skills, matching getCurrentAgentSkills behavior.
     const availableSkills = agentSkillNames.filter(skillName =>
       globalSkills.some(s => s.name === skillName)
     );
     return availableSkills.length;
   };
 
-  // 🔥 Core logic: listen to currentChatId changes, get current Agent's skills
+  // Listen to currentChatId changes and get the current Agent's skills.
   useEffect(() => {
     if (!currentChatId) {
       setSkillsCount(0);
@@ -135,7 +143,7 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
     setSkillsCount(count);
   }, [currentChatId]);
 
-  // 🔥 Listen to ProfileDataManager data changes (includes agent.skills config changes and global skills list changes)
+  // Listen to ProfileDataManager changes, including agent.skills and global skills list updates.
   useEffect(() => {
     const unsubscribe = profileDataManager.subscribe((newData) => {
       if (!currentChatId) return;
@@ -152,10 +160,12 @@ const AvailableSkillsBadge: React.FC<AvailableSkillsBadgeProps> = ({
     <Badge
       variant="normal"
       className={`text-xs ${onOpenSkills ? 'cursor-pointer' : 'cursor-help'}`}
-      title={`Current Agent has ${skillsCount} available skills${onOpenSkills ? ' (Click to manage skills)' : ''}`}
+      title={onOpenSkills
+        ? t('status.skills.titleManage', { count: skillsCount })
+        : t('status.skills.title', { count: skillsCount })}
       onClick={onOpenSkills}
     >
-      skills: {skillsCount}
+      {t('status.skills.label', { count: skillsCount })}
     </Badge>
   );
 };

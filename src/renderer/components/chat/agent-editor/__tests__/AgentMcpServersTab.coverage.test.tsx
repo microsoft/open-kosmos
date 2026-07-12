@@ -92,7 +92,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
     role: 'assistant',
     model: 'gpt-4',
     mcpServers: [],
-    systemPrompt: '',
+    systemPrompt: { 'Base.md': '', 'AGENTS.md': '' },
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -102,7 +102,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
 function defaultProps(overrides: Partial<TabComponentProps> = {}): TabComponentProps {
   return {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: makeAgentData(),
     onSave: vi.fn().mockResolvedValue(makeAgentData()),
     readOnly: false,
@@ -230,32 +230,11 @@ describe('AgentMcpServersTab', () => {
     expect(chevron).toBeDisabled()
   })
 
-  it('shows update button for non-ON-DEVICE server with newer remote version', () => {
+  it('treats legacy remote version metadata as inert', () => {
     const server = makeServer({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '2.0.0' })
-    mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
-    render(<AgentMcpServersTab {...defaultProps()} />)
-    expect(screen.getByText('Update')).toBeInTheDocument()
-  })
-
-  it('does not show update button for ON-DEVICE server', () => {
-    const server = makeServer({ source: 'ON-DEVICE', version: '1.0.0', remoteVersion: '2.0.0' })
     mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
     render(<AgentMcpServersTab {...defaultProps()} />)
     expect(screen.queryByText('Update')).not.toBeInTheDocument()
-  })
-
-  it('navigates to mcp library when update button is clicked', async () => {
-    const server = makeServer({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '2.0.0' })
-    mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
-    render(<AgentMcpServersTab {...defaultProps()} />)
-
-    await act(async () => {
-      fireEvent.click(screen.getByText('Update'))
-    })
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('/settings/mcp/mcp-library'),
-      expect.any(Object),
-    )
   })
 
   it('shows tool count when server is selected', async () => {
@@ -287,21 +266,6 @@ describe('AgentMcpServersTab', () => {
     mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
     render(<AgentMcpServersTab {...defaultProps({ readOnly: true })} />)
     expect(screen.getByRole('checkbox')).toBeDisabled()
-  })
-
-  it('shows plugin badge and disables plugin servers', () => {
-    const server = makeServer({ name: 'plugin--abc123--my-plugin' })
-    mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
-    render(<AgentMcpServersTab {...defaultProps()} />)
-    expect(screen.getByText('Plugin')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox')).toBeDisabled()
-  })
-
-  it('shows M365 badge for agency command', () => {
-    const server = makeServer({ command: '/usr/local/bin/agency' })
-    mockUseMCPServers.mockReturnValue({ servers: [server], isLoading: false })
-    render(<AgentMcpServersTab {...defaultProps()} />)
-    expect(screen.getByText('M365')).toBeInTheDocument()
   })
 
   it('shows summary count for selected tools', () => {

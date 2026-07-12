@@ -12,17 +12,15 @@ export default function(ctx: Context) {
   ipcMain.handle('app:getName', () => app.getName());
   ipcMain.handle('app:isDev', () => ctx.isDev);
 
-  // � New: check if app is ready (both Analytics and AgentChat are loaded)
+  // Check whether AgentChat has finished loading.
   ipcMain.handle('app:isReady', () => {
-    // In dev mode, or if any component is ready, we may want to show the UI
-    // But for strict "fully ready" status, both must be complete
     return {
       success: true,
-      data: ctx.isAnalyticsReady && ctx.isAgentChatReady
+      data: ctx.isAgentChatReady
     };
   });
 
-  // �🔥 New: platform detection IPC handler - for detecting Windows ARM and disabling Memory feature
+  // 🔥 New: platform detection IPC handler
   ipcMain.handle('app:getPlatformInfo', () => {
     const platform = process.platform; // 'win32', 'darwin', 'linux'
     const arch = process.arch; // 'arm64', 'x64', 'ia32'
@@ -32,8 +30,6 @@ export default function(ctx: Context) {
       platform,
       arch,
       isWindowsArm,
-      // 🔥 Memory feature is disabled on Windows ARM (because better-sqlite3 and sqlite-vec are not supported)
-      memoryEnabled: !isWindowsArm
     };
   });
 
@@ -62,7 +58,7 @@ export default function(ctx: Context) {
   ipcMain.handle('app:getAppConfig', async () => {
     try {
       const manager = await getAppCacheManager();
-      return { success: true, data: manager.getConfig() };
+      return { success: true, data: manager.getConfig(), revision: manager.getConfigRevision() };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -71,11 +67,10 @@ export default function(ctx: Context) {
   ipcMain.handle('app:updateAppConfig', async (_event, updates: any) => {
     try {
       const manager = await getAppCacheManager();
-      await manager.updateConfig(updates);
-      return { success: true };
+      const result = await manager.updateConfig(updates);
+      return { success: true, revision: result.revision };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 }
-

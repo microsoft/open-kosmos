@@ -3,6 +3,7 @@ import { cp, mkdir, readdir, rm } from 'fs/promises';
 import * as path from 'path';
 import { extractMonthFromChatSessionId } from '../userDataADO/pathUtils';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
+import { getChatWorkspace } from '../userDataADO/agentAccessor';
 import { createLogger } from '../unifiedLogger';
 import { AgentChat } from './agentChat';
 import { AgentChatRuntimeMode } from './agentChatManagerRegistry';
@@ -362,7 +363,7 @@ export class AgentChatManagerSessionCoordinator {
     }
 
     const chatConfig = profileCacheManager.getChatConfig(currentUserAlias, chatId);
-    const workspacePath = chatConfig?.agent?.workspace;
+    const workspacePath = getChatWorkspace(chatConfig);
     if (!workspacePath || workspacePath.trim() === '') {
       logger.warn(`[AgentChatManagerSessionCoordinator] No workspace path for chat ${chatId}, skip resolving chat session directory`);
       return null;

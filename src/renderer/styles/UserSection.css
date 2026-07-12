@@ -11,62 +11,6 @@
   width: 100%;
 }
 
-/* Install Update Button */
-.restart-update-button {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  padding: 0px 8px;
-  gap: 8px;
-  width: 156px;
-  height: 36px;
-  background: #FFE6D3;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.restart-update-button:hover {
-  background: #ffd9bf;
-}
-
-.restart-update-button:active {
-  background: #ffccab;
-}
-
-.restart-update-button:focus-visible {
-  outline: 2px solid #FFE6D3;
-  outline-offset: 2px;
-}
-
-.restart-update-icon {
-  width: 16px;
-  height: 16px;
-  color: #333;
-  flex-shrink: 0;
-}
-
-.restart-update-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
-  white-space: nowrap;
-}
-
-/* Collapsed state for left navigation */
-.left-navigation.collapsed .restart-update-button {
-  width: 36px;
-  padding: 0px;
-  justify-content: center;
-}
-
-.left-navigation.collapsed .restart-update-text {
-  display: none;
-}
-
 /* Profile Icon Button */
 .profile-icon-button {
   /* Reset button styles */
@@ -161,12 +105,12 @@
 }
 
 .buddy-egg-icon {
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   transition: color 0.2s ease;
 }
 
 .buddy-egg-button:hover .buddy-egg-icon {
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
 }
 
 /* Breathing glow for new users (no buddy hatched yet) */
@@ -176,11 +120,11 @@
 
 @keyframes egg-breathe {
   0%, 100% {
-    color: #94a3b8;
+    color: var(--color-neutral-400);
     filter: drop-shadow(0 0 0px transparent);
   }
   50% {
-    color: #cbd5e1;
+    color: var(--color-neutral-300);
     filter: drop-shadow(0 0 6px rgba(203, 213, 225, 0.4));
   }
 }
@@ -193,5 +137,5 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  border: 1.5px solid #0f172a;
+  border: 1.5px solid var(--color-neutral-900);
 }

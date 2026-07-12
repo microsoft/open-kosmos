@@ -53,7 +53,6 @@ vi.mock('../../chat/agentChatManager', async () => ({
   },
 }));
 
-
 import { MainAuthManager } from '../authManager';
 
 describe('MainAuthManager', () => {
@@ -63,11 +62,11 @@ describe('MainAuthManager', () => {
     updatedAt: '2026-03-12T02:53:31.000Z',
     authProvider: 'github-copilot',
     ghcAuth: {
-      alias: 'testuser',
+      alias: 'sample-user',
       user: {
         id: 'user-1',
-        login: 'testuser',
-        email: 'testuser@example.com',
+        login: 'sample-user',
+        email: 'sample-user@example.com',
         name: 'Dale Xiao',
         avatarUrl: 'https://example.com/avatar.png',
         copilotPlan: 'business',
@@ -118,7 +117,7 @@ describe('MainAuthManager', () => {
       'auth:authChanged',
       expect.objectContaining({ type: 'auth_set' }),
     );
-    expect(forceNotifyProfileDataManagerMock).toHaveBeenCalledWith('testuser');
+    expect(forceNotifyProfileDataManagerMock).toHaveBeenCalledWith('sample-user');
     expect(sendMock.mock.invocationCallOrder[0]).toBeLessThan(
       forceNotifyProfileDataManagerMock.mock.invocationCallOrder[0],
     );
@@ -128,12 +127,12 @@ describe('MainAuthManager', () => {
   it('initializes profile cache without notifying renderer before auth_set', async () => {
     const manager = new MainAuthManager();
 
-    const result = await (manager as any).initializeProfileManager('testuser');
+    const result = await (manager as any).initializeProfileManager('sample-user');
 
     expect(result).toEqual({
       success: true,
-      message: 'Successfully initialized profile for user: testuser',
+      message: 'Successfully initialized profile for user: sample-user',
     });
-    expect(handleProfileMock).toHaveBeenCalledWith('testuser', { notifyRenderer: false });
+    expect(handleProfileMock).toHaveBeenCalledWith('sample-user', { notifyRenderer: false });
   });
 });

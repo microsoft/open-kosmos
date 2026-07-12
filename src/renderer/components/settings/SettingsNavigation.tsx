@@ -1,11 +1,13 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Camera, Terminal, Globe, Archive } from 'lucide-react';
+import { Camera, Terminal, Globe, Archive, Brain, Code2, MonitorCog, SunMoon, Languages } from 'lucide-react';
 import NavItem from '../ui/navigation/NavItem';
+import HooksIcon from '../agentHooks/HooksIcon';
 import '../../styles/LeftNavigation.css';
-import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
 import { useFeatureFlag } from '../../lib/featureFlags';
 import { LeftNavSizeAtom } from '@renderer/states/left-nav.atom';
+import { useI18n } from '../../lib/i18n/useI18n';
+import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
 
 // MCP icon - from McpHeaderView
 const McpIcon = () => (
@@ -18,18 +20,11 @@ const McpIcon = () => (
 const SkillsIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <mask id="mask0_settings_skills" style={{ maskType: 'alpha' }} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-      <path d="M10.5416 8.60759L11.642 6.37799C11.8907 5.874 12.6094 5.874 12.8581 6.37799L13.9585 8.60759L16.419 8.96512C16.9752 9.04594 17.1972 9.72944 16.7948 10.1217L15.0143 11.8572L15.4347 14.3078C15.5297 14.8617 14.9482 15.2842 14.4508 15.0226L12.25 13.8656L10.0493 15.0226C9.55182 15.2842 8.9704 14.8617 9.06541 14.3078L9.48571 11.8572L7.70527 10.1217C7.30281 9.72944 7.5249 9.04594 8.08108 8.96512L10.5416 8.60759ZM11.6 9.52747C11.5012 9.72761 11.3103 9.86633 11.0894 9.89842L9.6358 10.1096L10.6876 11.1349C10.8474 11.2907 10.9204 11.5152 10.8826 11.7351L10.6343 13.1829L11.9345 12.4993C12.132 12.3955 12.368 12.3955 12.5656 12.4993L13.8657 13.1829L13.6174 11.7351C13.5797 11.5152 13.6526 11.2907 13.8124 11.1349L14.8643 10.1096L13.4107 9.89842C13.1898 9.86633 12.9989 9.72761 12.9001 9.52747L12.25 8.21029L11.6 9.52747ZM6.5 2C5.11929 2 4 3.11929 4 4.5V19.5C4 20.8807 5.11929 22 6.5 22H19.75C20.1642 22 20.5 21.6642 20.5 21.25C20.5 20.8358 20.1642 20.5 19.75 20.5H6.5C5.94772 20.5 5.5 20.0523 5.5 19.5H19.75C20.1642 19.5 20.5 19.1642 20.5 18.75V4.5C20.5 3.11929 19.3807 2 18 2H6.5ZM19 18H5.5V4.5C5.5 3.94772 5.94772 3.5 6.5 3.5H18C18.5523 3.5 19 3.94772 19 4.5V18Z" fill="#242424"/>
+      <path d="M10.5416 8.60759L11.642 6.37799C11.8907 5.874 12.6094 5.874 12.8581 6.37799L13.9585 8.60759L16.419 8.96512C16.9752 9.04594 17.1972 9.72944 16.7948 10.1217L15.0143 11.8572L15.4347 14.3078C15.5297 14.8617 14.9482 15.2842 14.4508 15.0226L12.25 13.8656L10.0493 15.0226C9.55182 15.2842 8.9704 14.8617 9.06541 14.3078L9.48571 11.8572L7.70527 10.1217C7.30281 9.72944 7.5249 9.04594 8.08108 8.96512L10.5416 8.60759ZM11.6 9.52747C11.5012 9.72761 11.3103 9.86633 11.0894 9.89842L9.6358 10.1096L10.6876 11.1349C10.8474 11.2907 10.9204 11.5152 10.8826 11.7351L10.6343 13.1829L11.9345 12.4993C12.132 12.3955 12.368 12.3955 12.5656 12.4993L13.8657 13.1829L13.6174 11.7351C13.5797 11.5152 13.6526 11.2907 13.8124 11.1349L14.8643 10.1096L13.4107 9.89842C13.1898 9.86633 12.9989 9.72761 12.9001 9.52747L12.25 8.21029L11.6 9.52747ZM6.5 2C5.11929 2 4 3.11929 4 4.5V19.5C4 20.8807 5.11929 22 6.5 22H19.75C20.1642 22 20.5 21.6642 20.5 21.25C20.5 20.8358 20.1642 20.5 19.75 20.5H6.5C5.94772 20.5 5.5 20.0523 5.5 19.5H19.75C20.1642 19.5 20.5 19.1642 20.5 18.75V4.5C20.5 3.11929 19.3807 2 18 2H6.5ZM19 18H5.5V4.5C5.5 3.94772 5.94772 3.5 6.5 3.5H18C18.5523 3.5 19 3.94772 19 4.5V18Z" fill="var(--color-neutral-800)"/>
     </mask>
     <g mask="url(#mask0_settings_skills)">
       <rect width="24" height="24" fill="currentColor"/>
     </g>
-  </svg>
-);
-
-// Plugin icon
-const PluginIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M13.5 2C13.5 2 14 3 14 4C14 5.10457 13.1046 6 12 6C10.8954 6 10 5.10457 10 4C10 3 10.5 2 10.5 2H7C5.89543 2 5 2.89543 5 4V8.5C5 8.5 6 8 7 8C8.10457 8 9 8.89543 9 10C9 11.1046 8.10457 12 7 12C6 12 5 11.5 5 11.5V16C5 17.1046 5.89543 18 7 18H11.5C11.5 18 11 19 11 20C11 21.1046 11.8954 22 13 22C14.1046 22 15 21.1046 15 20C15 19 14.5 18 14.5 18H18C19.1046 18 20 17.1046 20 16V11.5C20 11.5 19 12 18 12C16.8954 12 16 11.1046 16 10C16 8.89543 16.8954 8 18 8C19 8 20 8.5 20 8.5V4C20 2.89543 19.1046 2 18 2H13.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
   </svg>
 );
 
@@ -40,24 +35,10 @@ const AboutIcon = () => (
   </svg>
 );
 
-// Browser icon - for Browser Control settings
-const BrowserIcon = () => (
+// Voice/Microphone icon
+const VoiceIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
-    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M21.17 8H12" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M3.95 6.06L8.54 14" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M10.88 21.94L15.46 14" stroke="currentColor" strokeWidth="1.5"/>
-  </svg>
-);
-
-// Sub-Agent icon - users group icon
-const SubAgentIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 2C10.3431 2 9 3.34315 9 5V12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12V5C15 3.34315 13.6569 2 12 2ZM10.5 5C10.5 4.17157 11.1716 3.5 12 3.5C12.8284 3.5 13.5 4.17157 13.5 5V12C13.5 12.8284 12.8284 13.5 12 13.5C11.1716 13.5 10.5 12.8284 10.5 12V5ZM6.25 10C6.66421 10 7 10.3358 7 10.75V12C7 14.7614 9.23858 17 12 17C14.7614 17 17 14.7614 17 12V10.75C17 10.3358 17.3358 10 17.75 10C18.1642 10 18.5 10.3358 18.5 10.75V12C18.5 15.3137 16.0376 18.0299 12.75 18.4435V21.25C12.75 21.6642 12.4142 22 12 22C11.5858 22 11.25 21.6642 11.25 21.25V18.4435C7.96243 18.0299 5.5 15.3137 5.5 12V10.75C5.5 10.3358 5.83579 10 6.25 10Z" fill="currentColor"/>
   </svg>
 );
 
@@ -68,20 +49,15 @@ interface SettingsNavigationProps {
 const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
-  // Chrome Extension / Browser Control entry (controlled by feature flag, Dev + Windows only)
-  const browserControlEnabled = useFeatureFlag('browserControl');
-
-  // Sub-Agent feature controlled by feature flag
-  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
+  // Voice Input feature controlled by feature flag
+  const voiceInputEnabled = useFeatureFlag('openkosmosFeatureVoiceInput');
 
   const screenshotEnabled = useFeatureFlag('openkosmosFeatureScreenshot');
 
-  // Remote Channel entry controlled by feature flag
-  const remoteChannelEnabled = useFeatureFlag('openkosmosFeatureRemoteChannel');
-
-  // Plugin feature controlled by feature flag
-  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
+  // Sync feature controlled by feature flag
+  const syncEnabled = useFeatureFlag('openkosmosUseSync');
 
   const { width } = LeftNavSizeAtom.useData();
 
@@ -96,23 +72,29 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
 
   const getActiveView = () => {
     const path = location.pathname;
+    if (path.includes('/settings/appearance')) return 'appearance';
     if (path.includes('/settings/runtime')) return 'runtime';
     if (path.includes('/settings/mcp')) return 'mcp';
     if (path.includes('/settings/skills')) return 'skills';
-    if (path.includes('/settings/plugins')) return 'plugins';
-    if (path.includes('/settings/sub-agents')) return 'sub-agents';
+    if (path.includes('/settings/agent-hooks')) return 'agent-hooks';
+    if (path.includes('/settings/voice-input')) return 'voice-input';
     if (path.includes('/settings/screenshot')) return 'screenshot';
+    if (path.includes('/settings/browser')) return 'browser';
+    if (path.includes('/settings/memex')) return 'memex';
+    if (path.includes('/settings/computer-use')) return 'computer-use';
+    if (path.includes('/settings/sync')) return 'sync';
+    if (path.includes('/settings/language')) return 'language';
     if (path.includes('/settings/about')) return 'about';
-    if (path.includes('/settings/browser-control')) return 'browser-control';
+    if (path.includes('/settings/coding-cli')) return 'coding-cli';
     if (path.includes('/settings/archived-agents')) return 'archived-agents';
-    if (path.includes('/settings/remote-channel')) return 'remote-channel';
     return 'mcp'; // Default: show mcp
   };
 
   const activeView = getActiveView();
+  const productName = BRAND_CONFIG.productName || APP_NAME;
 
   const dividerStyle = (position: 'top' | 'bottom'): React.CSSProperties => ({
-    backgroundImage: 'linear-gradient(to right, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.1) 75%, rgba(0, 0, 0, 0) 100%)',
+    backgroundImage: 'linear-gradient(to right, var(--settings-nav-divider-line) 0%, var(--settings-nav-divider-line) 75%, transparent 100%)',
     backgroundRepeat: 'no-repeat',
     backgroundSize: '100% 1px',
     backgroundPosition: position,
@@ -122,7 +104,7 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
     <nav
       className="left-navigation"
       role="navigation"
-      aria-label="Settings navigation"
+      aria-label={t('settings.navigation.ariaLabel')}
       style={{ width }}
     >
       {/* Settings Navigation Content */}
@@ -153,11 +135,11 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
             style={{
               fontSize: '18px',
               fontWeight: '600',
-              color: '#111827',
+              color: 'var(--settings-nav-heading-fg)',
               margin: 0,
             }}
           >
-            Settings
+            {t('common.settings')}
           </h2>
         </div>
 
@@ -177,95 +159,137 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
           }}
         >
           <NavItem
+            icon={<SunMoon size={18} />}
+            label={t('settings.navigation.appearance')}
+            isActive={activeView === 'appearance'}
+            onClick={() => navigate('/settings/appearance')}
+            ariaLabel={t('settings.navigation.appearanceAriaLabel')}
+          />
+
+          <NavItem
             icon={<McpIcon />}
             label="MCP"
             isActive={activeView === 'mcp'}
             onClick={() => navigate('/settings/mcp')}
-            ariaLabel="MCP Servers and Tools"
+            ariaLabel={t('settings.navigation.mcpAriaLabel')}
           />
 
           <NavItem
             icon={<SkillsIcon />}
-            label="Skills"
+            label={t('settings.navigation.skills')}
             isActive={activeView === 'skills'}
             onClick={() => navigate('/settings/skills')}
-            ariaLabel="Skills Management"
+            ariaLabel={t('settings.navigation.skillsAriaLabel')}
           />
 
-          {pluginsEnabled && (
-            <NavItem
-              icon={<PluginIcon />}
-              label="Plugins"
-              isActive={activeView === 'plugins'}
-              onClick={() => navigate('/settings/plugins')}
-              ariaLabel="Plugin Management"
-            />
-          )}
-
-          {subAgentEnabled && (
-            <NavItem
-              icon={<SubAgentIcon />}
-              label="Sub-Agents"
-              isActive={activeView === 'sub-agents'}
-              onClick={() => navigate('/settings/sub-agents')}
-              ariaLabel="Sub-Agent Management"
-            />
-          )}
+          <NavItem
+            icon={<HooksIcon size={20} />}
+            label={t('settings.navigation.hooks')}
+            isActive={activeView === 'agent-hooks'}
+            onClick={() => navigate('/settings/agent-hooks')}
+            ariaLabel={t('settings.navigation.hooksAriaLabel')}
+          />
 
           <NavItem
             icon={<Terminal size={20} />}
-            label="Runtime"
+            label={t('settings.navigation.runtime')}
             isActive={activeView === 'runtime'}
             onClick={() => navigate('/settings/runtime')}
-            ariaLabel="Runtime Environment"
+            ariaLabel={t('settings.navigation.runtimeAriaLabel')}
           />
 
-          {/* Browser Control entry controlled by feature flag */}
-          {browserControlEnabled && (
+          {/* Coding CLI entry — gated at runtime by the per-profile master switch */}
+          <NavItem
+            icon={<Code2 size={18} />}
+            label={t('settings.navigation.codingCli')}
+            isActive={activeView === 'coding-cli'}
+            onClick={() => navigate('/settings/coding-cli')}
+            ariaLabel={t('settings.navigation.codingCliAriaLabel')}
+          />
+
+          {/* Voice Input entry controlled by feature flag */}
+          {voiceInputEnabled && (
             <NavItem
-              icon={<BrowserIcon />}
-              label="Browser Control"
-              isActive={activeView === 'browser-control'}
-              onClick={() => navigate('/settings/browser-control')}
-              ariaLabel="Browser Control Settings"
+              icon={<VoiceIcon />}
+              label={t('settings.navigation.voiceInput')}
+              isActive={activeView === 'voice-input'}
+              onClick={() => navigate('/settings/voice-input')}
+              ariaLabel={t('settings.navigation.voiceInputAriaLabel')}
             />
           )}
 
           {screenshotEnabled && (
             <NavItem
               icon={<Camera size={18} />}
-              label="Screenshot"
+              label={t('settings.navigation.screenshot')}
               isActive={activeView === 'screenshot'}
               onClick={() => navigate('/settings/screenshot')}
-              ariaLabel="Screenshot Settings"
+              ariaLabel={t('settings.navigation.screenshotAriaLabel')}
+            />
+          )}
+
+          <NavItem
+            icon={<Globe size={18} />}
+            label={t('settings.navigation.browser')}
+            isActive={activeView === 'browser'}
+            onClick={() => navigate('/settings/browser')}
+            ariaLabel={t('settings.navigation.browserAriaLabel')}
+          />
+
+          <NavItem
+            icon={<Brain size={18} />}
+            label={t('settings.navigation.memex')}
+            isActive={activeView === 'memex'}
+            onClick={() => navigate('/settings/memex')}
+            ariaLabel={t('settings.navigation.memexAriaLabel')}
+          />
+
+          <NavItem
+            icon={<MonitorCog size={18} />}
+            label={t('settings.navigation.computerUse')}
+            isActive={activeView === 'computer-use'}
+            onClick={() => navigate('/settings/computer-use')}
+            ariaLabel={t('settings.navigation.computerUseAriaLabel')}
+          />
+
+          {/* Sync entry controlled by feature flag */}
+          {syncEnabled && (
+            <NavItem
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 16L7 4M7 4L3 8M7 4L11 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M17 8L17 20M17 20L21 16M17 20L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              }
+              label={t('settings.navigation.sync')}
+              isActive={activeView === 'sync'}
+              onClick={() => navigate('/settings/sync')}
+              ariaLabel={t('settings.navigation.syncAriaLabel')}
             />
           )}
 
           <NavItem
             icon={<Archive size={20} />}
-            label="Archived Agents"
+            label={t('settings.navigation.archivedAgents')}
             isActive={activeView === 'archived-agents'}
             onClick={() => navigate('/settings/archived-agents')}
-            ariaLabel="Archived Agents"
+            ariaLabel={t('settings.navigation.archivedAgentsAriaLabel')}
           />
 
-          {/* Remote Channel entry controlled by feature flag */}
-          {remoteChannelEnabled && (
-            <NavItem
-              icon={<Globe size={18} />}
-              label="Remote Channel"
-              isActive={activeView === 'remote-channel'}
-              onClick={() => navigate('/settings/remote-channel')}
-              ariaLabel="Remote Channel Settings"
-            />
-          )}
+          <NavItem
+            icon={<Languages size={18} />}
+            label={t('settings.navigation.language')}
+            isActive={activeView === 'language'}
+            onClick={() => navigate('/settings/language')}
+            ariaLabel={t('settings.navigation.languageAriaLabel')}
+          />
 
           <NavItem
             icon={<AboutIcon />}
-            label={`About ${BRAND_CONFIG.productName || APP_NAME}`}
+            label={t('settings.navigation.about', { productName })}
             isActive={activeView === 'about'}
             onClick={() => navigate('/settings/about')}
-            ariaLabel={`About ${BRAND_CONFIG.productName || APP_NAME}`}
+            ariaLabel={t('settings.navigation.aboutAriaLabel')}
           />
         </div>
 
@@ -283,10 +307,10 @@ const SettingsNavigation: React.FC<SettingsNavigationProps> = ({ onBack }) => {
                 <path d="M12.3544 15.8529C12.1594 16.0485 11.8429 16.0491 11.6472 15.8542L6.16276 10.3892C5.94705 10.1743 5.94705 9.82495 6.16276 9.61L11.6472 4.14502C11.8429 3.95011 12.1594 3.95067 12.3544 4.14628C12.5493 4.34189 12.5487 4.65848 12.3531 4.85339L7.18851 9.99961L12.3531 15.1458C12.5487 15.3407 12.5493 15.6573 12.3544 15.8529Z" fill="currentColor"></path>
               </svg>
             }
-            label="Back"
+            label={t('common.back')}
             isActive={false}
             onClick={handleBack}
-            ariaLabel="Go Back"
+            ariaLabel={t('common.back')}
           />
         </div>
       </div>

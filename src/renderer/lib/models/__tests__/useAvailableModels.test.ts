@@ -118,6 +118,22 @@ describe('useAvailableModels', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('uses an empty array when backend succeeds without data', async () => {
+    getAllOpenKosmosUsedModelsSpy.mockReturnValue([]);
+    (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({
+      success: true,
+    });
+
+    const { result } = renderHook(() => useAvailableModels({ fetchOnEmpty: true }));
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(result.current.models).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
   it('sets error when backend call fails', async () => {
     getAllOpenKosmosUsedModelsSpy.mockReturnValue([]);
     (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({
@@ -217,6 +233,67 @@ describe('useAvailableModels', () => {
     });
 
     expect(result.current.error).toBe('Failed to load models');
+  });
+
+  it('does not update state when unmounted after reading cache', async () => {
+    let unmountHook: (() => void) | undefined;
+    getAllOpenKosmosUsedModelsSpy
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([])
+      .mockImplementation(() => {
+        unmountHook?.();
+        return [makeModel('after-unmount')];
+      });
+
+    const { result, unmount } = renderHook(() => useAvailableModels());
+    unmountHook = unmount;
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.models).toEqual([]);
+  });
+
+  it('does not update state when unmounted before backend fetch resolves', async () => {
+    getAllOpenKosmosUsedModelsSpy.mockReturnValue([]);
+    let resolveFetch!: (value: { success: true; data: GhcCopilotModel[] }) => void;
+    (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockReturnValue(
+      new Promise(resolve => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(() => useAvailableModels());
+    const refreshPromise = act(async () => {
+      await result.current.refresh(true);
+    });
+
+    unmount();
+    resolveFetch({ success: true, data: [makeModel('late-backend')] });
+    await refreshPromise;
+
+    expect(result.current.models).toEqual([]);
+  });
+
+  it('does not update error state when unmounted during a cache exception', async () => {
+    let unmountHook: (() => void) | undefined;
+    getAllOpenKosmosUsedModelsSpy
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([])
+      .mockImplementation(() => {
+        unmountHook?.();
+        throw new Error('cache failed after unmount');
+      });
+
+    const { result, unmount } = renderHook(() => useAvailableModels());
+    unmountHook = unmount;
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.error).toBeNull();
   });
 
   it('unregisters modelCacheUpdated listener on unmount', async () => {

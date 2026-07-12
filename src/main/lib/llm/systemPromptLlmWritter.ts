@@ -1,4 +1,9 @@
 import { ghcModelApi } from './ghcModelApi';
+import {
+  AGENT_SYSTEM_PROMPT_AGENTS_FILE,
+  AGENT_SYSTEM_PROMPT_BASE_FILE,
+  type AgentSystemPromptFile,
+} from '@shared/types/agentSystemPrompt';
 
 /**
  * System Prompt Writer response interface
@@ -23,9 +28,13 @@ export interface SystemPromptWriterParams {
   temperature: number;
 }
 
+export interface SystemPromptWriterOptions {
+  promptFile?: AgentSystemPromptFile;
+}
+
 /**
  * System Prompt LLM Writer
- * Uses LLM API to improve and optimize system prompts
+ * Uses GitHub Copilot models to improve and optimize system prompts
  */
 export class SystemPromptLlmWriter {
   private static readonly SYSTEM_PROMPT = `# Identity
@@ -151,17 +160,62 @@ If the input is empty, meaningless, or not actually a system prompt draft, retur
   "errors": []
 }`;
 
-  private static readonly WRITING_PROMPT = `Polish the following system prompt draft while preserving the user's original intent.
+  private static getPromptFileInstructions(promptFile: AgentSystemPromptFile): string {
+    if (promptFile === AGENT_SYSTEM_PROMPT_AGENTS_FILE) {
+      return `# Current Prompt Area: Project Context
 
-System prompt draft:`;
+You are polishing Project Context instructions for an AI agent.
+
+Project Context defines what the agent works on and how to work in that context: project or domain overview, workflows, rules, knowledge sources, constraints, terminology, tools, commands, paths, stakeholders, and known gotchas.
+
+Preserve only facts present in the user's draft. Do not invent project facts, domain rules, commands, paths, policies, workflows, stakeholders, tools, terminology, or constraints.
+
+Do not add generic agent personality, tone, or universal behavior rules unless they are explicitly context-specific. If the draft contains general agent identity instructions, keep them only when necessary and add a warning that they may belong in Agent Identity.`;
+    }
+
+    return `# Current Prompt Area: Agent Identity
+
+You are polishing Agent Identity instructions for an AI agent.
+
+Agent Identity defines who the agent is: role, expertise, responsibilities, behavior, communication style, boundaries, and safety rules.
+
+Preserve the user's intent. Make the instructions clearer, more structured, and easier for an AI agent to follow.
+
+Do not add project-specific or domain-specific workflows, facts, commands, paths, stakeholders, policies, customer details, or temporary task state. If the draft contains context-specific material, keep it only when necessary and add a warning that it may belong in Project Context.`;
+  }
+
+  private static getSystemPrompt(promptFile: AgentSystemPromptFile): string {
+    return `${this.SYSTEM_PROMPT}
+
+${this.getPromptFileInstructions(promptFile)}
+
+# Language
+
+Return a professional, concise, user-readable prompt in the same language as the input unless the input explicitly requests another language.`;
+  }
+
+  private static getWritingPrompt(promptFile: AgentSystemPromptFile): string {
+    const promptArea = promptFile === AGENT_SYSTEM_PROMPT_AGENTS_FILE
+      ? 'Project Context'
+      : 'Agent Identity';
+    return `Polish the following ${promptArea} draft while preserving the user's original intent.
+
+${promptArea} draft:`;
+  }
 
   /**
    * Improve system prompt
    * @param userInputPrompt User input system prompt
    * @returns Improved system prompt response
    */
-  static async improveSystemPrompt(userInputPrompt: string): Promise<SystemPromptWriterResponse> {
+  static async improveSystemPrompt(
+    userInputPrompt: string,
+    options: SystemPromptWriterOptions = {},
+  ): Promise<SystemPromptWriterResponse> {
     const trimmedPrompt = userInputPrompt.trim();
+    const promptFile = options.promptFile === AGENT_SYSTEM_PROMPT_AGENTS_FILE
+      ? AGENT_SYSTEM_PROMPT_AGENTS_FILE
+      : AGENT_SYSTEM_PROMPT_BASE_FILE;
 
     if (!trimmedPrompt || trimmedPrompt.length < 3) {
       return {
@@ -174,7 +228,7 @@ System prompt draft:`;
     }
 
     try {
-      const contextualPrompt = `${this.WRITING_PROMPT}
+      const contextualPrompt = `${this.getWritingPrompt(promptFile)}
 
     """
     ${trimmedPrompt}
@@ -192,7 +246,7 @@ System prompt draft:`;
       const rawResponse = await ghcModelApi.callModel(
         'claude-haiku-4.5',
         llmParams.prompt,
-        this.SYSTEM_PROMPT,
+        this.getSystemPrompt(promptFile),
         llmParams.maxTokens,
         llmParams.temperature
       );

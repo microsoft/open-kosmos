@@ -35,6 +35,7 @@ import {
 import { Message, StartChatCallbacks, MessageHelper, UserMessage } from '@shared/types/chatTypes';
 import { AgentChatPushReceiver } from './agentChatPushReceiver';
 import { extractMonthFromChatSessionId } from '../userDataADO/pathUtils';
+import { buildUserPromptSubmitText } from './userPromptSubmitText';
 import {
   ApprovalInteractionRequest,
   ChoiceInteractionOption,
@@ -69,8 +70,9 @@ import { formatFileSize } from '../utilities/contentUtils';
 import { openkosmosPlaceholderManager, containsOpenKosmosPlaceholder } from '../userDataADO/openkosmosPlaceholders';
 import { userInputPlaceholderParser, UserInputField } from '../userDataADO/userInputPlaceholderParser';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
+import { getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 import { featureFlagManager, isFeatureEnabled } from '../featureFlags';
-import { SubAgentFileManager } from '../subAgent/subAgentFileManager';
+import { ackPendingDeliveries } from '../subAgent/subAgentDeliveryLedger';
 import { AgentChatPromptService } from './agentChatPromptService';
 import { AgentChatSessionService } from './agentChatSessionService';
 import { AgentChatContextService } from './agentChatContextService';
@@ -82,9 +84,12 @@ import { AgentChatRuntimeState } from './agentChatRuntimeState';
 import { AgentChatOutputPort } from './agentChatOutputPort';
 import { AgentChatTurnRunner } from './agentChatTurnRunner';
 import { ChatStatus, ContextStats, ContextTokenUsage } from './agentChatTypes';
+import { AgentChatHookRuntime } from './agentChatHookRuntime';
+import { drainQueuedSteeringFollowUpTurns, type QueuedSteeringFollowUpPort } from './steeringQueueConsumption';
+import { normalizeAgentSystemPrompt, type AgentSystemPrompt } from '@shared/types/agentSystemPrompt';
 
 // 🔥 New: Import CancellationToken related types
-import { CancellationToken, CancellationError, CancellationTokenStatic } from '../cancellation';
+import { CancellationToken, CancellationTokenStatic } from '../cancellation';
 
 //  New: Token counter module imports
 import {
@@ -121,17 +126,7 @@ export interface AgentConfig {
   model: string       // "gpt-5"
   reasoningEffort?: string
   mcp_servers: Array<{name: string; tools: string[]}>
-  system_prompt: string
-  context_enhancement?: {
-    search_memory: {
-      enabled: boolean;
-      semantic_similarity_threshold: number;
-      semantic_top_n: number;
-    };
-    generate_memory: {
-      enabled: boolean;
-    };
-  };
+  system_prompt: AgentSystemPrompt
 }
 
 interface UserMessageEditValidationResult {
@@ -143,7 +138,6 @@ interface UserMessageEditValidationResult {
 }
 
 export { ChatStatus, type ContextStats, type ContextTokenUsage } from './agentChatTypes';
-import { hookRegistry } from "../plugin/hooks/hookRegistry";
 
 // AgentChat class - Main process version
 export class AgentChat {
@@ -184,11 +178,10 @@ export class AgentChat {
   private fullModeCompressor: FullModeCompressor
 
   // 🔥 New: Message save queue for atomic saving
-  // Flag: whether the current turn is from a remote IM channel (e.g., Teams)
-  private isRemoteSession = false
   private interactionPolicy: AgentChatInteractionPolicy = 'allow-ui'
+  private currentTurnTriggerSource: 'user' | 'scheduled' = 'user'
+  private currentCaptureUserMessageId?: string
   private blockedInteractionDetails: BlockedInteractionDetails | null = null
-
   private runtimeState: AgentChatRuntimeState
   private promptService?: AgentChatPromptService
   private sessionService?: AgentChatSessionService
@@ -198,9 +191,7 @@ export class AgentChat {
   private toolExecutor?: AgentChatToolExecutor
   private streamingService?: AgentChatStreamingService
   private turnRunner?: AgentChatTurnRunner
-
-  // 🔌 Plugin hook: tracks whether SessionStart hook has fired for this chat instance
-  private sessionStartHookFired = false
+  private hookRuntime?: AgentChatHookRuntime
 
   private pushReceiver: AgentChatPushReceiver;
 
@@ -301,7 +292,6 @@ export class AgentChat {
     });
   }
 
-
   /**
    * 🔥 Helper method: Get agent name (for logging)
    */
@@ -317,7 +307,6 @@ export class AgentChat {
       getChatSessionId: () => this.chatSessionId,
       getAgentName: () => this.getAgentName(),
       getLatestAgentConfig: () => this.getLatestAgentConfig(),
-      isRemoteSession: () => this.isRemoteSession,
       getInteractionPolicy: () => this.interactionPolicy,
     });
   }
@@ -354,12 +343,8 @@ export class AgentChat {
       },
       addMessageToChatHistory: (message) => this.addMessageToChatHistory(message),
       addMessageToContext: (message) => this.addMessageToContext(message),
-      shouldTrackChatSessionActivatedForUserMessage: (message) => this.shouldTrackChatSessionActivatedForUserMessage(message),
-      getChatSessionEntryTypeForUserMessage: (message) => this.getChatSessionEntryTypeForUserMessage(message),
-      trackChatSessionActivated: (message, sessionEntryType) => this.trackChatSessionActivated(message, sessionEntryType),
       exitNewChatSessionState: () => this.exitNewChatSessionState(),
       calculateAndNotifyContext: () => this.calculateAndNotifyContext(),
-      startChat: (token, callbacks) => this.startChat(token, callbacks),
       getDisplayMessages: () => this.getDisplayMessages(),
       getSkipPersistence: () => this.skipPersistence,
     });
@@ -405,6 +390,18 @@ export class AgentChat {
       setContextTokenUsage: (usage) => {
         this.contextTokenUsage = usage;
       },
+      onBeforeCompaction: (trigger, options) => this.getHookRuntime().runCompactionHookWithSignal(
+        'PreCompact',
+        trigger,
+        options?.signal,
+        this.runtimeState.currentCancellationToken,
+      ),
+      onAfterCompaction: (trigger, options) => this.getHookRuntime().runCompactionHookWithSignal(
+        'PostCompact',
+        trigger,
+        options?.signal,
+        this.runtimeState.currentCancellationToken,
+      ),
     });
   }
 
@@ -447,7 +444,6 @@ export class AgentChat {
       getAgentName: () => this.getAgentName(),
       getChatId: () => this.chatId,
       getChatSessionId: () => this.chatSessionId,
-      isRemoteSession: () => this.isRemoteSession,
       getInteractionPolicy: () => this.interactionPolicy,
       buildInteractionId: (prefix) => this.buildInteractionId(prefix),
       requestUserInteraction: (request, fallbackResponse) => this.requestUserInteraction(request, fallbackResponse),
@@ -478,12 +474,14 @@ export class AgentChat {
         this.runtimeState.setActiveToolCancellationHandler(handler);
       },
       getEventSender: () => this.outputPort.getSender(),
+      getInteractionPolicy: () => this.interactionPolicy,
       currentModelSupportsTools: () => this.currentModelSupportsTools(),
       getCurrentModelId: () => this.getCurrentModelId(),
-      getSubAgentConfig: (name) => this.getSubAgentConfig(name),
       getContextSummary: () => this.getContextSummary(),
       getCurrentChatSession: () => this.currentChatSession,
+      getCurrentUserMessageId: () => this.currentCaptureUserMessageId,
       saveChatSession: () => this.saveChatSession(),
+      getSkipPersistence: () => this.skipPersistence,
       getAgentMcpServerNames: () => {
         const config = this.getLatestAgentConfig();
         return config?.mcp_servers?.map(s => s.name) ?? [];
@@ -523,6 +521,30 @@ export class AgentChat {
     return this.streamingService;
   }
 
+  private getHookRuntime(): AgentChatHookRuntime {
+    if (!this.hookRuntime) {
+      this.hookRuntime = new AgentChatHookRuntime({
+        getCurrentUserAlias: () => this.currentUserAlias,
+        getChatId: () => this.chatId,
+        getChatSessionId: () => this.chatSessionId,
+        getAgentName: () => this.getAgentName(),
+        getInteractionPolicy: () => this.interactionPolicy,
+        getCurrentCancellationToken: () => this.runtimeState.currentCancellationToken,
+        setHookAdditionalContexts: (contexts) => this.getPromptService().setHookAdditionalContexts(contexts),
+        setHookSystemMessages: (messages) => this.getPromptService().setHookSystemMessages(messages),
+        addMessageToSession: (message) => this.AddMessageToSession(message),
+        emitStreamingChunk: (chunk) => this.emitStreamingChunk(chunk),
+        setIdle: () => this.setChatStatus(ChatStatus.IDLE),
+        getDisplayMessages: () => this.getDisplayMessages(),
+        batchValidateAndRequestApproval: (toolCalls) => this.batchValidateAndRequestApproval(toolCalls),
+        requestHookApproval: (items) => this.requestHookApproval(items),
+        executeToolCall: (toolCall, approved) => this.executeToolCall(toolCall, approved),
+        postProcessToolResult: (toolCall, toolResult) => this.postProcessToolResult(toolCall, toolResult),
+      });
+    }
+    return this.hookRuntime;
+  }
+
   private createTurnRunner(): AgentChatTurnRunner {
     return new AgentChatTurnRunner({
       getAgentName: () => this.getAgentName(),
@@ -532,14 +554,14 @@ export class AgentChat {
       getChatHistory: () => this.getChatHistory(),
       getDisplayMessages: () => this.getDisplayMessages(),
       getSessionFromAuthManager: () => this.getSessionFromAuthManager(),
-      runConversationAttempt: (token, callbacks) => this.startChat(token, callbacks),
+      runConversationAttempt: (token, callbacks, options) => this.startChat(token, callbacks, options),
       checkAndCompress: (options) => this.CheckAndCompress(options),
       setChatStatus: (status) => this.setChatStatus(status),
       callWithToolsStreaming: (token) => this.callWithToolsStreaming(token),
       addMessageToSession: (message) => this.AddMessageToSession(message),
-      batchValidateAndRequestApproval: (toolCalls) => this.batchValidateAndRequestApproval(toolCalls),
-      executeToolCall: (toolCall, approved) => this.executeToolCall(toolCall, approved),
-      postProcessToolResult: (toolCall, toolResult) => this.postProcessToolResult(toolCall, toolResult),
+      batchValidateAndRequestApproval: (toolCalls, token) => this.getHookRuntime().preToolUseAndApprove(toolCalls, token),
+      executeToolCall: (toolCall, approved, token) => this.getHookRuntime().executeToolCallWithHooks(toolCall, approved, token),
+      postProcessToolResult: (toolCall, toolResult, token) => this.getHookRuntime().postProcessToolResultWithHooks(toolCall, toolResult, token),
       assertExecutionActive: (token, executionNonce, stage) => this.assertExecutionActive(token, executionNonce, stage),
       createMcpImageHash: (data, mimeType) => this.createMcpImageHash(data, mimeType),
       hasInjectedMcpImageHash: (hash) => this.hasInjectedMcpImageHash(hash),
@@ -573,55 +595,6 @@ export class AgentChat {
     }
     return this.turnRunner;
   }
-  private getAnalyticsDayKey(timestamp: number): string {
-    const chinaOffsetMs = 8 * 60 * 60 * 1000;
-    const utcPlus8 = new Date(timestamp + chinaOffsetMs);
-    const year = utcPlus8.getUTCFullYear();
-    const month = String(utcPlus8.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(utcPlus8.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  private getMessageTimestampMs(message: Message): number {
-    if (typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)) {
-      return message.timestamp;
-    }
-
-    if (typeof message.timestamp === 'string') {
-      const parsed = Date.parse(message.timestamp);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
-    }
-
-    return Date.now();
-  }
-
-  private shouldTrackChatSessionActivatedForUserMessage(message: Message): boolean {
-    if (!this.currentChatSession || message.role !== 'user') {
-      return false;
-    }
-
-    const targetDayKey = this.getAnalyticsDayKey(this.getMessageTimestampMs(message));
-    return !this.currentChatSession.chat_history.some((historyMessage) => {
-      if (historyMessage.role !== 'user') {
-        return false;
-      }
-
-      return this.getAnalyticsDayKey(this.getMessageTimestampMs(historyMessage)) === targetDayKey;
-    });
-  }
-
-  private getChatSessionEntryTypeForUserMessage(message: Message): 'new' | 'continued' {
-    return this.currentChatSession && this.currentChatSession.chat_history.length === 0 && message.role === 'user'
-      ? 'new'
-      : 'continued';
-  }
-
-  private trackChatSessionActivated(message: Message, sessionEntryType: 'new' | 'continued'): void {
-    // Analytics removed — no-op
-  }
-
   /**
    * 🔥 Modified: Set chat status and sync to frontend - sends for all ChatSessions
    */
@@ -703,19 +676,19 @@ export class AgentChat {
     }
 
     const chatConfig = profileCacheManager.getChatConfig(this.currentUserAlias, this.chatId);
-    if (!chatConfig || !chatConfig.agent) {
+    const primaryAgent = getChatPrimaryAgent(chatConfig);
+    if (!chatConfig || !primaryAgent) {
       return null;
     }
 
     return {
-      role: chatConfig.agent.role,
-      emoji: chatConfig.agent.emoji,
-      name: chatConfig.agent.name,
-      model: chatConfig.agent.model,
-      reasoningEffort: chatConfig.agent.reasoningEffort,
-      mcp_servers: chatConfig.agent.mcp_servers || [],
-      system_prompt: chatConfig.agent.system_prompt || '',
-      context_enhancement: chatConfig.agent.context_enhancement
+      role: primaryAgent.role,
+      emoji: primaryAgent.emoji,
+      name: primaryAgent.name,
+      model: primaryAgent.model,
+      reasoningEffort: primaryAgent.reasoningEffort,
+      mcp_servers: primaryAgent.mcp_servers || [],
+      system_prompt: normalizeAgentSystemPrompt(primaryAgent.system_prompt),
     };
   }
 
@@ -735,17 +708,10 @@ export class AgentChat {
     }
   }
 
-  /**
-   * Get Chat ID
-   */
   getChatId(): string {
     return this.chatId;
   }
 
-
-  /**
-   * Get User Alias
-   */
   getUserAlias(): string {
     return this.currentUserAlias;
   }
@@ -781,55 +747,22 @@ export class AgentChat {
     return this.tokenCounter;
   }
 
-  /**
-   * 🔥 Refactor: Dynamically get currently available tools (no longer cached)
-   * Fetches the latest connected tools from MCP manager and ProfileCacheManager on each call
-   */
   private async getCurrentAvailableTools(): Promise<any[]> {
     return this.getPromptService().getCurrentAvailableTools();
   }
 
-  /**
-   * 🔄 New: Get the latest Custom System Prompt (from AgentConfig)
-   * @returns {Message[]} system-prompt array (single-element array)
-   */
   private getLatestCustomSystemPrompt(): Message[] {
     return this.getPromptService().getLatestCustomSystemPrompt();
   }
 
-  /**
-   * 🔄 New: Get Global System Prompt (from globalSystemPrompt.ts)
-   * @returns {Message[]} system-prompt array (single-element array)
-   */
   private getGlobalSystemPrompt(): Message[] {
     return this.getPromptService().getGlobalSystemPrompt();
   }
 
-  /**
-   * 🔄 New: Get Agent Specific System Prompt (including agent identity, workspace info, and skills instructions)
-   * @returns {Message[]} agent-specific system-prompt array (single-element array)
-   */
   private getAgentSpecificSystemPrompt(): Message[] {
     return this.getPromptService().getAgentSpecificSystemPrompt();
   }
 
-  /**
-   * 🆕 Build sub-agent management System Prompt
-   *
-   * When a parent Agent has sub-agents configured, inject sub-agent descriptions
-   * and usage guidelines into getAgentSpecificSystemPrompt().
-   *
-   * @param subAgentNames List of sub-agent names referenced by the Agent (from ChatAgent.sub_agents)
-   * @returns Sub-agent management prompt text, or empty string
-   */
-  private buildSubAgentsSystemPrompt(subAgentNames: string[]): string {
-    return this.getPromptService().buildSubAgentsSystemPrompt(subAgentNames);
-  }
-
-  /**
-   * 🔄 New: Merge Custom, Agent-Specific, and Global System Prompt
-   * @returns {Message[]} Merged system-prompt array (single-element array)
-   */
   private getCombinedSystemPromptForContext(): Message[] {
     return this.getPromptService().getCombinedSystemPromptForContext();
   }
@@ -887,13 +820,33 @@ export class AgentChat {
         'user',
       );
       contextHistory.push(notificationMessage);
+
+      // Ack the durable delivery ledger only AFTER the injected notification is
+      // persisted to disk. The ledger keeps a completed background result until
+      // it is safely in the parent's saved context: acking before the persist
+      // could drop a result on a crash, while leaving the entry to survive an
+      // app restart would replay an already-delivered result on the next wake.
+      // Persisting here and then acking gives at-least-once delivery with the
+      // smallest possible duplicate window. `saveChatSession()` resolves with
+      // `{ success: false }` on a failed write WITHOUT throwing, so the ack must
+      // be gated on `saved.success` — otherwise a silent persist failure would
+      // delete the durable copy of an undelivered result. On a failed (or
+      // thrown) persist the entry is left in the ledger to be re-delivered on a
+      // later turn (no result is lost).
+      const deliveredTaskIds = results
+        .map((r: { taskId?: string }) => r.taskId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      if (deliveredTaskIds.length > 0) {
+        const saved = await this.saveChatSession();
+        if (saved?.success) {
+          ackPendingDeliveries(sessionId, deliveredTaskIds);
+        }
+      }
     } catch {
-      // Non-critical — don't break the chat if drain fails
+      // Non-critical — don't break the chat if drain fails. Any unacked ledger
+      // entries are simply re-delivered on a later turn (no result is lost).
     }
   }
-
-
-
   // ====== ChatSession Management Methods ======
 
   /**
@@ -929,7 +882,31 @@ export class AgentChat {
     token?: CancellationToken,
     callbacks?: StartChatCallbacks,
   ): Promise<Message[]> {
-    return this.getSessionService().editUserMessage(messageId, updatedMessage, token, callbacks);
+    const edit = this.getSessionService().prepareEditedUserMessage(messageId, updatedMessage, token);
+    if (this.shouldRouteToExternalAgent()) {
+      await this.getSessionService().applyEditedUserMessage(edit, token);
+      return this.handleExternalAgentMessage(edit.normalizedMessage, { persistUserMessage: false });
+    }
+    this.setChatStatus(ChatStatus.SENDING_RESPONSE);
+
+    try {
+      this.getHookRuntime().capturePendingSessionStartTrigger(this.getChatHistory().length);
+      const promptBlockResult = await this.getHookRuntime().runUserPromptSubmitLifecycle(
+        buildUserPromptSubmitText(edit.normalizedMessage),
+        token,
+      );
+      if (promptBlockResult) return promptBlockResult;
+
+      await this.getSessionService().applyEditedUserMessage(edit, token);
+      await this.startChat(token, callbacks, { deferFinalIdle: true });
+      await this.getHookRuntime().runStopHook(token);
+      return this.getDisplayMessages();
+    } finally {
+      this.getHookRuntime().clearTurnHookBuffers();
+      this.getHookRuntime().clearPendingSessionStartTriggerIfFired();
+      this.blockedInteractionDetails = null;
+      this.setChatStatus(ChatStatus.IDLE);
+    }
   }
 
   canEditUserMessage(messageId: string): { canEdit: boolean; error?: string } {
@@ -948,8 +925,6 @@ export class AgentChat {
     this.getSessionService().createChatSession(params)
     this.schedulerJobId = params.schedulerJobId
   }
-
-
   /**
    * 🔥 New: Get ChatSessionId (public method)
    */
@@ -1050,7 +1025,6 @@ export class AgentChat {
     return true;
   }
 
-
   initializeEmptyChatSession(): void {
     this.currentChatSession = null
     this.firstUserMessage = null  // 🔥 Clear cached first message
@@ -1117,7 +1091,6 @@ export class AgentChat {
     return false;
   }
 
-
   /**
    * 🔥 New: Standalone Fact Extraction method
    * Extracted from saveChatSession, executed independently after conversation turn completes
@@ -1130,10 +1103,17 @@ export class AgentChat {
     await this.getContextService().addMessageToContext(message)
   }
 
-  private async enhanceUserMessageContext(message: Message): Promise<Message> {
-    return this.getContextService().enhanceUserMessageContext(message);
-  }
+  canUseQueuedSteering(): boolean { return !this.shouldRouteToExternalAgent(); }
 
+  get steeringQueue() {
+    const state = this.runtimeState;
+    return {
+      enqueue: (message: UserMessage) => state.enqueueSteeringMessage(message), update: (message: UserMessage) => state.updateSteeringMessage(message),
+      remove: (messageId: string) => state.removeSteeringMessage(messageId), promote: (messageId: string) => state.promoteSteeringMessage(messageId),
+      hasPending: () => state.peekNextSteeringMessage() !== null, editingMessageId: () => state.editingSteeringMessageId,
+      setEditing: (messageId: string, editing: boolean) => state.setSteeringMessageEditing(messageId, editing), clear: () => state.clearSteeringMessages(),
+    };
+  }
 
   getContextHistory(): Message[] {
     return this.currentChatSession?.context_history || []
@@ -1155,6 +1135,8 @@ export class AgentChat {
     this.getToolExecutor().assertExecutionActive(token, executionNonce, stage);
   }
 
+  private emitQueuedSteeringMessageConsumed(messageId: string): void { this.outputPort.emitEvent('agentChat:queuedSteeringMessageConsumed', { chatId: this.chatId, chatSessionId: this.chatSessionId, messageId }); }
+
   public invalidateActiveExecution(): void {
     this.getToolExecutor().invalidateActiveExecution();
   }
@@ -1165,23 +1147,6 @@ export class AgentChat {
 
   private registerActiveToolCancellationHandler(handler: () => Promise<void> | void): { dispose(): void } {
     return this.getToolExecutor().registerActiveToolCancellationHandler(handler);
-  }
-
-  /**
-   * 🔥 New: Get the sub-agent config bound to the current Agent by name
-   * Steps: 1) Confirm reference from ChatAgent.sub_agents (name list); 2) Return config from ProfileV2.sub_agents (global registry)
-   */
-  getSubAgentConfig(name: string): import('../userDataADO/types/profile').SubAgentConfig | undefined {
-    if (!this.currentUserAlias || !this.chatId) return undefined;
-    // Get current ChatConfig -> ChatAgent
-    const chatConfig = profileCacheManager.getChatConfig(this.currentUserAlias, this.chatId);
-    const agentSubNames = chatConfig?.agent?.sub_agents;
-    if (!agentSubNames || !agentSubNames.includes(name)) {
-      return undefined; // This Agent does not reference this sub-agent
-    }
-    // Look up from file system cache (sync, cache is pre-warmed at startup)
-    const fileManager = SubAgentFileManager.getInstance();
-    return fileManager.getCachedConfig(name) as import('../userDataADO/types/profile').SubAgentConfig | undefined;
   }
 
   /**
@@ -1227,11 +1192,21 @@ export class AgentChat {
    * @param callbacks - optional callback functions
    * @returns display message array
    */
-  async retryChat(
-    token?: CancellationToken,
-    callbacks?: StartChatCallbacks
-  ): Promise<Message[]> {
-    return this.getTurnRunner().runRetry({ token, callbacks });
+  async retryChat(token?: CancellationToken, callbacks?: StartChatCallbacks): Promise<Message[]> {
+    if (this.shouldRouteToExternalAgent()) {
+      const lastUserMessage = this.getLatestUserMessage();
+      return lastUserMessage ? this.handleExternalAgentMessage(lastUserMessage, { persistUserMessage: false }) : this.getDisplayMessages();
+    }
+    try {
+      const result = await this.getTurnRunner().runRetry({ token, callbacks, deferFinalIdle: true });
+      await this.getHookRuntime().runStopHook(token);
+      return result;
+    } finally {
+      this.getHookRuntime().clearTurnHookBuffers();
+      this.getHookRuntime().clearPendingSessionStartTriggerIfFired();
+      this.blockedInteractionDetails = null;
+      this.setChatStatus(ChatStatus.IDLE);
+    }
   }
 
   /**
@@ -1241,42 +1216,85 @@ export class AgentChat {
    * @param token - optional cancellation token
    * @param callbacks - optional callback functions
    * @param options - optional settings
-   * @param options.emitUserMessage - whether to emit user message chunk to frontend (for remote channel scenarios where frontend doesn't pre-add the user message)
+   * @param options.emitUserMessage - whether to emit the user message chunk to the frontend
+   * @param options.persistUserMessage - whether to persist the trigger message before running the turn; synthetic internal wakes disable this
    * @returns display message array
    */
   async streamMessage(
     userMessage: UserMessage,
     token?: CancellationToken,
     callbacks?: StartChatCallbacks,
-    options?: { emitUserMessage?: boolean; isRemoteSession?: boolean; interactionPolicy?: AgentChatInteractionPolicy }
+    options?: { emitUserMessage?: boolean; persistUserMessage?: boolean; interactionPolicy?: AgentChatInteractionPolicy; triggerSource?: 'user' | 'scheduled'; onUserMessageCommitted?: () => void }
   ): Promise<Message[]> {
-    // Check if this is an External Agent agent — route through WS instead of LLM
-    const chatConfig = profileCacheManager.getChatConfig(this.currentUserAlias, this.chatId);
-    if (chatConfig?.agent?.source === 'EXTERNAL' && isFeatureEnabled('openkosmosFeatureExternalAgent')) {
-      return this.handleExternalAgentMessage(userMessage);
-    }
+    if (this.shouldRouteToExternalAgent()) return this.handleExternalAgentMessage(userMessage);
 
-    // Set remote session flag for the duration of this turn
-    this.isRemoteSession = options?.isRemoteSession || false;
-    this.interactionPolicy = options?.interactionPolicy || (this.isRemoteSession ? 'plain-text-only' : 'allow-ui');
+    this.interactionPolicy = options?.interactionPolicy || 'allow-ui';
+    this.currentTurnTriggerSource = options?.triggerSource || 'user';
     this.blockedInteractionDetails = null;
 
-    // Record turn start time for Chat TTFT measurement
-    const streamingService = this.getStreamingService();
-    streamingService.turnStartTime = Date.now();
-    streamingService.ttftReportedForTurn = false;
-
     try {
-      return await this.getTurnRunner().runStreamMessage({
+      this.setChatStatus(ChatStatus.SENDING_RESPONSE);
+      this.getHookRuntime().capturePendingSessionStartTrigger(this.getChatHistory().length);
+      const promptBlockResult = await this.getHookRuntime().runUserPromptSubmitLifecycle(buildUserPromptSubmitText(userMessage), token, { idleOnBlock: false });
+      if (promptBlockResult) {
+        this.getHookRuntime().clearTurnHookBuffers();
+        return await drainQueuedSteeringFollowUpTurns(this.buildQueuedSteeringFollowUpPort(callbacks), promptBlockResult, token);
+      }
+
+      const shouldExposeUserMessageForCapture = options?.persistUserMessage !== false
+        && this.currentTurnTriggerSource === 'user'
+        && typeof userMessage.id === 'string'
+        && userMessage.id.length > 0;
+      this.currentCaptureUserMessageId = shouldExposeUserMessageForCapture ? userMessage.id : undefined;
+
+      let turnResult = await this.getTurnRunner().runStreamMessage({
         userMessage,
         token,
         callbacks,
         emitUserMessage: !!options?.emitUserMessage,
+        persistUserMessage: options?.persistUserMessage,
+        onUserMessageCommitted: options?.onUserMessageCommitted,
       });
+
+      await this.getHookRuntime().runStopHook(token);
+      this.getHookRuntime().clearTurnHookBuffers();
+      this.currentCaptureUserMessageId = undefined;
+      turnResult = await drainQueuedSteeringFollowUpTurns(this.buildQueuedSteeringFollowUpPort(callbacks), turnResult, token);
+
+      return turnResult;
     } finally {
-      this.isRemoteSession = false;
+      this.getHookRuntime().clearTurnHookBuffers();
+      this.currentCaptureUserMessageId = undefined;
       this.interactionPolicy = 'allow-ui';
+      this.currentTurnTriggerSource = 'user';
+      this.getHookRuntime().clearPendingSessionStartTriggerIfFired();
       this.blockedInteractionDetails = null;
+      this.setChatStatus(ChatStatus.IDLE);
+    }
+  }
+
+  private buildQueuedSteeringFollowUpPort(callbacks?: StartChatCallbacks): QueuedSteeringFollowUpPort {
+    const state = this.runtimeState;
+    return {
+      chatId: this.chatId, chatSessionId: this.chatSessionId,
+      peekNextQueuedSteeringMessage: () => state.peekNextSteeringMessage(),
+      takeQueuedSteeringMessageById: (messageId) => (messageId ? state.takeSteeringMessage(messageId) : state.takeNextSteeringMessage()),
+      restoreQueuedSteeringMessageToFront: (message) => state.restoreSteeringMessageToFront(message),
+      addMessageToSession: (message) => this.AddMessageToSession(message),
+      emitStreamingChunk: (chunk) => this.emitStreamingChunk(chunk), emitQueuedSteeringMessageConsumed: (messageId) => this.emitQueuedSteeringMessageConsumed(messageId),
+      runFollowUpTurn: (message, followUpToken) => this.getTurnRunner().runStreamMessage({ userMessage: message, token: followUpToken, callbacks, emitUserMessage: false, persistUserMessage: false }),
+      runPromptSubmitHook: (message, followUpToken) => this.getHookRuntime().runQueuedUserPromptSubmitHook(buildUserPromptSubmitText(message), followUpToken),
+      runStopHook: (followUpToken) => this.getHookRuntime().runStopHook(followUpToken), clearTurnHookBuffers: () => this.getHookRuntime().clearTurnHookBuffers(),
+    };
+  }
+
+  async drainQueuedSteeringWhileIdle(token?: CancellationToken, callbacks?: StartChatCallbacks): Promise<Message[]> {
+    if (this.shouldRouteToExternalAgent()) return [];
+    try {
+      this.setChatStatus(ChatStatus.SENDING_RESPONSE);
+      return await drainQueuedSteeringFollowUpTurns(this.buildQueuedSteeringFollowUpPort(callbacks), [], token);
+    } finally {
+      this.getHookRuntime().clearTurnHookBuffers(); this.setChatStatus(ChatStatus.IDLE);
     }
   }
 
@@ -1286,6 +1304,7 @@ export class AgentChat {
    */
   private async handleExternalAgentMessage(
     userMessage: Message,
+    options?: { persistUserMessage?: boolean },
   ): Promise<Message[]> {
     const result = await externalAgentMessageHandler(
       {
@@ -1296,6 +1315,7 @@ export class AgentChat {
         emitStatus: (s) => this.outputPort.emitStatus(s === 'sending' ? ChatStatus.SENDING_RESPONSE : ChatStatus.IDLE),
       },
       userMessage,
+      options,
     );
 
     // Only start push timeout if message was sent successfully (empty result = success).
@@ -1305,6 +1325,15 @@ export class AgentChat {
     }
 
     return result;
+  }
+
+  private shouldRouteToExternalAgent(): boolean {
+    return getChatPrimaryAgent(profileCacheManager.getChatConfig(this.currentUserAlias, this.chatId))?.source === 'EXTERNAL'
+      && isFeatureEnabled('openkosmosFeatureExternalAgent');
+  }
+
+  private getLatestUserMessage(): UserMessage | null {
+    return ([...this.getChatHistory()].reverse().find(message => message.role === 'user') as UserMessage | undefined) ?? null;
   }
 
   /**
@@ -1342,45 +1371,23 @@ export class AgentChat {
    */
   private async startChat(
     token?: CancellationToken,
-    callbacks: StartChatCallbacks = {}
+    callbacks: StartChatCallbacks = {},
+    options?: { deferFinalIdle?: boolean }
   ): Promise<void> {
-    // 🔌 Plugin hook: fire SessionStart on the first turn of this chat
-    if (!this.sessionStartHookFired) {
-      this.sessionStartHookFired = true;
-      try {
-        const chatConfig = profileCacheManager.getChatConfig(this.currentUserAlias, this.chatId);
-        const workspacePath = chatConfig?.agent?.workspace;
-        const hookResult = await hookRegistry.execute('SessionStart', {
-          userAlias: this.currentUserAlias,
-          chatId: this.chatId,
-          chatSessionId: this.chatSessionId,
-          agentName: this.getAgentName(),
-          workspacePath: typeof workspacePath === 'string' && workspacePath.trim() ? workspacePath : undefined,
-        });
-
-        // Inject additionalContext from hooks into the prompt service
-        if (hookResult.additionalContexts.length > 0) {
-          this.getPromptService().setHookAdditionalContexts(hookResult.additionalContexts);
-          createLogger().info(
-            `[AgentChat] SessionStart hooks injected ${hookResult.additionalContexts.length} additional context(s) ` +
-            `(total ${hookResult.additionalContexts.reduce((s, c) => s + c.length, 0)} chars)`,
-          );
-        }
-      } catch (e) {
-        // Non-fatal: hook failure must never block conversation
-        createLogger().error(`[AgentChat] SessionStart hook error: ${e}`);
-      }
-    }
-
-    this.runtimeState.bindCancellationToken(token);
-    const executionNonce = this.runtimeState.bumpToolExecutionNonce();
+    this.setChatStatus(ChatStatus.SENDING_RESPONSE);
+    let executionNonce: number | null = null;
 
     try {
-      await this.getTurnRunner().run({ token, callbacks, executionNonce });
+      const shouldContinue = await this.getHookRuntime().runSessionStartLifecycle(this.getChatHistory().length, token);
+      if (!shouldContinue) return;
+
+      this.runtimeState.bindCancellationToken(token);
+      executionNonce = this.runtimeState.bumpToolExecutionNonce();
+      await this.getTurnRunner().run({ token, callbacks, executionNonce, deferFinalIdle: options?.deferFinalIdle });
     } catch (error) {
       // Guard: if a newer turn has already started (nonce bumped again), this is a
       // stale cancellation unwind — skip cleanup to avoid corrupting the new turn's state.
-      if (executionNonce === this.runtimeState.toolExecutionNonce) {
+      if (executionNonce === null || executionNonce === this.runtimeState.toolExecutionNonce) {
         await this.getTurnRunner().handleFailure(error);
       } else {
         createLogger().info(
@@ -1393,7 +1400,7 @@ export class AgentChat {
     } finally {
       // Only clear the token if this turn still owns it (no newer turn has started).
       // A stale cancelled turn reaching finally must not wipe the new turn's token.
-      if (executionNonce === this.runtimeState.toolExecutionNonce) {
+      if (executionNonce !== null && executionNonce === this.runtimeState.toolExecutionNonce) {
         this.runtimeState.clearCancellationToken();
       }
     }
@@ -1452,6 +1459,12 @@ export class AgentChat {
     return this.getInteractionService().batchValidateAndRequestApproval(toolCalls);
   }
 
+  private async requestHookApproval(
+    items: Array<{ toolCallId: string; toolName: string; reason?: string }>,
+  ): Promise<Map<string, boolean>> {
+    return this.getInteractionService().requestHookApprovalInteraction(items);
+  }
+
   /**
    * 🔥 New: Post-processing method after tool execution completes
    * Post-processes results of specific tools, such as collecting user input
@@ -1462,22 +1475,6 @@ export class AgentChat {
 
   private async postProcessForRequestInteractiveInputTool(toolResult: any): Promise<any> {
     return this.getToolPostProcessor().postProcessForRequestInteractiveInputTool(toolResult);
-  }
-
-  /**
-   * 🔥 New: Method specifically for processing get_mcp_template_from_library tool results
-   * Checks if there are ENV parameters requiring user input, and initiates info collection flow if so
-   */
-  private async postProcessForGetMcpTemplateFromLibraryTool(toolResult: any): Promise<any> {
-    return this.getToolPostProcessor().postProcessForGetMcpTemplateFromLibraryTool(toolResult);
-  }
-
-  /**
-   * 🔥 New: Method specifically for processing get_agent_template_from_library tool results
-   * Checks if the workspace field in Agent config contains OpenKosmos placeholders or USER INPUT placeholders
-   */
-  private async postProcessForGetAgentTemplateFromLibraryTool(toolResult: any): Promise<any> {
-    return this.getToolPostProcessor().postProcessForGetAgentTemplateFromLibraryTool(toolResult);
   }
 
   /**
@@ -1543,7 +1540,6 @@ export class AgentChat {
     };
   }
 
-
   // ====== Model Management ======
 
   // 🔄 Optimization: removed loadSupportedModels(), directly using ghcModels methods
@@ -1591,7 +1587,6 @@ export class AgentChat {
     return capabilities.supportsImages;
   }
 
-
   async getSessionFromAuthManager(): Promise<any | null> {
     try {
       const currentAuth = mainAuthManager.getCurrentAuth();
@@ -1610,7 +1605,6 @@ export class AgentChat {
       return null;
     }
   }
-
 
   // ====== Context Management ======
 
@@ -1702,7 +1696,6 @@ export class AgentChat {
       chatHistoryLength: this.getChatHistory().length,
     }
   }
-
 
   // 🔥 New: set event sender
   setEventSender(sender: Electron.WebContents | null): void {

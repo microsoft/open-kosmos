@@ -168,6 +168,7 @@ cloud-deploy/
 └── references/
     ├── aws.md (AWS deployment patterns)
     ├── gcp.md (GCP deployment patterns)
+    └── azure.md (Azure deployment patterns)
 ```
 
 When the user chooses AWS, Claude only reads aws.md.

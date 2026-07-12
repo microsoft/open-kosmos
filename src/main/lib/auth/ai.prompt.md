@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-03-25 -->
+<!-- Last verified: 2026-07-12 (legacy ghcAuth.aadAccount data is stripped and persisted locally during auth.json load without changing GitHub Copilot credentials.) -->
 # Authentication System
 
 > Manages GitHub Copilot OAuth authentication, token lifecycle, and per-user profile auth persistence.
@@ -17,7 +17,7 @@
 - **Two-token model**: a long-lived GitHub OAuth token (no expiry field) and a short-lived Copilot session token (expires ~1 h). `tokenMonitor` tracks only the Copilot token expiry.
 - **Device Code Flow** (`ghcAuth.ts`): `startDeviceFlow()` → poll `accessToken()` → exchange GitHub token for Copilot token. All polling is driven by the renderer; the main process only executes individual steps on IPC calls.
 - **RefreshTokenAnalyzer** replaces a retry-count heuristic with exact HTTP status codes: 401 = expired (recoverable), 403 = invalid (clear session), 429 = rate-limited (back-off), 5xx = server error (retry), network errors = transient (retry). This distinction prevents unnecessary sign-out on temporary network failures.
-- Auth data stored at `{userData}/profiles/{userAlias}/auth.json`. Profile directory created automatically on first sign-in.
+- Auth data stored at `{userData}/profiles/{userAlias}/auth.json`. Profile directory created automatically on first sign-in. Loading an older file strips the retired `ghcAuth.aadAccount` field and rewrites the sanitized file locally; no network access or auth-provider change is involved.
 - **V1→V2 migration** runs automatically on first load: V1 used a flat token object; V2 wraps it in `AuthData` with consistent field names.
 - `MainAuthManager` holds a `BrowserWindow` reference for triggering renderer navigation (e.g., redirecting to `/login` on token invalidation).
 

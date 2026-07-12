@@ -48,6 +48,11 @@ describe('FeatureFlagCacheManager', () => {
   });
 
   describe('before initialization', () => {
+    it('getInstance returns the existing singleton after module initialization', () => {
+      const managerClass = (featureFlagCacheManager as any).constructor;
+      expect(managerClass.getInstance()).toBe(featureFlagCacheManager);
+    });
+
     it('isEnabled returns false for any flag', () => {
       expect(featureFlagCacheManager.isEnabled('someFlag')).toBe(false);
     });
@@ -101,6 +106,30 @@ describe('FeatureFlagCacheManager', () => {
       expect(getAllFlagsMock).toHaveBeenCalledTimes(1);
     });
 
+    it('notifies subscribed listeners once and stops after unsubscribe', async () => {
+      const listener = vi.fn();
+      const unsubscribe = featureFlagCacheManager.subscribe(listener);
+      (window as any).electronAPI = {
+        featureFlags: {
+          getAllFlags: vi.fn().mockResolvedValue({ success: true, data: { first: true } })
+        }
+      };
+
+      await featureFlagCacheManager.initialize();
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      unsubscribe();
+      resetSingleton();
+      (window as any).electronAPI = {
+        featureFlags: {
+          getAllFlags: vi.fn().mockResolvedValue({ success: true, data: { second: true } })
+        }
+      };
+
+      await featureFlagCacheManager.initialize();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
     it('falls back to localStorage on backend failure', async () => {
       // Pre-populate localStorage with cached flags
       lsStub.setItem(
@@ -145,6 +174,51 @@ describe('FeatureFlagCacheManager', () => {
 
       await featureFlagCacheManager.initialize();
       expect(featureFlagCacheManager.isInitialized).toBe(true);
+    });
+
+    it('uses the default error when backend returns success=false without an error message', async () => {
+      (window as any).electronAPI = {
+        featureFlags: {
+          getAllFlags: vi.fn().mockResolvedValue({ success: false })
+        }
+      };
+
+      await featureFlagCacheManager.initialize();
+
+      expect(featureFlagCacheManager.isInitialized).toBe(true);
+      expect(featureFlagCacheManager.getAllFlags()).toEqual({});
+    });
+
+    it('defaults missing backend data to an empty flags object', async () => {
+      (window as any).electronAPI = {
+        featureFlags: {
+          getAllFlags: vi.fn().mockResolvedValue({ success: true })
+        }
+      };
+
+      await featureFlagCacheManager.initialize();
+
+      expect(featureFlagCacheManager.isInitialized).toBe(true);
+      expect(featureFlagCacheManager.getAllFlags()).toEqual({});
+    });
+
+    it('defaults missing cached flags to an empty flags object', async () => {
+      lsStub.setItem(
+        'openkosmos_feature_flags_cache',
+        JSON.stringify({ timestamp: Date.now() })
+      );
+      lsStub.setItem('openkosmos_feature_flags_cache_version', '1.0');
+
+      (window as any).electronAPI = {
+        featureFlags: {
+          getAllFlags: vi.fn().mockRejectedValue(new Error('network error'))
+        }
+      };
+
+      await featureFlagCacheManager.initialize();
+
+      expect(featureFlagCacheManager.isInitialized).toBe(true);
+      expect(featureFlagCacheManager.getAllFlags()).toEqual({});
     });
 
     it('saves flags to localStorage after successful sync', async () => {

@@ -1,13 +1,28 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 
 import { safeConsole } from '../../lib/utilities/safeConsole';
-import { getProfileCacheManager, useRemoteChannelManager } from '../lazy';
+import { createLogger } from '../../lib/unifiedLogger';
+import { getProfileCacheManager } from '../lazy';
 import type { Context } from './shared';
 import { mcpClientManager } from "../../lib/mcpRuntime/mcpClientManager";
 import { chatSessionStore } from "../../lib/chat/chatSessionStore";
 import { AgentChatManager } from "../../lib/chat/agentChatManager";
 import { chatSessionManager } from "../../lib/userDataADO/chatSessionManager";
 import { schedulerManager } from '../../lib/scheduler/SchedulerManager';
+import { getEmbeddedBrowserManager } from '../../lib/embeddedBrowser/EmbeddedBrowserManager';
+import { getPermissionStatus } from '../../lib/computerUse/permissions';
+import { getComputerUsePlatformSupport, getComputerUseUnsupportedReason } from '../../lib/computerUse/platformSupport';
+import { normalizeComputerUseSettingsPatch } from '../../lib/userDataADO/profileSettingsCrud';
+import { mcpConfigManager } from '../../lib/userDataADO/mcpConfigManager';
+import { skillsConfigManager } from '../../lib/userDataADO/skillsConfigManager';
+import { hooksConfigManager } from '../../lib/userDataADO/hooksConfigManager';
+import { reinjectInlineChatAgents } from '../../lib/userDataADO/profileNotificationHelpers';
+
+const logger = createLogger();
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export default function(ctx: Context) {
   // ProfileCacheManager Data Operations - AUTHORIZED
@@ -18,26 +33,79 @@ export default function(ctx: Context) {
       if (profile) {
         // Force a notification to frontend to sync current state
         await pcManager.forceNotifyProfileDataManager(alias);
-        return { success: true, data: profile };
+        // Re-inject the manager-owned installed MCP servers, global skill registry, and
+        // global Agent Hook library so this IPC read carries the same wire shape as the
+        // profile:cacheUpdated push. The cached profile no longer carries mcp_servers,
+        // skills, or hooks (owned by McpConfigManager, SkillsConfigManager, and
+        // HooksConfigManager respectively); the renderer getProfile fallback
+        // (profileDataManager.initialize) forwards mcp_servers to mcpClientCacheManager and
+        // applies skills/hooks, so without these the renderer can initialize with an empty
+        // server set, skill list, or Hook library if the push races.
+        //
+        // Chats are also re-hydrated with their inline agents. The cached profile holds
+        // agent_ids only; the push warms the renderer agent cache (agents:changed) before
+        // the agent_ids-only profile, but this direct return has no such ordering guarantee,
+        // so a fallback applied against a cold cache would resolve no agent. Re-injecting the
+        // inline agents keeps the fallback self-sufficient (symmetric with the slices above).
+        const withInlineAgents = reinjectInlineChatAgents(profile, pcManager.getRegisteredAgents(alias));
+        return {
+          success: true,
+          data: {
+            ...withInlineAgents,
+            mcp_servers: mcpConfigManager.getServers(alias),
+            skills: skillsConfigManager.getSkills(alias),
+            hooks: hooksConfigManager.getHooks(alias),
+          },
+        };
       } else {
         return { success: false, error: 'Profile not found' };
       }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
-  // ProfileCacheManager Primary Agent Operations - AUTHORIZED
-  ipcMain.handle('profile:setPrimaryAgent', async (event, agentName: string) => {
+  // Normalized renderer cache pulls (Phase 1 of renderer normalization, see
+  // docs/sidecar-renderer-normalization-tech-doc.md). Each returns the current
+  // in-memory set for an alias so the agent/skill/hook ClientCacheManager can
+  // seed itself on init, mirroring mcp:getServerStatus. The push counterparts
+  // are agents:changed / skills:changed / hooks:changed from performNotification.
+  ipcMain.handle('agents:getAll', async (event, alias: string) => {
+    try {
+      const pcManager = await getProfileCacheManager();
+      return { success: true, data: pcManager.getRegisteredAgents(alias) };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('skills:getAll', async (event, alias: string) => {
+    try {
+      return { success: true, data: skillsConfigManager.getSkills(alias) };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('hooks:getAll', async (event, alias: string) => {
+    try {
+      return { success: true, data: hooksConfigManager.getHooks(alias) };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  // ProfileCacheManager Primary Chat Operations - AUTHORIZED
+  ipcMain.handle('profile:setPrimaryChat', async (event, chatId: string) => {
     try {
       if (!ctx.currentUserAlias) {
         return { success: false, error: 'No current user alias set' };
       }
       const pcManager = await getProfileCacheManager();
-      const success = await pcManager.updatePrimaryAgent(ctx.currentUserAlias, agentName);
+      const success = await pcManager.updatePrimaryChat(ctx.currentUserAlias, chatId);
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -48,7 +116,7 @@ export default function(ctx: Context) {
       const success = await pcManager.updateFreDone(alias, freDone);
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -58,11 +126,99 @@ export default function(ctx: Context) {
       const success = await pcManager.updateConfirmationSettings(alias, settings);
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
-  // ProfileCacheManager MCP Operations - AUTHORIZED
+  ipcMain.handle('profile:updateBrowserSettings', async (_event, alias: string, settings: any) => {
+    try {
+      const pcManager = await getProfileCacheManager();
+      const success = await pcManager.updateBrowserSettings(alias, settings);
+      // Tear down any live embedded-browser views when the feature is turned off.
+      if (success && settings?.enabled === false) {
+        getEmbeddedBrowserManager()?.destroyAll();
+      }
+      return { success };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('profile:updateMemexSettings', async (_event, alias: string, settings: any) => {
+    try {
+      const pcManager = await getProfileCacheManager();
+      const success = await pcManager.updateMemexSettings(alias, settings);
+      return { success };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('profile:updateComputerUseSettings', async (_event, alias: string, settings: any) => {
+    try {
+      if (!ctx.currentUserAlias) {
+        return { success: false, error: 'No current user alias set' };
+      }
+      if (alias !== ctx.currentUserAlias) {
+        return { success: false, error: 'Computer Use settings can only be updated for the current profile' };
+      }
+      const normalizedSettings = normalizeComputerUseSettingsPatch(settings);
+      if (!normalizedSettings) {
+        return { success: false, error: 'Invalid Computer Use settings' };
+      }
+      if (normalizedSettings.enabled === true) {
+        const unsupportedReason = getComputerUseUnsupportedReason();
+        if (unsupportedReason) {
+          return { success: false, error: unsupportedReason };
+        }
+      }
+      const pcManager = await getProfileCacheManager();
+      const success = await pcManager.updateComputerUseSettings(ctx.currentUserAlias, normalizedSettings);
+      if (success) {
+        // Re-advertise or hide the computer_use builtin tool immediately so toggling
+        // the master switch takes effect within the running session instead of only
+        // after a relaunch (see computerUse/ai.prompt.md). Best-effort: a refresh
+        // failure must not flip the already-persisted save result to failure.
+        try {
+          await mcpClientManager.refreshBuiltinTools();
+        } catch (refreshError) {
+          logger.error('[profile:updateComputerUseSettings] refreshBuiltinTools failed', 'profile:updateComputerUseSettings', {
+            error: refreshError instanceof Error ? refreshError.message : String(refreshError),
+          });
+        }
+      }
+      return { success };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  // Report macOS Screen Recording + Accessibility status to the Settings surface so the
+  // user can see what is still required and jump to grant it (PRD: "OS permission status
+  // + prompts"). `prompt: true` triggers the Accessibility system dialog and deep-links to
+  // the Screen Recording pane; `prompt: false` is a passive read for rendering status.
+  ipcMain.handle('computerUse:getPermissionStatus', async (_event, prompt?: boolean) => {
+    try {
+      const status = { ...getPermissionStatus(prompt === true), ...getComputerUsePlatformSupport() };
+      if (prompt === true && status.screenRecording !== 'granted') {
+        // Screen Recording has no programmatic prompt (unlike Accessibility, which
+        // getPermissionStatus(true) triggers), so open the macOS System Settings pane
+        // directly. Best-effort: failing to open must not fail the status read.
+        try {
+          await shell.openExternal(
+            'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+          );
+        } catch (openError) {
+          logger.error('[computerUse:getPermissionStatus] openExternal failed', 'computerUse:getPermissionStatus', {
+            error: openError instanceof Error ? openError.message : String(openError),
+          });
+        }
+      }
+      return { success: true, status };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
   // 🆕 Refactor: call mcpClientManager directly, no longer through profileCacheManager
   ipcMain.handle('profile:addMcpServer', async (event, serverName: string, serverConfig: any) => {
     try {
@@ -70,7 +226,7 @@ export default function(ctx: Context) {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -79,7 +235,7 @@ export default function(ctx: Context) {
       await mcpClientManager.update(serverName, serverConfig);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -88,7 +244,7 @@ export default function(ctx: Context) {
       await mcpClientManager.delete(serverName);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -97,7 +253,7 @@ export default function(ctx: Context) {
       await mcpClientManager.connect(serverName);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -106,7 +262,7 @@ export default function(ctx: Context) {
       await mcpClientManager.reconnect(serverName);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -115,7 +271,7 @@ export default function(ctx: Context) {
       await mcpClientManager.disconnect(serverName);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -135,12 +291,9 @@ export default function(ctx: Context) {
       const { duplicateAgent } = await import('../../lib/userDataADO/agentDuplicator');
       const result = await duplicateAgent(pcManager, ctx.currentUserAlias, sourceChatId.trim(), newAgentName.trim());
 
-      if (result.success) {
-      }
-
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -152,13 +305,9 @@ export default function(ctx: Context) {
       const pcManager = await getProfileCacheManager();
       const success = await pcManager.addChatConfig(ctx.currentUserAlias, chatConfig);
 
-      // Record agent created analytics (fire-and-forget)
-      if (success) {
-      }
-
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -171,7 +320,7 @@ export default function(ctx: Context) {
       const success = await pcManager.updateChatConfig(ctx.currentUserAlias, chatId, chatConfig);
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -185,7 +334,7 @@ export default function(ctx: Context) {
 
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -203,7 +352,7 @@ export default function(ctx: Context) {
       }
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -221,7 +370,7 @@ export default function(ctx: Context) {
       }
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -234,7 +383,7 @@ export default function(ctx: Context) {
       const data = pcManager.getArchivedAgents(ctx.currentUserAlias);
       return { success: true, data };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -247,7 +396,7 @@ export default function(ctx: Context) {
       const chatConfig = pcManager.getChatConfig(ctx.currentUserAlias, chatId);
       return { success: true, data: chatConfig };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -260,7 +409,7 @@ export default function(ctx: Context) {
       const chatConfigs = pcManager.getAllChatConfigs(ctx.currentUserAlias);
       return { success: true, data: chatConfigs };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -273,7 +422,7 @@ export default function(ctx: Context) {
       const success = await pcManager.updateChatAgent(ctx.currentUserAlias, chatId, agentUpdates);
       return { success };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -288,7 +437,7 @@ export default function(ctx: Context) {
       }
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -306,7 +455,7 @@ export default function(ctx: Context) {
       await pcManager.syncStarredChatSessionIndex(alias, chatId, result.metadata, { notifyRenderer: true });
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -322,7 +471,7 @@ export default function(ctx: Context) {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -335,16 +484,15 @@ export default function(ctx: Context) {
         return { success: false, error: 'Failed to delete chat session' };
       }
 
-      // Clean up remote channel mappings and notify remote users (non-fatal)
       try {
-        await useRemoteChannelManager(m => m.notifySessionDeleted(sessionId));
-      } catch (rcErr) {
-        safeConsole.warn('[main] Failed to notify remote channel about session deletion (non-fatal):', String(rcErr));
+        getEmbeddedBrowserManager()?.destroySession(sessionId);
+      } catch (browserErr) {
+        safeConsole.warn('[main] Failed to clean embedded browser session state (non-fatal):', String(browserErr));
       }
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -356,7 +504,7 @@ export default function(ctx: Context) {
       const sessionFile = await pcManager.getChatSessionFile(alias, chatId, sessionId);
       return { success: true, data: sessionFile };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -368,7 +516,7 @@ export default function(ctx: Context) {
       const result = await chatSessionManager.getChatSessions(alias, chatId, minCount);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -378,7 +526,17 @@ export default function(ctx: Context) {
       const result = await chatSessionManager.getMoreChatSessions(alias, chatId, fromMonthIndex);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  // getAllScheduledSessions - Get all scheduler sessions for a chat with pagination
+  ipcMain.handle('profile:getAllScheduledSessions', async (event, alias: string, chatId: string, options?: { limit?: number; offset?: number }) => {
+    try {
+      const result = await chatSessionManager.getAllScheduledSessions(alias, chatId, options);
+      return { success: true, data: result };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -387,7 +545,7 @@ export default function(ctx: Context) {
       const summary = await chatSessionStore.getUnreadSummary(alias, chatId);
       return { success: true, data: summary };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 }

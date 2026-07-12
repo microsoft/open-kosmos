@@ -3,7 +3,7 @@
 import React from 'react';
 import { render, act } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 // -- hoisted mocks --
 const mockHandleDrag = vi.hoisted(() => vi.fn());
@@ -38,8 +38,13 @@ beforeAll(() => {
 });
 
 import { SquarePainter, SquareShape } from '../square';
+import { appDataManager } from '../../../../../lib/userData/appDataManager';
 
 const area: [number, number, number, number] = [0, 0, 800, 600];
+
+beforeEach(() => {
+  (appDataManager as any).cache = { uiLanguage: 'en' };
+});
 
 describe('SquarePainter', () => {
   it('renders null when no rect in state', () => {
@@ -56,6 +61,17 @@ describe('SquarePainter', () => {
       (ref.current as any).setState({ rect: [10, 20, 100, 80], stroke: 'red', strokeWidth: 3 });
     });
     expect(container.querySelector('rect')).not.toBeNull();
+  });
+
+  it('uses the selected language for the painted rect aria-label', () => {
+    (appDataManager as any).cache = { uiLanguage: 'zh-CN' };
+    const addSquare = vi.fn();
+    const ref = React.createRef<SquarePainter>();
+    const { container } = render(<svg><SquarePainter ref={ref} area={area} addSquare={addSquare} /></svg>);
+    act(() => {
+      (ref.current as any).setState({ rect: [10, 20, 100, 80], stroke: 'red', strokeWidth: 3 });
+    });
+    expect(container.querySelector('rect')?.getAttribute('aria-label')).toBe('渲染矩形');
   });
 
   it('renders rect with 0.01 width/height fallback when w/h=0', () => {

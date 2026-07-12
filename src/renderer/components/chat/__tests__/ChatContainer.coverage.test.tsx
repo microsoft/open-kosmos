@@ -405,3 +405,83 @@ describe('ChatContainer — warning detection for destructive tool messages', ()
     expect(true).toBe(true); // Structural test — no crash
   });
 });
+
+describe('ChatContainer — shouldShowLoadingAfterLastMessage branches', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.requestAnimationFrame = ((cb: FrameRequestCallback) =>
+      window.setTimeout(() => cb(performance.now()), 0)) as any;
+    window.cancelAnimationFrame = ((h: number) => window.clearTimeout(h)) as any;
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('shows loading when streamingMessageId points to a non-assistant message', () => {
+    const userMsg: Message = {
+      id: 'user-streaming',
+      role: 'user',
+      timestamp: Date.now(),
+      content: [{ type: 'text', text: 'hello' }],
+    };
+
+    const { container } = render(
+      <ChatContainer
+        messages={[userMsg]}
+        allMessages={[userMsg]}
+        streamingMessageId="user-streaming"
+        chatStatus="sending_response"
+      />,
+    );
+
+    expect(container.querySelector('.typing-indicator')).toBeInTheDocument();
+  });
+
+  it('hides after-last-message loading when streamingMessageId points to an assistant message', () => {
+    const userMsg: Message = {
+      id: 'user-1',
+      role: 'user',
+      timestamp: Date.now() - 1000,
+      content: [{ type: 'text', text: 'hello' }],
+    };
+    const assistantMsg: Message = {
+      id: 'assistant-streaming',
+      role: 'assistant',
+      timestamp: Date.now(),
+      content: [{ type: 'text', text: 'response' }],
+    };
+
+    const { container } = render(
+      <ChatContainer
+        messages={[userMsg, assistantMsg]}
+        allMessages={[userMsg, assistantMsg]}
+        streamingMessageId="assistant-streaming"
+        chatStatus="sending_response"
+      />,
+    );
+
+    expect(container.querySelector('.typing-indicator')).not.toBeInTheDocument();
+  });
+
+  it('shows loading when streamingMessageId does not match any message', () => {
+    const userMsg: Message = {
+      id: 'user-1',
+      role: 'user',
+      timestamp: Date.now(),
+      content: [{ type: 'text', text: 'hello' }],
+    };
+
+    const { container } = render(
+      <ChatContainer
+        messages={[userMsg]}
+        allMessages={[userMsg]}
+        streamingMessageId="nonexistent-id"
+        chatStatus="sending_response"
+      />,
+    );
+
+    expect(container.querySelector('.typing-indicator')).toBeInTheDocument();
+  });
+});

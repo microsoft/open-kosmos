@@ -35,7 +35,7 @@ describe('ChatOps ID format integration', () => {
         name: 'Agent',
         emoji: 'A',
         role: 'assistant',
-        system_prompt: '',
+        system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
         model: 'gpt-4o',
         mcp_servers: [],
         workspace: '',

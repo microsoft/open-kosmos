@@ -28,8 +28,8 @@
 
 /* Dialog Container */
 .paste-to-workspace-dialog {
-  background: #FFFFFF;
-  border-radius: 16px;
+  background: var(--color-white);
+  border-radius: var(--radius-2xl);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
   width: 100%;
   max-width: 560px;
@@ -66,11 +66,11 @@
   gap: 10px;
   font-size: 16px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .paste-dialog-title svg {
-  color: #6b7280;
+  color: var(--color-neutral-500);
 }
 
 .paste-dialog-close-btn {
@@ -81,15 +81,15 @@
   height: 32px;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   transition: all 0.15s ease;
 }
 
 .paste-dialog-close-btn:hover {
   background: rgba(0, 0, 0, 0.05);
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 /* Body */
@@ -109,7 +109,7 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-neutral-700);
   margin-bottom: 8px;
 }
 
@@ -124,30 +124,30 @@
   min-height: 200px;
   max-height: 300px;
   padding: 14px 16px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  background: #FAFAFA;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-50);
   font-size: 14px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', monospace;
   line-height: 1.6;
-  color: #272320;
+  color: var(--color-warm-900);
   resize: vertical;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
 }
 
 .paste-content-textarea::placeholder {
-  color: #9ca3af;
+  color: var(--color-neutral-400);
 }
 
 .paste-content-textarea:focus {
   outline: none;
-  border-color: #272320;
+  border-color: var(--color-warm-900);
   box-shadow: 0 0 0 3px rgba(39, 35, 32, 0.1);
 }
 
 .paste-content-textarea:disabled {
-  background: #F3F4F6;
+  background: var(--color-neutral-100);
   cursor: not-allowed;
 }
 
@@ -171,17 +171,17 @@
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: #6366f1;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: 6px;
+  color: var(--color-accent-secondary);
+  background: color-mix(in srgb, var(--color-accent-secondary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-secondary) 20%, transparent);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .paste-regenerate-btn:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.3);
+  background: color-mix(in srgb, var(--color-accent-secondary) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-secondary) 30%, transparent);
 }
 
 .paste-regenerate-btn:disabled {
@@ -190,7 +190,7 @@
 }
 
 .paste-regenerate-btn svg {
-  color: #6366f1;
+  color: var(--color-accent-secondary);
 }
 
 .paste-filename-input-wrapper {
@@ -203,27 +203,27 @@
   width: 100%;
   padding: 12px 16px;
   padding-right: 40px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  background: #FAFAFA;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-50);
   font-size: 14px;
-  color: #272320;
+  color: var(--color-warm-900);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
 }
 
 .paste-filename-input::placeholder {
-  color: #9ca3af;
+  color: var(--color-neutral-400);
 }
 
 .paste-filename-input:focus {
   outline: none;
-  border-color: #272320;
+  border-color: var(--color-warm-900);
   box-shadow: 0 0 0 3px rgba(39, 35, 32, 0.1);
 }
 
 .paste-filename-input:disabled {
-  background: #F3F4F6;
+  background: var(--color-neutral-100);
   cursor: not-allowed;
 }
 
@@ -233,13 +233,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6366f1;
+  color: var(--color-accent-secondary);
 }
 
 .paste-filename-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   line-height: 1.4;
 }
 
@@ -248,8 +248,8 @@
   padding: 10px 14px;
   background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 8px;
-  color: #dc2626;
+  border-radius: var(--radius-lg);
+  color: var(--color-danger-600);
   font-size: 13px;
 }
 
@@ -261,7 +261,7 @@
   gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  background: #FAFAFA;
+  background: var(--color-neutral-50);
 }
 
 .paste-dialog-btn {
@@ -272,26 +272,26 @@
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.15s ease;
   min-width: 90px;
 }
 
 .paste-dialog-btn.primary {
-  background: #272320;
-  color: #FFFFFF;
-  border: 1px solid #272320;
+  background: var(--color-warm-900);
+  color: var(--color-white);
+  border: 1px solid var(--color-warm-900);
 }
 
 .paste-dialog-btn.primary:hover:not(:disabled) {
-  background: #3d3935;
-  border-color: #3d3935;
+  background: var(--color-warm-700);
+  border-color: var(--color-warm-700);
 }
 
 .paste-dialog-btn.primary:active:not(:disabled) {
-  background: #1a1715;
-  border-color: #1a1715;
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-900);
   transform: scale(0.98);
 }
 
@@ -301,18 +301,18 @@
 }
 
 .paste-dialog-btn.secondary {
-  background: #FFFFFF;
-  color: #272320;
+  background: var(--color-white);
+  color: var(--color-warm-900);
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .paste-dialog-btn.secondary:hover:not(:disabled) {
-  background: #F8F4F1;
-  border-color: rgba(0, 0, 0, 0.2);
+  background: var(--color-warm-100);
+  border-color: var(--color-border-strongest);
 }
 
 .paste-dialog-btn.secondary:active:not(:disabled) {
-  background: #F0EAE5;
+  background: var(--color-warm-100);
   border-color: rgba(0, 0, 0, 0.24);
   transform: scale(0.98);
 }

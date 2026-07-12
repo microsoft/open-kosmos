@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-27 -->
+<!-- Last verified: 2026-07-11 -->
 <!-- Updated: single-owner persistence (Discord model), connection dedup, rate limiting -->
 # External Agent
 

@@ -4,6 +4,7 @@ import { MODEL_CATEGORIES } from '../../lib/models/ghcModels';
 import { profileDataManager } from '../../lib/userData';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { logger } from '@renderer/lib';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface ErrorBarProps {
   errorMessage: string;
@@ -89,6 +90,7 @@ function getFixSuggestion(errorMessage: string, chatSessionId: string): string |
  * Automatically shows fix suggestions when known error patterns are detected
  */
 const ErrorBar: React.FC<ErrorBarProps> = ({ errorMessage, chatSessionId }) => {
+  const { t } = useI18n();
   const onRetry = async (chatSessionId: string) => {
     logger.debug('[ErrorBar] 🔄 Retrying chat...', { chatSessionId });
 
@@ -135,10 +137,10 @@ const ErrorBar: React.FC<ErrorBarProps> = ({ errorMessage, chatSessionId }) => {
         <button
           className="error-bar-btn retry"
           onClick={handleRetry}
-          title="Retry the failed request"
-          aria-label="Retry"
+          title={t('chat.error.retryFailedRequest')}
+          aria-label={t('common.retry')}
         >
-          Retry
+          {t('common.retry')}
         </button>
       </div>
     </div>

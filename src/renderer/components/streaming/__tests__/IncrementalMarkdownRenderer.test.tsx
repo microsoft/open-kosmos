@@ -26,9 +26,26 @@ vi.mock('../../chat/CodeBlockCopyButton', () => ({
   default: ({ code }: any) => <button data-testid="copy-button">{code}</button>,
 }));
 
+const mockBrowserEnabled = { value: true };
+vi.mock('../../browser/embeddedBrowser.atom', () => ({
+  EmbeddedBrowserAtom: {
+    useChange: () => ({ open: vi.fn() }),
+  },
+}));
+vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
+  useCurrentChatSessionId: () => 'session-test',
+}));
+vi.mock('../../../lib/userData/useEmbeddedBrowserEnabled', () => ({
+  useEmbeddedBrowserEnabled: () => mockBrowserEnabled.value,
+}));
+
 import { IncrementalMarkdownRenderer } from '../IncrementalMarkdownRenderer';
 
 describe('IncrementalMarkdownRenderer', () => {
+  beforeEach(() => {
+    mockBrowserEnabled.value = true;
+  });
+
   it('renders plain text content', () => {
     render(<IncrementalMarkdownRenderer content="Hello world" isStreaming={false} />);
     expect(screen.getByText('Hello world')).toBeTruthy();
@@ -66,7 +83,30 @@ describe('IncrementalMarkdownRenderer', () => {
     const a = container.querySelector('a');
     expect(a).toBeTruthy();
     expect(a!.getAttribute('href')).toBe('https://example.com');
+    // External links open in the in-app browser side panel, not the system
+    // browser, so they must not use target="_blank".
+    expect(a!.getAttribute('target')).toBeNull();
+  });
+
+  it('renders external links with safe fallback when embedded browser is disabled', () => {
+    mockBrowserEnabled.value = false;
+    const { container } = render(
+      <IncrementalMarkdownRenderer content="[example](https://example.com)" isStreaming={false} />
+    );
+    const a = container.querySelector('a');
+    expect(a).toBeTruthy();
     expect(a!.getAttribute('target')).toBe('_blank');
+    expect(a!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('routes HTTPS deep links through the embedded browser when enabled', () => {
+    const { container } = render(
+      <IncrementalMarkdownRenderer content="[meeting](https://conference.example.com/meet/abc)" isStreaming={false} />
+    );
+    const a = container.querySelector('a');
+    expect(a).toBeTruthy();
+    expect(a!.getAttribute('target')).toBeNull();
+    expect(a!.getAttribute('rel')).toBeNull();
   });
 
   it('renders headings', () => {

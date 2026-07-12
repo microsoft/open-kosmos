@@ -107,6 +107,29 @@ describe('GetAgentStatusTool', () => {
     expect(result.message).toContain('"Kobi" is added');
   });
 
+  it('returns Added when the matched agent is secondary in a multi-agent chat', async () => {
+    mockGetAllChatConfigs.mockReturnValue([
+      {
+        chat_id: 'chat-multi',
+        agents: [
+          { name: 'Primary', role: 'lead', model: 'gpt-4' },
+          { name: 'Secondary', role: 'researcher', emoji: '🔎', model: 'claude-sonnet' },
+        ],
+      },
+    ]);
+
+    const result = await GetAgentStatusTool.execute({ agent_name: 'Secondary' });
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('Added');
+    expect(result.details).toEqual(expect.objectContaining({
+      chat_id: 'chat-multi',
+      role: 'researcher',
+      emoji: '🔎',
+      model: 'claude-sonnet',
+    }));
+  });
+
   it('trims whitespace from agent_name before lookup', async () => {
     mockGetAllChatConfigs.mockReturnValue([
       { chat_id: 'c1', agent: { name: 'Kobi', role: 'assistant' } },

@@ -667,6 +667,22 @@ describe('AgentChatManager (coverage2)', () => {
       );
     });
 
+    it('skips cleanup when the session is the current session even if not foreground-protected', () => {
+      mockSessionCoordinator.getCurrentChatSessionId.mockReturnValue('sess-current');
+      mockSessionCoordinator.isProtectedSession.mockReturnValue(false);
+      const instance = makeMockAgentChat({ getChatStatus: vi.fn(() => 'idle') });
+      mockRegistry.getInstance.mockReturnValue(instance);
+      const onIdleTimeout = getOnIdleTimeout();
+      onIdleTimeout?.('sess-current');
+      expect(sharedMockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping cleanup for current session'),
+        expect.any(String),
+        expect.any(Object),
+      );
+      expect(instance.destroy).not.toHaveBeenCalled();
+      mockSessionCoordinator.getCurrentChatSessionId.mockReturnValue(null);
+    });
+
     it('skips when instance not found', () => {
       mockSessionCoordinator.isProtectedSession.mockReturnValue(false);
       mockRegistry.getInstance.mockReturnValue(null);

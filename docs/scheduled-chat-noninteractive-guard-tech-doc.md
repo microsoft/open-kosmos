@@ -11,13 +11,11 @@ This change introduces a unified interaction policy for chat runtimes and applie
 Add a runtime-level policy enum in the chat engine:
 
 - `allow-ui`: normal foreground chat behavior
-- `plain-text-only`: UI interactions are unavailable, but the assistant may ask in plain text
 - `forbid`: no interactive UI and no user follow-up; execution must fail if interaction is required
 
 Current mapping:
 
 - foreground interactive chat → `allow-ui`
-- remote IM session → `plain-text-only`
 - scheduled-silent run → `forbid`
 
 ### Blocked interaction error
@@ -49,7 +47,6 @@ File: `src/main/lib/chat/agentChat.ts`
 
 File: `src/main/lib/chat/agentChatPromptService.ts`
 
-- Preserve the existing remote IM prompt warning for `plain-text-only`.
 - Add a new scheduled background warning for `forbid`.
 - Explicitly tell the model not to use interactive UI or plain-text follow-up questions in scheduled background runs.
 
@@ -84,16 +81,12 @@ File: `src/main/lib/chat/agentChatManagerScheduledRunner.ts`
   - `forbid` policy throws `NonInteractiveRuntimeInteractionError`
   - blocked interaction details are reported to the runtime
 
-- `agentChatToolPostProcessor.test.ts`
-  - remote IM still skips `request_interactive_input`
-
 - `agentChatManagerScheduledRunner.test.ts`
   - scheduled runner sets `interactionPolicy: 'forbid'`
   - blocked interaction failures mark the run as failed and notify unread completion
 
 - `agentChat.streamMessage.test.ts`
-  - remote session still resets to default policy after the turn
-  - explicit interaction policy is also reset after the turn
+  - explicit interaction policy is reset after the turn
 
 ## Risks and Mitigations
 

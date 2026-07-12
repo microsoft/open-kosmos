@@ -1,6 +1,7 @@
 import React from 'react'
 import { Search, X } from 'lucide-react'
 import '../../styles/ListSearchBox.css'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface ListSearchBoxProps {
   value: string
@@ -11,8 +12,10 @@ interface ListSearchBoxProps {
 const ListSearchBox: React.FC<ListSearchBoxProps> = ({
   value,
   onChange,
-  placeholder = 'Search...',
+  placeholder,
 }) => {
+  const { t } = useI18n()
+  const resolvedPlaceholder = placeholder ?? t('common.searchPlaceholder')
   return (
     <div className="list-search-box">
       <Search size={14} className="list-search-icon" />
@@ -21,13 +24,13 @@ const ListSearchBox: React.FC<ListSearchBoxProps> = ({
         className="list-search-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
       />
       {value && (
         <button
           className="list-search-clear"
           onClick={() => onChange('')}
-          title="Clear search"
+          title={t('common.clearSearch')}
         >
           <X size={14} />
         </button>

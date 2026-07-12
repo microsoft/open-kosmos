@@ -2,6 +2,7 @@ import React from 'react';
 import type { Companion, BuddyEntry } from '../../../main/lib/buddy/types';
 import { RARITY_COLORS, RARITY_MAX_LEVEL } from '../../../main/lib/buddy/types';
 import { xpToLevel } from '../../../main/lib/buddy/leveling';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface Props {
   companion: Companion;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const BuddyInfoPanel: React.FC<Props> = ({ companion, activeBuddy }) => {
+  const { t } = useI18n();
   const color = RARITY_COLORS[companion.rarity];
 
   const level = activeBuddy ? Math.min(xpToLevel(activeBuddy.xp), RARITY_MAX_LEVEL[activeBuddy.rarity]) : 0;
@@ -16,7 +18,7 @@ export const BuddyInfoPanel: React.FC<Props> = ({ companion, activeBuddy }) => {
   return (
     <div className="buddy-info">
       <div className="buddy-info-name" style={{ color }}>
-        {companion.name}{activeBuddy ? ` Lv.${level}` : ''}
+        {companion.name}{activeBuddy ? ` ${t('buddy.levelCompact', { level })}` : ''}
       </div>
     </div>
   );

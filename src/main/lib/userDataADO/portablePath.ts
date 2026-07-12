@@ -1,14 +1,14 @@
 /**
  * Portable Path Utilities
- * 
+ *
  * Converts paths from other operating systems to the local OS format.
  * This enables profile.json to be synced across machines with different OSes.
- * 
+ *
  * Detection patterns:
  * - Windows: C:\Users\...\AppData\Roaming\openkosmos-app\profiles\{alias}\...
  * - macOS:   /Users/.../Library/Application Support/openkosmos-app/profiles/{alias}/...
  * - Linux:   /home/.../.config/openkosmos-app/profiles/{alias}/...
- * 
+ *
  * The key insight: we extract the profile-relative path and reconstruct it
  * using the local profile directory.
  */
@@ -29,21 +29,21 @@ function detectForeignOS(pathStr: string): 'windows' | 'unix' | null {
   }
 
   const currentOS = process.platform;
-  
+
   // Check for Windows path (has drive letter like C:\)
   const isWindowsPath = /^[A-Za-z]:[\\\/]/.test(pathStr);
-  
+
   // Check for Unix path (starts with /)
   const isUnixPath = pathStr.startsWith('/');
-  
+
   if (isWindowsPath && currentOS !== 'win32') {
     return 'windows';
   }
-  
+
   if (isUnixPath && currentOS === 'win32') {
     return 'unix';
   }
-  
+
   logger.info(`[PortablePath] Path "${pathStr}" does not appear to be from a foreign OS.`);
   return null;
 }
@@ -59,7 +59,7 @@ function extractProfileRelativePath(pathStr: string): { alias: string; relativeP
 
   // Normalize slashes for matching
   const normalizedPath = pathStr.replace(/\\/g, '/');
-  
+
   // Match pattern: .../profiles/{alias}/{relativePath}
   const match = normalizedPath.match(/\/profiles\/([^\/]+)\/(.+)$/);
   if (match) {
@@ -68,7 +68,7 @@ function extractProfileRelativePath(pathStr: string): { alias: string; relativeP
       relativePath: match[2],
     };
   }
-  
+
   logger.warn(`[PortablePath] Path "${pathStr}" does not match expected profile path pattern.`);
   return null;
 }
@@ -76,7 +76,7 @@ function extractProfileRelativePath(pathStr: string): { alias: string; relativeP
 /**
  * Convert a path from another OS to the local OS format.
  * If the path is from the current OS or not a profile path, returns it unchanged.
- * 
+ *
  * @param pathStr - The path to convert
  * @param expectedAlias - The expected profile alias (for validation)
  * @returns The converted path for the local OS
@@ -110,13 +110,13 @@ export function convertToLocalPath(pathStr: string, expectedAlias: string): stri
 
   // Use expected alias for reconstruction
   const alias = expectedAlias;
-  
+
   // Reconstruct with local profile directory
   const localProfileDir = getProfileDirectoryPath(alias);
-  
+
   // Convert forward slashes to local path separators
   const localRelativePath = extracted.relativePath.split('/').join(path.sep);
-  
+
   return path.join(localProfileDir, localRelativePath);
 }
 
@@ -127,12 +127,12 @@ export function needsPathConversion(pathStr: string): boolean {
   if (!pathStr || typeof pathStr !== 'string') {
     return false;
   }
-  
+
   const foreignOS = detectForeignOS(pathStr);
   if (!foreignOS) {
     return false;
   }
-  
+
   const extracted = extractProfileRelativePath(pathStr);
   return extracted !== null;
 }

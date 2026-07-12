@@ -1,7 +1,8 @@
 /**
  * @vitest-environment happy-dom
  *
- * Tests for chat-side.atom.ts — WorkspaceExplorerAtom, ScheduleSidepaneAtom, InlinePreviewAtom
+ * Tests for chat-side.atom.ts — WorkspaceExplorerAtom (explorer + preview modes),
+ * ScheduleSidepaneAtom, SubAgentTasksSidepaneAtom.
  *
  * Strategy: build an isolated per-test store using the UNIQ BUILD symbol trick.
  */
@@ -19,7 +20,8 @@ vi.mock('../InlineFilePreviewPanel', () => ({
 import {
   WorkspaceExplorerAtom,
   ScheduleSidepaneAtom,
-  InlinePreviewAtom,
+  SubAgentTasksSidepaneAtom,
+  MemexMemorySidepaneAtom,
 } from '../chat-side.atom';
 
 // ── store builder ──────────────────────────────────────────────────────────────
@@ -37,7 +39,10 @@ function buildStore() {
   return query;
 }
 
-// ── WorkspaceExplorerAtom ──────────────────────────────────────────────────────
+const fileA = { name: 'a.md', url: 'file:///a.md' };
+const fileB = { name: 'b.md', url: 'file:///b.md' };
+
+// ── WorkspaceExplorerAtom — basic state ──────────────────────────────────────────
 
 describe('WorkspaceExplorerAtom — initial state', () => {
   let query: ReturnType<typeof buildStore>;
@@ -50,6 +55,12 @@ describe('WorkspaceExplorerAtom — initial state', () => {
   it('starts with visible=false', () => {
     const s = query(WorkspaceExplorerAtom);
     expect(s.get().visible).toBe(false);
+  });
+
+  it('starts in explorer mode with no preview', () => {
+    const s = query(WorkspaceExplorerAtom);
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
   });
 
   it('starts with no reveal', () => {
@@ -71,11 +82,13 @@ describe('WorkspaceExplorerAtom — setVisible', () => {
     expect(s.get().visible).toBe(true);
   });
 
-  it('setVisible(false) makes visible=false', () => {
+  it('setVisible(false) makes visible=false and resets to explorer mode', () => {
     const s = query(WorkspaceExplorerAtom);
-    s.actions.setVisible(true);
+    s.actions.openPreview(fileA, 'chat');
     s.actions.setVisible(false);
     expect(s.get().visible).toBe(false);
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
   });
 });
 
@@ -122,19 +135,26 @@ describe('WorkspaceExplorerAtom — effectiveToggle', () => {
     expect(s.get().visible).toBe(false);
   });
 
-  it('cancels InlinePreview and hides ScheduleSidepane when toggling', () => {
-    const inline = query(InlinePreviewAtom);
+  it('always lands in explorer mode and clears any preview', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat'); // visible + preview mode
+    s.actions.effectiveToggle();          // → visible=false, explorer
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+  });
+
+  it('hides ScheduleSidepane and SubAgentTasks when toggling', () => {
     const schedule = query(ScheduleSidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
     const ws = query(WorkspaceExplorerAtom);
 
-    // Open inline preview and schedule pane first
-    inline.actions.open({ name: 'file.txt', url: 'file:///file.txt' });
     schedule.actions.show();
+    subAgent.actions.show();
 
     ws.actions.effectiveToggle();
 
-    expect(inline.get()).toBeNull();
     expect(schedule.get()).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
   });
 });
 
@@ -145,22 +165,320 @@ describe('WorkspaceExplorerAtom — effectiveReveal', () => {
     query = buildStore();
   });
 
-  it('sets visible=true and stores path', () => {
+  it('sets visible=true, explorer mode, and stores path', () => {
     const s = query(WorkspaceExplorerAtom);
     s.actions.effectiveReveal('/project/src/index.ts');
     expect(s.get().visible).toBe(true);
+    expect(s.get().mode).toBe('explorer');
     expect(s.get().reveal?.path).toBe('/project/src/index.ts');
   });
 
-  it('hides ScheduleSidepane when revealing', () => {
+  it('clears any active preview when revealing', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.effectiveReveal('/some/file.ts');
+    expect(s.get().preview).toBeUndefined();
+    expect(s.get().mode).toBe('explorer');
+  });
+
+  it('hides ScheduleSidepane, SubAgentTasks, and Memex when revealing', () => {
     const schedule = query(ScheduleSidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+    const memex = query(MemexMemorySidepaneAtom);
     const ws = query(WorkspaceExplorerAtom);
 
-    schedule.actions.show();
+    // Seed the siblings open directly: their show() actions mutually exclude each
+    // other, so chaining show() calls here would pre-close some of them.
+    schedule.change(true);
+    subAgent.change({ visible: true, selectedTaskId: null });
+    memex.change({ visible: true, selectedSlug: null });
     expect(schedule.get()).toBe(true);
 
     ws.actions.effectiveReveal('/some/file.ts');
     expect(schedule.get()).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
+    expect(memex.get().visible).toBe(false);
+  });
+});
+
+// ── WorkspaceExplorerAtom — preview mode ─────────────────────────────────────────
+
+describe('WorkspaceExplorerAtom — openPreview', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('opens a file in preview mode and makes the sidepane visible', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    expect(s.get().visible).toBe(true);
+    expect(s.get().mode).toBe('preview');
+    expect(s.get().preview?.file.name).toBe('a.md');
+    expect(s.get().preview?.origin).toBe('tree');
+    expect(s.get().preview?.isDirty).toBe(false);
+  });
+
+  it('re-opening the same tree-origin file toggles back to explorer', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    s.actions.openPreview(fileA, 'tree');
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+    expect(s.get().visible).toBe(true); // tree-origin keeps the sidepane open
+  });
+
+  it('re-opening the same chat-origin file closes the sidepane', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.openPreview(fileA, 'chat');
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+    expect(s.get().visible).toBe(false); // chat-origin destroys the sidepane
+  });
+
+  it('re-opening the same dirty file with confirm=false keeps the preview (discard guard)', () => {
+    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => false });
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    s.actions.markPreviewDirty(true);
+    s.actions.openPreview(fileA, 'tree'); // same file, dirty, confirm denied → early return
+    expect(s.get().mode).toBe('preview');
+    expect(s.get().preview?.file.name).toBe('a.md');
+  });
+
+  it('re-opening the same dirty file with confirm=true toggles it off', () => {
+    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => true });
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    s.actions.markPreviewDirty(true);
+    s.actions.openPreview(fileA, 'tree'); // same file, dirty, confirm granted → toggle off
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+  });
+
+  it('switching to a different file (not dirty) updates the file', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.openPreview(fileB, 'chat');
+    expect(s.get().preview?.file.name).toBe('b.md');
+  });
+
+  it('switching to a different file when dirty with confirm=true switches', () => {
+    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => true });
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.markPreviewDirty(true);
+    s.actions.openPreview(fileB, 'chat');
+    expect(s.get().preview?.file.name).toBe('b.md');
+    expect(s.get().preview?.isDirty).toBe(false);
+  });
+
+  it('switching to a different file when dirty with confirm=false does not switch', () => {
+    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => false });
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.markPreviewDirty(true);
+    s.actions.openPreview(fileB, 'chat');
+    expect(s.get().preview?.file.name).toBe('a.md');
+  });
+
+  it('preserves width when switching files', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.change({ visible: true, mode: 'preview', preview: { file: fileA, origin: 'chat', isDirty: false, width: 500 } });
+    s.actions.openPreview(fileB, 'chat');
+    expect(s.get().preview?.width).toBe(500);
+  });
+
+  it('hides ScheduleSidepane and SubAgentTasks when opening a preview', () => {
+    const schedule = query(ScheduleSidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+    const ws = query(WorkspaceExplorerAtom);
+
+    schedule.actions.show();
+    subAgent.actions.show();
+
+    ws.actions.openPreview(fileA, 'chat');
+
+    expect(schedule.get()).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
+  });
+});
+
+describe('WorkspaceExplorerAtom — backToExplorer', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('returns to explorer mode and clears preview, keeping the sidepane open', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    s.actions.backToExplorer();
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+    expect(s.get().visible).toBe(true);
+  });
+});
+
+describe('WorkspaceExplorerAtom — markPreviewDirty', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('markPreviewDirty(true) sets preview.isDirty=true', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.markPreviewDirty(true);
+    expect(s.get().preview?.isDirty).toBe(true);
+  });
+
+  it('markPreviewDirty does nothing when there is no preview', () => {
+    const s = query(WorkspaceExplorerAtom);
+    expect(() => s.actions.markPreviewDirty(true)).not.toThrow();
+    expect(s.get().preview).toBeUndefined();
+  });
+
+  it('markPreviewDirty is a no-op when value is unchanged', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.markPreviewDirty(false);
+    expect(s.get().preview?.isDirty).toBe(false);
+  });
+});
+
+describe('WorkspaceExplorerAtom — resizePreview', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('does nothing when there is no preview', () => {
+    const s = query(WorkspaceExplorerAtom);
+    const fakeEvent = {
+      preventDefault: vi.fn(),
+      currentTarget: document.createElement('div'),
+      clientX: 100,
+    } as unknown as React.MouseEvent;
+    expect(() => s.actions.resizePreview(fakeEvent)).not.toThrow();
+  });
+
+  it('sets up mouse listeners and updates preview.width while dragging', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+
+    const wrapper = document.createElement('div');
+    Object.defineProperty(wrapper, 'getBoundingClientRect', { value: () => ({ width: 1000 }) });
+    const handle = document.createElement('div');
+    Object.defineProperty(handle, 'parentElement', { value: wrapper });
+
+    const addEventSpy = vi.spyOn(document, 'addEventListener');
+    const removeEventSpy = vi.spyOn(document, 'removeEventListener');
+
+    const fakeEvent = {
+      preventDefault: vi.fn(),
+      currentTarget: handle,
+      clientX: 400,
+    } as unknown as React.MouseEvent;
+
+    s.actions.resizePreview(fakeEvent);
+
+    expect(addEventSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
+    expect(addEventSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
+
+    const moveHandler = addEventSpy.mock.calls.find(c => c[0] === 'mousemove')?.[1] as EventListener;
+    moveHandler?.(new MouseEvent('mousemove', { clientX: 350 }));
+    expect(s.get().preview?.width).toBeDefined();
+
+    const upHandler = addEventSpy.mock.calls.find(c => c[0] === 'mouseup')?.[1] as EventListener;
+    upHandler?.(new MouseEvent('mouseup'));
+    expect(removeEventSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
+    expect(removeEventSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
+
+    addEventSpy.mockRestore();
+    removeEventSpy.mockRestore();
+  });
+
+  it('does nothing when parentElement is missing', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+
+    const handle = document.createElement('div');
+    const fakeEvent = {
+      preventDefault: vi.fn(),
+      currentTarget: handle,
+      clientX: 400,
+    } as unknown as React.MouseEvent;
+
+    s.actions.resizePreview(fakeEvent);
+    expect(s.get().preview?.width).toBeUndefined();
+  });
+
+  it('mousemove after the preview is destroyed mid-drag is a no-op', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+
+    const wrapper = document.createElement('div');
+    Object.defineProperty(wrapper, 'getBoundingClientRect', { value: () => ({ width: 1000 }) });
+    const handle = document.createElement('div');
+    Object.defineProperty(handle, 'parentElement', { value: wrapper });
+
+    const addEventSpy = vi.spyOn(document, 'addEventListener');
+    const fakeEvent = {
+      preventDefault: vi.fn(),
+      currentTarget: handle,
+      clientX: 400,
+    } as unknown as React.MouseEvent;
+
+    s.actions.resizePreview(fakeEvent);
+    const moveHandler = addEventSpy.mock.calls.find(c => c[0] === 'mousemove')?.[1] as EventListener;
+
+    // Destroy the preview between mousedown and mousemove → onMouseMove hits the
+    // `!cur.preview` guard and returns without writing width.
+    s.actions.setVisible(false);
+    expect(() => moveHandler?.(new MouseEvent('mousemove', { clientX: 350 }))).not.toThrow();
+    expect(s.get().preview).toBeUndefined();
+
+    addEventSpy.mockRestore();
+  });
+});
+
+describe('WorkspaceExplorerAtom — onSessionSwitch', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('is a no-op in explorer mode', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.setVisible(true);
+    s.actions.onSessionSwitch();
+    expect(s.get().visible).toBe(true);
+    expect(s.get().mode).toBe('explorer');
+  });
+
+  it('tree-origin preview falls back to explorer (sidepane stays open)', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'tree');
+    s.actions.onSessionSwitch();
+    expect(s.get().mode).toBe('explorer');
+    expect(s.get().preview).toBeUndefined();
+    expect(s.get().visible).toBe(true);
+  });
+
+  it('chat-origin preview closes the sidepane', () => {
+    const s = query(WorkspaceExplorerAtom);
+    s.actions.openPreview(fileA, 'chat');
+    s.actions.onSessionSwitch();
+    expect(s.get().visible).toBe(false);
+    expect(s.get().preview).toBeUndefined();
   });
 });
 
@@ -199,15 +517,24 @@ describe('ScheduleSidepaneAtom — effectiveShow', () => {
     query = buildStore();
   });
 
-  it('shows schedule pane and hides workspace explorer', () => {
+  it('shows schedule pane and hides workspace explorer, SubAgentTasks, and Memex', () => {
     const ws = query(WorkspaceExplorerAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+    const memex = query(MemexMemorySidepaneAtom);
     const schedule = query(ScheduleSidepaneAtom);
 
+    // Seed the other singletons open directly (their show() would mutually
+    // exclude each other), then assert effectiveShow closes all of them.
     ws.actions.setVisible(true);
+    subAgent.change({ visible: true, selectedTaskId: null });
+    memex.change({ visible: true, selectedSlug: null });
+
     schedule.actions.effectiveShow();
 
     expect(schedule.get()).toBe(true);
     expect(ws.get().visible).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
+    expect(memex.get().visible).toBe(false);
   });
 });
 
@@ -231,238 +558,261 @@ describe('ScheduleSidepaneAtom — effectiveToggle', () => {
     expect(s.get()).toBe(false);
   });
 
-  it('hides workspace explorer and cancels inline preview when toggling', () => {
+  it('hides workspace explorer (including any preview) when toggling', () => {
     const ws = query(WorkspaceExplorerAtom);
-    const inline = query(InlinePreviewAtom);
     const schedule = query(ScheduleSidepaneAtom);
 
-    ws.actions.setVisible(true);
-    inline.actions.open({ name: 'x.txt', url: 'file:///x.txt' });
+    ws.actions.openPreview(fileA, 'chat');
 
     schedule.actions.effectiveToggle();
 
     expect(ws.get().visible).toBe(false);
-    expect(inline.get()).toBeNull();
+    expect(ws.get().preview).toBeUndefined();
   });
 });
 
-// ── InlinePreviewAtom ─────────────────────────────────────────────────────────
+// ── SubAgentTasksSidepaneAtom ───────────────────────────────────────────────────
 
-describe('InlinePreviewAtom — initial state', () => {
+describe('SubAgentTasksSidepaneAtom — effectiveToggle', () => {
   let query: ReturnType<typeof buildStore>;
 
   beforeEach(() => {
     query = buildStore();
   });
 
-  it('starts as null', () => {
-    const s = query(InlinePreviewAtom);
-    expect(s.get()).toBeNull();
+  it('hides workspace explorer (including any preview) and schedule when toggling on', () => {
+    const ws = query(WorkspaceExplorerAtom);
+    const schedule = query(ScheduleSidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+
+    ws.actions.openPreview(fileA, 'tree');
+    schedule.actions.show();
+
+    subAgent.actions.effectiveToggle();
+
+    expect(subAgent.get().visible).toBe(true);
+    expect(ws.get().visible).toBe(false);
+    expect(ws.get().preview).toBeUndefined();
+    expect(schedule.get()).toBe(false);
+  });
+
+  it('selectTask records the selected id; backToList clears it', () => {
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+    subAgent.actions.selectTask('task-42');
+    expect(subAgent.get().selectedTaskId).toBe('task-42');
+    subAgent.actions.backToList();
+    expect(subAgent.get().selectedTaskId).toBeNull();
   });
 });
 
-describe('InlinePreviewAtom — open', () => {
+describe('SubAgentTasksSidepaneAtom — show (mutual exclusion)', () => {
   let query: ReturnType<typeof buildStore>;
 
   beforeEach(() => {
     query = buildStore();
   });
 
-  it('open() sets the file and isDirty=false when no current preview', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'file.md', url: 'file:///file.md' });
-    expect(s.get()?.file.name).toBe('file.md');
-    expect(s.get()?.isDirty).toBe(false);
-  });
+  it('hides workspace explorer (including any preview), schedule, and memex when shown', () => {
+    const ws = query(WorkspaceExplorerAtom);
+    const schedule = query(ScheduleSidepaneAtom);
+    const memex = query(MemexMemorySidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
 
-  it('toggling same file (not dirty) closes the preview', () => {
-    const s = query(InlinePreviewAtom);
-    const file = { name: 'file.md', url: 'file:///file.md' };
-    s.actions.open(file);
-    s.actions.open(file); // toggle off
-    expect(s.get()).toBeNull();
-  });
+    // Seed the other singletons open (these show()/openPreview calls do not
+    // cross-close each other in this order), then assert show() closes them all.
+    ws.actions.openPreview(fileA, 'tree');
+    schedule.actions.show();
+    memex.actions.show();
 
-  it('toggling same dirty file with confirm=true closes it', () => {
-    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => true });
-    const s = query(InlinePreviewAtom);
-    const file = { name: 'file.md', url: 'file:///file.md' };
-    s.actions.open(file);
-    s.actions.markDirty(true);
-    s.actions.open(file); // try to toggle same dirty file
-    expect(s.get()).toBeNull();
-  });
+    subAgent.actions.show();
 
-  it('toggling same dirty file with confirm=false keeps it open', () => {
-    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => false });
-    const s = query(InlinePreviewAtom);
-    const file = { name: 'file.md', url: 'file:///file.md' };
-    s.actions.open(file);
-    s.actions.markDirty(true);
-    s.actions.open(file);
-    expect(s.get()?.file.name).toBe('file.md');
-  });
-
-  it('switching to a different file (not dirty) updates the file', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.open({ name: 'b.md', url: 'file:///b.md' });
-    expect(s.get()?.file.name).toBe('b.md');
-  });
-
-  it('switching to a different file when dirty with confirm=true switches', () => {
-    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => true });
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.markDirty(true);
-    s.actions.open({ name: 'b.md', url: 'file:///b.md' });
-    expect(s.get()?.file.name).toBe('b.md');
-    expect(s.get()?.isDirty).toBe(false);
-  });
-
-  it('switching to a different file when dirty with confirm=false does not switch', () => {
-    Object.defineProperty(window, 'confirm', { writable: true, configurable: true, value: () => false });
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.markDirty(true);
-    s.actions.open({ name: 'b.md', url: 'file:///b.md' });
-    expect(s.get()?.file.name).toBe('a.md');
-  });
-
-  it('preserves width when switching files', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    // Simulate a width being set
-    s.change({ file: { name: 'a.md', url: 'file:///a.md' }, isDirty: false, width: 500 });
-    s.actions.open({ name: 'b.md', url: 'file:///b.md' });
-    expect(s.get()?.width).toBe(500);
+    expect(subAgent.get().visible).toBe(true);
+    expect(ws.get().visible).toBe(false);
+    expect(ws.get().preview).toBeUndefined();
+    expect(schedule.get()).toBe(false);
+    expect(memex.get().visible).toBe(false);
   });
 });
 
-describe('InlinePreviewAtom — cancel', () => {
+// ── MemexMemorySidepaneAtom ────────────────────────────────────────────────────
+
+describe('MemexMemorySidepaneAtom — initial state', () => {
   let query: ReturnType<typeof buildStore>;
 
   beforeEach(() => {
     query = buildStore();
   });
 
-  it('cancel() sets state to null', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.cancel();
-    expect(s.get()).toBeNull();
+  it('starts with visible=false', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    expect(s.get().visible).toBe(false);
+  });
+
+  it('starts with selectedSlug=null', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    expect(s.get().selectedSlug).toBeNull();
   });
 });
 
-describe('InlinePreviewAtom — markDirty', () => {
+describe('MemexMemorySidepaneAtom — show / hide', () => {
   let query: ReturnType<typeof buildStore>;
 
   beforeEach(() => {
     query = buildStore();
   });
 
-  it('markDirty(true) sets isDirty=true', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.markDirty(true);
-    expect(s.get()?.isDirty).toBe(true);
+  it('show() sets visible=true', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.show();
+    expect(s.get().visible).toBe(true);
   });
 
-  it('markDirty(false) sets isDirty=false', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    s.actions.markDirty(true);
-    s.actions.markDirty(false);
-    expect(s.get()?.isDirty).toBe(false);
+  it('show() hides Workspace Explorer, Schedule, and SubAgentTasks', () => {
+    const memex = query(MemexMemorySidepaneAtom);
+    const ws = query(WorkspaceExplorerAtom);
+    const schedule = query(ScheduleSidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+
+    ws.actions.openPreview(fileA, 'tree');
+    schedule.change(true);
+    subAgent.change({ visible: true, selectedTaskId: 'task-1' });
+
+    memex.actions.show();
+
+    expect(memex.get().visible).toBe(true);
+    expect(ws.get().visible).toBe(false);
+    expect(ws.get().mode).toBe('explorer');
+    expect(ws.get().preview).toBeUndefined();
+    expect(schedule.get()).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
+    expect(subAgent.get().selectedTaskId).toBeNull();
   });
 
-  it('markDirty does nothing when state is null', () => {
-    const s = query(InlinePreviewAtom);
-    expect(() => s.actions.markDirty(true)).not.toThrow();
-    expect(s.get()).toBeNull();
-  });
-
-  it('markDirty does nothing when isDirty is already the same value', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
-    // isDirty is already false
-    s.actions.markDirty(false);
-    expect(s.get()?.isDirty).toBe(false);
+  it('hide() resets visible=false and clears the selected slug', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.show();
+    s.actions.selectCard('alpha-note');
+    s.actions.hide();
+    expect(s.get().visible).toBe(false);
+    expect(s.get().selectedSlug).toBeNull();
   });
 });
 
-describe('InlinePreviewAtom — resize', () => {
+describe('MemexMemorySidepaneAtom — selectCard / backToList', () => {
   let query: ReturnType<typeof buildStore>;
 
   beforeEach(() => {
     query = buildStore();
   });
 
-  it('resize does nothing when state is null', () => {
-    const s = query(InlinePreviewAtom);
-    const fakeEvent = {
-      preventDefault: vi.fn(),
-      currentTarget: document.createElement('div'),
-      clientX: 100,
-    } as unknown as React.MouseEvent;
-    expect(() => s.actions.resize(fakeEvent)).not.toThrow();
+  it('selectCard stores the slug without changing visibility', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.show();
+    s.actions.selectCard('beta-card');
+    expect(s.get().selectedSlug).toBe('beta-card');
+    expect(s.get().visible).toBe(true);
   });
 
-  it('resize sets up mouse event listeners when state is open', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
+  it('backToList clears the selected slug but keeps the pane open', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.show();
+    s.actions.selectCard('beta-card');
+    s.actions.backToList();
+    expect(s.get().selectedSlug).toBeNull();
+    expect(s.get().visible).toBe(true);
+  });
+});
 
-    const wrapper = document.createElement('div');
-    Object.defineProperty(wrapper, 'getBoundingClientRect', {
-      value: () => ({ width: 1000 }),
-    });
-    const handle = document.createElement('div');
-    Object.defineProperty(handle, 'parentElement', { value: wrapper });
+describe('MemexMemorySidepaneAtom — effectiveToggle', () => {
+  let query: ReturnType<typeof buildStore>;
 
-    const addEventSpy = vi.spyOn(document, 'addEventListener');
-    const removeEventSpy = vi.spyOn(document, 'removeEventListener');
-
-    const fakeEvent = {
-      preventDefault: vi.fn(),
-      currentTarget: handle,
-      clientX: 400,
-    } as unknown as React.MouseEvent;
-
-    s.actions.resize(fakeEvent);
-
-    expect(addEventSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
-    expect(addEventSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
-
-    // Simulate mousemove
-    const moveHandler = addEventSpy.mock.calls.find(c => c[0] === 'mousemove')?.[1] as EventListener;
-    moveHandler?.(new MouseEvent('mousemove', { clientX: 350 }));
-    expect(s.get()?.width).toBeDefined();
-
-    // Simulate mouseup
-    const upHandler = addEventSpy.mock.calls.find(c => c[0] === 'mouseup')?.[1] as EventListener;
-    upHandler?.(new MouseEvent('mouseup'));
-    expect(removeEventSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
-    expect(removeEventSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
-
-    addEventSpy.mockRestore();
-    removeEventSpy.mockRestore();
+  beforeEach(() => {
+    query = buildStore();
   });
 
-  it('resize does nothing when parentElement is missing', () => {
-    const s = query(InlinePreviewAtom);
-    s.actions.open({ name: 'a.md', url: 'file:///a.md' });
+  it('toggles visible from false to true', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.effectiveToggle();
+    expect(s.get().visible).toBe(true);
+  });
 
-    const handle = document.createElement('div');
-    // no parentElement (it's not attached to DOM)
+  it('toggles visible from true to false and clears the slug', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    s.actions.show();
+    s.actions.selectCard('alpha-note');
+    s.actions.effectiveToggle();
+    expect(s.get().visible).toBe(false);
+    expect(s.get().selectedSlug).toBeNull();
+  });
 
-    const fakeEvent = {
-      preventDefault: vi.fn(),
-      currentTarget: handle,
-      clientX: 400,
-    } as unknown as React.MouseEvent;
+  it('preserves the selected slug when toggling open', () => {
+    const s = query(MemexMemorySidepaneAtom);
+    // Pre-seed a slug while the pane is closed
+    s.actions.selectCard('preserved');
+    s.actions.effectiveToggle();
+    expect(s.get().visible).toBe(true);
+    expect(s.get().selectedSlug).toBe('preserved');
+  });
 
-    // Should not throw and width should remain undefined
-    s.actions.resize(fakeEvent);
-    expect(s.get()?.width).toBeUndefined();
+  it('tears down the workspace preview, hides Schedule, WorkspaceExplorer, and SubAgentTasks', () => {
+    const memex = query(MemexMemorySidepaneAtom);
+    const schedule = query(ScheduleSidepaneAtom);
+    const ws = query(WorkspaceExplorerAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+
+    // Open a file preview inside the Workspace Explorer (the former InlinePreview,
+    // now a 'preview' mode of the workspace sidepane).
+    ws.actions.openPreview({ name: 'x.txt', url: 'file:///x.txt' }, 'chat');
+    schedule.actions.show();
+    subAgent.actions.show();
+
+    memex.actions.effectiveToggle();
+
+    expect(memex.get().visible).toBe(true);
+    expect(ws.get().visible).toBe(false);
+    expect(ws.get().mode).toBe('explorer');
+    expect(ws.get().preview).toBeUndefined();
+    expect(schedule.get()).toBe(false);
+    expect(subAgent.get().visible).toBe(false);
+  });
+});
+
+describe('MemexMemorySidepaneAtom — siblings hide it on their effectiveToggle', () => {
+  let query: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    query = buildStore();
+  });
+
+  it('WorkspaceExplorer.effectiveToggle hides the memex pane', () => {
+    const memex = query(MemexMemorySidepaneAtom);
+    const ws = query(WorkspaceExplorerAtom);
+
+    memex.actions.show();
+    memex.actions.selectCard('alpha-note');
+    ws.actions.effectiveToggle();
+
+    expect(memex.get().visible).toBe(false);
+    expect(memex.get().selectedSlug).toBeNull();
+  });
+
+  it('ScheduleSidepane.effectiveToggle hides the memex pane', () => {
+    const memex = query(MemexMemorySidepaneAtom);
+    const schedule = query(ScheduleSidepaneAtom);
+
+    memex.actions.show();
+    schedule.actions.effectiveToggle();
+
+    expect(memex.get().visible).toBe(false);
+  });
+
+  it('SubAgentTasks.effectiveToggle hides the memex pane', () => {
+    const memex = query(MemexMemorySidepaneAtom);
+    const subAgent = query(SubAgentTasksSidepaneAtom);
+
+    memex.actions.show();
+    subAgent.actions.effectiveToggle();
+
+    expect(memex.get().visible).toBe(false);
   });
 });

@@ -84,9 +84,12 @@ vi.mock('../../token', () => ({
 }));
 
 vi.mock('../../mcpRuntime/mcpClientManager', () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set(['sub_agent', 'computer_use', 'send_to_subagent']),
   mcpClientManager: {
     getToolsForSubAgent: vi.fn().mockReturnValue([]),
     executeTool: vi.fn().mockResolvedValue('tool result'),
+    isBuiltinTool: vi.fn(() => true),
   },
 }));
 
@@ -115,6 +118,8 @@ vi.mock('../../chat/systemReminderUtils', () => ({
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SubAgentChat } from '../subAgentChat';
+import { getModelCapabilities } from '../../llm/ghcModelsManager';
+import { mcpClientManager } from '../../mcpRuntime/mcpClientManager';
 import type { SubAgentChatOptions } from '../types';
 import type { SubAgentConfig } from '../../userDataADO/types/profile';
 import type { CancellationToken } from '../../cancellation/CancellationToken';
@@ -509,6 +514,19 @@ describe('sanitizeContextHistoryToolCalls', () => {
 // ─── compressEarlyMessages ────────────────────────────────────────────────────
 
 describe('compressEarlyMessages', () => {
+  it('compresses when the compactor already shares the context array', async () => {
+    const chat = makeChat();
+    (chat as any).contextHistory.push(
+      ...Array.from({ length: 5 }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: [{ type: 'text', text: `msg ${i}` }],
+      }))
+    );
+    mockCallModel.mockResolvedValueOnce('Shared-array summary');
+    await (chat as any).compressEarlyMessages(4);
+    expect((chat as any).contextHistory[0].content[0].text).toContain('Shared-array summary');
+  });
+
   it('returns early when actualBatch <= 0', async () => {
     const chat = makeChat();
     (chat as any).contextHistory = [{ role: 'user', content: [] }];
@@ -636,5 +654,54 @@ describe('compactContextIfNeeded', () => {
     (chat as any).contextWindowSize = 1; // extremely small window
     mockGetTokenCounter.mockRejectedValueOnce(new Error('token fail'));
     await expect((chat as any).compactContextIfNeeded([], [])).resolves.toBeUndefined();
+  });
+});
+
+// ─── wrapper/helper edge branches ──────────────────────────────────────────────
+
+describe('wrapper/helper edge branches', () => {
+  it('uses the fallback context window when model capabilities are missing', () => {
+    vi.mocked(getModelCapabilities).mockReturnValueOnce(undefined);
+    const chat = makeChat();
+    expect((chat as any).contextWindowSize).toBe(128000);
+  });
+
+  it('appends a context-only message without adding it to chat history', () => {
+    const chat = makeChat();
+    const msg = { role: 'user', content: [{ type: 'text', text: 'hidden' }] };
+    (chat as any).appendToHistory(msg, 'context_only');
+    expect((chat as any).contextHistory).toEqual([msg]);
+    expect((chat as any).chatHistory).toEqual([]);
+  });
+
+  it('emits a generated message id when appended messages do not have one', () => {
+    const onStreamingChunk = vi.fn();
+    const chat = makeChat({ taskId: 'task-1', onStreamingChunk });
+    const msg = { role: 'assistant', content: [{ type: 'text', text: 'done' }] };
+    (chat as any).appendManyToHistory([msg]);
+    expect(onStreamingChunk).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: expect.stringMatching(/^msg_/),
+        taskId: 'task-1',
+      })
+    );
+  });
+
+  it('passes an empty MCP server list when the config omits mcp_servers', async () => {
+    const baseOptions = makeOptions();
+    const chat = makeChat({
+      subAgent: {
+        ...baseOptions.subAgent,
+        config: makeSubAgentConfig({ mcp_servers: undefined }),
+        resolvedMcpServers: [],
+      },
+    });
+    await (chat as any).getAvailableTools();
+    expect(mcpClientManager.getToolsForSubAgent).toHaveBeenLastCalledWith(
+      [],
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 });

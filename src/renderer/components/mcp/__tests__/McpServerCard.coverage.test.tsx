@@ -177,7 +177,7 @@ describe('McpServerCard — operation state', () => {
   });
 });
 
-describe('McpServerCard — built-in and plugin badges', () => {
+describe('McpServerCard — built-in badge', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('shows Built-in badge for builtin-tools server', () => {
@@ -190,28 +190,13 @@ describe('McpServerCard — built-in and plugin badges', () => {
     expect(screen.queryByTestId('icon-more')).not.toBeInTheDocument();
   });
 
-  it('shows Plugin badge for plugin source server', () => {
-    setup({ source: 'PLUGIN' });
-    expect(screen.getByText('Plugin')).toBeInTheDocument();
-  });
-
-  it('shows Plugin badge for server name starting with plugin--', () => {
-    setup({ name: 'plugin--my-plugin', source: 'ON-DEVICE' }, { serverName: 'plugin--my-plugin' });
-    expect(screen.getByText('Plugin')).toBeInTheDocument();
-  });
-
-  it('does not show menu button for plugin server', () => {
-    setup({ source: 'PLUGIN' });
-    expect(screen.queryByTestId('icon-more')).not.toBeInTheDocument();
-  });
-
   it('shows menu button for regular server', () => {
     setup({ source: 'ON-DEVICE' });
     expect(screen.getByTestId('icon-more')).toBeInTheDocument();
   });
 });
 
-describe('McpServerCard — version, source, M365 badges', () => {
+describe('McpServerCard — version and source badges', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('shows version badge when version is set', () => {
@@ -219,24 +204,9 @@ describe('McpServerCard — version, source, M365 badges', () => {
     expect(screen.getByText('v1.2.3')).toBeInTheDocument();
   });
 
-  it('shows source badge when source is set', () => {
+  it('shows legacy source metadata with local semantics', () => {
     setup({ source: 'IN-LIBRARY' });
-    expect(screen.getByText('IN-LIBRARY')).toBeInTheDocument();
-  });
-
-  it('shows M365 badge when command ends with /agency', () => {
-    setup({ command: '/usr/local/bin/agency', source: 'ON-DEVICE' });
-    expect(screen.getByText('M365')).toBeInTheDocument();
-  });
-
-  it('shows M365 badge when command ends with agency.exe', () => {
-    setup({ command: 'C:\\Program Files\\agency.exe', source: 'ON-DEVICE' });
-    expect(screen.getByText('M365')).toBeInTheDocument();
-  });
-
-  it('does not show M365 badge when command does not match', () => {
-    setup({ command: '/usr/bin/node', source: 'ON-DEVICE' });
-    expect(screen.queryByText('M365')).not.toBeInTheDocument();
+    expect(screen.getByText('ON-DEVICE')).toBeInTheDocument();
   });
 
   it('does not show meta row when version and source are both undefined', () => {

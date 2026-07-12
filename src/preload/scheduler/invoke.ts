@@ -11,6 +11,7 @@ const invoke = renderToMain.provideInvokeForPreload(
     'updateJob',
     'runJobNow',
     'getJobSessions',
+    'cleanupAllSessionHistory',
   ],
 );
 

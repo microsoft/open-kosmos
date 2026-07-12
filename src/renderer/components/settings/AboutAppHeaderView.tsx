@@ -1,6 +1,7 @@
 import React from 'react';
 import '../../styles/Header.css';
 import { APP_NAME, BRAND_CONFIG } from '@shared/constants/branding';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 // About icon component
 const AboutIcon = () => (
@@ -10,13 +11,14 @@ const AboutIcon = () => (
 );
 
 const AboutAppHeaderView: React.FC = () => {
+  const { t } = useI18n();
   const brandDisplayName = BRAND_CONFIG.productName || APP_NAME;
 
   return (
     <div className="unified-header">
       <div className="header-title">
         <AboutIcon />
-        <span className="header-name">About {brandDisplayName}</span>
+        <span className="header-name">{t('settings.about.headerTitle', { productName: brandDisplayName })}</span>
       </div>
     </div>
   );

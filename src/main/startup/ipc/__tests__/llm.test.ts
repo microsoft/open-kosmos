@@ -60,7 +60,6 @@ vi.mock('../../../lib/llm/textLlmEmbedder', () => ({
   },
 }));
 
-
 // --- Models manager mocks ---
 const mockEnsureModelsReady = vi.fn().mockResolvedValue(undefined);
 const mockGetAllModels = vi.fn(() => [{ id: 'gpt-4o' }]);
@@ -100,8 +99,8 @@ describe('startup/ipc/llm', () => {
 
   it('llm:improveSystemPrompt returns improved prompt', async () => {
     const { SystemPromptLlmWriter } = await import('../../../lib/llm/systemPromptLlmWritter');
-    const result = await getHandler('llm:improveSystemPrompt')({}, 'raw prompt');
-    expect(SystemPromptLlmWriter.improveSystemPrompt).toHaveBeenCalledWith('raw prompt');
+    const result = await getHandler('llm:improveSystemPrompt')({}, 'raw prompt', { promptFile: 'AGENTS.md' });
+    expect(SystemPromptLlmWriter.improveSystemPrompt).toHaveBeenCalledWith('raw prompt', { promptFile: 'AGENTS.md' });
     expect(result).toEqual({ success: true, data: 'improved prompt' });
   });
 
@@ -110,6 +109,13 @@ describe('startup/ipc/llm', () => {
     (SystemPromptLlmWriter.improveSystemPrompt as any).mockRejectedValueOnce(new Error('llm fail'));
     const result = await getHandler('llm:improveSystemPrompt')({}, 'prompt');
     expect(result).toEqual({ success: false, error: 'llm fail' });
+  });
+
+  it('llm:improveSystemPrompt returns unknown error for non-error failures', async () => {
+    const { SystemPromptLlmWriter } = await import('../../../lib/llm/systemPromptLlmWritter');
+    (SystemPromptLlmWriter.improveSystemPrompt as any).mockRejectedValueOnce('llm fail');
+    const result = await getHandler('llm:improveSystemPrompt')({}, 'prompt');
+    expect(result).toEqual({ success: false, error: 'Unknown error' });
   });
 
   // --- MCP config formatting ---
@@ -155,6 +161,40 @@ describe('startup/ipc/llm', () => {
     expect(mockLoggerInfo).toHaveBeenCalled();
   });
 
+  it('llm:generateDocumentSummary logs zero lengths for missing content and summary', async () => {
+    const { DocumentSummaryLlmGenerator } = await import('../../../lib/llm/documentSummaryLlmGenerator');
+    (DocumentSummaryLlmGenerator.generateSummary as any).mockResolvedValueOnce({ success: true });
+
+    const result = await getHandler('llm:generateDocumentSummary')({}, 'empty.pdf', undefined, false);
+
+    expect(result).toEqual({ success: true, data: { success: true } });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.stringContaining('contentLength=0'),
+      'llm:generateDocumentSummary',
+    );
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.stringContaining('summaryLength=0'),
+      'llm:generateDocumentSummary',
+    );
+  });
+
+  it('llm:generateDocumentSummary truncates long summary snippets in logs', async () => {
+    const { DocumentSummaryLlmGenerator } = await import('../../../lib/llm/documentSummaryLlmGenerator');
+    const longSummary = 'x'.repeat(121);
+    (DocumentSummaryLlmGenerator.generateSummary as any).mockResolvedValueOnce({
+      success: true,
+      summary: longSummary,
+    });
+
+    const result = await getHandler('llm:generateDocumentSummary')({}, 'long.pdf', 'content', false);
+
+    expect(result).toEqual({ success: true, data: { success: true, summary: longSummary } });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.stringContaining(`summary="${'x'.repeat(120)}..."`),
+      'llm:generateDocumentSummary',
+    );
+  });
+
   it('llm:generateDocumentSummary logs warning when generation fails', async () => {
     const { DocumentSummaryLlmGenerator } = await import('../../../lib/llm/documentSummaryLlmGenerator');
     (DocumentSummaryLlmGenerator.generateSummary as any).mockResolvedValueOnce({
@@ -194,7 +234,6 @@ describe('startup/ipc/llm', () => {
     expect(mockEmbedBatch).toHaveBeenCalledWith(['hello', 'world']);
     expect(result).toEqual({ success: true, data: [[0.1], [0.2]] });
   });
-
 
   // --- Models ---
 

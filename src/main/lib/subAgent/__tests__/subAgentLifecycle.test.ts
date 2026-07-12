@@ -31,12 +31,26 @@ vi.mock('../subAgentConfigResolver', () => ({
 const mockTaskStore = {
   createTask: vi.fn(),
   completeTask: vi.fn(),
+  getTaskFile: vi.fn(),
   removeInMemoryForSession: vi.fn(),
 };
 vi.mock('../subAgentTaskStore', () => ({
   SubAgentTaskStore: {
     getInstance: vi.fn(() => mockTaskStore),
   },
+}));
+
+// Mock the durable delivery ledger — exercised via spies, real fs is covered
+// by subAgentDeliveryLedger.test.ts.
+const { mockRecordPendingDelivery, mockPeekPendingDeliveries, mockAckPendingDeliveries } = vi.hoisted(() => ({
+  mockRecordPendingDelivery: vi.fn(),
+  mockPeekPendingDeliveries: vi.fn(() => [] as any[]),
+  mockAckPendingDeliveries: vi.fn(),
+}));
+vi.mock('../subAgentDeliveryLedger', () => ({
+  recordPendingDelivery: mockRecordPendingDelivery,
+  peekPendingDeliveries: mockPeekPendingDeliveries,
+  ackPendingDeliveries: mockAckPendingDeliveries,
 }));
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -56,13 +70,6 @@ function makeShared() {
 
 function makeSpawner() {
   return {
-    spawnSubAgent: vi.fn().mockResolvedValue({
-      subAgentName: 'agent',
-      taskId: 'tid',
-      success: true,
-      turnCount: 1,
-      durationMs: 100,
-    }),
     spawnAdhocSubAgent: vi.fn().mockResolvedValue({
       subAgentName: 'adhoc',
       taskId: 'tid',
@@ -89,7 +96,12 @@ describe('SubAgentLifecycle', () => {
     lifecycle = new SubAgentLifecycle(shared, spawner, emitEvent);
     mockTaskStore.createTask.mockClear();
     mockTaskStore.completeTask.mockClear();
+    mockTaskStore.getTaskFile.mockReset();
     mockTaskStore.removeInMemoryForSession.mockClear();
+    mockRecordPendingDelivery.mockClear();
+    mockPeekPendingDeliveries.mockReset();
+    mockPeekPendingDeliveries.mockReturnValue([]);
+    mockAckPendingDeliveries.mockClear();
   });
 
   afterEach(() => {
@@ -116,12 +128,12 @@ describe('SubAgentLifecycle', () => {
     it('stores task in backgroundTasks immediately after launch', async () => {
       // Delay spawner resolution so the task is still 'running' when we check
       let resolve: (v: any) => void;
-      spawner.spawnSubAgent.mockReturnValue(new Promise((res) => { resolve = res; }));
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolve = res; }));
       const result = await lifecycle.spawnSubAgentAsync(baseParams);
       if (result.status !== 'launched') throw new Error('expected launched');
       const task = lifecycle.getBackgroundTask(result.taskId);
       expect(task).toBeDefined();
-      expect(task?.subAgentName).toBe('myAgent');
+      expect(task?.subAgentName).toMatch(/^adhoc-/);
       expect(task?.status).toBe('running');
       resolve!({ subAgentName: 'a', taskId: 't', success: true, turnCount: 0, durationMs: 0 });
     });
@@ -138,17 +150,17 @@ describe('SubAgentLifecycle', () => {
       expect(mockTaskStore.createTask).toHaveBeenCalledOnce();
     });
 
-    it('uses adhoc- prefix in name when adhoc=true', async () => {
-      const result = await lifecycle.spawnSubAgentAsync({ ...baseParams, adhoc: true });
+    it('uses adhoc- prefix in the generated background task name', async () => {
+      const result = await lifecycle.spawnSubAgentAsync(baseParams);
       if (result.status !== 'launched') throw new Error('expected launched');
       expect(lifecycle.getBackgroundTask(result.taskId)?.subAgentName).toMatch(/^adhoc-/);
     });
 
-    it('executeInBackground: calls spawnSubAgent and marks task completed', async () => {
+    it('executeInBackground: calls spawnAdhocSubAgent and marks task completed', async () => {
       const result = await lifecycle.spawnSubAgentAsync(baseParams);
       if (result.status !== 'launched') throw new Error();
       await vi.runAllTimersAsync();
-      expect(spawner.spawnSubAgent).toHaveBeenCalled();
+      expect(spawner.spawnAdhocSubAgent).toHaveBeenCalled();
       expect(lifecycle.getBackgroundTask(result.taskId)?.status).toBe('completed');
     });
 
@@ -160,15 +172,14 @@ describe('SubAgentLifecycle', () => {
       expect(results[0].success).toBe(true);
     });
 
-    it('executeInBackground: calls spawnAdhocSubAgent when adhoc=true', async () => {
+    it('executeInBackground: calls spawnAdhocSubAgent', async () => {
       await lifecycle.spawnSubAgentAsync({ ...baseParams, adhoc: true });
       await vi.runAllTimersAsync();
       expect(spawner.spawnAdhocSubAgent).toHaveBeenCalled();
-      expect(spawner.spawnSubAgent).not.toHaveBeenCalled();
     });
 
     it('executeInBackground: handles spawner throwing an Error', async () => {
-      spawner.spawnSubAgent.mockRejectedValue(new Error('spawn failed'));
+      spawner.spawnAdhocSubAgent.mockRejectedValue(new Error('spawn failed'));
       const result = await lifecycle.spawnSubAgentAsync(baseParams);
       if (result.status !== 'launched') throw new Error();
       await vi.runAllTimersAsync();
@@ -179,7 +190,7 @@ describe('SubAgentLifecycle', () => {
     });
 
     it('executeInBackground: handles non-Error thrown value', async () => {
-      spawner.spawnSubAgent.mockRejectedValue('plain string error');
+      spawner.spawnAdhocSubAgent.mockRejectedValue('plain string error');
       await lifecycle.spawnSubAgentAsync(baseParams);
       await vi.runAllTimersAsync();
       const results = lifecycle.drainResults('session1');
@@ -187,13 +198,15 @@ describe('SubAgentLifecycle', () => {
     });
 
     it('executeInBackground: marks task failed when result.success is false', async () => {
-      spawner.spawnSubAgent.mockResolvedValue({
+      spawner.spawnAdhocSubAgent.mockResolvedValue({
         subAgentName: 'agent', taskId: 'tid', success: false, error: 'oops', turnCount: 0, durationMs: 10,
       });
+      mockTaskStore.getTaskFile.mockReturnValue({ status: 'running' });
       const result = await lifecycle.spawnSubAgentAsync(baseParams);
       if (result.status !== 'launched') throw new Error();
       await vi.runAllTimersAsync();
       expect(lifecycle.getBackgroundTask(result.taskId)?.status).toBe('failed');
+      expect(mockTaskStore.completeTask).toHaveBeenCalledWith(result.taskId, 'failed', undefined, 'oops');
     });
 
     it('executeInBackground: adhoc error uses adhoc name', async () => {
@@ -203,6 +216,23 @@ describe('SubAgentLifecycle', () => {
       await vi.runAllTimersAsync();
       const results = lifecycle.drainResults('session1');
       expect(results[0].subAgentName).toMatch(/^adhoc-/);
+    });
+
+    it('executeInBackground: wires the cancellation token to the abort controller', async () => {
+      let token: any;
+      spawner.spawnAdhocSubAgent.mockImplementation(async (opts: any) => {
+        token = opts.cancellationToken;
+        // Exercise the full token surface so its getter/listener/dispose run.
+        const initial = token.isCancellationRequested;
+        const disposable = token.onCancellationRequested(vi.fn());
+        disposable.dispose();
+        return { subAgentName: 'agent', taskId: 'tid', success: true, turnCount: 1, durationMs: 1, _initial: initial };
+      });
+      const result = await lifecycle.spawnSubAgentAsync(baseParams);
+      if (result.status !== 'launched') throw new Error('expected launched');
+      await vi.runAllTimersAsync();
+      expect(token).toBeDefined();
+      expect(typeof token.isCancellationRequested).toBe('boolean');
     });
   });
 
@@ -399,7 +429,7 @@ describe('SubAgentLifecycle', () => {
     it('pushes message to pendingMessages and returns {success:true}', async () => {
       // Keep spawner pending so task stays in 'running' state
       let resolveSpawn: (v: any) => void;
-      spawner.spawnSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
       const result = await lifecycle.spawnSubAgentAsync({
         parentSessionId: 'sess', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
       });
@@ -407,6 +437,35 @@ describe('SubAgentLifecycle', () => {
       const r = lifecycle.sendMessageToSubAgent(result.taskId, 'hello');
       expect(r.success).toBe(true);
       expect(lifecycle.getBackgroundTask(result.taskId)!.pendingMessages).toContain('hello');
+      resolveSpawn!({ subAgentName: 'a', taskId: 't', success: true, turnCount: 0, durationMs: 0 });
+    });
+
+    it('returns {success:false, error} when the message exceeds 2000 characters', async () => {
+      let resolveSpawn: (v: any) => void;
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
+      const result = await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sess', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      if (result.status !== 'launched') throw new Error();
+      const r = lifecycle.sendMessageToSubAgent(result.taskId, 'x'.repeat(2001));
+      expect(r.success).toBe(false);
+      expect(r.error).toContain('too long');
+      resolveSpawn!({ subAgentName: 'a', taskId: 't', success: true, turnCount: 0, durationMs: 0 });
+    });
+
+    it('returns {success:false, error} when the pending-message queue is full', async () => {
+      let resolveSpawn: (v: any) => void;
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
+      const result = await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sess', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      if (result.status !== 'launched') throw new Error();
+      for (let i = 0; i < 5; i++) {
+        expect(lifecycle.sendMessageToSubAgent(result.taskId, `m${i}`).success).toBe(true);
+      }
+      const r = lifecycle.sendMessageToSubAgent(result.taskId, 'overflow');
+      expect(r.success).toBe(false);
+      expect(r.error).toContain('queue full');
       resolveSpawn!({ subAgentName: 'a', taskId: 't', success: true, turnCount: 0, durationMs: 0 });
     });
   });
@@ -442,6 +501,110 @@ describe('SubAgentLifecycle', () => {
       const first = lifecycle.drainResults('sess');
       expect(first.length).toBe(1);
       expect(lifecycle.drainResults('sess').length).toBe(0);
+    });
+
+    it('enqueueResult persists the result to the durable ledger', async () => {
+      spawner.spawnAdhocSubAgent.mockResolvedValue({
+        subAgentName: 'a', taskId: 'rec', success: true, turnCount: 1, durationMs: 1,
+      });
+      await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sessRec', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      await vi.runAllTimersAsync();
+      expect(mockRecordPendingDelivery).toHaveBeenCalledWith(
+        'sessRec', expect.objectContaining({ taskId: 'rec' }),
+      );
+    });
+
+    it('recovers persisted results not present in the in-memory queue after a restart', () => {
+      mockPeekPendingDeliveries.mockReturnValue([
+        { subAgentName: 'a', taskId: 'persisted-1', success: true, turnCount: 1, durationMs: 1 },
+      ]);
+      const results = lifecycle.drainResults('sessX');
+      expect(results.map((r) => r.taskId)).toEqual(['persisted-1']);
+      expect(mockPeekPendingDeliveries).toHaveBeenCalledWith('sessX');
+    });
+
+    it('de-duplicates persisted results already present in the in-memory queue', async () => {
+      spawner.spawnAdhocSubAgent.mockResolvedValue({
+        subAgentName: 'a', taskId: 'dup', success: true, turnCount: 1, durationMs: 1,
+      });
+      await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sessDup', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      await vi.runAllTimersAsync();
+      mockPeekPendingDeliveries.mockReturnValue([
+        { subAgentName: 'a', taskId: 'dup', success: true, turnCount: 1, durationMs: 1 },
+        { subAgentName: 'a', taskId: 'fresh', success: true, turnCount: 1, durationMs: 1 },
+      ]);
+      const results = lifecycle.drainResults('sessDup');
+      expect(results.map((r) => r.taskId).sort()).toEqual(['dup', 'fresh']);
+    });
+
+    it('still emits and queues the result when the ledger write throws', async () => {
+      mockRecordPendingDelivery.mockImplementationOnce(() => {
+        throw new Error('ledger write failed');
+      });
+      spawner.spawnAdhocSubAgent.mockResolvedValue({
+        subAgentName: 'a', taskId: 'resilient', success: true, turnCount: 1, durationMs: 1,
+      });
+      await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sessLedgerErr', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      // enqueueResult must not throw despite the ledger failure; the in-memory
+      // result is still delivered.
+      await vi.runAllTimersAsync();
+      const results = lifecycle.drainResults('sessLedgerErr');
+      expect(results.map((r) => r.taskId)).toEqual(['resilient']);
+    });
+
+    it('returns in-memory results even when the ledger read throws on drain', async () => {
+      spawner.spawnAdhocSubAgent.mockResolvedValue({
+        subAgentName: 'a', taskId: 'mem', success: true, turnCount: 1, durationMs: 1,
+      });
+      await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sessDrainErr', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      await vi.runAllTimersAsync();
+      mockPeekPendingDeliveries.mockImplementationOnce(() => {
+        throw new Error('ledger read failed');
+      });
+      const results = lifecycle.drainResults('sessDrainErr');
+      expect(results.map((r) => r.taskId)).toEqual(['mem']);
+    });
+
+    it('peeks persisted ledger entries without acking them (the parent acks at persist time)', () => {
+      mockPeekPendingDeliveries.mockReturnValue([
+        { subAgentName: 'a', taskId: 'led1', success: true, turnCount: 1, durationMs: 1 },
+      ]);
+      // The lifecycle delivers the recovered ledger entry but never acks it:
+      // acking is the parent's job once it has persisted the injected
+      // notification, so a crash before persist re-delivers rather than drops.
+      expect(lifecycle.drainResults('sessAck').map((r) => r.taskId)).toEqual(['led1']);
+      expect(mockAckPendingDeliveries).not.toHaveBeenCalled();
+      // Once the parent has acked the entry (it is gone from the ledger), a
+      // subsequent drain does not re-deliver it.
+      mockPeekPendingDeliveries.mockReturnValue([]);
+      expect(lifecycle.drainResults('sessAck')).toEqual([]);
+      expect(mockAckPendingDeliveries).not.toHaveBeenCalled();
+    });
+
+    it('re-delivers a still-pending ledger entry the parent has not yet acked', () => {
+      mockPeekPendingDeliveries.mockReturnValue([
+        { subAgentName: 'a', taskId: 'led1', success: true, turnCount: 1, durationMs: 1 },
+      ]);
+      expect(lifecycle.drainResults('sessMix').map((r) => r.taskId)).toEqual(['led1']);
+      // The parent's persist failed, so led1 is still in the ledger when a second
+      // background result lands alongside it before the next drain.
+      mockPeekPendingDeliveries.mockReturnValue([
+        { subAgentName: 'a', taskId: 'led1', success: true, turnCount: 1, durationMs: 1 },
+        { subAgentName: 'a', taskId: 'led2', success: true, turnCount: 1, durationMs: 1 },
+      ]);
+      // Both are delivered — the lifecycle never records a "delivered" set, so it
+      // does not suppress led1; re-delivery is safe (at-least-once) and the
+      // parent acks both once they are persisted.
+      expect(lifecycle.drainResults('sessMix').map((r) => r.taskId)).toEqual(['led1', 'led2']);
+      expect(mockAckPendingDeliveries).not.toHaveBeenCalled();
     });
   });
 
@@ -486,7 +649,7 @@ describe('SubAgentLifecycle', () => {
       });
       const statuses = lifecycle.getBackgroundTaskStatus('sess1');
       expect(statuses).toHaveLength(1);
-      expect(statuses[0].subAgentName).toBe('agent1');
+      expect(statuses[0].subAgentName).toMatch(/^adhoc-/);
     });
 
     it('status object has required fields', async () => {
@@ -620,7 +783,7 @@ describe('SubAgentLifecycle', () => {
       shared.parentChildMap.set('sess', new Set());
       // Keep spawner pending so background task stays 'running'
       let resolveSpawn: (v: any) => void;
-      spawner.spawnSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
       await lifecycle.spawnSubAgentAsync({
         parentSessionId: 'sess', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
       });
@@ -817,6 +980,21 @@ describe('SubAgentLifecycle', () => {
       // but cancelAllForSession will skip non-running tasks when deleting)
       // This just ensures no crash
       lifecycle.cancelAllForSession('sess');
+    });
+
+    it('marks a still-running background task as cancelled and removes it', async () => {
+      // Keep spawner pending so the background task stays in 'running' state.
+      let resolveSpawn: (v: any) => void;
+      spawner.spawnAdhocSubAgent.mockReturnValue(new Promise((res) => { resolveSpawn = res; }));
+      const result = await lifecycle.spawnSubAgentAsync({
+        parentSessionId: 'sessRunning', parentChatId: 'c', userAlias: 'u', subAgentName: 'a', task: 't',
+      });
+      if (result.status !== 'launched') throw new Error('expected launched');
+      expect(lifecycle.getBackgroundTask(result.taskId)!.status).toBe('running');
+      lifecycle.cancelAllForSession('sessRunning');
+      // The running task is cancelled and deleted from the registry.
+      expect(lifecycle.getBackgroundTask(result.taskId)).toBeUndefined();
+      resolveSpawn!({ subAgentName: 'a', taskId: 't', success: true, turnCount: 0, durationMs: 0 });
     });
   });
 

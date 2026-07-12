@@ -65,6 +65,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   UserInputField: class UserInputField {},
 }));
 
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
 }));
@@ -117,26 +118,6 @@ vi.mock('../agentChatUtilities', async () => ({
   detectTruncatedToolCalls: vi.fn(),
   sanitizeToolCallsForApi: vi.fn(),
   applyStorageCompressionToRecentMessages: vi.fn(),
-}));
-
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({
-      getCachedConfig: vi.fn(),
-    })),
-  },
-}));
-
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordChatSessionActivated: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: {
-    execute: vi.fn().mockResolvedValue({ additionalContexts: [] }),
-  },
 }));
 
 vi.mock('../agentChatManager', async () => ({
@@ -384,7 +365,6 @@ describe('AgentChat - session management methods', () => {
 
   it('setInteractionPolicy updates the policy', () => {
     expect(() => agent.setInteractionPolicy('forbid')).not.toThrow();
-    expect(() => agent.setInteractionPolicy('plain-text-only')).not.toThrow();
     expect(() => agent.setInteractionPolicy('allow-ui')).not.toThrow();
   });
 });
@@ -566,46 +546,6 @@ describe('AgentChat - getContextSummary', () => {
   });
 });
 
-describe('AgentChat - getSubAgentConfig', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns undefined when chatId or userAlias not set', () => {
-    (agent as any).currentUserAlias = '';
-    expect(agent.getSubAgentConfig('some-agent')).toBeUndefined();
-  });
-
-  it('returns undefined when agent does not reference the sub-agent', () => {
-    mockProfileCacheManager.getChatConfig.mockReturnValue({
-      agent: { sub_agents: ['other-agent'] },
-    });
-    expect(agent.getSubAgentConfig('some-agent')).toBeUndefined();
-  });
-
-  it('returns undefined when no sub_agents array in agent config', () => {
-    mockProfileCacheManager.getChatConfig.mockReturnValue({
-      agent: {},
-    });
-    expect(agent.getSubAgentConfig('some-agent')).toBeUndefined();
-  });
-
-  it('returns config from SubAgentFileManager when agent references sub-agent', async () => {
-    const { SubAgentFileManager } = await import('../../subAgent/subAgentFileManager');
-    const mockConfig = { name: 'some-agent', system_prompt: '' };
-    (SubAgentFileManager.getInstance as any).mockReturnValue({
-      getCachedConfig: vi.fn().mockReturnValue(mockConfig),
-    });
-    mockProfileCacheManager.getChatConfig.mockReturnValue({
-      agent: { sub_agents: ['some-agent'] },
-    });
-    const result = agent.getSubAgentConfig('some-agent');
-    expect(result).toEqual(mockConfig);
-  });
-});
 
 describe('AgentChat - getDisplayMessages', () => {
   let agent: AgentChat;
@@ -752,77 +692,6 @@ describe('AgentChat - getAgentInfo', () => {
   });
 });
 
-describe('AgentChat - shouldTrackChatSessionActivated helpers', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('shouldTrackChatSessionActivatedForUserMessage returns false for non-user messages', () => {
-    const assistantMsg = { id: 'm1', role: 'assistant', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(assistantMsg)).toBe(false);
-  });
-
-  it('shouldTrackChatSessionActivatedForUserMessage returns true for first user message of the day', () => {
-    const userMsg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(userMsg)).toBe(true);
-  });
-
-  it('getChatSessionEntryTypeForUserMessage returns new for empty history', () => {
-    const userMsg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(userMsg)).toBe('new');
-  });
-
-  it('getChatSessionEntryTypeForUserMessage returns continued when history has messages', () => {
-    const existingMsg = { id: 'm0', role: 'user', content: [], timestamp: Date.now() } as any;
-    agent.addMessageToChatHistory(existingMsg);
-    const userMsg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(userMsg)).toBe('continued');
-  });
-});
-
-describe('AgentChat - getMessageTimestampMs', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns numeric timestamp as-is', () => {
-    const ts = 1700000000000;
-    const msg = { timestamp: ts } as any;
-    expect((agent as any).getMessageTimestampMs(msg)).toBe(ts);
-  });
-
-  it('parses string ISO timestamp', () => {
-    const msg = { timestamp: '2026-01-15T12:00:00Z' } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    expect(typeof result).toBe('number');
-    expect(Number.isFinite(result)).toBe(true);
-  });
-
-  it('returns Date.now() for invalid timestamp', () => {
-    const before = Date.now();
-    const msg = { timestamp: 'not-a-date' } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(result).toBeGreaterThanOrEqual(before);
-    expect(result).toBeLessThanOrEqual(after);
-  });
-
-  it('returns Date.now() for non-finite numeric timestamp', () => {
-    const before = Date.now();
-    const msg = { timestamp: NaN } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(result).toBeGreaterThanOrEqual(before);
-    expect(result).toBeLessThanOrEqual(after);
-  });
-});
-
 describe('AgentChat - streamMessage external agent routing', () => {
   let agent: AgentChat;
 
@@ -863,21 +732,5 @@ describe('AgentChat - streamMessage external agent routing', () => {
     const userMsg = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'hi' }], timestamp: Date.now() } as any;
     await agent.streamMessage(userMsg);
     expect(runner.runStreamMessage).toHaveBeenCalled();
-  });
-});
-
-describe('AgentChat - getAnalyticsDayKey', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns date in YYYY-MM-DD format', () => {
-    // Use a known timestamp: 2026-01-15 UTC
-    const ts = new Date('2026-01-15T10:00:00Z').getTime();
-    const key = (agent as any).getAnalyticsDayKey(ts);
-    expect(key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

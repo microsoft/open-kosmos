@@ -25,6 +25,8 @@ import {
 import { useProfileData } from '../userData/userDataProvider'
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
+import { resolveChatAgent, resolveChatAgents } from '../../lib/agent'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface ApplyMcpToAgentsDialogProps {
   open: boolean
@@ -56,6 +58,7 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
   onOpenChange,
   mcpServerNames,
 }) => {
+  const { t } = useI18n()
   const { chats, chatOps } = useProfileData()
   const { servers: mcpRuntimeServers } = useMCPServers()
   const { showSuccess, showError, showWarning } = useToast()
@@ -67,8 +70,8 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
   // Display label for the dialog description
   const displayLabel = useMemo(() => {
     if (mcpServerNames.length === 1) return `"${mcpServerNames[0]}"`
-    return `${mcpServerNames.length} MCP servers`
-  }, [mcpServerNames])
+    return t('mcp.apply.serverLabelMultiple', { count: mcpServerNames.length })
+  }, [mcpServerNames, t])
 
   // Build a map: serverName -> Set<toolName> from runtime info
   const serverToolsMap = useMemo(() => {
@@ -93,21 +96,25 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
     return serverToolsMap.get(entry.name) || new Set()
   }, [serverToolsMap])
 
+  // Extract agents from chats.
   const agentItems: AgentItem[] = useMemo(() => {
     const items: AgentItem[] = []
     for (const chat of chats) {
-      if (chat.chat_type === 'single_agent' && chat.agent) {
-        const existingNames = new Set((chat.agent.mcp_servers || []).map(s => s.name))
-        const allApplied = mcpServerNames.every(name => existingNames.has(name))
-        items.push({
-          chatId: chat.chat_id,
-          agentName: chat.agent.name,
-          emoji: chat.agent.emoji,
-          avatar: chat.agent.avatar,
-          alreadyApplied: allApplied,
-        })
-      } else if (chat.chat_type === 'multi_agent' && chat.agents) {
-        for (const agent of chat.agents) {
+      if (chat.chat_type === 'single_agent') {
+        const singleAgent = resolveChatAgent(chat)
+        if (singleAgent) {
+          const existingNames = new Set((singleAgent.mcp_servers || []).map(s => s.name))
+          const allApplied = mcpServerNames.every(name => existingNames.has(name))
+          items.push({
+            chatId: chat.chat_id,
+            agentName: singleAgent.name,
+            emoji: singleAgent.emoji,
+            avatar: singleAgent.avatar,
+            alreadyApplied: allApplied,
+          })
+        }
+      } else if (chat.chat_type === 'multi_agent') {
+        for (const agent of resolveChatAgents(chat)) {
           const existingNames = new Set((agent.mcp_servers || []).map(s => s.name))
           const allApplied = mcpServerNames.every(name => existingNames.has(name))
           items.push({
@@ -196,7 +203,7 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
       const chat = chats.find(c => c.chat_id === item.chatId)
       if (!chat) continue
 
-      const agent = chat.chat_type === 'single_agent' ? chat.agent : chat.agents?.find(a => a.name === item.agentName)
+      const agent = chat.chat_type === 'single_agent' ? resolveChatAgent(chat) : resolveChatAgents(chat).find(a => a.name === item.agentName)
       if (!agent) continue
 
       const currentMcpServers = agent.mcp_servers || []
@@ -295,29 +302,43 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
 
     if (successCount > 0) {
       const serverLabel = mcpServerNames.length === 1
-        ? `MCP server "${mcpServerNames[0]}"`
-        : `${mcpServerNames.length} MCP servers`
+        ? t('mcp.apply.serverLabelSingle', { name: mcpServerNames[0] })
+        : t('mcp.apply.serverLabelMultiple', { count: mcpServerNames.length })
+      const successAgentLabel = t(successCount > 1 ? 'mcp.apply.agentPlural' : 'mcp.apply.agentSingular')
 
       if (reports.length > 0) {
         // Has conflicts - show warning with summary
         const totalConflicts = reports.reduce((sum, r) => sum + r.conflicts.length, 0)
+        const toolLabel = t(totalConflicts > 1 ? 'mcp.apply.toolPlural' : 'mcp.apply.toolSingular')
         showWarning(
-          `${serverLabel} applied to ${successCount} agent${successCount > 1 ? 's' : ''}. ` +
-          `${totalConflicts} conflicting tool${totalConflicts > 1 ? 's were' : ' was'} excluded.`
+          t('mcp.apply.warning', {
+            serverLabel,
+            count: successCount,
+            agentLabel: successAgentLabel,
+            conflictCount: totalConflicts,
+            toolLabel,
+          })
         )
         setConflictReports(reports)
         setShowConflictSummary(true)
       } else {
-        showSuccess(`${serverLabel} applied to ${successCount} agent${successCount > 1 ? 's' : ''}`)
+        showSuccess(t('mcp.apply.success', {
+          serverLabel,
+          count: successCount,
+          agentLabel: successAgentLabel,
+        }))
         onOpenChange(false)
       }
     } else {
       if (failCount > 0) {
-        showError(`Failed to apply MCP server(s) to ${failCount} agent${failCount > 1 ? 's' : ''}`)
+        showError(t('mcp.apply.failed', {
+          count: failCount,
+          agentLabel: t(failCount > 1 ? 'mcp.apply.agentPlural' : 'mcp.apply.agentSingular'),
+        }))
       }
       onOpenChange(false)
     }
-  }, [agentItems, selectedAgents, chats, chatOps, mcpServerNames, serverToolsMap, resolveAgentToolNames, onOpenChange, showSuccess, showWarning, showError])
+  }, [agentItems, selectedAgents, chats, chatOps, mcpServerNames, serverToolsMap, resolveAgentToolNames, onOpenChange, showSuccess, showWarning, showError, t])
 
   const handleSkip = useCallback(() => {
     onOpenChange(false)
@@ -339,37 +360,40 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
       <Dialog open={open} onOpenChange={handleCloseConflictSummary}>
         <DialogContent className="w-[480px] max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>Tool Conflict Report</DialogTitle>
+            <DialogTitle>{t('mcp.apply.conflictReportTitle')}</DialogTitle>
             <DialogDescription>
-              Some tools were excluded because they conflict with tools from existing MCP servers.
+              {t('mcp.apply.conflictReportDescription')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-3 max-h-[360px] overflow-y-auto space-y-4">
             {conflictReports.map((report) => (
-              <div key={report.agentName} className="border border-gray-200 rounded-md p-3">
-                <div className="text-sm font-medium text-gray-900 mb-2">
+              <div key={report.agentName} className="border border-neutral-200 rounded-md p-3">
+                <div className="text-sm font-medium text-neutral-900 mb-2">
                   {report.agentName}
                   <span className={`ml-2 text-xs font-normal ${
                     report.addedToolCount === 0
-                      ? 'text-red-500'
-                      : 'text-gray-500'
+                      ? 'text-danger-500'
+                      : 'text-neutral-500'
                   }`}>
                     {report.addedToolCount === 0
-                      ? 'MCP server not added (all tools conflict)'
-                      : `${report.addedToolCount}/${report.totalNewToolCount} tools added`
+                      ? t('mcp.apply.serverNotAddedAllConflict')
+                      : t('mcp.apply.toolsAdded', {
+                        added: report.addedToolCount,
+                        total: report.totalNewToolCount,
+                      })
                     }
                   </span>
                 </div>
                 <div className="space-y-1">
                   {report.conflicts.map((conflict, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs text-gray-600">
-                      <span className="text-amber-500 shrink-0">excluded</span>
-                      <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">
+                    <div key={idx} className="flex items-center gap-2 text-xs text-neutral-600">
+                      <span className="text-warning-500 shrink-0">{t('mcp.apply.excluded')}</span>
+                      <code className="bg-neutral-100 px-1.5 py-0.5 rounded text-neutral-700">
                         {conflict.toolName}
                       </code>
-                      <span className="text-gray-400 shrink-0">
-                        (exists in {conflict.existingServer})
+                      <span className="text-neutral-400 shrink-0">
+                        {t('mcp.apply.existsIn', { server: conflict.existingServer })}
                       </span>
                     </div>
                   ))}
@@ -380,10 +404,10 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
 
           <DialogFooter>
             <button
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
               onClick={handleCloseConflictSummary}
             >
-              OK
+              {t('common.ok')}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -396,16 +420,16 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[480px] max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Apply to Agents</DialogTitle>
+          <DialogTitle>{t('mcp.apply.title')}</DialogTitle>
           <DialogDescription>
-            Select which agents should use {displayLabel}.
+            {t('mcp.apply.description', { label: displayLabel })}
           </DialogDescription>
         </DialogHeader>
 
         {selectableAgents.length > 0 && (
           <div className="mt-3">
             <div
-              className="flex items-center gap-3 px-3 py-1 rounded-md cursor-pointer select-none hover:bg-gray-100"
+              className="flex items-center gap-3 px-3 py-1 rounded-md cursor-pointer select-none hover:bg-neutral-100"
               onClick={handleSelectAll}
             >
               <input
@@ -413,17 +437,17 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
                 checked={isAllSelected}
                 readOnly
                 tabIndex={-1}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                className="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500 pointer-events-none"
               />
-              <span className="text-sm text-gray-700">{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+              <span className="text-sm text-neutral-700">{t(isAllSelected ? 'common.deselectAll' : 'common.selectAll')}</span>
             </div>
           </div>
         )}
 
         <div className="py-3 min-h-[244px] max-h-[552px] overflow-y-auto">
           {agentItems.length === 0 ? (
-            <div className="text-sm text-gray-500 text-center py-4">
-              No agents found.
+            <div className="text-sm text-neutral-500 text-center py-4">
+              {t('mcp.apply.noAgents')}
             </div>
           ) : (
             <div className="space-y-1">
@@ -436,7 +460,7 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
                   className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors select-none ${
                     item.alreadyApplied
                       ? 'opacity-60 cursor-default'
-                      : 'hover:bg-gray-100'
+                      : 'hover:bg-neutral-100'
                   }`}
                   onClick={() => handleToggle(item.chatId, item.alreadyApplied)}
                 >
@@ -446,19 +470,19 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
                     disabled={item.alreadyApplied}
                     readOnly
                     tabIndex={-1}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                    className="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500 pointer-events-none"
                   />
                   {item.avatar ? (
                     <img src={item.avatar} alt={item.agentName} className="w-6 h-6 rounded-full object-cover" />
                   ) : (
                     <span className="w-6 h-6 flex items-center justify-center text-base leading-none">{item.emoji}</span>
                   )}
-                  <span className="text-sm font-medium text-gray-900 flex-1">
+                  <span className="text-sm font-medium text-neutral-900 flex-1">
                     {item.agentName}
                   </span>
                   {item.alreadyApplied && (
-                    <span className="text-xs text-gray-400">
-                      Applied
+                    <span className="text-xs text-neutral-400">
+                      {t('common.applied')}
                     </span>
                   )}
                 </div>
@@ -469,18 +493,22 @@ const ApplyMcpToAgentsDialog: React.FC<ApplyMcpToAgentsDialogProps> = ({
 
         <DialogFooter>
           <button
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200 transition-colors"
             onClick={handleSkip}
             disabled={isApplying}
           >
-            Skip
+            {t('common.skip')}
           </button>
           <button
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={handleApply}
             disabled={isApplying || newlySelectedCount === 0}
           >
-            {isApplying ? 'Applying...' : `Apply${newlySelectedCount > 0 ? ` (${newlySelectedCount})` : ''}`}
+            {isApplying
+              ? t('mcp.apply.applying')
+              : newlySelectedCount > 0
+                ? t('mcp.apply.applyWithCount', { count: newlySelectedCount })
+                : t('mcp.apply.apply')}
           </button>
         </DialogFooter>
       </DialogContent>

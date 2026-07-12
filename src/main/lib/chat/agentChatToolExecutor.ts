@@ -3,6 +3,8 @@ import { CancellationError, CancellationToken, CancellationTokenStatic } from '.
 import { createLogger } from '../unifiedLogger';
 import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
 import { BuiltinToolsManager } from "../mcpRuntime/builtinTools/builtinToolsManager";
+import { InactivityTimer, SELF_MANAGED_IDLE_TOOLS, TOOL_IDLE_TIMEOUT_MS, ToolIdleTimeoutError } from "../mcpRuntime/toolTimeoutPolicy";
+import type { AgentChatInteractionPolicy } from './agentChatInteractionPolicy';
 
 const logger = createLogger();
 
@@ -17,12 +19,14 @@ export interface AgentChatToolExecutorDeps {
   getActiveToolCancellationHandler(): (() => Promise<void> | void) | null;
   setActiveToolCancellationHandler(handler: (() => Promise<void> | void) | null): void;
   getEventSender(): Electron.WebContents | null;
+  getInteractionPolicy(): AgentChatInteractionPolicy;
   currentModelSupportsTools(): boolean;
   getCurrentModelId(): string;
-  getSubAgentConfig(name: string): import('../userDataADO/types/profile').SubAgentConfig | undefined;
   getContextSummary(): string;
   getCurrentChatSession(): import('../userDataADO/chatSessionFileOps').ChatSessionFile | null;
+  getCurrentUserMessageId(): string | undefined;
   saveChatSession(): Promise<{ success: boolean; error?: string }>;
+  getSkipPersistence(): boolean;
   /** MCP server names bound to the current agent — used for per-agent tool routing */
   getAgentMcpServerNames(): string[];
 }
@@ -165,21 +169,56 @@ export class AgentChatToolExecutor {
 
     try {
 
+      const abortController = new AbortController();
+      const agentMcpServerNames = this.deps.getAgentMcpServerNames();
+
+      // Central no-response watchdog. Every builtin tool (except those in SELF_MANAGED_IDLE_TOOLS,
+      // which run their own idle budget internally) is force-terminated after TOOL_IDLE_TIMEOUT_MS
+      // elapse with no reported activity. Real tool output resets it through the reportActivity hook
+      // injected into the execution context below. Third-party MCP tools self-manage their idle
+      // budget inside the MCP client, so they are deliberately NOT gated here.
+      const applyIdleWatchdog = mcpClientManager.isBuiltinTool(name, agentMcpServerNames) && !SELF_MANAGED_IDLE_TOOLS.has(name);
+      let idleTimer: InactivityTimer | undefined;
+      let idleReject: ((reason: unknown) => void) | undefined;
+      const idlePromise: Promise<never> | undefined = applyIdleWatchdog
+        ? new Promise<never>((_resolve, reject) => { idleReject = reject; })
+        : undefined;
+      if (applyIdleWatchdog) {
+        idleTimer = new InactivityTimer(TOOL_IDLE_TIMEOUT_MS, () => {
+          logger.warn('[AgentChat] Tool produced no response within the no-response budget; terminating', 'executeToolCall', {
+            toolName: name,
+            toolCallId: toolCall.id,
+            idleMs: TOOL_IDLE_TIMEOUT_MS,
+          });
+          // Abort so signal-aware tools tear down their resources, and reject the race so the agent
+          // loop unblocks even if a tool ignores the signal.
+          abortController.abort(new ToolIdleTimeoutError(name, TOOL_IDLE_TIMEOUT_MS));
+          idleReject?.(new ToolIdleTimeoutError(name, TOOL_IDLE_TIMEOUT_MS));
+        });
+      }
+      const watchdog = idleTimer;
+      const reportActivity = watchdog ? () => watchdog.touch() : undefined;
+
       BuiltinToolsManager.setExecutionContext({
         chatSessionId: this.deps.getChatSessionId(),
         chatId: this.deps.getChatId(),
         userAlias: this.deps.getCurrentUserAlias(),
+        agentName: this.deps.getAgentName(),
         cancellationToken: this.deps.getCurrentCancellationToken() ?? CancellationTokenStatic.None,
         isSubAgent: false,
-        getSubAgentConfig: (name: string) => this.deps.getSubAgentConfig(name),
+        interactionPolicy: this.deps.getInteractionPolicy(),
         getParentContextSummary: async () => this.deps.getContextSummary(),
         eventSender: this.deps.getEventSender() ?? undefined,
         currentToolCallId: toolCall.id,
+        chatHistory: this.deps.getCurrentChatSession()?.chat_history,
+        currentUserMessageId: this.deps.getCurrentUserMessageId(),
+        ensureChatSessionSaved: () => this.deps.saveChatSession(),
+        skipPersistence: this.deps.getSkipPersistence(),
         registerCancellationHandler: (handler: () => Promise<void> | void) => this.registerActiveToolCancellationHandler(handler),
+        reportActivity,
       });
 
       try {
-        const abortController = new AbortController();
         const cancellationToken = this.deps.getCurrentCancellationToken();
         const tokenListener = cancellationToken?.onCancellationRequested(() => {
           abortController.abort();
@@ -189,8 +228,16 @@ export class AgentChatToolExecutor {
         });
 
         try {
-          return await mcpClientManager.executeTool({ toolName: name, toolArgs: parsedArgs, signal: abortController.signal, agentMcpServerNames: this.deps.getAgentMcpServerNames() });
+          const execPromise = mcpClientManager.executeTool({ toolName: name, toolArgs: parsedArgs, signal: abortController.signal, agentMcpServerNames });
+          if (!idlePromise) {
+            return await execPromise;
+          }
+          // Swallow a late rejection: once the idle watchdog wins the race, the tool's own promise
+          // may still settle (it ignored the signal) and would otherwise be an unhandled rejection.
+          execPromise.catch(() => undefined);
+          return await Promise.race([execPromise, idlePromise]);
         } finally {
+          idleTimer?.dispose();
           tokenListener?.dispose();
           cancellationRegistration.dispose();
         }
@@ -314,26 +361,6 @@ export class AgentChatToolExecutor {
             contentLength: messageContent.length,
           });
           needsUpdate = true;
-        }
-      }
-
-      if (executedToolCallIds.size === 0 && !MessageHelper.getText(lastAssistantMessage).trim()) {
-        const toolCallIdsToClean = new Set(toolCalls.map((toolCall) => toolCall.id));
-        for (let i = chatHistory.length - 1; i > lastAssistantIndex; i -= 1) {
-          const msg = chatHistory[i];
-          if (msg.role === 'tool' && msg.tool_call_id && toolCallIdsToClean.has(msg.tool_call_id)) {
-            currentChatSession.chat_history.splice(i, 1);
-            const contextIndex = contextHistory.findIndex((entry) => entry.id === msg.id);
-            if (contextIndex !== -1) {
-              currentChatSession.context_history.splice(contextIndex, 1);
-            }
-
-            logger.info('[AgentChat] Removed orphaned tool message', 'cleanupIncompleteToolCalls', {
-              agentName: this.deps.getAgentName(),
-              toolMessageId: msg.id,
-              toolCallId: msg.tool_call_id,
-            });
-          }
         }
       }
 

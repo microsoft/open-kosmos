@@ -5,6 +5,7 @@ import { Wrench, Loader2, ChevronRight } from 'lucide-react'
 
 import '../../styles/McpToolListView.css';
 import { MCPTool } from '../../types/mcpTypes'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface McpToolListViewProps {
   tools: MCPTool[]
@@ -19,18 +20,20 @@ const McpToolListView: React.FC<McpToolListViewProps> = ({
   onSelectTool,
   isLoading = false
 }) => {
+  const { t } = useI18n()
+
   return (
     <div className="mcp-tool-list-view">
       <div className="tool-list-content">
         {isLoading ? (
           <div className="loading-state">
             <Loader2 className="spinner" size={24} />
-            <p>Loading tools...</p>
+            <p>{t('mcp.tool.loading')}</p>
           </div>
         ) : tools.length === 0 ? (
           <div className="empty-state">
             <Wrench className="empty-icon" size={48} />
-            <p>No tools available</p>
+            <p>{t('mcp.tool.empty')}</p>
           </div>
         ) : (
           <div className="tools-list">

@@ -28,6 +28,12 @@ import {
   extractMonthFromChatSessionId,
   isValidChatSessionId
 } from './pathUtils';
+import {
+  queryScheduledSessionPage,
+  type ScheduledSessionPage,
+  type ScheduledSessionPageOptions,
+} from './scheduledSessionQueries';
+import { writeFileAtomicallyWithRetry } from './atomicFileWrite';
 
 const logger = createConsoleLogger();
 
@@ -130,21 +136,17 @@ export class ChatSessionManager {
   }
 
   private async writeFileAtomically(filePath: string, content: string): Promise<void> {
-    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-
-    try {
-      await fs.promises.writeFile(tempPath, content, 'utf-8');
-      await fs.promises.rename(tempPath, filePath);
-    } catch (error) {
-      try {
-        if (fs.existsSync(tempPath)) {
-          await fs.promises.unlink(tempPath);
-        }
-      } catch {
-        // ignore temp file cleanup failure
-      }
-      throw error;
-    }
+    await writeFileAtomicallyWithRetry(filePath, content, {
+      onRetry: ({ attempt, delayMs, error }) => {
+        logger.warn('[ChatSessionManager] Transient atomic-write rename failure, retrying', 'writeFileAtomically', {
+          filePath,
+          attempt,
+          delayMs,
+          code: error.code,
+          error: error.message,
+        });
+      },
+    });
   }
 
   // ========================================
@@ -543,6 +545,7 @@ export class ChatSessionManager {
         alias,
         chatId,
         chatSessionId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
         error: error instanceof Error ? error.message : String(error)
       });
       return false;
@@ -623,6 +626,7 @@ export class ChatSessionManager {
         alias,
         chatId,
         chatSessionId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
         error: error instanceof Error ? error.message : String(error)
       });
       return false;
@@ -691,6 +695,7 @@ export class ChatSessionManager {
         alias,
         chatId,
         chatSessionId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
         error: error instanceof Error ? error.message : String(error)
       });
       return null;
@@ -783,6 +788,7 @@ export class ChatSessionManager {
       logger.error('[ChatSessionManager] Failed to get chat sessions', 'getChatSessions', {
         alias,
         chatId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
         error: error instanceof Error ? error.message : String(error)
       });
       return {
@@ -863,6 +869,7 @@ export class ChatSessionManager {
         alias,
         chatId,
         fromMonthIndex,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
         error: error instanceof Error ? error.message : String(error)
       });
       return {
@@ -871,6 +878,197 @@ export class ChatSessionManager {
         hasMore: false,
         nextMonthIndex: fromMonthIndex
       };
+    }
+  }
+
+  /**
+   * Get all ChatSessions (non-paginated, for migration and similar scenarios)
+   * @deprecated Use getChatSessions + getMoreChatSessions for paginated loading
+   */
+  async getAllChatSessions(alias: string, chatId: string): Promise<ChatSession[]> {
+    try {
+      const chatIndex = await this.readChatIndex(alias, chatId);
+      if (!chatIndex || chatIndex.months.length === 0) {
+        return [];
+      }
+
+      const allSessions: ChatSession[] = [];
+
+      for (const month of chatIndex.months) {
+        const monthData = await this.readMonthIndex(alias, chatId, month);
+        if (monthData && monthData.sessions.length > 0) {
+          allSessions.push(...monthData.sessions);
+        }
+      }
+
+      allSessions.sort((a, b) =>
+        new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+      );
+
+      return allSessions;
+    } catch (error) {
+      logger.error('[ChatSessionManager] Failed to get all chat sessions', 'getAllChatSessions', {
+        alias,
+        chatId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }
+  }
+
+async getScheduledSessionsByJobId(
+    alias: string,
+    chatId: string,
+    schedulerJobId: string,
+    options?: ScheduledSessionPageOptions,
+  ): Promise<ScheduledSessionPage> {
+    return queryScheduledSessionPage({
+      alias,
+      chatId,
+      options,
+      operation: 'getScheduledSessionsByJobId',
+      logContext: { schedulerJobId },
+      readChatIndex: () => this.readChatIndex(alias, chatId),
+      readMonthIndex: month => this.readMonthIndex(alias, chatId, month),
+      matchesSession: session => session.schedulerJobId === schedulerJobId,
+      logger,
+    });
+  }
+
+  async getAllScheduledSessions(
+    alias: string,
+    chatId: string,
+    options?: ScheduledSessionPageOptions,
+  ): Promise<ScheduledSessionPage> {
+    return queryScheduledSessionPage({
+      alias,
+      chatId,
+      options,
+      operation: 'getAllScheduledSessions',
+      readChatIndex: () => this.readChatIndex(alias, chatId),
+      readMonthIndex: month => this.readMonthIndex(alias, chatId, month),
+      matchesSession: session => Boolean(session.schedulerJobId),
+      logger,
+    });
+  }
+
+  // ========================================
+  // Migration Methods
+  // ========================================
+
+  /**
+   * Migrate chatSessions from profile.json to the new directory structure
+   * @param alias User alias
+   * @param chatId Chat ID
+   * @param chatSessions The chatSessions array from the original profile.json
+   * @param getChatSessionFileFunc Function to get the chatSession file content
+   */
+  async migrateFromProfile(
+    alias: string,
+    chatId: string,
+    chatSessions: ChatSession[],
+    getChatSessionFileFunc: (chatSessionId: string) => Promise<ChatSessionFile | null>
+  ): Promise<boolean> {
+    try {
+      logger.info('[ChatSessionManager] Starting migration from profile.json', 'migrateFromProfile', {
+        alias,
+        chatId,
+        sessionCount: chatSessions.length
+      });
+
+      if (chatSessions.length === 0) {
+        logger.info('[ChatSessionManager] No sessions to migrate', 'migrateFromProfile', {
+          alias,
+          chatId
+        });
+        return true;
+      }
+
+      // Group by month
+      const sessionsByMonth = new Map<string, ChatSession[]>();
+
+      for (const session of chatSessions) {
+        if (!isValidChatSessionId(session.chatSession_id)) {
+          logger.warn('[ChatSessionManager] Skipping invalid chatSessionId during migration', 'migrateFromProfile', {
+            chatSessionId: session.chatSession_id
+          });
+          continue;
+        }
+
+        const month = extractMonthFromChatSessionId(session.chatSession_id);
+        if (!month) {
+          logger.warn('[ChatSessionManager] Skipping session with invalid month', 'migrateFromProfile', {
+            chatSessionId: session.chatSession_id
+          });
+          continue;
+        }
+
+        if (!sessionsByMonth.has(month)) {
+          sessionsByMonth.set(month, []);
+        }
+        sessionsByMonth.get(month)!.push(session);
+      }
+
+      // Create the chat-level index
+      const months = Array.from(sessionsByMonth.keys()).sort().reverse();
+      const chatIndex: ChatSessionsChatIndex = {
+        chat_id: chatId,
+        months: months,
+        last_updated: new Date().toISOString()
+      };
+      await this.writeChatIndex(alias, chatId, chatIndex);
+
+      // Create index and migrate files for each month
+      for (const [month, sessions] of sessionsByMonth) {
+        // Sort
+        sessions.sort((a, b) =>
+          new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+        );
+
+        // Create month index
+        const monthIndex: ChatSessionsMonthIndex = {
+          chat_id: chatId,
+          month: month,
+          sessions: sessions,
+          last_updated: new Date().toISOString()
+        };
+        await this.writeMonthIndex(alias, chatId, month, monthIndex);
+
+        // Migrate each session file
+        for (const session of sessions) {
+          const chatSessionFile = await getChatSessionFileFunc(session.chatSession_id);
+          if (chatSessionFile) {
+            const filePath = getChatSessionFilePath(alias, chatId, session.chatSession_id);
+            await fs.promises.writeFile(filePath, JSON.stringify(chatSessionFile, null, 2), 'utf-8');
+            logger.info('[ChatSessionManager] Migrated session file', 'migrateFromProfile', {
+              chatSessionId: session.chatSession_id,
+              month
+            });
+          } else {
+            logger.warn('[ChatSessionManager] Session file not found during migration', 'migrateFromProfile', {
+              chatSessionId: session.chatSession_id
+            });
+          }
+        }
+      }
+
+      logger.info('[ChatSessionManager] Migration completed successfully', 'migrateFromProfile', {
+        alias,
+        chatId,
+        migratedMonths: months.length,
+        totalSessions: chatSessions.length
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('[ChatSessionManager] Migration failed', 'migrateFromProfile', {
+        alias,
+        chatId,
+        /* v8 ignore next -- non-Error exceptions are rare; defensive fallback */
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return false;
     }
   }
 

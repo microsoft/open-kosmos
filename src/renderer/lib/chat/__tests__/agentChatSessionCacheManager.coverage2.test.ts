@@ -9,7 +9,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 // ── hoisted mock vars ─────────────────────────────────────────────────────────
-const mockIsFeatureEnabled = vi.hoisted(() => vi.fn(() => false));
 const mockCreateLogger = vi.hoisted(() => vi.fn(() => ({
   debug: vi.fn(),
   warn: vi.fn(),
@@ -18,10 +17,6 @@ const mockCreateLogger = vi.hoisted(() => vi.fn(() => ({
 })));
 
 // ── module mocks ──────────────────────────────────────────────────────────────
-vi.mock('@/lib/featureFlags', () => ({
-  isFeatureEnabled: mockIsFeatureEnabled,
-}));
-
 vi.mock('@/lib/utilities/logger', () => ({
   createLogger: mockCreateLogger,
 }));
@@ -479,8 +474,7 @@ describe('AgentChatSessionCacheManager — mergeSnapshotMessagesWithExistingCach
     expect(result).toBe(false);
   });
 
-  it('browserControl feature flag filters user_img_ messages on cache creation', () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
+  it('filters injected user image messages on cache creation', () => {
     mockAgentChatListeners['chatSessionCacheCreated']?.({
       chatSessionId: 'sess-img', chatId: 'chat-img',
       initialData: {
@@ -493,7 +487,6 @@ describe('AgentChatSessionCacheManager — mergeSnapshotMessagesWithExistingCach
     const msgs = mgr.getChatSessionCache('sess-img')!.messages;
     expect(msgs.find(m => m.id === 'user_img_001')).toBeUndefined();
     expect(msgs.find(m => m.id === 'msg-normal')).toBeTruthy();
-    mockIsFeatureEnabled.mockReturnValue(false);
   });
 });
 

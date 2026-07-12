@@ -2,7 +2,6 @@
 import { Message, UserMessage, AssistantMessage } from '@shared/types/chatTypes';
 import type { InteractiveRequest } from '@shared/types/interactiveRequestTypes';
 import { StreamingChunk } from '@shared/types/streamingTypes';
-import { isFeatureEnabled } from '../featureFlags';
 import { createLogger } from '../utilities/logger';
 import { produce, original, current, type WritableDraft } from 'immer';
 
@@ -254,7 +253,7 @@ export class SessionManager {
 
     // Filter out MCP-injected image messages (user_img_*) so they are never rendered.
     // These are backend-only messages injected by agentChat.ts for vision model consumption.
-    if (isFeatureEnabled('browserControl') && messages.length > 0) {
+    if (messages.length > 0) {
       const beforeCount = messages.length;
       messages = messages.filter(m => !(m.role === 'user' && m.id?.startsWith('user_img_')));
       if (messages.length < beforeCount) {
@@ -437,7 +436,7 @@ export class SessionManager {
    */
   addUserMessage(chatSessionId: string, userMessage: Message) {
     // Filter out MCP-injected image messages
-    if (isFeatureEnabled('browserControl') && userMessage.id.startsWith('user_img_')) {
+    if (userMessage.id.startsWith('user_img_')) {
       return;
     }
 
@@ -469,7 +468,7 @@ export class SessionManager {
   }
 
   /**
-   * Handle a user_message chunk — remote channel user message pushed from backend.
+   * Handle a user_message chunk pushed from the backend.
    * Reuses addUserMessage() to append the message and trigger UI update.
    */
   private handleUserMessageChunk(cache: WritableDraft<ChatSessionCache>, chunk: StreamingChunk) {

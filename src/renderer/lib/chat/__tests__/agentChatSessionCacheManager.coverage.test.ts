@@ -5,7 +5,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 // ── hoisted mock vars ─────────────────────────────────────────────────────────
-const mockIsFeatureEnabled = vi.hoisted(() => vi.fn(() => false));
 const mockCreateLogger = vi.hoisted(() => vi.fn(() => ({
   debug: vi.fn(),
   warn: vi.fn(),
@@ -14,10 +13,6 @@ const mockCreateLogger = vi.hoisted(() => vi.fn(() => ({
 })));
 
 // ── module mocks ──────────────────────────────────────────────────────────────
-vi.mock('@/lib/featureFlags', () => ({
-  isFeatureEnabled: mockIsFeatureEnabled,
-}));
-
 vi.mock('@/lib/utilities/logger', () => ({
   createLogger: mockCreateLogger,
 }));
@@ -207,13 +202,11 @@ describe('AgentChatSessionCacheManager', () => {
     expect(() => mgr.addUserMessage('nonexistent', msg)).not.toThrow();
   });
 
-  it('addUserMessage ignores user_img_ messages when browserControl enabled', () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
+  it('addUserMessage ignores injected user image messages', () => {
     mgr.createChatSessionCache('sess-img', 'chat-img');
     const imgMsg: any = { id: 'user_img_1', role: 'user', content: [], timestamp: 0 };
     mgr.addUserMessage('sess-img', imgMsg);
     expect(mgr.getChatSessionCache('sess-img')!.messages).toHaveLength(0);
-    mockIsFeatureEnabled.mockReturnValue(false);
   });
 
   // ── removeMessage ──────────────────────────────────────────────────────────

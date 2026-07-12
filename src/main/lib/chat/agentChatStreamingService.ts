@@ -78,10 +78,6 @@ export interface AgentChatStreamingServiceDeps {
 }
 
 export class AgentChatStreamingService {
-  /** Set before each turn to measure Chat TTFT (message received → first token emitted) */
-  turnStartTime: number = 0;
-  /** Guards against reporting TTFT more than once per user turn (tool-call loops) */
-  ttftReportedForTurn: boolean = false;
   /** Tracks seen /responses event types to only log first occurrence of unknown types */
   private seenResponseEventTypes: Set<string> = new Set();
 
@@ -123,12 +119,12 @@ export class AgentChatStreamingService {
           validateToolsRequest(openAiTools);
           toolChoice = determineToolChoice(openAiTools, ToolMode.Auto);
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = error instanceof Error ? error.message : /* v8 ignore next */ String(error);
           logger.error(`[AgentChat] Tool processing failed: ${errorMessage}`);
           // Tool limit exceeded is a fatal error — the agent cannot function without tools.
           // Re-throw with user-friendly message so it surfaces in the ErrorBar.
           if (errorMessage.includes('Cannot have more than 128 tools')) {
-            const toolCount = openAiTools?.length || currentTools.length;
+            const toolCount = currentTools.length;
             throw new GhcApiError(
               `Tool limit exceeded: this agent has ${toolCount} tools, but the maximum is 128. Please disconnect some MCP servers and retry.`,
               400
@@ -200,6 +196,7 @@ export class AgentChatStreamingService {
         throw error;
       }
 
+      /* v8 ignore next 2 -- defensive: errors are always Error/GhcApiError from makeStreamingApiCall */
       const originalMessage = error instanceof Error ? error.message : 'Streaming call failed';
       const originalStatusCode = error instanceof GhcApiError ? (error as GhcApiError).statusCode : 500;
 
@@ -302,9 +299,6 @@ export class AgentChatStreamingService {
     let toolCalls: any[] = [];
     let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
     let apiModel: string | undefined;
-    let firstTokenReported = false;
-    let fetchStartTime = 0;
-
     let cancellationListener: { dispose(): void } | null = null;
     if (token) {
       cancellationListener = token.onCancellationRequested(() => {
@@ -329,7 +323,6 @@ export class AgentChatStreamingService {
         headers['Copilot-Vision-Request'] = 'true';
       }
 
-      fetchStartTime = Date.now();
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -362,7 +355,7 @@ export class AgentChatStreamingService {
           hasImageContent,
         });
 
-        let userFriendlyMessage = errorMessage || `HTTP ${response.status}`;
+        let userFriendlyMessage = errorMessage || /* v8 ignore next */ `HTTP ${response.status}`;
         const requestContext = `[Model: ${requestOptions.model}, Endpoint: ${endpoint}, Status: ${response.status}]`;
 
         if (response.status === 500) {
@@ -416,8 +409,6 @@ export class AgentChatStreamingService {
                 try {
                   const data = JSON.parse(trimmed.slice(6));
                   if (!isCancelled) {
-                    const prevContent = fullContent;
-                    const prevToolCallsLen = toolCalls.length;
                     const nextState = this.processSseData({
                       data,
                       endpoint,
@@ -436,20 +427,6 @@ export class AgentChatStreamingService {
                     usage = nextState.usage;
                     apiModel = nextState.apiModel;
 
-                    // Report TTFT on first content or tool_call token (final buffer edge case)
-                    if (!firstTokenReported && (
-                      (prevContent === '' && fullContent !== '') ||
-                      (prevToolCallsLen === 0 && toolCalls.length > 0)
-                    )) {
-                      firstTokenReported = true;
-                      if (!this.ttftReportedForTurn) {
-                        this.ttftReportedForTurn = true;
-                        const now = Date.now();
-                        if (this.turnStartTime > 0) {
-                          this.turnStartTime = 0;
-                        }
-                      }
-                    }
                   }
                 } catch {
                   logger.warn(`[AgentChat] Failed to parse final buffer chunk: ${buffer}`);
@@ -476,8 +453,6 @@ export class AgentChatStreamingService {
                 continue;
               }
 
-              const prevContent = fullContent;
-              const prevToolCallsLen = toolCalls.length;
               const nextState = this.processSseData({
                 data,
                 endpoint,
@@ -496,19 +471,6 @@ export class AgentChatStreamingService {
               usage = nextState.usage;
               apiModel = nextState.apiModel;
 
-              // Report TTFT on first content or tool_call token
-              if (!firstTokenReported && (
-                (prevContent === '' && fullContent !== '') ||
-                (prevToolCallsLen === 0 && toolCalls.length > 0)
-              )) {
-                firstTokenReported = true;
-                if (!this.ttftReportedForTurn) {
-                  this.ttftReportedForTurn = true;
-                  if (this.turnStartTime > 0) {
-                    this.turnStartTime = 0;
-                  }
-                }
-              }
             } catch {
               logger.warn(`[AgentChat] Failed to parse streaming chunk: ${trimmed}`);
             }
@@ -559,7 +521,7 @@ export class AgentChatStreamingService {
         );
       }
 
-      const originalErrorMessage = error instanceof Error ? error.message : String(error);
+      const originalErrorMessage = error instanceof Error ? error.message : /* v8 ignore next */ String(error);
       const capitalizedErrorMessage = originalErrorMessage.charAt(0).toUpperCase() + originalErrorMessage.slice(1);
 
       let causeInfo = '';
@@ -586,7 +548,7 @@ export class AgentChatStreamingService {
       });
 
       const lowerMsg = originalErrorMessage.toLowerCase();
-      let userFriendlyMessage = capitalizedErrorMessage || 'Unknown network error';
+      let userFriendlyMessage = capitalizedErrorMessage || /* v8 ignore next */ 'Unknown network error';
 
       if (lowerMsg.includes('fetch failed') || lowerMsg.includes('enotfound') || lowerMsg.includes('econnrefused') || lowerMsg.includes('etimedout')) {
         userFriendlyMessage = `${capitalizedErrorMessage}\n\nCause: Network connection failed${causeInfo ? ` (${causeInfo})` : ''}\nSuggestion: Please check if VPN is connected, or if network is working properly`;

@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockIsEnabled = vi.fn().mockReturnValue(false);
 const mockGetAllFlags = vi.fn().mockReturnValue({});
+const mockSubscribe = vi.fn();
 let mockIsInitialized = false;
 
 vi.mock('../featureFlagCacheManager', () => ({
@@ -14,17 +15,19 @@ vi.mock('../featureFlagCacheManager', () => ({
     get isInitialized() { return mockIsInitialized; },
     isEnabled: (...args: unknown[]) => mockIsEnabled(...args),
     getAllFlags: (...args: unknown[]) => mockGetAllFlags(...args),
+    subscribe: (...args: [() => void]) => mockSubscribe(...args),
   },
 }));
 
 import { renderHook, act } from '@testing-library/react';
-import { useFeatureFlag, useFeatureFlags } from '../useFeatureFlag';
+import { useFeatureFlag, useFeatureFlags, useFeatureFlagState } from '../useFeatureFlag';
 
 describe('useFeatureFlag', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsInitialized = false;
     mockIsEnabled.mockReturnValue(false);
+    mockSubscribe.mockImplementation(() => vi.fn());
   });
 
   it('returns false when flag is disabled', () => {
@@ -34,6 +37,7 @@ describe('useFeatureFlag', () => {
   });
 
   it('returns true when flag is enabled at init time', () => {
+    mockIsInitialized = true;
     mockIsEnabled.mockReturnValue(true);
     const { result } = renderHook(() => useFeatureFlag('myFlag'));
     expect(result.current).toBe(true);
@@ -56,21 +60,34 @@ describe('useFeatureFlag', () => {
     expect(result.current).toBe(true);
   });
 
-  it('does not re-check when manager is not yet initialized', () => {
+  it('updates when manager initialization is published', () => {
     mockIsInitialized = false;
     mockIsEnabled.mockReturnValue(false);
+    let listener: (() => void) | undefined;
+    mockSubscribe.mockImplementation((callback: () => void) => {
+      listener = callback;
+      return vi.fn();
+    });
 
-    const { result, rerender } = renderHook(
-      ({ name }: { name: string }) => useFeatureFlag(name),
-      { initialProps: { name: 'flagA' } }
-    );
+    const { result } = renderHook(() => useFeatureFlag('flagA'));
     expect(result.current).toBe(false);
 
-    // Even if isEnabled would now return true, no re-check happens because not initialized
+    act(() => {
+      mockIsInitialized = true;
+      mockIsEnabled.mockReturnValue(true);
+      listener?.();
+    });
+
+    expect(result.current).toBe(true);
+  });
+
+  it('exposes initialized state separately from enabled state', () => {
+    mockIsInitialized = false;
     mockIsEnabled.mockReturnValue(true);
-    act(() => { rerender({ name: 'flagA' }); });
-    // The effect won't call setEnabled because isInitialized is false
-    expect(result.current).toBe(false);
+
+    const { result } = renderHook(() => useFeatureFlagState('flagA'));
+
+    expect(result.current).toEqual({ enabled: false, initialized: false });
   });
 });
 
@@ -79,6 +96,7 @@ describe('useFeatureFlags', () => {
     vi.clearAllMocks();
     mockIsInitialized = false;
     mockGetAllFlags.mockReturnValue({});
+    mockSubscribe.mockImplementation(() => vi.fn());
   });
 
   it('returns empty flags object initially', () => {
@@ -98,6 +116,25 @@ describe('useFeatureFlags', () => {
 
     const { result } = renderHook(() => useFeatureFlags());
     // effect runs synchronously in happy-dom
+    expect(result.current).toEqual({ featureX: true });
+  });
+
+  it('updates flags when manager initialization is published', () => {
+    let listener: (() => void) | undefined;
+    mockSubscribe.mockImplementation((callback: () => void) => {
+      listener = callback;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => useFeatureFlags());
+    expect(result.current).toEqual({});
+
+    act(() => {
+      mockIsInitialized = true;
+      mockGetAllFlags.mockReturnValue({ featureX: true });
+      listener?.();
+    });
+
     expect(result.current).toEqual({ featureX: true });
   });
 });

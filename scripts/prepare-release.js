@@ -59,14 +59,6 @@ try {
   console.log('📝 Updating changelog...');
   updateChangelog(newVersion);
   
-  // 4. Run validation.
-  console.log('🧪 Running validation...');
-  try {
-    execSync('npm run test:cdn-update', { stdio: 'inherit' });
-  } catch (error) {
-    console.warn('⚠️  CDN validation failed, but the release flow can continue');
-  }
-  
   console.log('\n🎉 Release preparation completed');
   console.log('=====================================');
   console.log(`New version: ${newVersion}`);

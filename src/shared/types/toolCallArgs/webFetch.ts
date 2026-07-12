@@ -10,7 +10,6 @@ export interface WebContentResult {
 export interface WebFetchToolArgs {
   description: string;
   urls: string[];
-  timeoutSeconds?: number;
   maxContentSize?: number;
 }
 

@@ -15,7 +15,7 @@ vi.mock('crypto', async () => ({
 }));
 
 import { BuddyManager } from '../BuddyManager';
-import { HATCH_COST, ALL_STATS, BuddyRosterData } from '../types';
+import { HATCH_COST, ALL_STATS, BuddyRosterData, BuddyPersistence } from '../types';
 import * as fs from 'fs';
 
 const mockFs = fs as Mocked<typeof fs>;
@@ -55,6 +55,64 @@ describe('BuddyManager', () => {
       expect(roster.buddies).toHaveLength(0);
       expect(roster.activeBuddyId).toBe('');
       expect(roster.userTotalTokens).toBe(0);
+    });
+
+    it('migrates V1 data to V2 format', async () => {
+      const v1Data: BuddyPersistence = {
+        companionSeed: 'testuser-123-abc',
+        companion: {
+          name: 'Old Buddy',
+          personality: 'cheerfully unhelpful',
+          hatchedAt: 1000,
+        },
+        companionMuted: true,
+        buddyXP: {
+          totalXP: 500,
+          lastXPGain: 50,
+          xpHistory: [],
+        },
+      };
+
+      // First call for profileDir, second for buddy.json
+      mockFs.existsSync
+        .mockReturnValueOnce(true) // profileDir exists
+        .mockReturnValueOnce(true); // buddy.json exists
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(v1Data));
+
+      await manager.initialize('testuser');
+
+      const roster = manager.getRoster();
+      expect(roster.buddies).toHaveLength(1);
+      expect(roster.buddies[0].soul.name).toBe('Old Buddy');
+      expect(roster.buddies[0].xp).toBe(500);
+      expect(roster.userTotalTokens).toBe(500);
+      expect(manager.isMuted()).toBe(true);
+
+      // Should have persisted the migrated V2 data
+      expect(mockFs.writeFileSync).toHaveBeenCalled();
+      const written = JSON.parse(mockFs.writeFileSync.mock.calls[0][1] as string);
+      expect(written.version).toBe(2);
+    });
+
+    it('migrates V1 data with no companionMuted field (defaults to false)', async () => {
+      const v1DataNoMuted: BuddyPersistence = {
+        companionSeed: 'testuser-123-xyz',
+        companion: {
+          name: 'Silent Buddy',
+          personality: 'very quiet',
+          hatchedAt: 2000,
+        },
+        // companionMuted intentionally omitted
+        buddyXP: { totalXP: 100, lastXPGain: 10, xpHistory: [] },
+      };
+
+      mockFs.existsSync
+        .mockReturnValueOnce(true)
+        .mockReturnValueOnce(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(v1DataNoMuted));
+
+      await manager.initialize('testuser');
+      expect(manager.isMuted()).toBe(false); // covers `v1.companionMuted ?? false`
     });
 
     it('loads V2 data directly', async () => {

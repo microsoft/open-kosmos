@@ -1,6 +1,6 @@
 // src/main/lib/compression/fullModeCompressor.ts
 // Ported from VSCode Copilot Chat Full Mode compression algorithm.
-// Handles intelligent compression of OpenKosmos Messages.
+// Handles intelligent compression of OpenKosmos messages.
 
 import { Message, ToolMessage, ToolCall, MessageHelper } from '@shared/types/chatTypes';
 import { contextCompressionLlmSummarizer } from '../llm/contextCompressionLlmSummarizer';

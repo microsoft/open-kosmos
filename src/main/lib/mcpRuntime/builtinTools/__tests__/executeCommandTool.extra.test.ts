@@ -1,7 +1,6 @@
 /**
  * Extra coverage for ExecuteCommandTool — validateArgs all branches,
- * getDangerousPatternReason categorisation, getDefinition, buildCommandLine,
- * and normalizeTimeout edge cases.
+ * getDangerousPatternReason categorisation, getDefinition, and buildCommandLine.
  */
 
 vi.mock('../../../runtime/RuntimeManager', async () => ({
@@ -113,23 +112,6 @@ describe('ExecuteCommandTool.validateArgs', () => {
     expect(r.error).toMatch(/each arg/);
   });
 
-  it('returns invalid when timeoutSeconds is Infinity', () => {
-    const r = validate({ description: 'test', command: 'ls', cwd: '/tmp', timeoutSeconds: Infinity });
-    expect(r.isValid).toBe(false);
-    expect(r.error).toMatch(/finite/);
-  });
-
-  it('returns invalid when timeoutSeconds is zero', () => {
-    const r = validate({ description: 'test', command: 'ls', cwd: '/tmp', timeoutSeconds: 0 });
-    expect(r.isValid).toBe(false);
-    expect(r.error).toMatch(/greater than zero/);
-  });
-
-  it('returns invalid when timeoutSeconds is negative', () => {
-    const r = validate({ description: 'test', command: 'ls', cwd: '/tmp', timeoutSeconds: -5 });
-    expect(r.isValid).toBe(false);
-  });
-
   it('returns invalid for unsupported shell', () => {
     const r = validate({ description: 'test', command: 'ls', cwd: '/tmp', shell: 'fish' });
     expect(r.isValid).toBe(false);
@@ -142,7 +124,6 @@ describe('ExecuteCommandTool.validateArgs', () => {
       command: 'ls',
       cwd: '/tmp',
       args: ['-la'],
-      timeoutSeconds: 30,
       shell: 'bash',
     });
     expect(r.isValid).toBe(true);
@@ -154,31 +135,6 @@ describe('ExecuteCommandTool.validateArgs', () => {
       const r = validate({ description: 'd', command: 'c', cwd: '/tmp', shell });
       expect(r.isValid).toBe(true);
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// normalizeTimeout — edge cases
-// ---------------------------------------------------------------------------
-
-describe('ExecuteCommandTool.normalizeTimeout', () => {
-  const normalizeTimeout = (s: any, cmd: string) =>
-    (ExecuteCommandTool as any).normalizeTimeout(s, cmd);
-
-  it('throws when timeoutSeconds is NaN', () => {
-    expect(() => normalizeTimeout(NaN, 'ls')).toThrow('timeoutSeconds must be a finite number');
-  });
-
-  it('clamps to 1s minimum (input 0.1)', () => {
-    expect(normalizeTimeout(0.1, 'ls')).toBe(1000);
-  });
-
-  it('clamps to 900s maximum (input 999)', () => {
-    expect(normalizeTimeout(999, 'ls')).toBe(900_000);
-  });
-
-  it('floors fractional seconds', () => {
-    expect(normalizeTimeout(30.9, 'ls')).toBe(30_000);
   });
 });
 
@@ -195,13 +151,13 @@ describe('ExecuteCommandTool.getDangerousPatternReason', () => {
     expect(reason).toMatch(/credential/i);
   });
 
-  it('returns OAuth logout message for microsoftonline pattern', () => {
-    const reason = getReason(/login\.microsoftonline\.com\/.*\/logout/i);
+  it('returns OAuth logout message for a generic logout pattern', () => {
+    const reason = getReason(/https?:\/\/example\.com\/logout/i);
     expect(reason).toMatch(/OAuth logout|destructive/i);
   });
 
-  it('returns OAuth logout message for live.com logout pattern', () => {
-    const reason = getReason(/login\.live\.com\/.*logout/i);
+  it('returns OAuth logout message for a generic revoke pattern', () => {
+    const reason = getReason(/https?:\/\/example\.com\/revoke/i);
     expect(reason).toMatch(/OAuth logout|destructive/i);
   });
 
@@ -215,13 +171,13 @@ describe('ExecuteCommandTool.getDangerousPatternReason', () => {
     expect(reason).toMatch(/OAuth logout|destructive/i);
   });
 
-  it('returns browser profile message for Edge/Chrome User Data', () => {
-    const reason = getReason(/(?:Microsoft\\\\Edge|Google\\\\Chrome)\\\\User Data/i);
+  it('returns browser profile message for a Windows User Data path', () => {
+    const reason = getReason(/(?:\\|\/)User Data(?:\\|\/)/i);
     expect(reason).toMatch(/browser profile/i);
   });
 
   it('returns browser profile message for macOS Application Support', () => {
-    const reason = getReason(/Application Support\/(?:Microsoft Edge|Google\/Chrome)/i);
+    const reason = getReason(/\/Application Support\/[^/]+\/Default/i);
     expect(reason).toMatch(/browser profile/i);
   });
 
@@ -330,17 +286,6 @@ describe('ExecuteCommandTool.execute — validation errors', () => {
   it('throws when command is empty', async () => {
     await expect(
       ExecuteCommandTool.execute({ description: 'test', command: '', cwd: '/tmp' } as any),
-    ).rejects.toThrow(/Invalid execute_command arguments/);
-  });
-
-  it('throws when timeoutSeconds is Infinity (validation)', async () => {
-    await expect(
-      ExecuteCommandTool.execute({
-        description: 'test',
-        command: 'ls',
-        cwd: '/tmp',
-        timeoutSeconds: Infinity,
-      } as any),
     ).rejects.toThrow(/Invalid execute_command arguments/);
   });
 });

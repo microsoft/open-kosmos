@@ -12,7 +12,7 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 // ── imports after mocks ───────────────────────────────────────────────────────
 import { BuddyAtom, HatchingCeremonyAtom } from '../buddy.atom';
 
-// ── store builder (same pattern as doctor.atom.coverage.test.ts) ──────────────
+// ── store builder ─────────────────────────────────────────────────────────────
 function buildStore() {
   const map: Record<string, any> = {};
   function query(atomObj: any): any {

@@ -6,6 +6,8 @@ import '../../styles/McpServerListView.css';
 import ServerCard from './McpServerCard'
 import { MCPServerExtended } from '../../lib/userData/types'
 import ListSearchBox from '../ui/ListSearchBox'
+import { useAutoHideScrollbar } from '../../lib/hooks/useAutoHideScrollbar'
+import { useI18n } from '../../lib/i18n/useI18n'
 // Builtin tools now accessed via IPC
 
 interface McpServerListViewProps {
@@ -52,6 +54,8 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
   mcpServerMenuState,
   mcpServerOperations
 }) => {
+  const { t } = useI18n()
+
   // Store operation functions on the window object for access by the AppLayout menu components
   React.useEffect(() => {
     if (mcpServerOperations) {
@@ -69,67 +73,6 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
     }
   }
 
-  const handleMenuAction = (action: () => void) => (event: React.MouseEvent) => {
-    event.stopPropagation()
-    action()
-  }
-
-  // Helper function to get available actions and state for a server
-  const getServerActionState = (server: MCPServerExtended, serverName: string) => {
-    const operationState = operationStates[serverName]
-    const isOperating = operationState?.isOperating || false
-    const currentOperation = operationState?.operation
-    const serverTools = server.tools || []
-    const hasError = !!server.error
-
-    const getCurrentState = () => {
-      // 🔧 Fix: maintain consistent state judgment logic with McpServerCard.tsx
-      // Operation state should have the highest priority
-      if (isOperating) {
-        if (currentOperation === 'connect') return 'connecting'
-        if (currentOperation === 'disconnect') return 'disconnecting'
-        if (currentOperation === 'reconnect') return 'connecting'
-      }
-
-      // 🔧 Fix: if server status is explicitly 'connecting' or 'disconnecting', prioritize those statuses
-      if (server.status === 'connecting') return 'connecting'
-      if (server.status === 'disconnecting') return 'disconnecting'
-
-      // Basic state judgment - priority order
-      if (server.status === 'connected' && serverTools.length > 0) return 'connected'
-      if (server.status === 'error') return 'error'
-      if (server.status !== 'connected' && hasError) return 'error'
-
-      return server.status || 'disconnected'
-    }
-
-    const currentState = getCurrentState()
-
-    const getAvailableActions = () => {
-      if (isOperating) return { connect: false, disconnect: false, reconnect: false }
-
-      switch (currentState) {
-        case 'disconnected':
-          return { connect: true, disconnect: false, reconnect: false }
-        case 'connected':
-          return { connect: false, disconnect: true, reconnect: false }
-        case 'error':
-          return { connect: false, disconnect: true, reconnect: true }
-        case 'connecting':
-          return { connect: false, disconnect: true, reconnect: false }
-        case 'disconnecting':
-          return { connect: false, disconnect: false, reconnect: false }
-        default:
-          return { connect: false, disconnect: false, reconnect: false }
-      }
-    }
-
-    const availableActions = getAvailableActions()
-    const shouldDisableButtons = currentState === 'connecting' || currentState === 'disconnecting'
-
-    return { availableActions, shouldDisableButtons, isOperating, currentOperation }
-  }
-
   // 🆕 Built-in server constant
   const BUILTIN_SERVER_NAME = 'builtin-tools'
 
@@ -144,6 +87,12 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
 
   // 🆕 Search filter
   const [searchQuery, setSearchQuery] = useState('')
+  const scrollRef = useAutoHideScrollbar<HTMLDivElement>()
+  const searchChangedRef = useRef(false)
+  const handleSearchChange = (value: string) => {
+    searchChangedRef.current = true
+    setSearchQuery(value)
+  }
   const filteredServers = searchQuery
     ? sortedServers.filter(s => s.name?.includes(searchQuery))
     : sortedServers
@@ -157,13 +106,17 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
   // Keep selection in sync with filtered results (also handles initial selection)
   // Depend on selectedServer?.name so external selection changes (e.g. URL selectServer param) are caught
   useEffect(() => {
+    const isUserSearch = searchChangedRef.current
+    searchChangedRef.current = false
+
     if (filteredServers.length === 0) {
       if (selectedServer) {
         // External selection while filter yields zero — clear search to reveal the item
-        if (searchQuery && sortedServers.some(s => s.name === selectedServer.name)) {
+        if (!isUserSearch && searchQuery && sortedServers.some(s => s.name === selectedServer.name)) {
           setSearchQuery('')
           return
         }
+        if (isUserSearch) return
         onSelectServer?.(null)
       }
       return
@@ -175,7 +128,7 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
     const currentInFiltered = filteredServers.some(s => s.name === selectedServer.name)
     if (!currentInFiltered) {
       // External selection of an off-filter item — clear search to reveal it
-      if (searchQuery && sortedServers.some(s => s.name === selectedServer.name)) {
+      if (!isUserSearch && searchQuery && sortedServers.some(s => s.name === selectedServer.name)) {
         setSearchQuery('')
         return
       }
@@ -187,22 +140,22 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
     <div className="mcp-server-list-container">
       {/* Server list */}
       {isLoading ? (
-        <div className="loading-indicator">Loading servers...</div>
+        <div className="loading-indicator">{t('mcp.server.loading')}</div>
       ) : (
-        <div className="server-cards">
+        <>
           {servers && servers.length > 0 && (
             <ListSearchBox
               value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search MCP servers..."
+              onChange={handleSearchChange}
+              placeholder={t('mcp.server.searchPlaceholder')}
             />
           )}
+          <div className="server-cards" ref={scrollRef}>
           {servers && servers.length > 0 ? (
             filteredServers.map((server, index) => {
               const isSelected = selectedServer?.name === server.name
               const serverName = server.name || `Server ${index + 1}`
               const isMenuOpen = mcpServerMenuState?.isOpen && mcpServerMenuState?.serverName === serverName
-              const actionState = getServerActionState(server, serverName)
 
               // 🆕 Built-in server does not show the menu
               const isBuiltinServer = server.name === BUILTIN_SERVER_NAME
@@ -232,10 +185,11 @@ const McpServerListView: React.FC<McpServerListViewProps> = ({
             })
           ) : (
             <div className="empty-state">
-              <div>No MCP servers configured. Click "Add Server" to get started.</div>
+              <div>{t('mcp.server.empty')}</div>
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       </div>

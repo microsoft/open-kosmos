@@ -7,7 +7,7 @@
  * - convertToLocalPath: Converting foreign OS paths to local format
  * - needsPathConversion: Checking if a path needs conversion
  * - convertAgentPathsToLocal: Converting agent config path fields
- * 
+ *
  * These tests run on all platforms (Windows, macOS, Linux).
  * The mock returns a platform-appropriate local profile directory.
  */
@@ -140,7 +140,7 @@ describe('convertToLocalPath', () => {
     it('should convert macOS profile path to local path', () => {
       const macPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
       const result = convertToLocalPath(macPath, 'john_ms');
-      
+
       // Should contain the local profile dir and relative path
       expect(result).toContain('testuser');
       expect(result).toContain('john_ms');
@@ -153,7 +153,7 @@ describe('convertToLocalPath', () => {
     it('should convert Linux profile path to local path', () => {
       const linuxPath = '/home/john/.config/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge';
       const result = convertToLocalPath(linuxPath, 'john_ms');
-      
+
       expect(result).toContain('testuser');
       expect(result).toContain('john_ms');
       expect(result).toContain('chat_workspaces');
@@ -164,14 +164,14 @@ describe('convertToLocalPath', () => {
     it('should return native Windows path unchanged', () => {
       const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
       const result = convertToLocalPath(winPath, 'john_ms');
-      
+
       expect(result).toBe(winPath);
     });
 
     it('should return non-profile Unix path unchanged (cannot extract relative path)', () => {
       const unixPath = '/Users/john/Documents/some-file.txt';
       const result = convertToLocalPath(unixPath, 'john_ms');
-      
+
       expect(result).toBe(unixPath);
     });
   });
@@ -180,10 +180,10 @@ describe('convertToLocalPath', () => {
     it('should detect Windows path as foreign when platform is darwin', () => {
       mockPlatform('darwin');
       const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
-      
+
       // Should convert because it's detected as foreign
       const result = convertToLocalPath(winPath, 'john_ms');
-      
+
       // Result should use local profile dir (from mock) and contain relative path
       expect(result).toContain('testuser');
       expect(result).toContain('john_ms');
@@ -194,9 +194,9 @@ describe('convertToLocalPath', () => {
     it('should detect Windows path as foreign when platform is linux', () => {
       mockPlatform('linux');
       const winPath = 'C:\\Users\\john\\AppData\\Roaming\\openkosmos-app\\profiles\\john_ms\\chat_workspaces\\chat_123';
-      
+
       const result = convertToLocalPath(winPath, 'john_ms');
-      
+
       expect(result).toContain('testuser');
       expect(result).toContain('john_ms');
       expect(result).toContain('chat_workspaces');
@@ -205,20 +205,20 @@ describe('convertToLocalPath', () => {
     it('should NOT detect Unix path as foreign when platform is darwin', () => {
       mockPlatform('darwin');
       const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123';
-      
+
       // Should NOT convert because Unix path is native on darwin
       const result = convertToLocalPath(unixPath, 'john_ms');
-      
+
       expect(result).toBe(unixPath);
     });
 
     it('should return non-profile Windows path unchanged even when detected as foreign', () => {
       mockPlatform('darwin');
       const winPath = 'C:\\Users\\john\\Documents\\some-file.txt';
-      
+
       // Foreign OS but not a profile path, so unchanged
       const result = convertToLocalPath(winPath, 'john_ms');
-      
+
       expect(result).toBe(winPath);
     });
   });
@@ -230,16 +230,16 @@ describe('convertToLocalPath', () => {
       // Path contains different alias than expectedAlias
       const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/old_alias/chat_workspaces/chat_123';
       const result = convertToLocalPath(unixPath, 'new_alias');
-      
+
       // Should return unchanged because alias mismatch
       expect(result).toBe(unixPath);
     });
 
     it('should handle alias with underscores', () => {
-      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john/chat_workspaces/chat_123';
-      const result = convertToLocalPath(unixPath, 'john');
-      
-      expect(result).toContain('john');
+      const unixPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/sample-user/chat_workspaces/chat_123';
+      const result = convertToLocalPath(unixPath, 'sample-user');
+
+      expect(result).toContain('sample-user');
       expect(result).toContain('chat_workspaces');
       expect(result).toContain('chat_123');
     });
@@ -263,7 +263,7 @@ describe('convertToLocalPath', () => {
     it('should handle deeply nested paths', () => {
       const macPath = '/Users/john/Library/Application Support/openkosmos-app/profiles/john_ms/chat_workspaces/chat_123/knowledge/subdir/file.txt';
       const result = convertToLocalPath(macPath, 'john_ms');
-      
+
       expect(result).toContain('testuser');
       expect(result).toContain('john_ms');
       expect(result).toContain('chat_workspaces');
@@ -273,6 +273,17 @@ describe('convertToLocalPath', () => {
       expect(result).toContain('file.txt');
     });
   });
+
+  describe('alternate app data paths', () => {
+    beforeEach(() => mockPlatform('win32'));
+
+    it('should handle non-default app paths', () => {
+      const unixPath = '/Users/john/Library/Application Support/sample-app/profiles/john_ms/chat_workspaces/chat_123';
+      const result = convertToLocalPath(unixPath, 'john_ms');
+
+      // The mock uses openkosmos-app, but the function should still extract relative path correctly
+      expect(result).toContain('chat_workspaces');
+      expect(result).toContain('chat_123');
+    });
+  });
 });
-
-

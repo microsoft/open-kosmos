@@ -1,6 +1,6 @@
 # PRD: Sub-Agent System Improvements
 
-<!-- Last verified: 2026-05-21 -->
+<!-- Last verified: 2026-06-29 -->
 
 ## 1. Background & Problem Statement
 
@@ -21,7 +21,7 @@ OpenKosmos Sub-Agent system allows a parent agent to delegate tasks to specializ
 | 9 | **No fork mode (cache sharing)** | P1 | 🔲 Future | High token cost for parallel sub-agents |
 | 10 | **No agent resume** | P2 | 🔲 Future | Can't continue interrupted agents |
 | 11 | **No thinking budget control** | P3 | 🔲 Future | Sub-agents waste tokens on extended thinking |
-| 12 | **No auto-wake on result ready** | P1 | 🔲 Planned (Batch 4) | Parent must wait for user message to see results |
+| 12 | **No auto-wake on result ready** | P1 | ✅ Done (Batch 4.1) | Parent must wait for user message to see results |
 | 13 | **No transcript persistence** | P2 | 🔲 Planned (Batch 4) | Sub-agent conversations lost on crash; no debug/audit |
 | 14 | **No session→task lifecycle binding** | P0 | 🔲 Planned (Batch 4) | Orphan sub-agents run indefinitely after session delete |
 
@@ -30,7 +30,7 @@ OpenKosmos Sub-Agent system allows a parent agent to delegate tasks to specializ
 - **Batch 1 (Completed):** #1 Ad-hoc spawn, #2 Failure transparency, #3 Deliverables isolation
 - **Batch 2 (Completed):** #4 Background execution, #5 Partial result extraction, #6 Inter-agent communication (child→parent)
 - **Batch 3 (Completed):** #7 Auto-background promotion (120s), #8 Parent→child bidirectional messaging
-- **Batch 4 (This Phase):** #12 Auto-wake on result ready, #13 Transcript persistence, #14 Session→task lifecycle binding
+- **Batch 4 (In Progress):** #12 Auto-wake on result ready is delivered; #13 Transcript persistence and #14 Session→task lifecycle binding remain planned
 - **Future:** #9 Fork mode, #10 Agent resume, #11 Thinking budget
 
 ---
@@ -38,7 +38,7 @@ OpenKosmos Sub-Agent system allows a parent agent to delegate tasks to specializ
 ## 2. Design Principles
 
 1. **Orchestrator, not Code Agent** — OpenKosmos delegates code editing to external CLI agents. Sub-agent improvements focus on information retrieval, analysis, document generation, and tool orchestration.
-2. **Safe by default, flexible by opt-in** — Ad-hoc spawn inherits parent's tool subset only; no capability escalation.
+2. **Scoped inheritance by default** — Ad-hoc spawn inherits the parent agent's MCP tools by default and can narrow to a strict subset; no capability escalation.
 3. **Transparent failures** — The parent LLM must always know when a sub-agent is operating with reduced capabilities.
 4. **Flat output structure** — Sub-agent deliverables should be directly visible to users without navigating hidden directories.
 5. **Non-blocking by default** — Long-running sub-agents should not lock up the parent agent's conversation loop.
@@ -50,18 +50,17 @@ OpenKosmos Sub-Agent system allows a parent agent to delegate tasks to specializ
 
 ### 3.1 Ad-Hoc Dynamic Spawn ✅
 
-**Tools added:** `sub_agent` (unified tool; `subagent_type` selects named vs ad-hoc)
+**Tools added:** `sub_agent` (ad-hoc spawn tool)
 
-- LLM can create one-off workers with inline `{ task, system_prompt?, tools?, model?, max_turns?, context_access? }`
-- `tools` enforced as strict subset of parent's available tools
+- LLM can create one-off workers with inline `{ description, prompt, system_prompt?, tools?, model?, run_in_background?, no_auto_promote? }`
+- `tools` narrows the inherited parent MCP tool set when supplied and is enforced as a strict subset of the parent's available tools
 - Cannot declare new MCP servers, cannot spawn nested sub-agents
-- Default `max_turns: 15` (vs 25 for pre-defined agents)
+- Add `run_in_background: true` to run without blocking; results arrive as a `<task-notification>` on the parent's next turn
 
 ### 3.2 Failure Transparency ✅
 
-- `validateToolAvailability()` checks MCP server connectivity + skill installation at spawn time
-- Warnings prepended as `⚠️` block to tool result — parent LLM is always informed
-- Non-blocking: sub-agent proceeds with reduced capabilities (no strict mode yet)
+- When `tools` is supplied, every requested name is validated against the parent's available tool set before the sub-agent starts
+- Any name outside that set fails the spawn fast with an explicit `Requested tools not available in parent agent: …` error returned to the parent LLM — the parent is always informed
 
 ### 3.3 Deliverables Directory Isolation ✅
 
@@ -118,7 +117,7 @@ When a sync sub-agent exceeds **120 seconds** of execution time:
 
 ```
 Parent turn (sync spawn)
-  └─ await spawnSubAgent()
+  └─ await spawnAdhocSubAgent()
        ├── ... 120 seconds pass ...
        ├── AUTO-PROMOTE: detach, register as backgroundTask
        └── return partial status to parent immediately
@@ -138,7 +137,7 @@ Parent turn (sync spawn)
 #### Problem
 After Batch 2, sub-agents can notify the parent (`notify_parent`). But the parent has no way to send follow-up instructions to a running background sub-agent. If the parent realizes it needs to redirect the agent's focus ("also check X" or "stop researching Y, focus on Z"), it can only cancel and re-spawn.
 
-Claude Code solves this with `SendMessage(to: name)` — named teammates receive mid-turn messages via `pendingMessages` queue.
+Claude Code solves this with `SendMessage(to: name)`, where background workers receive mid-turn messages via a pending-message queue.
 
 #### Solution
 
@@ -171,9 +170,9 @@ New tool: `send_to_subagent`
 
 ---
 
-## 6. Batch 4 — Planned Features
+## 6. Batch 4 — In Progress Features
 
-### 6.1 Auto-Wake on Result Ready (P1)
+### 6.1 Auto-Wake on Result Ready (P1) ✅ Delivered
 
 #### Problem
 When a background sub-agent completes, the result is queued in `resultQueue`. The parent only drains results when the **user sends a new message** (triggering a new LLM turn). If the user is waiting for the sub-agent to finish, they have no way to know it's done — they must send a message like "any updates?" to trigger the drain.
@@ -185,11 +184,11 @@ Claude Code solves this with a push-based notification queue that auto-triggers 
 When a background sub-agent completes and the parent session is idle:
 1. `SubAgentManager.enqueueResult()` emits an event `subAgentResultReady { parentSessionId }`
 2. `AgentChatManager` listens for this event (debounced 500ms — coalesce multiple completions)
-3. Checks: parent session exists? `chatStatus === IDLE`? auto-wake enabled?
-4. Injects a **synthetic user message** (`<task-notification-trigger/>`) with `metadata.synthetic = true`
-5. Calls `streamMessage()` with `emitUserMessage: false` — user never sees the trigger
+3. Checks: parent session exists? `chatStatus === IDLE`? (auto-wake is always on — no feature-flag gate)
+4. Creates a **synthetic user message** (`<task-notification-trigger/>`) with `metadata.synthetic = true`
+5. Calls `streamMessage()` with `emitUserMessage: false` and `persistUserMessage: false` — user never sees the trigger and it is never written to chat history
 6. Normal turn flow: `drainBackgroundSubAgentResults()` picks up the results → LLM processes → responds to user
-7. After drain, the synthetic trigger message is **removed from context** (it served its purpose)
+7. Only the real `<task-notification>` is persisted into context after the result drain succeeds
 
 ```
 SubAgentManager.enqueueResult(parentSessionId, result)
@@ -200,9 +199,9 @@ SubAgentManager.enqueueResult(parentSessionId, result)
 AgentChatManager (listener)
   │
   ├── instance = registry.getInstance(parentSessionId)
-  ├── guard: instance exists? status === IDLE? autoWakeEnabled?
+  ├── guard: instance exists? status === IDLE?
   │
-  └── YES → streamMessage(parentSessionId, syntheticTrigger, { emitUserMessage: false })
+  └── YES → streamMessage(parentSessionId, syntheticTrigger, { emitUserMessage: false, persistUserMessage: false })
                 │
                 ▼ (normal turn flow)
          drainBackgroundSubAgentResults() → <task-notification> user message
@@ -212,7 +211,7 @@ AgentChatManager (listener)
 ```
 
 #### Configuration
-- Feature flag: `openkosmosFeatureSubAgentAutoWake` (default: enabled)
+- Auto-wake is **baseline behavior** — always on, no feature flag gate. (The original `openkosmosFeatureSubAgentAutoWake` flag was removed; it defaulted off in production and silently suppressed result delivery.)
 - Debounce: 500ms (multiple completions in quick succession only trigger one turn)
 - Recursion guard: synthetic turns that spawn new background agents do NOT trigger auto-wake on their own turn end (prevent infinite loop)
 
@@ -348,7 +347,7 @@ SubAgentManager.getInstance().cancelAllForSession(chatSessionId);
 | Partial result recovery | >80% of timed-out agents produce usable partial results | Measuring |
 | Auto-promote triggers | >30% of long-running sync agents auto-promote | Measuring |
 | Parent→child messages | >10% of background agents receive follow-up instructions | Measuring |
-| Auto-wake latency | <2s from sub-agent completion to parent turn start | Planned |
+| Auto-wake latency | <2s from sub-agent completion to parent turn start | Measuring |
 | Orphan tasks after session delete | 0 running tasks after parent session disposed | Planned |
 | Transcript crash recovery | >95% of sub-agent runs have complete transcript on disk | Planned |
 
@@ -361,7 +360,6 @@ SubAgentManager.getInstance().cancelAllForSession(chatSessionId);
 | **Fork mode / prompt cache sharing** | Requires byte-identical API prefix construction; depends on model provider cache semantics. High value but high complexity. |
 | **Agent resume from disk** | Requires transcript persistence to disk + replay. Complex state reconstruction. |
 | **Thinking budget control** | Depends on model API support for `thinkingConfig` passthrough. Low effort once API supports it. |
-| **Named agent swarm mode** | Multi-agent peer-to-peer communication. Usage scenario unclear for non-coding workflows. Revisit after Batch 3 dual-channel proves value. |
 | **Permission modes** | OpenKosmos sub-agents don't directly edit code; lower urgency than Claude Code. |
 | **Agent-scoped MCP lifecycle** | Sub-agents currently share parent's MCP connections. Separate lifecycle adds complexity for marginal isolation gain. |
 | **Worktree isolation** | OpenKosmos is not a coding tool; git-level isolation is overkill for document/research tasks. Code editing delegated to dedicated code agents. |

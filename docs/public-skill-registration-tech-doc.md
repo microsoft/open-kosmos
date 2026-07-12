@@ -6,7 +6,8 @@
 
 This document turns the investigated public-Skill incident into an implementable OpenKosmos design.
 
-The core problem is not acquisition. OpenKosmos can already obtain Skill content through library downloads, local packages, AI-authored files, or public web workflows.
+The core problem is not acquisition. OpenKosmos can obtain Skill content through
+local packages, AI-authored files, or public web workflows.
 
 The core problem is formal installation.
 
@@ -16,12 +17,7 @@ This design extends the existing `Add Skill From Device` capability into a singl
 
 ### 2.1 Supported Managed Install Paths Today
 
-Today, two flows are formally supported:
-
-1. Skill Library install
-2. Local package import via `.zip` or `.skill`
-
-Both converge to the same managed chain:
+Local package and folder imports converge to the same managed chain:
 
 1. validate package
 2. read Skill metadata
@@ -30,10 +26,9 @@ Both converge to the same managed chain:
 
 Relevant current components:
 
-1. `src/main/lib/skill/skillLibraryFetcher.ts`
-2. `src/main/lib/skill/skillDeviceImporter.ts`
-3. `src/main/lib/skill/skillManager.ts`
-4. `src/main/lib/userDataADO/profileCacheManager.ts`
+1. `src/main/lib/skill/skillDeviceImporter.ts`
+2. `src/main/lib/skill/skillManager.ts`
+3. `src/main/lib/userDataADO/profileCacheManager.ts`
 
 ### 2.2 Current Runtime Consumption Model
 
@@ -62,10 +57,7 @@ At runtime, `buildChatSkillSnapshot(...)` resolved only valid registry entries, 
 
 ### 2.4 Current UX Gap
 
-Renderer currently supports:
-
-1. Add from Library
-2. Add from Device package
+Renderer supports local package and folder installation.
 
 It does not provide a first-class flow for:
 
@@ -81,7 +73,7 @@ Additionally, chat install affordances are narrow today:
 ## 3. Design Principles
 
 1. Preserve `profile.skills` as the only installed-skill authority.
-2. Converge every non-library install source onto one formal device-install API.
+2. Converge every install source onto one formal device-install API.
 3. Do not auto-trust public Skill content.
 4. Keep runtime deterministic: installation affects next-turn Skill snapshot, not current in-flight generation.
 5. Normalize on canonical `SKILL.md` path during managed install.
@@ -109,7 +101,7 @@ This becomes the missing bridge between:
 
 ### 4.2 Flow Convergence Rule
 
-All non-library Skill flows should end in one device-install backend.
+All Skill flows should end in one device-install backend.
 
 Recommended internal shape:
 
@@ -206,11 +198,8 @@ Warnings do not block MVP installation by default, but they should be shown to t
 
 ### 5.4 IPC Changes
 
-The product should prefer evolving the existing IPC surface:
-
-1. `skillLibrary:addSkillFromDevice`
-2. `skillLibrary:installSkillFromFilePath`
-3. optionally add `skillLibrary:repairSkillRegistration`
+The product should evolve the existing device-install IPC surface rather than
+introducing a separate remote-install contract.
 
 Suggested signatures:
 
@@ -252,8 +241,7 @@ Design rule:
 
 Extend the Skills add menu with:
 
-1. Add from Library
-2. Add Skill From Device
+1. Add Skill From Device
 
 `Add Skill From Device` should open a dialog supporting:
 
@@ -355,12 +343,14 @@ interface SkillConfig {
 }
 ```
 
-Folder-installed and public-but-local Skills can remain `source: 'ON-DEVICE'` in MVP.
+Folder-installed and public-but-local Skills use `source: 'ON-DEVICE'`.
+Persisted `IN-LIBRARY` and `remoteVersion` values remain inert compatibility
+metadata and never trigger network access or version comparison.
 
 If analytics or UI later needs more detail, add a separate optional field instead of expanding `source` prematurely:
 
 ```ts
-installMethod?: 'library' | 'package' | 'folder' | 'repair' | 'url';
+installMethod?: 'package' | 'folder' | 'repair' | 'url';
 ```
 
 ### 7.2 Chat Snapshot Behavior

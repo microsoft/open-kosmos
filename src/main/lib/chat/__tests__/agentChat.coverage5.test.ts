@@ -120,24 +120,6 @@ vi.mock('../agentChatUtilities', async () => ({
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn(() => ({ name: 'helper-bot' })) })),
-  },
-}));
-
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordChatSessionActivated: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: {
-    execute: vi.fn().mockResolvedValue({ additionalContexts: [] }),
-  },
-}));
-
 vi.mock('../agentChatManager', async () => ({
   agentChatManager: {
     exitNewChatSessionFor: vi.fn(),
@@ -190,7 +172,6 @@ vi.mock('../agentChatPromptService', async () => ({
     getLatestCustomSystemPrompt = vi.fn().mockReturnValue([]);
     getGlobalSystemPrompt = vi.fn().mockReturnValue([]);
     getAgentSpecificSystemPrompt = vi.fn().mockReturnValue([]);
-    buildSubAgentsSystemPrompt = vi.fn().mockReturnValue('');
     getCombinedSystemPromptForContext = vi.fn().mockReturnValue([]);
     getCombinedSystemPromptForCurrentTurn = vi.fn().mockResolvedValue([]);
     refreshSkillSnapshotIfNeeded = vi.fn().mockResolvedValue(undefined);
@@ -216,8 +197,6 @@ vi.mock('../agentChatToolPostProcessor', async () => ({
   AgentChatToolPostProcessor: class {
     postProcessToolResult = vi.fn().mockResolvedValue(undefined);
     postProcessForRequestInteractiveInputTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetMcpTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetAgentTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
@@ -292,6 +271,7 @@ vi.mock('../agentChatPushReceiver', async () => ({
     destroy = vi.fn();
   },
 }));
+
 
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},

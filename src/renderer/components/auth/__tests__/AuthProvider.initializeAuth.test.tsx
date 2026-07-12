@@ -4,7 +4,7 @@
  * 1. Cold cache restore path calls setCurrentAuth (triggers main process init)
  * 2. Sign-in flow path (ghc:authSuccess) does NOT call setCurrentAuth (already done)
  *
- * This prevents double-initialization of SchedulerManager, etc.
+ * This prevents double-initialization of main-process background services.
  */
 
 import React from 'react';

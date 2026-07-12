@@ -3,6 +3,8 @@ import { ShieldAlert } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
 import type { ExecuteCommandInteractiveAuthHint } from '@shared/types/toolCallArgs';
 import '../../styles/InteractiveRequestCard.css';
+import { useI18n } from '../../lib/i18n/useI18n';
+import type { TranslationKey } from '../../lib/i18n';
 
 interface InteractiveAuthCardProps {
   hint: ExecuteCommandInteractiveAuthHint;
@@ -17,28 +19,27 @@ const formatRemainingTime = (remainingMs: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
-const getInteractiveAuthTitle = (commandFamily: ExecuteCommandInteractiveAuthHint['commandFamily']): string => {
+const getInteractiveAuthTitleKey = (commandFamily: ExecuteCommandInteractiveAuthHint['commandFamily']): TranslationKey => {
   switch (commandFamily) {
     case 'gh-auth-login':
-      return 'GitHub device login required';
+      return 'auth.interactive.githubDeviceLoginRequired';
     case 'gh-auth-refresh':
-      return 'GitHub auth refresh required';
-    case 'az-login':
-      return 'CLI sign-in required';
+      return 'auth.interactive.githubAuthRefreshRequired';
     case 'npm-login':
-      return 'npm registry login required';
+      return 'auth.interactive.npmLoginRequired';
     case 'npm-adduser':
-      return 'npm adduser confirmation required';
+      return 'auth.interactive.npmAdduserRequired';
     case 'pnpm-login':
-      return 'pnpm registry login required';
+      return 'auth.interactive.pnpmLoginRequired';
     case 'yarn-npm-login':
-      return 'Yarn npm login required';
+      return 'auth.interactive.yarnNpmLoginRequired';
     default:
-      return 'Browser authentication required';
+      return 'auth.interactive.browserAuthRequired';
   }
 };
 
 const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command, chatSessionId }) => {
+  const { t } = useI18n();
   const { showToast } = useToast();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState(false);
@@ -66,9 +67,9 @@ const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command
 
     try {
       await navigator.clipboard.writeText(hint.deviceCode);
-      showToast('Device code copied', 'success');
+      showToast(t('auth.interactive.deviceCodeCopied'), 'success');
     } catch {
-      showToast('Failed to copy device code', 'error');
+      showToast(t('auth.interactive.deviceCodeCopyFailed'), 'error');
     }
   };
 
@@ -82,7 +83,7 @@ const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command
 
   const handleCancel = async () => {
     if (!chatSessionId || !window.electronAPI?.agentChat?.cancelActiveToolExecution) {
-      showToast('Failed to cancel authentication', 'error');
+      showToast(t('auth.interactive.cancelFailed'), 'error');
       return;
     }
 
@@ -91,11 +92,11 @@ const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command
     try {
       const result = await window.electronAPI.agentChat.cancelActiveToolExecution(chatSessionId);
       if (!result?.success) {
-        throw new Error(result?.error || 'Failed to cancel authentication');
+        throw new Error(result?.error || t('auth.interactive.cancelFailed'));
       }
     } catch {
       setDismissed(false);
-      showToast('Failed to cancel authentication', 'error');
+      showToast(t('auth.interactive.cancelFailed'), 'error');
     }
   };
 
@@ -105,33 +106,33 @@ const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command
         <div className="interactive-request-title-wrap">
           <ShieldAlert size={18} className="interactive-request-icon" />
           <div>
-            <div className="interactive-request-title">{getInteractiveAuthTitle(hint.commandFamily)}</div>
+            <div className="interactive-request-title">{t(getInteractiveAuthTitleKey(hint.commandFamily))}</div>
             <div className="interactive-request-description">
-              Complete the browser step before the command times out.
+              {t('auth.interactive.completeBrowserStep')}
             </div>
           </div>
         </div>
-        <div className="interactive-auth-timeout">Timeout in {formatRemainingTime(remainingMs)}</div>
+        <div className="interactive-auth-timeout">{t('auth.interactive.timeoutIn', { time: formatRemainingTime(remainingMs) })}</div>
       </div>
 
       <div className="interactive-request-section">
         {command ? (
           <div className="interactive-request-item">
-            <div className="interactive-request-item-title">Command</div>
+            <div className="interactive-request-item-title">{t('auth.interactive.command')}</div>
             <div className="interactive-request-path">{command}</div>
           </div>
         ) : null}
 
         {hint.deviceCode ? (
           <div className="interactive-request-item">
-            <div className="interactive-request-item-title">Device code</div>
+            <div className="interactive-request-item-title">{t('auth.interactive.deviceCode')}</div>
             <div className="interactive-auth-code">{hint.deviceCode}</div>
           </div>
         ) : null}
 
         {hint.verificationUri ? (
           <div className="interactive-request-item">
-            <div className="interactive-request-item-title">Verification link</div>
+            <div className="interactive-request-item-title">{t('auth.interactive.verificationLink')}</div>
             <div className="interactive-request-path">{hint.verificationUri}</div>
           </div>
         ) : null}
@@ -140,16 +141,16 @@ const InteractiveAuthCard: React.FC<InteractiveAuthCardProps> = ({ hint, command
       <div className="interactive-request-footer">
         {hint.verificationUri ? (
           <button type="button" className="interactive-primary-button" onClick={handleOpenVerificationUri}>
-            Open Link
+            {t('common.openLink')}
           </button>
         ) : null}
         {hint.deviceCode ? (
           <button type="button" className="interactive-secondary-button" onClick={handleCopyDeviceCode}>
-            Copy Device Code
+            {t('auth.interactive.copyDeviceCode')}
           </button>
         ) : null}
         <button type="button" className="interactive-secondary-button" onClick={handleCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     </div>

@@ -58,7 +58,7 @@ vi.mock('@/lib/userData', () => ({
 
 // ── import atom AFTER mocks ───────────────────────────────────────────────────
 
-import { ContextMenuAtom, zeroContextMenuState } from '../context-menu.atom';
+import { ContextMenuAtom, zeroContextMenuState, resolveChatSessionFolder } from '../context-menu.atom';
 
 // ── store builder ─────────────────────────────────────────────────────────────
 
@@ -82,6 +82,15 @@ function kbExpandOption() {
   return {
     type: ContextMenuOptionType.KnowledgeBase,
     fileName: 'Knowledge Base',
+    description: '',
+    // No value, no relativePath → triggers expand
+  };
+}
+
+function chatSessionExpandOption() {
+  return {
+    type: ContextMenuOptionType.ChatSession,
+    fileName: 'Chat Session Files',
     description: '',
     // No value, no relativePath → triggers expand
   };
@@ -148,9 +157,8 @@ describe('ContextMenuAtom — selectMenu KB expand: search throws', () => {
     const state = store(ContextMenuAtom);
     await state.actions.selectMenu(kbExpandOption());
     const { options } = state.get();
-    // KB catch block fires first; ChatSession block then also fires (same mock throws).
-    // Final state is the ChatSession error — still a NoResults option.
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
+    expect(options[0].fileName).toMatch(/Failed to load Knowledge Base files/i);
   });
 });
 
@@ -170,15 +178,14 @@ describe('ContextMenuAtom — selectMenu KB expand: happy path', () => {
   it('populates KnowledgeBase options from search results', async () => {
     const state = store(ContextMenuAtom);
     await state.actions.selectMenu(kbExpandOption());
-    // After KB succeeds, ChatSession path also runs; mock returns same results
-    // We just verify at least one KnowledgeBase or ChatSession option appears
     const { options } = state.get();
-    // At minimum options is non-empty
     expect(options.length).toBeGreaterThan(0);
+    expect(options[0].type).toBe(ContextMenuOptionType.KnowledgeBase);
+    expect(options[0].value).toContain('@knowledge-base:');
   });
 });
 
-// ── selectMenu: ChatSession expand sub-branches (triggered after KB success) ──
+// ── selectMenu: ChatSession expand sub-branches ────────────────────────────
 
 describe('ContextMenuAtom — selectMenu ChatSession expand: no workspace', () => {
   let store: ReturnType<typeof buildStore>;
@@ -186,11 +193,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no workspace', () =
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    // KB path exists and returns files; workspace is missing
-    mockGetCurrentChat
-      .mockReturnValueOnce({ agent: { knowledge: { knowledgeBase: '/kb' } } }) // KB check (no workspace)
-      .mockReturnValueOnce({ agent: { knowledge: { knowledgeBase: '/kb' } } }); // ChatSession check
-    mockSearchWorkspaceFiles.mockResolvedValue({ results: [{ path: '/kb/file.md' }] });
+    mockGetCurrentChat.mockReturnValue({ agent: {} }); // no workspace
     mockGetCurrentChatSessionId.mockReturnValue('chatSession_202501_abc');
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -198,7 +201,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no workspace', () =
 
   it('shows NoResults for workspace path not set', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
     expect(options[0].fileName).toMatch(/Workspace path not set/i);
@@ -211,9 +214,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no active session',
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    mockGetCurrentChat.mockReturnValue({ agent: { knowledge: { knowledgeBase: '/kb' }, workspace: '/ws' } });
-    // First call returns KB files; then ChatSession path runs
-    mockSearchWorkspaceFiles.mockResolvedValue({ results: [{ path: '/kb/file.md' }] });
+    mockGetCurrentChat.mockReturnValue({ agent: { workspace: '/ws' } });
     mockGetCurrentChatSessionId.mockReturnValue(null); // no session
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -221,7 +222,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no active session',
 
   it('shows NoResults when no active chat session', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
     expect(options[0].fileName).toMatch(/No active chat session/i);
@@ -234,8 +235,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: invalid session ID 
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    mockGetCurrentChat.mockReturnValue({ agent: { knowledge: { knowledgeBase: '/kb' }, workspace: '/ws' } });
-    mockSearchWorkspaceFiles.mockResolvedValue({ results: [{ path: '/kb/file.md' }] });
+    mockGetCurrentChat.mockReturnValue({ agent: { workspace: '/ws' } });
     mockGetCurrentChatSessionId.mockReturnValue('invalid_id_format'); // no year/month pattern
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -243,7 +243,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: invalid session ID 
 
   it('shows NoResults when session ID format is invalid', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
     expect(options[0].fileName).toMatch(/Invalid chat session ID/i);
@@ -256,11 +256,8 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no session files', 
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    mockGetCurrentChat.mockReturnValue({ agent: { knowledge: { knowledgeBase: '/kb' }, workspace: '/ws' } });
-    // KB search returns files; chat session search returns empty
-    mockSearchWorkspaceFiles
-      .mockResolvedValueOnce({ results: [{ path: '/kb/file.md' }] })   // KB
-      .mockResolvedValueOnce({ results: [] });                            // ChatSession
+    mockGetCurrentChat.mockReturnValue({ agent: { workspace: '/ws' } });
+    mockSearchWorkspaceFiles.mockResolvedValue({ results: [] });
     mockGetCurrentChatSessionId.mockReturnValue('chatSession_202501_abc');
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -268,7 +265,7 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: no session files', 
 
   it('shows NoResults when no session files found', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
     expect(options[0].fileName).toMatch(/No files found/i);
@@ -281,10 +278,8 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: happy path', () => 
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    mockGetCurrentChat.mockReturnValue({ agent: { knowledge: { knowledgeBase: '/kb' }, workspace: '/ws' } });
-    mockSearchWorkspaceFiles
-      .mockResolvedValueOnce({ results: [{ path: '/kb/doc.md' }] })               // KB
-      .mockResolvedValueOnce({ results: [{ path: '/ws/202501/chatSession_202501_abc/out.txt' }] }); // ChatSession
+    mockGetCurrentChat.mockReturnValue({ agent: { workspace: '/ws' } });
+    mockSearchWorkspaceFiles.mockResolvedValue({ results: [{ path: '/ws/202501/chatSession_202501_abc/out.txt' }] });
     mockGetCurrentChatSessionId.mockReturnValue('chatSession_202501_abc');
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -292,11 +287,31 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: happy path', () => 
 
   it('populates ChatSession options from search results', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options.length).toBeGreaterThan(0);
     expect(options[0].type).toBe(ContextMenuOptionType.ChatSession);
     expect(options[0].value).toContain('@chat-session:');
+  });
+
+  it('searches chat session files under the chat-owned workspace', async () => {
+    mockGetCurrentChat.mockReturnValue({
+      workspace: '/chat-workspace',
+      agent: { workspace: '/legacy-agent-workspace' },
+    });
+    mockSearchWorkspaceFiles.mockResolvedValue({
+      results: [{ path: '/chat-workspace/202501/chatSession_202501_abc/out.txt' }],
+    });
+
+    const state = store(ContextMenuAtom);
+    await state.actions.selectMenu(chatSessionExpandOption());
+
+    expect(mockSearchWorkspaceFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folder: '/chat-workspace/202501/chatSession_202501_abc',
+        searchTarget: 'files',
+      }),
+    );
   });
 });
 
@@ -306,10 +321,8 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: search throws', () 
   beforeEach(() => {
     vi.clearAllMocks();
     store = buildStore();
-    mockGetCurrentChat.mockReturnValue({ agent: { knowledge: { knowledgeBase: '/kb' }, workspace: '/ws' } });
-    mockSearchWorkspaceFiles
-      .mockResolvedValueOnce({ results: [{ path: '/kb/doc.md' }] })  // KB succeeds
-      .mockRejectedValueOnce(new Error('session fs error'));           // ChatSession throws
+    mockGetCurrentChat.mockReturnValue({ agent: { workspace: '/ws' } });
+    mockSearchWorkspaceFiles.mockRejectedValue(new Error('session fs error'));
     mockGetCurrentChatSessionId.mockReturnValue('chatSession_202501_abc');
     mockGetCurrentAgentSkills.mockReturnValue([]);
     mockGetDefaultMenuOptions.mockReturnValue([]);
@@ -317,10 +330,38 @@ describe('ContextMenuAtom — selectMenu ChatSession expand: search throws', () 
 
   it('shows NoResults when ChatSession search throws', async () => {
     const state = store(ContextMenuAtom);
-    await state.actions.selectMenu(kbExpandOption());
+    await state.actions.selectMenu(chatSessionExpandOption());
     const { options } = state.get();
     expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
     expect(options[0].fileName).toMatch(/Failed to load Chat Session files/i);
+  });
+});
+
+describe('resolveChatSessionFolder', () => {
+  it('returns folder path with forward slashes', () => {
+    expect(resolveChatSessionFolder('/ws', 'chatSession_202501_abc'))
+      .toBe('/ws/202501/chatSession_202501_abc');
+  });
+
+  it('works with Windows-style workspace paths (main process normalizes)', () => {
+    expect(resolveChatSessionFolder('C:\\Users\\test\\workspace', 'chatSession_202506_xyz'))
+      .toBe('C:\\Users\\test\\workspace/202506/chatSession_202506_xyz');
+  });
+
+  it('returns null when workspace is empty', () => {
+    expect(resolveChatSessionFolder('', 'chatSession_202501_abc')).toBeNull();
+  });
+
+  it('returns null when workspace is undefined', () => {
+    expect(resolveChatSessionFolder(undefined, 'chatSession_202501_abc')).toBeNull();
+  });
+
+  it('returns null when chatSessionId is null', () => {
+    expect(resolveChatSessionFolder('/ws', null)).toBeNull();
+  });
+
+  it('returns null when chatSessionId format is invalid', () => {
+    expect(resolveChatSessionFolder('/ws', 'invalid_id')).toBeNull();
   });
 });
 
@@ -564,5 +605,124 @@ describe('ContextMenuAtom — navigateMenu with options', () => {
 
     state.actions.navigateMenu('up'); // 0 → 2
     expect(state.get().selectedIndex).toBe(2);
+  });
+});
+
+// ── triggerMenu: additional skill + @ branch coverage ─────────────────────────
+
+describe('ContextMenuAtom — triggerMenu skills: no skills available', () => {
+  let store: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    store = buildStore();
+    mockGetCurrentAgentSkills.mockReturnValue([]); // agent has zero skills
+    mockGetDefaultMenuOptions.mockReturnValue([]);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('shows "No skills available" when the agent has no skills', async () => {
+    const state = store(ContextMenuAtom);
+    const rect = { top: 0, left: 0, width: 0 } as DOMRect;
+    state.actions.triggerMenu('', rect, ContextMenuTriggerType.Skill);
+    await vi.runAllTimersAsync();
+    const { options } = state.get();
+    expect(options[0].type).toBe(ContextMenuOptionType.NoResults);
+    expect(options[0].fileName).toMatch(/No skills available/i);
+  });
+});
+
+describe('ContextMenuAtom — triggerMenu skills: list-all with a description-less skill', () => {
+  let store: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    store = buildStore();
+    // Empty query + filter returns [] -> "show all skills" map path, where a
+    // skill missing `description` exercises the `skill.description || ''` arm.
+    mockGetCurrentAgentSkills.mockReturnValue([{ name: 'no-desc-skill' }]);
+    mockFilterSkillsByQuery.mockReturnValue([]);
+    mockGetDefaultMenuOptions.mockReturnValue([]);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('defaults a missing skill description to an empty string', async () => {
+    const state = store(ContextMenuAtom);
+    const rect = { top: 0, left: 0, width: 0 } as DOMRect;
+    state.actions.triggerMenu('', rect, ContextMenuTriggerType.Skill);
+    await vi.runAllTimersAsync();
+    const { options } = state.get();
+    expect(options[0].type).toBe(ContextMenuOptionType.Skill);
+    expect(options[0].value).toBe('no-desc-skill');
+    expect(options[0].description).toBe('');
+  });
+});
+
+describe('ContextMenuAtom — triggerMenu @ with a flat knowledgeBase and no workspace', () => {
+  let store: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    store = buildStore();
+    // Deprecated flat `knowledgeBase` (no nested `knowledge`) exercises the
+    // `?? agent?.knowledgeBase` right arm; absent workspace makes
+    // resolveChatSessionFolder return null -> the `?? ''` right arm.
+    mockGetCurrentChat.mockReturnValue({ agent: { knowledgeBase: '/flat/kb' } });
+    mockGetCurrentChatSessionId.mockReturnValue('chatSession_202501_abc');
+    mockSearchWorkspaceFiles.mockResolvedValue({ results: [{ path: '/flat/kb/note.md' }] });
+    mockGetCurrentAgentSkills.mockReturnValue([]);
+    mockGetDefaultMenuOptions.mockReturnValue([]);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('searches the flat knowledgeBase and skips the (empty) chat-session source', async () => {
+    const state = store(ContextMenuAtom);
+    const rect = { top: 0, left: 0, width: 0 } as DOMRect;
+    state.actions.triggerMenu('note', rect, ContextMenuTriggerType.Mention);
+    await vi.runAllTimersAsync();
+    const { options } = state.get();
+    const types = options.map((o) => o.type);
+    expect(types).toContain(ContextMenuOptionType.KnowledgeBase);
+    expect(types).not.toContain(ContextMenuOptionType.ChatSession);
+  });
+});
+
+describe('ContextMenuAtom — triggerMenu debounce clears a pending timer', () => {
+  let store: ReturnType<typeof buildStore>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    store = buildStore();
+    mockGetCurrentAgentSkills.mockReturnValue([{ name: 'web-search', description: 'Search' }]);
+    mockFilterSkillsByQuery.mockReturnValue([{
+      type: ContextMenuOptionType.Skill,
+      fileName: 'web-search',
+      description: 'Search',
+      value: 'web-search',
+    }]);
+    mockGetDefaultMenuOptions.mockReturnValue([]);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('clears the previous debounce timer when triggered again before it fires', async () => {
+    const state = store(ContextMenuAtom);
+    const rect = { top: 0, left: 0, width: 0 } as DOMRect;
+    // First call schedules a timer; second call (before timers run) hits the
+    // `if (timer) clearTimeout(timer)` truthy arm.
+    state.actions.triggerMenu('we', rect, ContextMenuTriggerType.Skill);
+    state.actions.triggerMenu('web', rect, ContextMenuTriggerType.Skill);
+    await vi.runAllTimersAsync();
+    const { options } = state.get();
+    expect(options[0].value).toBe('web-search');
+    // Only the second (surviving) timer ran its search.
+    expect(mockFilterSkillsByQuery).toHaveBeenCalledTimes(1);
   });
 });

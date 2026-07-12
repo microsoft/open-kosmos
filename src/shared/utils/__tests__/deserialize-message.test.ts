@@ -208,4 +208,104 @@ describe('deserializeMessage', () => {
       expect(msg.content).toEqual([]);
     });
   });
+
+  describe('legacy string content format', () => {
+    it('converts string content to text content part for user message', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: 'Hello world' };
+      const msg = deserializeMessage(raw);
+      expect(msg.role).toBe('user');
+      expect(msg.content).toEqual([{ type: 'text', text: 'Hello world' }]);
+    });
+
+    it('converts string content to text content part for assistant message', () => {
+      const raw = { role: 'assistant', id: 'a1', timestamp: 1000, content: 'Response text' };
+      const msg = deserializeMessage(raw);
+      expect(msg.role).toBe('assistant');
+      expect(msg.content).toEqual([{ type: 'text', text: 'Response text' }]);
+    });
+
+    it('converts string content to text content part for tool message', () => {
+      const raw = { role: 'tool', id: 't1', timestamp: 1000, content: 'Tool result', tool_call_id: 'tc1' };
+      const msg = deserializeMessage(raw);
+      expect(msg.role).toBe('tool');
+      expect(msg.content).toEqual([{ type: 'text', text: 'Tool result' }]);
+    });
+
+    it('converts string content to text content part for system message', () => {
+      const raw = { role: 'system', id: 's1', timestamp: 1000, content: 'System prompt' };
+      const msg = deserializeMessage(raw);
+      expect(msg.role).toBe('system');
+      expect(msg.content).toEqual([{ type: 'text', text: 'System prompt' }]);
+    });
+
+    it('handles empty string content', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: '' };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: '' }]);
+    });
+  });
+
+  describe('corrupted content handling', () => {
+    it('handles number content as empty array', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: 12345 };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([]);
+    });
+
+    it('handles object content (non-array) as empty array', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: { type: 'text', text: 'hi' } };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([]);
+    });
+
+    it('handles boolean content as empty array', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: true };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([]);
+    });
+  });
+
+  describe('malformed content array entries', () => {
+    it('filters out null entries in user message content', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: [null, { type: 'text', text: 'hello' }, null] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'hello' }]);
+    });
+
+    it('filters out undefined entries in user message content', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: [undefined, { type: 'text', text: 'hi' }] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'hi' }]);
+    });
+
+    it('filters out null entries in assistant message content', () => {
+      const raw = { role: 'assistant', id: 'a1', timestamp: 1000, content: [null, { type: 'text', text: 'response' }] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'response' }]);
+    });
+
+    it('filters out null entries in tool message content', () => {
+      const raw = { role: 'tool', id: 't1', timestamp: 1000, content: [null, { type: 'text', text: 'result' }], tool_call_id: 'tc1' };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'result' }]);
+    });
+
+    it('filters out null entries in system message content', () => {
+      const raw = { role: 'system', id: 's1', timestamp: 1000, content: [null, { type: 'text', text: 'prompt' }] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'prompt' }]);
+    });
+
+    it('filters out primitive entries (strings, numbers) in content array', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: ['stray string', 42, { type: 'text', text: 'valid' }, true] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([{ type: 'text', text: 'valid' }]);
+    });
+
+    it('returns empty array when all content entries are null/undefined', () => {
+      const raw = { role: 'user', id: 'u1', timestamp: 1000, content: [null, undefined, null] };
+      const msg = deserializeMessage(raw);
+      expect(msg.content).toEqual([]);
+    });
+  });
 });

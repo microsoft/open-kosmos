@@ -33,7 +33,6 @@ vi.mock('../../ui/ToastProvider', async () => ({
   }),
 }));
 
-
 vi.mock('../../../lib/featureFlags', async () => ({
   useFeatureFlag: () => false,
 }));
@@ -57,6 +56,8 @@ vi.mock('../message/SayHiActionItems', async () => ({
     actionItemGroups: [],
   })),
 }));
+
+
 
 describe('Message assistant wrapping', () => {
   it('keeps the assistant streaming render path shrink-safe inside the markdown container', () => {

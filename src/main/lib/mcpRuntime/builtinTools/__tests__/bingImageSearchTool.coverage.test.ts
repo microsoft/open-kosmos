@@ -116,6 +116,30 @@ const baseArgs = {
   queries: ['cats'],
 };
 
+// ── argument validation ──────────────────────────────────────────────────────
+
+describe('BingImageSearchTool.execute — argument validation', () => {
+  it('returns error when queries is undefined (empty args from LLM)', async () => {
+    const result = await BingImageSearchTool.execute({} as any);
+    expect(result.success).toBe(false);
+    expect(result.totalQueries).toBe(0);
+    expect(result.errors![0]).toContain('queries');
+    expect(mockEnsureBrowserInstalled).not.toHaveBeenCalled();
+  });
+
+  it('returns error when queries is not an array', async () => {
+    const result = await BingImageSearchTool.execute({ description: 't', queries: 'q' } as any);
+    expect(result.success).toBe(false);
+    expect(result.errors![0]).toContain('queries');
+  });
+
+  it('returns error when queries array is empty', async () => {
+    const result = await BingImageSearchTool.execute({ description: 't', queries: [] } as any);
+    expect(result.success).toBe(false);
+    expect(result.errors![0]).toContain('empty');
+  });
+});
+
 // ── getDefinition ─────────────────────────────────────────────────────────────
 
 describe('BingImageSearchTool.getDefinition', () => {
@@ -214,8 +238,8 @@ describe('BingImageSearchTool.execute — happy path', () => {
     expect(result.success).toBe(true);
   });
 
-  it('respects timeout param', async () => {
-    const result = await BingImageSearchTool.execute({ ...baseArgs, timeout: 10000 });
+  it('ignores a stray timeout argument (no longer agent-configurable)', async () => {
+    const result = await BingImageSearchTool.execute({ ...baseArgs, timeout: 10000 } as any);
     expect(result.success).toBe(true);
   });
 
@@ -470,9 +494,6 @@ describe('BingImageSearchTool private helpers', () => {
     });
     it('returns invalid when safeSearch invalid', () => {
       expect(tool.validateArgs({ description: 't', queries: ['q'], safeSearch: 'Maybe' }).isValid).toBe(false);
-    });
-    it('returns invalid when timeout out of range', () => {
-      expect(tool.validateArgs({ description: 't', queries: ['q'], timeout: 999 }).isValid).toBe(false);
     });
     it('returns valid for correct args', () => {
       expect(tool.validateArgs({ description: 't', queries: ['q'] }).isValid).toBe(true);

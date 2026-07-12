@@ -10,6 +10,7 @@ vi.mock('../../unifiedLogger', () => ({
 }));
 
 vi.mock('electron', async () => ({
+  app: { getPath: vi.fn(() => '/mock/userData') },
   BrowserWindow: {
     getAllWindows: vi.fn(() => []),
   },
@@ -17,20 +18,26 @@ vi.mock('electron', async () => ({
 
 const mockChatSessionManager = vi.hoisted(() => ({
   readMonthIndex: vi.fn(),
+  writeMonthIndex: vi.fn().mockResolvedValue(true),
   getChatSessionFile: vi.fn(),
   persistNewChatSession: vi.fn().mockResolvedValue(true),
   persistUpdatedChatSession: vi.fn().mockResolvedValue(true),
   deleteChatSession: vi.fn().mockResolvedValue(true),
-  getChatSessions: vi.fn().mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 }),
+  getAllChatSessions: vi.fn().mockResolvedValue([]),
 }));
+const mockFsRm = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('../../userDataADO/chatSessionManager', () => ({
   chatSessionManager: mockChatSessionManager,
 }));
 
-vi.mock('../../remoteChannel/agentBridge/attachmentPipeline', () => ({
-  cleanupSessionAttachmentDir: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    promises: { ...actual.promises, rm: mockFsRm },
+  };
+});
 
 vi.mock('../../userDataADO/pathUtils', () => ({
   isValidChatSessionId: vi.fn((id: string) => /^[a-zA-Z0-9_-]+-\d{4}-\d{2}$/.test(id) || id.startsWith('session-')),
@@ -81,7 +88,9 @@ describe('ChatSessionStore', () => {
     mockChatSessionManager.persistNewChatSession.mockResolvedValue(true);
     mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
     mockChatSessionManager.deleteChatSession.mockResolvedValue(true);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
+    mockChatSessionManager.writeMonthIndex.mockResolvedValue(true);
+    mockFsRm.mockResolvedValue(undefined);
   });
 
   describe('getInstance', () => {
@@ -89,6 +98,85 @@ describe('ChatSessionStore', () => {
       const a = ChatSessionStore.getInstance();
       const b = ChatSessionStore.getInstance();
       expect(a).toBe(b);
+    });
+
+    describe('legacy remote session cleanup', () => {
+      it('downgrades remote metadata, rewrites the index, and removes legacy attachments', async () => {
+        const legacyMetadata = {
+          ...makeMetadata(),
+          source: { type: 'remote', channel: 'teams' },
+        } as ChatSession & { source: unknown };
+        const otherMetadata = {
+          ...makeMetadata(),
+          chatSession_id: 'other-session-2026-01',
+        };
+        const monthIndex = { sessions: [legacyMetadata, otherMetadata] };
+        mockChatSessionManager.readMonthIndex.mockResolvedValue(monthIndex);
+        mockChatSessionManager.getChatSessionFile.mockResolvedValue(makeFile());
+        const store = createFreshStore();
+
+        const aggregate = await store.ensureLoaded('alice', 'chat-1', legacyMetadata.chatSession_id);
+
+        expect(aggregate).not.toBeNull();
+        expect(Object.prototype.hasOwnProperty.call(aggregate!.metadata, 'source')).toBe(false);
+        expect(mockChatSessionManager.writeMonthIndex).toHaveBeenCalledWith(
+          'alice',
+          'chat-1',
+          '2026-01',
+          expect.objectContaining({
+            sessions: [
+              expect.not.objectContaining({ source: expect.anything() }),
+              otherMetadata,
+            ],
+          }),
+        );
+        expect(mockFsRm).toHaveBeenCalledWith(
+          '/mock/userData/remote-attachments/session-2026-01',
+          { recursive: true, force: true },
+        );
+      });
+
+      it('projection cleanup does not reconnect and tolerates attachment removal failures', async () => {
+        const legacyMetadata = {
+          ...makeMetadata(),
+          source: { type: 'remote' },
+        } as ChatSession & { source: unknown };
+        mockChatSessionManager.getAllChatSessions.mockResolvedValue([legacyMetadata]);
+        mockChatSessionManager.readMonthIndex.mockResolvedValue({ sessions: [legacyMetadata] });
+        mockChatSessionManager.getChatSessionFile.mockResolvedValue(makeFile());
+        mockFsRm.mockRejectedValueOnce('locked');
+        const store = createFreshStore();
+
+        const projection = await store.getChatSessionsProjection('alice', 'chat-1');
+
+        expect(Object.prototype.hasOwnProperty.call(projection.sessions[0], 'source')).toBe(false);
+        expect(mockChatSessionManager.writeMonthIndex).toHaveBeenCalledOnce();
+        expect(sharedMockLogger.warn).toHaveBeenCalledWith(
+          '[ChatSessionStore] Failed to remove legacy remote attachment directory',
+          'cleanupLegacySessionAttachmentDir',
+          expect.objectContaining({ chatSessionId: legacyMetadata.chatSession_id, error: 'locked' }),
+        );
+      });
+
+      it('continues loading when legacy attachment cleanup throws an Error', async () => {
+        const legacyMetadata = {
+          ...makeMetadata(),
+          source: { type: 'remote' },
+        } as ChatSession & { source: unknown };
+        mockChatSessionManager.readMonthIndex.mockResolvedValue({ sessions: [legacyMetadata] });
+        mockChatSessionManager.getChatSessionFile.mockResolvedValue(makeFile());
+        mockFsRm.mockRejectedValueOnce(new Error('permission denied'));
+        const store = createFreshStore();
+
+        await expect(
+          store.ensureLoaded('alice', 'chat-1', legacyMetadata.chatSession_id),
+        ).resolves.not.toBeNull();
+        expect(sharedMockLogger.warn).toHaveBeenCalledWith(
+          '[ChatSessionStore] Failed to remove legacy remote attachment directory',
+          'cleanupLegacySessionAttachmentDir',
+          expect.objectContaining({ error: 'permission denied' }),
+        );
+      });
     });
   });
 
@@ -175,7 +263,7 @@ describe('ChatSessionStore', () => {
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       vi.clearAllMocks();
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
 
       const updated = makeMetadata({ title: 'Updated Title' });
       const result = await store.saveSession('alice', 'chat-1', updated, makeFile({ title: 'Updated Title' }));
@@ -198,7 +286,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
 
       const result = await store.patchMetadata('alice', 'chat-1', 'session-2026-01', { title: 'Patched' });
       expect(result).not.toBeNull();
@@ -222,7 +310,7 @@ describe('ChatSessionStore', () => {
       await store.createSession('alice', 'chat-1', makeMetadata({ readStatus: 'read' }), makeFile());
       vi.clearAllMocks();
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata({ readStatus: 'unread' })], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata({ readStatus: 'unread' })]);
 
       const result = await store.setReadStatus('alice', 'chat-1', 'session-2026-01', 'unread');
       expect(result).not.toBeNull();
@@ -260,7 +348,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata({ title: 'Renamed' })], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata({ title: 'Renamed' })]);
 
       const result = await store.renameSession('alice', 'chat-1', 'session-2026-01', 'Renamed');
       expect(result).not.toBeNull();
@@ -273,7 +361,7 @@ describe('ChatSessionStore', () => {
     it('removes session from cache and returns true', async () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
       const deleted = await store.deleteSession('alice', 'chat-1', 'session-2026-01');
       expect(deleted).toBe(true);
@@ -284,7 +372,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.deleteChatSession.mockResolvedValue(false);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
       const deleted = await store.deleteSession('alice', 'chat-1', 'session-2026-01');
       expect(deleted).toBe(false);
@@ -297,11 +385,11 @@ describe('ChatSessionStore', () => {
     it('merges in-memory overlays over persisted data', async () => {
       const store = createFreshStore();
       const persisted = makeMetadata({ chatSession_id: 'other-2026-01', title: 'Old' });
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [persisted], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([persisted]);
 
       // Cache a different session
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [persisted], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([persisted]);
 
       const projection = await store.getChatSessionsProjection('alice', 'chat-1');
       expect(projection.alias).toBe('alice');
@@ -316,7 +404,7 @@ describe('ChatSessionStore', () => {
     it('counts unread user sessions', async () => {
       const store = createFreshStore();
       const unread = makeMetadata({ readStatus: 'unread' });
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread]);
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.userUnreadCount).toBe(1);
@@ -330,7 +418,7 @@ describe('ChatSessionStore', () => {
         schedulerJobId: 'job-1',
         schedulerCompletedAt: new Date().toISOString(),
       });
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [recentScheduled], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([recentScheduled]);
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.scheduledUnreadCount).toBe(1);
@@ -345,7 +433,7 @@ describe('ChatSessionStore', () => {
         schedulerJobId: 'job-1',
         schedulerCompletedAt: oldDate,
       });
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [oldScheduled], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([oldScheduled]);
 
       const summary = await store.getUnreadSummary('alice', 'chat-1');
       expect(summary.scheduledUnreadCount).toBe(0);
@@ -357,7 +445,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       const unread1 = makeMetadata({ chatSession_id: 'session-2026-01', readStatus: 'unread' });
       const unread2 = makeMetadata({ chatSession_id: 'session-2026-02', readStatus: 'unread' });
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread1, unread2], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread1, unread2]);
       mockChatSessionManager.readMonthIndex.mockResolvedValue({ sessions: [unread1] });
       mockChatSessionManager.getChatSessionFile.mockResolvedValue(makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
@@ -365,7 +453,7 @@ describe('ChatSessionStore', () => {
       // Pre-cache session 1 only to avoid loadMonthIndex for session 2
       await store.createSession('alice', 'chat-1', unread1, makeFile());
       vi.clearAllMocks();
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [unread1, unread2], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([unread1, unread2]);
       mockChatSessionManager.readMonthIndex.mockResolvedValue({
         sessions: [unread2],
       });
@@ -382,7 +470,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
       mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
 
       const result = await store.patchSchedulerMetadata('alice', 'chat-1', 'session-2026-01', {
         schedulerJobId: 'job-99',
@@ -424,7 +512,7 @@ describe('ChatSessionStore', () => {
       const store = createFreshStore();
       await store.createSession('alice', 'chat-1', makeMetadata({ title: 'Original' }), makeFile());
       mockChatSessionManager.persistNewChatSession.mockResolvedValue(true);
-      mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+      mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
       const result = await store.copySession('alice', 'chat-1', 'session-2026-01', 'fork-2026-01');
       expect(result).toBe(true);
@@ -433,6 +521,16 @@ describe('ChatSessionStore', () => {
       expect(forked).not.toBeNull();
       expect(forked!.metadata.title).toContain('Fork');
       expect(forked!.metadata.readStatus).toBe('unread');
+    });
+
+    it('uses a fallback title when the source title is empty', async () => {
+      const store = createFreshStore();
+      await store.createSession('alice', 'chat-1', makeMetadata({ title: '' }), makeFile({ title: '' }));
+
+      const result = await store.copySession('alice', 'chat-1', 'session-2026-01', 'fork-2026-01');
+
+      expect(result).toBe(true);
+      expect(store.getSession('fork-2026-01')!.metadata.title).toBe('New Chat (Fork)');
     });
   });
 });

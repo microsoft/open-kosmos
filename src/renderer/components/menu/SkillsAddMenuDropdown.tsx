@@ -1,7 +1,7 @@
 import React, { useLayoutEffect } from 'react';
-import { FolderPlus, Plus, Store } from 'lucide-react';
+import { FolderPlus, Plus } from 'lucide-react';
 import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
-import { isCdnConfigured } from '@shared/utils/cdn';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface SkillsAddMenuDropdownProps {
   skillsAddMenuRef: React.RefObject<HTMLDivElement>;
@@ -14,6 +14,8 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
   position,
   onClose
 }) => {
+  const { t } = useI18n();
+
   const handleAddFromDeviceArtifact = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -28,16 +30,9 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
     onClose();
   };
 
-  const handleAddFromLibrary = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    // Trigger add from Skill Library event
-    window.dispatchEvent(new CustomEvent('skills:addFromLibrary'));
-    onClose();
-  };
-
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
+    /* v8 ignore next 3 -- ref is always set when effect fires (div renders before effect) */
     if (skillsAddMenuRef.current) {
       adjustAnchoredDropdownToViewport(skillsAddMenuRef.current, position);
     }
@@ -59,7 +54,7 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
         role="menuitem"
       >
         <span className="dropdown-menu-item-icon"><Plus size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">Add from Device (.zip/.skill)</span>
+        <span className="dropdown-menu-item-text">{t('skills.addFromDeviceArtifact')}</span>
       </button>
       <button
         className="dropdown-menu-item"
@@ -67,19 +62,8 @@ const SkillsAddMenuDropdown: React.FC<SkillsAddMenuDropdownProps> = ({
         role="menuitem"
       >
         <span className="dropdown-menu-item-icon"><FolderPlus size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">Add from Device (folder)</span>
+        <span className="dropdown-menu-item-text">{t('skills.addFromDeviceFolder')}</span>
       </button>
-      {/* Skill Library is a CDN-backed optional feature; hide entry when no CDN is configured */}
-      {isCdnConfigured() && (
-      <button
-        className="dropdown-menu-item"
-        onClick={handleAddFromLibrary}
-        role="menuitem"
-      >
-        <span className="dropdown-menu-item-icon"><Store size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">Add from Skill Library</span>
-      </button>
-      )}
     </div>
   );
 };

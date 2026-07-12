@@ -1,22 +1,7 @@
 /**
  * Unit tests for ManageMcpFacade
  */
-
-vi.mock('../../getMcpTemplateFromLibraryTool', () => ({
-  GetMcpTemplateFromLibraryTool: {
-    execute: vi.fn().mockResolvedValue({
-      success: true,
-      config: {
-        name: 'github',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-github'],
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: '' },
-        version: '1.0.0',
-      },
-    }),
-  },
-}));
+// @ts-nocheck
 
 vi.mock('../../createMcpServerFromConfigTool', () => ({
   CreateMcpServerFromConfigTool: {
@@ -59,7 +44,6 @@ vi.mock('../../../../userDataADO/profileCacheManager', () => ({
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ManageMcpFacade } from '../manageMcpFacade';
-import { GetMcpTemplateFromLibraryTool } from '../../getMcpTemplateFromLibraryTool';
 import { CreateMcpServerFromConfigTool } from '../../createMcpServerFromConfigTool';
 import { UpdateMcpServerTool } from '../../updateMcpServerTool';
 import { GetMcpStatusTool } from '../../getMcpStatusTool';
@@ -95,7 +79,7 @@ describe('ManageMcpFacade', () => {
       expect(result.success).toBe(false);
     });
 
-    it('rejects add without transport when not from_library', async () => {
+    it('rejects add without transport', async () => {
       const result = await ManageMcpFacade.execute({ action: 'add', name: 'x' });
       expect(result.success).toBe(false);
       expect(result.message).toContain('transport');
@@ -120,41 +104,8 @@ describe('ManageMcpFacade', () => {
     });
   });
 
-  describe('action=add, from_library=true', () => {
-    it('fetches template and merges env', async () => {
-      await ManageMcpFacade.execute({
-        action: 'add',
-        name: 'github',
-        from_library: true,
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_xxx' },
-      });
-
-      expect(GetMcpTemplateFromLibraryTool.execute).toHaveBeenCalledWith({ mcp_name: 'github' });
-      expect(CreateMcpServerFromConfigTool.execute).toHaveBeenCalledWith({
-        mcp_config: expect.objectContaining({
-          name: 'github',
-          transport: 'stdio',
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_xxx' },
-          source: 'IN-LIBRARY',
-        }),
-      });
-    });
-
-    it('returns error when library template not found', async () => {
-      vi.mocked(GetMcpTemplateFromLibraryTool.execute).mockResolvedValueOnce({
-        success: false,
-        message: 'Not found',
-        error: 'SERVER_NOT_FOUND',
-      });
-
-      const result = await ManageMcpFacade.execute({ action: 'add', name: 'unknown', from_library: true });
-      expect(result.success).toBe(false);
-      expect(result.hint).toBeTruthy();
-    });
-  });
-
   describe('action=add, direct', () => {
-    it('creates stdio server with ON-DEVICE source', async () => {
+    it('creates a local stdio server', async () => {
       await ManageMcpFacade.execute({
         action: 'add',
         name: 'local',
@@ -169,7 +120,6 @@ describe('ManageMcpFacade', () => {
           transport: 'stdio',
           command: 'node',
           args: ['server.js'],
-          source: 'ON-DEVICE',
           version: '1.0.0',
         }),
       });
@@ -203,14 +153,14 @@ describe('ManageMcpFacade', () => {
       (profileCacheManager as any).currentUserAlias = original;
     });
 
-    it('keeps version for IN-LIBRARY source', async () => {
+    it('treats legacy library metadata as inert', async () => {
       const { profileCacheManager } = await import('../../../../userDataADO/profileCacheManager');
       vi.mocked(profileCacheManager.getMcpServerInfo).mockReturnValueOnce({
         config: { name: 'test', source: 'IN-LIBRARY', version: '2.3.4', transport: 'stdio' },
       } as any);
       await ManageMcpFacade.execute({ action: 'update', name: 'test', env: { KEY: 'val' } });
       expect(UpdateMcpServerTool.execute).toHaveBeenCalledWith({
-        mcp_config: expect.objectContaining({ version: '2.3.4', source: 'IN-LIBRARY' }),
+        mcp_config: { name: 'test', env: { KEY: 'val' } },
       });
     });
   });
@@ -239,16 +189,37 @@ describe('ManageMcpFacade', () => {
   });
 
   describe('action=update', () => {
-    it('auto-increments patch version for ON-DEVICE', async () => {
+    it('updates local configuration without synthesizing provenance fields', async () => {
       await ManageMcpFacade.execute({ action: 'update', name: 'test', env: { NEW: 'val' } });
 
       expect(UpdateMcpServerTool.execute).toHaveBeenCalledWith({
         mcp_config: expect.objectContaining({
           name: 'test',
           env: { NEW: 'val' },
-          version: '1.0.1',
-          source: 'ON-DEVICE',
         }),
+      });
+    });
+
+    it('forwards all provided update fields', async () => {
+      await ManageMcpFacade.execute({
+        action: 'update',
+        name: 'test',
+        transport: 'sse',
+        command: 'node',
+        args: ['server.js'],
+        env: { TOKEN: 'secret' },
+        url: 'http://localhost:3000/sse',
+      });
+
+      expect(UpdateMcpServerTool.execute).toHaveBeenCalledWith({
+        mcp_config: {
+          name: 'test',
+          transport: 'sse',
+          command: 'node',
+          args: ['server.js'],
+          env: { TOKEN: 'secret' },
+          url: 'http://localhost:3000/sse',
+        },
       });
     });
 
@@ -268,6 +239,13 @@ describe('ManageMcpFacade', () => {
       expect(result.success).toBe(true);
       expect(mcpClientManager.delete).toHaveBeenCalledWith('old-server');
     });
+
+    it('stringifies non-Error delete failures', async () => {
+      vi.mocked(mcpClientManager.delete).mockRejectedValueOnce('delete fail');
+      const result = await ManageMcpFacade.execute({ action: 'remove', name: 'old-server' });
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('delete fail');
+    });
   });
 
   describe('action=connect/disconnect/reconnect', () => {
@@ -275,6 +253,16 @@ describe('ManageMcpFacade', () => {
       await ManageMcpFacade.execute({ action: 'reconnect', name: 'github' });
       const { SetMcpConnectionStateTool } = await import('../../setMcpConnectionStateTool');
       expect(SetMcpConnectionStateTool.execute).toHaveBeenCalledWith({ name: 'github', action: 'reconnect' });
+    });
+
+    it('maps connect and disconnect actions', async () => {
+      const { SetMcpConnectionStateTool } = await import('../../setMcpConnectionStateTool');
+
+      await ManageMcpFacade.execute({ action: 'connect', name: 'github' });
+      await ManageMcpFacade.execute({ action: 'disconnect', name: 'github' });
+
+      expect(SetMcpConnectionStateTool.execute).toHaveBeenNthCalledWith(1, { name: 'github', action: 'connect' });
+      expect(SetMcpConnectionStateTool.execute).toHaveBeenNthCalledWith(2, { name: 'github', action: 'disconnect' });
     });
   });
 

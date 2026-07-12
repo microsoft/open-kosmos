@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { LayoutProvider } from './LayoutProvider';
 import { useProfileData } from '../userData/userDataProvider';
 import { useCurrentChatId, agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
@@ -8,17 +8,22 @@ import '../../styles/DropdownMenu.css';
 import { createLogger } from '../../lib/utilities/logger';
 import { AppLayoutContent } from './AppLayoutContent';
 import { profileDataManager } from '../../lib/userData';
+import { resolveChatAgent } from '@/lib/agent';
 import { moveFileToKnowledgeBase } from '../../lib/chat/moveToKnowledgeBase';
 import { DeleteConfirmAtom } from '../overlay/DeleteOverlay';
 import { RenameChatSessionAtom } from '../overlay/RenameChatSessionOverlay';
 import { ApplySkillDialogAtom } from '../skills/ApplySkillToAgentsDialog';
 import ModifyMessageConfim from '../overlay/ModifyMsgConfimOverlay';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const logger = createLogger('[AppLayout]');
 
 const AppLayout: React.FC = () => {
   // Delete confirmation dialog state (for agents and chat sessions)
   const deleteConfirmActions = DeleteConfirmAtom.useChange();
+  const { t } = useI18n();
+  const tRef = useRef(t);
+  tRef.current = t;
   // Rename chat session dialog state
   const renameChatSessionActions = RenameChatSessionAtom.useChange();
 
@@ -32,7 +37,7 @@ const AppLayout: React.FC = () => {
       const alias = profileCache?.profile?.alias;
 
       if (!alias) {
-        showError('User not authenticated');
+        showError(tRef.current('common.userNotAuthenticated'));
         return;
       }
 
@@ -44,12 +49,12 @@ const AppLayout: React.FC = () => {
       );
 
       if (result?.success) {
-        showSuccess(starred ? 'Session starred' : 'Session unstarred');
+        showSuccess(starred ? tRef.current('chat.session.starred') : tRef.current('chat.session.unstarred'));
       } else {
-        showError(result?.error || 'Failed to update chat session star state');
+        showError(result?.error || tRef.current('chat.session.starUpdateFailed'));
       }
     } catch (error) {
-      showError('Failed to update chat session star state');
+      showError(tRef.current('chat.session.starUpdateFailed'));
     }
   }, [showError, showSuccess]);
 
@@ -61,7 +66,8 @@ const AppLayout: React.FC = () => {
   const currentKnowledgeBasePath = useMemo(() => {
     if (!reactiveChatId || !data?.chats) return '';
     const currentChat = data.chats.find((chat: any) => chat.chat_id === reactiveChatId);
-    return currentChat?.agent?.knowledge?.knowledgeBase || '';
+    const currentAgent = resolveChatAgent(currentChat);
+    return currentAgent?.knowledge?.knowledgeBase || currentAgent?.knowledgeBase || '';
   }, [reactiveChatId, data?.chats, data?.lastUpdated]);
 
   // Handle moving file to Agent Knowledge (uses generic function including path replacement logic)
@@ -69,28 +75,30 @@ const AppLayout: React.FC = () => {
     try {
       if (!currentKnowledgeBasePath) {
         logger.error('[FileTreeNode] No knowledge base path configured');
-        window.alert('No knowledge base path configured for current agent.');
+        window.alert(t('chat.files.noKnowledgeBasePathConfigured'));
         return;
       }
 
-      const result = await moveFileToKnowledgeBase(filePath, currentKnowledgeBasePath);
+      const result = await moveFileToKnowledgeBase(filePath, currentKnowledgeBasePath, {
+        replaceExistingConfirm: (name) => t('chat.files.replaceExistingConfirm', { name }),
+      });
 
       if (!result.success && result.error && result.error !== 'User cancelled replacement') {
         const errMsg = result.error;
         const userMsg = errMsg.includes('EACCES')
-          ? `Permission denied.\n\nThe app cannot access this file or folder. Please grant access in System Settings → Privacy & Security → Files and Folders, then try again.`
-          : `Failed to move file: ${errMsg}`;
+          ? t('chat.files.permissionDeniedMoveToKnowledgeBase')
+          : t('chat.files.moveFileFailedWithError', { error: errMsg });
         window.alert(userMsg);
       }
     } catch (error) {
       logger.error('[FileTreeNode] Error moving file to knowledge:', error);
       const errMsg = error instanceof Error ? error.message : String(error);
       const userMsg = errMsg.includes('EACCES')
-        ? `Permission denied.\n\nThe app cannot access this file or folder. Please grant access in System Settings → Privacy & Security → Files and Folders, then try again.`
-        : `Failed to move file: ${errMsg}`;
+        ? t('chat.files.permissionDeniedMoveToKnowledgeBase')
+        : t('chat.files.moveFileFailedWithError', { error: errMsg });
       window.alert(userMsg);
     }
-  }, [currentKnowledgeBasePath]);
+  }, [currentKnowledgeBasePath, t]);
 
   // Install skill from file tree node
   const installSkillActions = ApplySkillDialogAtom.useChange();
@@ -98,19 +106,19 @@ const AppLayout: React.FC = () => {
 
   const handleFileTreeNodeInstallSkill = useCallback(async (filePath: string) => {
     try {
-      if (!window.electronAPI?.skillLibrary?.installSkillFromFilePath) {
-        showError('Install skill API not available');
+      if (!window.electronAPI?.skills?.installSkillFromFilePath) {
+        showError(t('skills.install.apiUnavailable'));
         return;
       }
 
-      const result = await window.electronAPI.skillLibrary.installSkillFromFilePath(filePath, {
+      const result = await window.electronAPI.skills.installSkillFromFilePath(filePath, {
         chatId: reactiveChatId || undefined,
         applyToCurrentAgent: !!reactiveChatId,
         requestSource: 'file-tree',
       });
 
       if (result.success) {
-        showSuccess(result.message || `Skill "${result.skillName}" installed successfully`);
+        showSuccess(result.message || t('skills.install.success', { name: result.skillName || '' }));
         // Trigger skills list refresh
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('skills:refreshFolderExplorer', {
@@ -126,10 +134,10 @@ const AppLayout: React.FC = () => {
         showToast(result.error, 'error', undefined, { persistent: true });
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to install skill: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('skills.install.failed', { error: errorMessage }));
     }
-  }, [reactiveChatId, showSuccess, showError, showToast]);
+  }, [reactiveChatId, showSuccess, showError, showToast, t]);
 
   // Handle showing delete confirmation dialog for chat sessions
   const handleShowDeleteChatSessionConfirm = useCallback(
@@ -143,10 +151,10 @@ const AppLayout: React.FC = () => {
       const session = currentAgentChat?.chatSessions?.find(
         (s) => s.chatSession_id === sessionId,
       );
-      const sessionTitle = session?.title || 'Unnamed Session';
+      const sessionTitle = session?.title || tRef.current('chat.session.unnamed');
       deleteConfirmActions.showChatSession(sessionId, sessionTitle, isCurrentSession);
     },
-    [chats],
+    [chats, deleteConfirmActions],
   );
 
   // Listen for delete events
@@ -213,7 +221,7 @@ const AppLayout: React.FC = () => {
         const alias = profileCache?.profile?.alias;
 
         if (!alias) {
-          showError('User not authenticated');
+          showError(tRef.current('common.userNotAuthenticated'));
           return;
         }
 
@@ -227,14 +235,14 @@ const AppLayout: React.FC = () => {
         if (result?.success && result?.filePath) {
           // Success: persistent toast + Open Folder button
           showToast(
-            `Chat session saved as "${result.fileName}"`,
+            tRef.current('chat.session.downloadSuccess', { name: result.fileName }),
             'success',
             undefined,
             {
               persistent: true,
               actions: [
                 {
-                  label: 'Open Folder',
+                  label: tRef.current('common.openFolder'),
                   variant: 'primary' as const,
                   onClick: () => {
                     (window as any).electronAPI?.workspace?.showInFolder(result.filePath);
@@ -245,10 +253,10 @@ const AppLayout: React.FC = () => {
           );
         } else {
           // Failure: non-persistent toast
-          showError(result?.error || 'Failed to download chat session');
+          showError(result?.error || tRef.current('chat.session.downloadFailed'));
         }
       } catch (error) {
-        showError('Failed to download chat session');
+        showError(tRef.current('chat.session.downloadFailed'));
       }
     };
 
@@ -273,15 +281,16 @@ const AppLayout: React.FC = () => {
       error?: string;
     }) => {
       if (result?.success && result.filePath) {
+        const currentT = tRef.current;
         showToast(
-          `Debug info saved as "${result.fileName || 'debug info zip'}"`,
+          currentT('debugInfo.exportSuccess', { name: result.fileName || currentT('debugInfo.defaultFileName') }),
           'success',
           undefined,
           {
             persistent: true,
             actions: [
               {
-                label: 'Open Folder',
+                label: currentT('common.openFolder'),
                 variant: 'primary' as const,
                 onClick: () => {
                   window.electronAPI?.workspace?.showInFolder(result.filePath!);
@@ -293,7 +302,7 @@ const AppLayout: React.FC = () => {
         return;
       }
 
-      showError(result?.error || 'Failed to export debug info');
+      showError(result?.error || tRef.current('debugInfo.exportFailed'));
     });
 
     return cleanup;
@@ -302,12 +311,12 @@ const AppLayout: React.FC = () => {
   return (
     <LayoutProvider>
       <PasteToWorkspaceProvider>
-            <AppLayoutContent
-              handleFileTreeNodeInstallSkill={handleFileTreeNodeInstallSkill}
-              handleFileTreeNodeMoveToKnowledge={handleFileTreeNodeMoveToKnowledge}
-              currentKnowledgeBasePath={currentKnowledgeBasePath}
-            />
-            <ModifyMessageConfim />
+        <AppLayoutContent
+          handleFileTreeNodeInstallSkill={handleFileTreeNodeInstallSkill}
+          handleFileTreeNodeMoveToKnowledge={handleFileTreeNodeMoveToKnowledge}
+          currentKnowledgeBasePath={currentKnowledgeBasePath}
+        />
+        <ModifyMessageConfim />
       </PasteToWorkspaceProvider>
     </LayoutProvider>
   );

@@ -3,8 +3,7 @@
  * index.ts IPC handler coverage tests
  *
  * Covers: setUpIPC — all inline ipcMain.handle registrations plus
- *   the app lifecycle hooks (before-quit, will-quit) and the
- *   useUpdateManager helper (init-failed, call-failed, success paths).
+ *   the app lifecycle hooks (before-quit and will-quit).
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -15,29 +14,29 @@ const {
   mockHandle,
   mockAppOn,
   mockGetPath,
-  mockGetVersion,
   mockShellOpenPath,
-  mockBrowserWindowFromWebContents,
   mockFsExistsSync,
   mockFsMkdirSync,
   mockFsWriteFileSync,
   mockFsRmSync,
+  mockSetupMemex,
   mockCreateLogger,
   mockIsFeatureEnabled,
   mockFeatureFlagManager,
   mockGetProfileCacheManager,
   mockGetAppCacheManager,
   mockGetTerminalManagerInstance,
-  mockGetRemoteChannelManager,
   mockGetAdvancedLogger,
   mockUseAdvancedLogger,
   mockReplacePlaceholders,
   mockParseConfig,
   mockBuiltinToolsManager,
   mockGetBuiltinToolsManager,
-  mockQuickStartImageCacheManager,
-  mockSchedulerManager,
+  mockNativeModuleManager,
   mockRuntimeManagerGetInstance,
+  mockRegisterCodingCliIPC,
+  mockInitEmbeddedBrowserManager,
+  mockRegisterSyncIPC,
 } = vi.hoisted(() => {
   const builtinMgr = {
     isInitialized: false as any,
@@ -51,13 +50,12 @@ const {
     mockHandle: vi.fn(),
     mockAppOn: vi.fn(),
     mockGetPath: vi.fn((_: string) => '/mock/userData'),
-    mockGetVersion: vi.fn(() => '2.0.0'),
     mockShellOpenPath: vi.fn().mockResolvedValue(''),
-    mockBrowserWindowFromWebContents: vi.fn(() => null),
     mockFsExistsSync: vi.fn(() => false),
     mockFsMkdirSync: vi.fn(),
     mockFsWriteFileSync: vi.fn(),
     mockFsRmSync: vi.fn(),
+    mockSetupMemex: vi.fn(),
     mockCreateLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
     mockIsFeatureEnabled: vi.fn((_flag: string) => false),
     mockFeatureFlagManager: {
@@ -67,23 +65,22 @@ const {
     mockGetProfileCacheManager: vi.fn(),
     mockGetAppCacheManager: vi.fn(),
     mockGetTerminalManagerInstance: vi.fn(),
-    mockGetRemoteChannelManager: vi.fn(),
     mockGetAdvancedLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
     mockUseAdvancedLogger: vi.fn().mockResolvedValue(undefined),
-    mockReplacePlaceholders: vi.fn(() => ({ OpenKosmos_FOO: 'bar' })),
+    mockReplacePlaceholders: vi.fn(() => ({ OPENKOSMOS_FOO: 'bar' })),
     mockParseConfig: vi.fn(() => ({ parsed: true })),
     mockBuiltinToolsManager: builtinMgr,
     mockGetBuiltinToolsManager: vi.fn(() => builtinMgr),
-    mockQuickStartImageCacheManager: {
-      getOrCacheImage: vi.fn().mockResolvedValue('file:///mock/image.png'),
-      clearAgentCache: vi.fn(),
-      clearAllCache: vi.fn(),
-    },
-    mockSchedulerManager: {
-      dispose: vi.fn().mockResolvedValue(undefined),
-      getRuntimeDiagnostics: vi.fn(() => ({})),
+    mockNativeModuleManager: {
+      getStatus: vi.fn(() => ({ status: 'ready' })),
+      ensureDownloaded: vi.fn().mockResolvedValue('/local/path'),
+      cancelDownload: vi.fn(),
+      deleteModule: vi.fn(),
     },
     mockRuntimeManagerGetInstance: vi.fn(),
+    mockRegisterCodingCliIPC: vi.fn(),
+    mockInitEmbeddedBrowserManager: vi.fn(() => ({ id: 'browser-manager' })),
+    mockRegisterSyncIPC: vi.fn(),
   };
 });
 
@@ -93,18 +90,15 @@ vi.mock('electron', () => ({
   app: {
     on: (...args: any[]) => (mockAppOn as any)(...args),
     getPath: (...args: any[]) => (mockGetPath as any)(...args),
-    getVersion: (...args: any[]) => (mockGetVersion as any)(...args),
     getAppPath: vi.fn(() => '/mock/appPath'),
   },
   ipcMain: {
     handle: (...args: any[]) => (mockHandle as any)(...args),
+    on: vi.fn(),
     removeHandler: vi.fn(),
   },
   shell: {
     openPath: (...args: any[]) => (mockShellOpenPath as any)(...args),
-  },
-  BrowserWindow: {
-    fromWebContents: (...args: any[]) => (mockBrowserWindowFromWebContents as any)(...args),
   },
 }));
 
@@ -127,26 +121,29 @@ vi.mock('../sub-agent', () => ({ default: vi.fn() }));
 vi.mock('../mcp', () => ({ default: vi.fn() }));
 vi.mock('../skill', () => ({ default: vi.fn() }));
 vi.mock('../agent-chat', () => ({ default: vi.fn() }));
+vi.mock('../agent-chat-steering', () => ({ default: vi.fn() }));
+vi.mock('../tts', () => ({ default: vi.fn() }));
 vi.mock('../fs', () => ({ default: vi.fn() }));
 vi.mock('../workspace', () => ({ default: vi.fn() }));
 vi.mock('../llm', () => ({ default: vi.fn() }));
+vi.mock('../whisper', () => ({ default: vi.fn() }));
 vi.mock('../window', () => ({ default: vi.fn() }));
 vi.mock('../toolbar', () => ({ default: vi.fn() }));
 vi.mock('../plugin', () => ({ default: vi.fn() }));
 vi.mock('../chat-session', () => ({ default: vi.fn() }));
 vi.mock('../renderer-log', () => ({ registerRendererLogIPC: vi.fn() }));
-vi.mock('../doctor', () => ({ default: vi.fn() }));
 
-// ─── library mocks ────────────────────────────────────────────────────────────
-
-vi.mock('../../../lib/browserControl/BrowserControlManager', () => ({
-  BrowserControlManager: vi.fn(),
+vi.mock('../../../lib/memex/memexIPC', () => ({
+  setupMemex: (...args: any[]) => (mockSetupMemex as any)(...args),
 }));
-vi.mock('../../../lib/browserControl/browserControlIPC', () => ({
-  registerBrowserControlIPC: vi.fn(),
+vi.mock('../../../lib/sync/syncIPC', () => ({
+  registerSyncIPC: (...args: any[]) => mockRegisterSyncIPC(...args),
 }));
 vi.mock('../../../lib/scheduler/SchedulerIPC', () => ({
   registerSchedulerIPC: vi.fn(),
+}));
+vi.mock('../../../lib/agentHooks/agentHooksIpc', () => ({
+  registerAgentHooksIPC: vi.fn(),
 }));
 vi.mock('../../../lib/buddy/BuddyIPC', () => ({
   registerBuddyIPC: vi.fn(),
@@ -154,12 +151,31 @@ vi.mock('../../../lib/buddy/BuddyIPC', () => ({
 vi.mock('../../../lib/externalAgent/externalAgentIPC', () => ({
   registerExternalAgentIPC: vi.fn(),
 }));
-vi.mock('../../../lib/remoteChannel/remoteChannelIPC', () => ({
-  registerRemoteChannelIPC: vi.fn(),
+vi.mock('../../../lib/codingCli/codingCliIPC', () => ({
+  registerCodingCliIPC: (...args: any[]) => mockRegisterCodingCliIPC(...args),
 }));
-vi.mock('../../../lib/unifiedLogger', () => ({
-  createLogger: (...args: any[]) => (mockCreateLogger as any)(...args),
+vi.mock('../../../lib/embeddedBrowser/EmbeddedBrowserManager', () => ({
+  initEmbeddedBrowserManager: (...args: any[]) => mockInitEmbeddedBrowserManager(...args),
 }));
+vi.mock('../../../lib/embeddedBrowser/embeddedBrowserIPC', () => ({
+  registerEmbeddedBrowserIPC: vi.fn(),
+}));
+vi.mock('../../../lib/unifiedLogger', () => {
+  const noop = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), updateConfig: vi.fn() });
+  return {
+    createLogger: (...args: any[]) => (mockCreateLogger as any)(...args),
+    createConsoleLogger: vi.fn(noop),
+    getUnifiedLogger: vi.fn(noop),
+    createHighPerformanceLogger: vi.fn(noop),
+    createDebugLogger: vi.fn(noop),
+    getRefactoredLogger: vi.fn(noop),
+    getGlobalLogger: vi.fn(noop),
+    initializeGlobalLogger: vi.fn(noop),
+    resetGlobalLogger: vi.fn(),
+    isGlobalLoggerInitialized: vi.fn(() => false),
+    default: vi.fn(noop),
+  };
+});
 vi.mock('../../../lib/utilities/safeConsole', () => ({
   safeConsole: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -174,7 +190,6 @@ vi.mock('../../../startup/lazy', () => ({
   getProfileCacheManager: (...args: any[]) => (mockGetProfileCacheManager as any)(...args),
   getAppCacheManager: (...args: any[]) => (mockGetAppCacheManager as any)(...args),
   getTerminalManagerInstance: (...args: any[]) => (mockGetTerminalManagerInstance as any)(...args),
-  getRemoteChannelManager: (...args: any[]) => (mockGetRemoteChannelManager as any)(...args),
   getAdvancedLogger: (...args: any[]) => (mockGetAdvancedLogger as any)(...args),
   useAdvancedLogger: (...args: any[]) => (mockUseAdvancedLogger as any)(...args),
 }));
@@ -191,21 +206,13 @@ vi.mock('../../../lib/userDataADO/userInputPlaceholderParser', () => ({
 vi.mock('../../../lib/mcpRuntime/builtinTools/builtinToolsManager', () => ({
   getBuiltinToolsManager: (...args: any[]) => (mockGetBuiltinToolsManager as any)(...args),
 }));
-vi.mock('../../../lib/cache/quickStartImageCacheManager', () => ({
-  quickStartImageCacheManager: {
-    getOrCacheImage: (...args: any[]) => mockQuickStartImageCacheManager.getOrCacheImage(...args),
-    clearAgentCache: (...args: any[]) => mockQuickStartImageCacheManager.clearAgentCache(...args),
-    clearAllCache: (...args: any[]) => mockQuickStartImageCacheManager.clearAllCache(...args),
+vi.mock('../../../lib/nativeModules', () => ({
+  nativeModuleManager: {
+    getStatus: (...args: any[]) => mockNativeModuleManager.getStatus(...args),
+    ensureDownloaded: (...args: any[]) => mockNativeModuleManager.ensureDownloaded(...args),
+    cancelDownload: (...args: any[]) => mockNativeModuleManager.cancelDownload(...args),
+    deleteModule: (...args: any[]) => mockNativeModuleManager.deleteModule(...args),
   },
-}));
-vi.mock('../../../lib/scheduler/SchedulerManager', () => ({
-  schedulerManager: {
-    dispose: (...args: any[]) => mockSchedulerManager.dispose(...args),
-    getRuntimeDiagnostics: (...args: any[]) => mockSchedulerManager.getRuntimeDiagnostics(...args),
-  },
-}));
-vi.mock('../../../lib/startupUpdate/startupUpdateService', () => ({
-  StartupUpdateService: vi.fn(),
 }));
 vi.mock('../../../lib/runtime/RuntimeManager', () => ({
   RuntimeManager: {
@@ -251,18 +258,12 @@ function makeCtx(overrides: Partial<any> = {}) {
     currentUserAlias: 'testuser',
     mainWindow: makeMainWindow(),
     debugWindow: null,
-    updateManager: Promise.resolve({
-      checkForUpdates: vi.fn().mockResolvedValue(undefined),
-      downloadUpdate: vi.fn().mockResolvedValue(undefined),
-      quitAndInstall: vi.fn(),
-      skipVersion: vi.fn().mockResolvedValue(undefined),
-      getPreferences: vi.fn().mockResolvedValue({ autoUpdate: true }),
-      updatePreferences: vi.fn().mockResolvedValue(undefined),
-    }),
+    toolBarWindow: null,
     isDev: false,
-    isAnalyticsReady: true,
     isAgentChatReady: true,
+    toolBarVisible: false,
     selectedText: 'hello',
+    cleanupSelectionHook: vi.fn(),
     onBeforeQuit: vi.fn(),
     registerGlobalShortcuts: vi.fn(),
     getPersistedWindowZoomLevel: vi.fn().mockResolvedValue(1),
@@ -270,10 +271,15 @@ function makeCtx(overrides: Partial<any> = {}) {
     stepWindowZoomLevel: vi.fn(),
     resetWindowZoomLevel: vi.fn().mockResolvedValue(1),
     getMenuTemplate: vi.fn(() => []),
+    showToolBar: vi.fn(),
+    toggleToolBar: vi.fn(),
     handleWebSearch: vi.fn().mockResolvedValue({ success: true }),
+    getToolBarAutoHide: vi.fn(() => false),
+    hideToolBar: vi.fn(),
+    applyToolBarSettings: vi.fn(),
     unregisterGlobalShortcuts: vi.fn(),
+    calculateToolBarPosition: vi.fn(() => ({ x: 0, y: 0 })),
     createDebugWindow: vi.fn().mockResolvedValue(undefined),
-    checkAssetsLibrariesAsync: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -292,11 +298,6 @@ describe('setUpIPC', () => {
     mockIsFeatureEnabled.mockReturnValue(false);
     mockBuiltinToolsManager.isInitialized = false;
     mockUseAdvancedLogger.mockResolvedValue(undefined);
-    // Restore StartupUpdateService to a working mock after vi.clearAllMocks()
-    const { StartupUpdateService } = await import('../../../lib/startupUpdate/startupUpdateService');
-    (StartupUpdateService as any).mockImplementation(function(this: any) {
-      this.run = vi.fn().mockResolvedValue({ updated: true });
-    });
     ctx = makeCtx();
     setUpIPC(ctx);
   });
@@ -304,9 +305,34 @@ describe('setUpIPC', () => {
   // ── app lifecycle ──────────────────────────────────────────────────────────
 
   describe('app lifecycle hooks', () => {
-    it('registers before-quit listener', () => {
+    it('registers before-quit and will-quit listeners', () => {
       const channels = mockAppOn.mock.calls.map(([c]: any[]) => c);
       expect(channels).toContain('before-quit');
+      expect(channels).toContain('will-quit');
+    });
+
+    it('first before-quit calls cleanupSelectionHook', () => {
+      const [, handler] = mockAppOn.mock.calls.find(([c, h]: any[]) => c === 'before-quit' && h !== ctx.onBeforeQuit)!;
+      handler({});
+      expect(ctx.cleanupSelectionHook).toHaveBeenCalled();
+    });
+
+    it('before-quit suppresses cleanupSelectionHook errors', () => {
+      ctx.cleanupSelectionHook = vi.fn(() => { throw new Error('boom'); });
+      const [, handler] = mockAppOn.mock.calls[0];
+      expect(() => handler({})).not.toThrow();
+    });
+
+    it('will-quit calls cleanupSelectionHook', () => {
+      const [, handler] = mockAppOn.mock.calls.find(([c]: any[]) => c === 'will-quit')!;
+      handler({});
+      expect(ctx.cleanupSelectionHook).toHaveBeenCalled();
+    });
+
+    it('will-quit suppresses cleanupSelectionHook errors', () => {
+      ctx.cleanupSelectionHook = vi.fn(() => { throw new Error('oops'); });
+      const [, handler] = mockAppOn.mock.calls.find(([c]: any[]) => c === 'will-quit')!;
+      expect(() => handler({})).not.toThrow();
     });
   });
 
@@ -316,7 +342,7 @@ describe('setUpIPC', () => {
     it('returns success with replaced data', async () => {
       const handler = getHandler('openkosmos:replacePlaceholders');
       const result = await handler({}, { KEY: 'val' });
-      expect(result).toEqual({ success: true, data: { OpenKosmos_FOO: 'bar' } });
+      expect(result).toEqual({ success: true, data: { OPENKOSMOS_FOO: 'bar' } });
     });
 
     it('returns error when no currentUserAlias', async () => {
@@ -532,6 +558,13 @@ describe('setUpIPC', () => {
       expect(ctx.mainWindow!.restore).toHaveBeenCalled();
     });
 
+    it('auto-hides toolbar when configured', async () => {
+      ctx.getToolBarAutoHide = vi.fn(() => true);
+      const handler = getHandler('mainWindow:showWithAgent');
+      await handler({}, 'agent-123');
+      expect(ctx.hideToolBar).toHaveBeenCalled();
+    });
+
     it('returns error when no main window', async () => {
       ctx.mainWindow = null;
       vi.clearAllMocks();
@@ -556,6 +589,88 @@ describe('setUpIPC', () => {
       const result = await handler({});
       expect(result.success).toBe(false);
       expect(result.error).toBe('flush error');
+    });
+  });
+
+  describe('registered service callbacks', () => {
+    it('resolves the current alias and live main window lazily', () => {
+      const codingOptions = mockRegisterCodingCliIPC.mock.calls[0][0];
+      const browserWindowProvider = mockInitEmbeddedBrowserManager.mock.calls[0][0];
+      const syncOptions = mockRegisterSyncIPC.mock.calls[0][0];
+
+      expect(codingOptions.getAlias()).toBe('testuser');
+      expect(browserWindowProvider()).toBe(ctx.mainWindow);
+      expect(syncOptions.getCurrentAlias()).toBe('testuser');
+      ctx.currentUserAlias = '';
+      expect(syncOptions.getCurrentAlias()).toBe('default');
+    });
+
+    it('passes the advanced logger to the manual flush callback', async () => {
+      const advancedLogger = { flushToDisk: vi.fn().mockResolvedValue(undefined) };
+      mockUseAdvancedLogger.mockImplementationOnce(async (callback: Function) => callback(advancedLogger));
+
+      await expect(getHandler('logger:manualFlush')({})).resolves.toEqual({ success: true });
+      expect(advancedLogger.flushToDisk).toHaveBeenCalled();
+    });
+  });
+
+  describe('non-Error failure normalization', () => {
+    it('normalizes placeholder and builtin-tool failures', async () => {
+      mockParseConfig.mockImplementationOnce(() => { throw 'parse failed'; });
+      expect(await getHandler('openkosmos:parseUserInputPlaceholders')({}, {}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockBuiltinToolsManager.executeTool.mockRejectedValueOnce('execute failed');
+      expect(await getHandler('builtinTools:execute')({}, 'tool', {}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockBuiltinToolsManager.getAllToolsInfo.mockImplementationOnce(() => { throw 'tools failed'; });
+      expect(await getHandler('builtinTools:getAllTools')({}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockBuiltinToolsManager.isBuiltinTool.mockImplementationOnce(() => { throw 'check failed'; });
+      expect(await getHandler('builtinTools:isBuiltinTool')({}, 'tool'))
+        .toEqual({ success: false, error: 'Unknown error' });
+    });
+
+    it('normalizes folder, debug-window, and feature-flag failures', async () => {
+      mockShellOpenPath.mockRejectedValueOnce('logs failed');
+      expect(await getHandler('folder:openLogs')({}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockShellOpenPath.mockRejectedValueOnce('profile failed');
+      expect(await getHandler('folder:openProfile')({}, 'testuser'))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      ctx.createDebugWindow.mockRejectedValueOnce('debug failed');
+      expect(await getHandler('debug:openWindow')({}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockFeatureFlagManager.getAllFlagsValues.mockImplementationOnce(() => { throw 'flags failed'; });
+      expect(await getHandler('featureFlags:getAllFlags')({}))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockFeatureFlagManager.isEnabled.mockImplementationOnce(() => { throw 'flag failed'; });
+      expect(await getHandler('featureFlags:isEnabled')({}, 'flag'))
+        .toEqual({ success: false, error: 'Unknown error' });
+    });
+
+    it('normalizes every native-module failure path', async () => {
+      mockNativeModuleManager.getStatus.mockImplementationOnce(() => { throw 'status failed'; });
+      expect(await getHandler('native-module:getStatus')({}, 'whisper'))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockNativeModuleManager.ensureDownloaded.mockRejectedValueOnce('download failed');
+      expect(await getHandler('native-module:ensureDownloaded')({}, 'whisper'))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockNativeModuleManager.cancelDownload.mockImplementationOnce(() => { throw 'cancel failed'; });
+      expect(await getHandler('native-module:cancelDownload')({}, 'whisper'))
+        .toEqual({ success: false, error: 'Unknown error' });
+
+      mockNativeModuleManager.deleteModule.mockImplementationOnce(() => { throw 'delete failed'; });
+      expect(await getHandler('native-module:delete')({}, 'whisper'))
+        .toEqual({ success: false, error: 'Unknown error' });
     });
   });
 
@@ -622,56 +737,6 @@ describe('setUpIPC', () => {
     });
   });
 
-  // ── quickStartImageCache ───────────────────────────────────────────────────
-
-  describe('quickStartImageCache:getOrCache', () => {
-    it('returns cached url', async () => {
-      const handler = getHandler('quickStartImageCache:getOrCache');
-      const result = await handler({}, 'agent', 'http://example.com/img.png');
-      expect(result.success).toBe(true);
-      expect(result.cachedUrl).toBe('file:///mock/image.png');
-    });
-
-    it('returns error on exception', async () => {
-      mockQuickStartImageCacheManager.getOrCacheImage.mockRejectedValueOnce(new Error('cache fail'));
-      const handler = getHandler('quickStartImageCache:getOrCache');
-      const result = await handler({}, 'agent', 'http://x.com/img.png');
-      expect(result.success).toBe(false);
-      expect(result.cachedUrl).toBeNull();
-    });
-  });
-
-  describe('quickStartImageCache:clearAgent', () => {
-    it('clears agent cache', async () => {
-      const handler = getHandler('quickStartImageCache:clearAgent');
-      const result = await handler({}, 'agent');
-      expect(result.success).toBe(true);
-      expect(mockQuickStartImageCacheManager.clearAgentCache).toHaveBeenCalledWith('agent');
-    });
-
-    it('returns error on exception', async () => {
-      mockQuickStartImageCacheManager.clearAgentCache.mockImplementationOnce(() => { throw new Error('err'); });
-      const handler = getHandler('quickStartImageCache:clearAgent');
-      const result = await handler({}, 'agent');
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe('quickStartImageCache:clearAll', () => {
-    it('clears all cache', async () => {
-      const handler = getHandler('quickStartImageCache:clearAll');
-      const result = await handler({});
-      expect(result.success).toBe(true);
-    });
-
-    it('returns error on exception', async () => {
-      mockQuickStartImageCacheManager.clearAllCache.mockImplementationOnce(() => { throw new Error('err'); });
-      const handler = getHandler('quickStartImageCache:clearAll');
-      const result = await handler({});
-      expect(result.success).toBe(false);
-    });
-  });
-
   // ── debug:openWindow ───────────────────────────────────────────────────────
 
   describe('debug:openWindow', () => {
@@ -689,286 +754,6 @@ describe('setUpIPC', () => {
       const handler = getHandler('debug:openWindow');
       const result = await handler({});
       expect(result.success).toBe(false);
-    });
-  });
-
-  // ── update:checkForUpdates ─────────────────────────────────────────────────
-
-  describe('update:checkForUpdates', () => {
-    it('succeeds for non-silent check', async () => {
-      const handler = getHandler('update:checkForUpdates');
-      const result = await handler({}, false);
-      expect(result.success).toBe(true);
-    });
-
-    it('triggers checkAssetsLibrariesAsync for silent check with alias', async () => {
-      const handler = getHandler('update:checkForUpdates');
-      await handler({}, true);
-      expect(ctx.checkAssetsLibrariesAsync).toHaveBeenCalled();
-    });
-
-    it('does not trigger checkAssetsLibrariesAsync when no alias', async () => {
-      ctx.currentUserAlias = null;
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:checkForUpdates');
-      await handler({}, true);
-      expect(ctx.checkAssetsLibrariesAsync).not.toHaveBeenCalled();
-    });
-
-    it('returns error when updateManager init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init fail'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:checkForUpdates');
-      const result = await handler({}, false);
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/Failed to initialize update manager/);
-    });
-
-    it('returns error when call fails', async () => {
-      const mgr = {
-        checkForUpdates: vi.fn().mockRejectedValueOnce(new Error('check fail')),
-        downloadUpdate: vi.fn(), quitAndInstall: vi.fn(),
-        skipVersion: vi.fn(), getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:checkForUpdates');
-      const result = await handler({}, false);
-      expect(result.success).toBe(false);
-    });
-  });
-
-  // ── update:downloadUpdate ──────────────────────────────────────────────────
-
-  describe('update:downloadUpdate', () => {
-    it('returns success', async () => {
-      const handler = getHandler('update:downloadUpdate');
-      const result = await handler({}, 'http://example.com/update.zip');
-      expect(result.success).toBe(true);
-    });
-
-    it('returns error when init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init err'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:downloadUpdate');
-      const result = await handler({});
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/Failed to initialize update manager/);
-    });
-
-    it('returns error when call fails', async () => {
-      const mgr = {
-        downloadUpdate: vi.fn().mockRejectedValueOnce(new Error('dl fail')),
-        checkForUpdates: vi.fn(), quitAndInstall: vi.fn(),
-        skipVersion: vi.fn(), getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:downloadUpdate');
-      const result = await handler({});
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('dl fail');
-    });
-  });
-
-  // ── update:quitAndInstall ──────────────────────────────────────────────────
-
-  describe('update:quitAndInstall', () => {
-    it('calls quitAndInstall on manager', async () => {
-      const quitAndInstall = vi.fn();
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall,
-        skipVersion: vi.fn(), getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:quitAndInstall');
-      await handler({}, '/path/to/update');
-      expect(quitAndInstall).toHaveBeenCalled();
-    });
-
-    it('disposes scheduler when feature flag enabled', async () => {
-      const quitAndInstall = vi.fn();
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall,
-        skipVersion: vi.fn(), getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      mockIsFeatureEnabled.mockImplementation((flag: string) => flag === 'openkosmosFeatureScheduler');
-      setUpIPC(ctx);
-      const handler = getHandler('update:quitAndInstall');
-      await handler({}, undefined);
-      expect(mockSchedulerManager.dispose).toHaveBeenCalled();
-    });
-
-    it('throws when init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init fail'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:quitAndInstall');
-      await expect(handler({}, undefined)).rejects.toThrow('init fail');
-    });
-
-    it('throws when call fails', async () => {
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(),
-        quitAndInstall: vi.fn().mockImplementationOnce(() => { throw new Error('quit fail'); }),
-        skipVersion: vi.fn(), getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('update:quitAndInstall');
-      await expect(handler({}, undefined)).rejects.toThrow('quit fail');
-    });
-  });
-
-  // ── update:getVersion ──────────────────────────────────────────────────────
-
-  describe('update:getVersion', () => {
-    it('returns app version', () => {
-      const handler = getHandler('update:getVersion');
-      expect(handler()).toBe('2.0.0');
-    });
-  });
-
-  // ── update:skipVersion ─────────────────────────────────────────────────────
-
-  describe('update:skipVersion', () => {
-    it('returns success', async () => {
-      const handler = getHandler('update:skipVersion');
-      const result = await handler({}, '1.0.0');
-      expect(result.success).toBe(true);
-    });
-
-    it('returns error when init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init err'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:skipVersion')({}, '1.0.0');
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/Failed to initialize update manager/);
-    });
-
-    it('returns error when call fails', async () => {
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall: vi.fn(),
-        skipVersion: vi.fn().mockRejectedValueOnce(new Error('skip fail')),
-        getPreferences: vi.fn(), updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:skipVersion')({}, '1.0.0');
-      expect(result.success).toBe(false);
-    });
-  });
-
-  // ── update:getPreferences ──────────────────────────────────────────────────
-
-  describe('update:getPreferences', () => {
-    it('returns preferences on success', async () => {
-      const handler = getHandler('update:getPreferences');
-      const result = await handler({});
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({ autoUpdate: true });
-    });
-
-    it('returns error when init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init err'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:getPreferences')({});
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/Failed to initialize update manager/);
-    });
-
-    it('returns error when call fails', async () => {
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall: vi.fn(),
-        skipVersion: vi.fn(),
-        getPreferences: vi.fn().mockRejectedValueOnce(new Error('pref fail')),
-        updatePreferences: vi.fn(),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:getPreferences')({});
-      expect(result.success).toBe(false);
-    });
-  });
-
-  // ── update:updatePreferences ───────────────────────────────────────────────
-
-  describe('update:updatePreferences', () => {
-    it('returns success', async () => {
-      const handler = getHandler('update:updatePreferences');
-      const result = await handler({}, { autoUpdate: false });
-      expect(result.success).toBe(true);
-    });
-
-    it('returns error when init fails', async () => {
-      ctx.updateManager = Promise.reject(new Error('init err'));
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:updatePreferences')({}, {});
-      expect(result.success).toBe(false);
-    });
-
-    it('returns error when call fails', async () => {
-      const mgr = {
-        checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall: vi.fn(),
-        skipVersion: vi.fn(), getPreferences: vi.fn(),
-        updatePreferences: vi.fn().mockRejectedValueOnce(new Error('upref fail')),
-      };
-      ctx.updateManager = Promise.resolve(mgr);
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const result = await getHandler('update:updatePreferences')({}, {});
-      expect(result.success).toBe(false);
-    });
-  });
-
-  // ── startup:checkAndInstallUpdates ─────────────────────────────────────────
-
-  describe('startup:checkAndInstallUpdates', () => {
-    it('returns error when no alias', async () => {
-      ctx.currentUserAlias = null;
-      vi.clearAllMocks();
-      setUpIPC(ctx);
-      const handler = getHandler('startup:checkAndInstallUpdates');
-      const result = await handler({});
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/No user logged in/);
-    });
-
-    it('runs service and returns success', async () => {
-      // Use the handler from beforeEach (StartupUpdateService is properly mocked)
-      const handler = getHandler('startup:checkAndInstallUpdates');
-      const result = await handler({});
-      expect(result.success).toBe(true);
-    });
-
-    it('returns error on unexpected exception', async () => {
-      // Patch StartupUpdateService to throw in run() before re-registering
-      const mod = await import('../../../lib/startupUpdate/startupUpdateService');
-      (mod.StartupUpdateService as any).mockImplementation(function(this: any) {
-        this.run = vi.fn().mockRejectedValueOnce(new Error('service error'));
-      });
-      const handler = getHandler('startup:checkAndInstallUpdates');
-      const result = await handler({});
-      expect(result.success).toBe(false);
-      // Restore original mock
-      (mod.StartupUpdateService as any).mockImplementation(function(this: any) {
-        this.run = vi.fn().mockResolvedValue({ updated: true });
-      });
     });
   });
 
@@ -1006,5 +791,82 @@ describe('setUpIPC', () => {
     });
   });
 
+  // ── native-module IPC ──────────────────────────────────────────────────────
 
+  describe('native-module:getStatus', () => {
+    it('returns module status', async () => {
+      const handler = getHandler('native-module:getStatus');
+      const result = await handler({}, 'whisper');
+      expect(result).toEqual({ success: true, data: { status: 'ready' } });
+    });
+
+    it('returns error on exception', async () => {
+      mockNativeModuleManager.getStatus.mockImplementationOnce(() => { throw new Error('status err'); });
+      const handler = getHandler('native-module:getStatus');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('native-module:ensureDownloaded', () => {
+    it('returns local path', async () => {
+      const handler = getHandler('native-module:ensureDownloaded');
+      const result = await handler({}, 'whisper');
+      expect(result).toEqual({ success: true, data: { localPath: '/local/path' } });
+    });
+
+    it('returns error on exception', async () => {
+      mockNativeModuleManager.ensureDownloaded.mockRejectedValueOnce(new Error('dl err'));
+      const handler = getHandler('native-module:ensureDownloaded');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('native-module:cancelDownload', () => {
+    it('cancels download', async () => {
+      const handler = getHandler('native-module:cancelDownload');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(true);
+    });
+
+    it('returns error on exception', async () => {
+      mockNativeModuleManager.cancelDownload.mockImplementationOnce(() => { throw new Error('cancel err'); });
+      const handler = getHandler('native-module:cancelDownload');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('native-module:delete', () => {
+    it('deletes module', async () => {
+      const handler = getHandler('native-module:delete');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(true);
+    });
+
+    it('returns error on exception', async () => {
+      mockNativeModuleManager.deleteModule.mockImplementationOnce(() => { throw new Error('del err'); });
+      const handler = getHandler('native-module:delete');
+      const result = await handler({}, 'whisper');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // ── memex read IPC ─────────────────────────────────────────────────────────
+
+  describe('memex read IPC', () => {
+    it('always calls setupMemex with the context (flag-gating is internal)', () => {
+      vi.clearAllMocks();
+      setUpIPC(ctx);
+      expect(mockSetupMemex).toHaveBeenCalledWith(ctx);
+    });
+
+    it('calls setupMemex even when the memex flag is disabled', () => {
+      mockIsFeatureEnabled.mockReturnValue(false);
+      vi.clearAllMocks();
+      setUpIPC(ctx);
+      expect(mockSetupMemex).toHaveBeenCalledWith(ctx);
+    });
+  });
 });

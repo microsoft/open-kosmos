@@ -20,6 +20,12 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 *.lcov
+# Transient report emitted by scripts/check-coverage.js in CI
+coverage-report.md
+public-release-scan-report.md
+public-release-ref-report.md
+public-release-artifact-report.md
+public-release-evidence-*.md
 
 # nyc test coverage
 .nyc_output
@@ -239,6 +245,9 @@ $RECYCLE.BIN/
 # Project specific
 # Database files (if using file-based databases)
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 *.sqlite
 *.sqlite3
 
@@ -288,7 +297,6 @@ dev-app-update.yml
 
 # Security and sensitive files
 *.pem
-!browser-control/chrome-extension/.output/*.pem
 *.key
 *.crt
 *.p12
@@ -312,3 +320,4 @@ GEMINI.md
 tests/e2e/report/
 tests/e2e/test-results/
 pr648-*.json
+.superset/

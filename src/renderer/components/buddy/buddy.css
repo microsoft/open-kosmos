@@ -25,7 +25,7 @@
 .buddy-dock-tab {
   width: 12px;
   height: 60px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   pointer-events: auto;
   cursor: pointer;
 }
@@ -105,7 +105,7 @@
   line-height: 1.2;
   white-space: pre;
   text-align: center;
-  color: var(--buddy-text, #1e293b);
+  color: var(--buddy-text, var(--color-neutral-800));
   opacity: 1;
 }
 .buddy-sprite.shiny {
@@ -118,14 +118,14 @@
   right: 0;
   margin-bottom: 8px;
   padding: 8px 12px;
-  background: var(--buddy-bubble-bg, #1e293b);
-  border: 1px solid var(--buddy-bubble-border, #334155);
-  border-radius: 12px;
-  border-bottom-right-radius: 4px;
+  background: var(--buddy-bubble-bg, var(--color-neutral-800));
+  border: 1px solid var(--buddy-bubble-border, var(--color-neutral-700));
+  border-radius: var(--radius-xl);
+  border-bottom-right-radius: var(--radius);
   max-width: 200px;
   word-wrap: break-word;
   font-size: 12px;
-  color: var(--buddy-bubble-text, #e2e8f0);
+  color: var(--buddy-bubble-text, var(--color-neutral-200));
   opacity: 1;
   transition: opacity 3s ease;
   pointer-events: none;
@@ -142,7 +142,7 @@
   height: 0;
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-top: 6px solid var(--buddy-bubble-bg, #1e293b);
+  border-top: 6px solid var(--buddy-bubble-bg, var(--color-neutral-800));
 }
 
 @keyframes buddy-heart-float {
@@ -217,7 +217,7 @@
   position: absolute;
   font-size: 11px;
   font-weight: bold;
-  color: #22c55e;
+  color: var(--color-success-500);
   animation: buddy-xp-float 1.5s ease-out forwards;
   pointer-events: none;
 }
@@ -225,23 +225,23 @@
 .buddy-xp-bar {
   width: 100%;
   height: 6px;
-  background: var(--buddy-xp-bg, #1e293b);
-  border-radius: 3px;
+  background: var(--buddy-xp-bg, var(--color-neutral-800));
+  border-radius: var(--radius-scrollbar);
   overflow: hidden;
   margin-top: 4px;
 }
 .buddy-xp-bar-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
   transition: width 0.5s ease;
 }
 
 .buddy-context-menu {
   position: fixed;
   z-index: 10000;
-  background: var(--buddy-menu-bg, #1e293b);
-  border: 1px solid var(--buddy-menu-border, #334155);
-  border-radius: 8px;
+  background: var(--buddy-menu-bg, var(--color-neutral-800));
+  border: 1px solid var(--buddy-menu-border, var(--color-neutral-700));
+  border-radius: var(--radius-lg);
   padding: 4px 0;
   min-width: 160px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -249,18 +249,18 @@
 .buddy-context-menu-item {
   padding: 8px 16px;
   font-size: 13px;
-  color: var(--buddy-menu-text, #e2e8f0);
+  color: var(--buddy-menu-text, var(--color-neutral-200));
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .buddy-context-menu-item:hover {
-  background: var(--buddy-menu-hover, #334155);
+  background: var(--buddy-menu-hover, var(--color-neutral-700));
 }
 .buddy-context-menu-separator {
   height: 1px;
-  background: var(--buddy-menu-border, #334155);
+  background: var(--buddy-menu-border, var(--color-neutral-700));
   margin: 4px 0;
 }
 
@@ -317,7 +317,7 @@
 .buddy-info-name {
   font-size: 13px;
   font-weight: bold;
-  color: var(--buddy-text, #1e293b);
+  color: var(--buddy-text, var(--color-neutral-800));
 }
 .buddy-info-rarity {
   font-size: 11px;
@@ -334,9 +334,9 @@
   z-index: 10001;
 }
 .buddy-stats-modal {
-  background: var(--buddy-modal-bg, #0f172a);
-  border: 1px solid var(--buddy-modal-border, #334155);
-  border-radius: 12px;
+  background: var(--buddy-modal-bg, var(--color-neutral-900));
+  border: 1px solid var(--buddy-modal-border, var(--color-neutral-700));
+  border-radius: var(--radius-xl);
   padding: 24px;
   min-width: 280px;
   max-width: 360px;
@@ -349,25 +349,25 @@
 }
 .buddy-stat-name {
   font-size: 11px;
-  color: var(--buddy-text-dim, #94a3b8);
+  color: var(--buddy-text-dim, var(--color-neutral-400));
   width: 80px;
   text-transform: uppercase;
 }
 .buddy-stat-bar {
   flex: 1;
   height: 8px;
-  background: var(--buddy-xp-bg, #1e293b);
-  border-radius: 4px;
+  background: var(--buddy-xp-bg, var(--color-neutral-800));
+  border-radius: var(--radius);
   overflow: hidden;
 }
 .buddy-stat-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: width 0.3s ease;
 }
 .buddy-stat-value {
   font-size: 11px;
-  color: var(--buddy-text, #e2e8f0);
+  color: var(--buddy-text, var(--color-neutral-200));
   width: 24px;
   text-align: right;
 }
@@ -383,9 +383,9 @@
   z-index: 10001;
 }
 .buddy-collection-panel {
-  background: var(--buddy-modal-bg, #0f172a);
-  border: 1px solid var(--buddy-modal-border, #334155);
-  border-radius: 16px;
+  background: var(--buddy-modal-bg, var(--color-neutral-900));
+  border: 1px solid var(--buddy-modal-border, var(--color-neutral-700));
+  border-radius: var(--radius-2xl);
   padding: 24px;
   min-width: 480px;
   max-width: 640px;
@@ -400,29 +400,29 @@
 }
 .buddy-collection-header h2 {
   font-size: 18px;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
   margin: 0;
 }
 .buddy-collection-close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   font-size: 18px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 .buddy-collection-close:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--color-neutral-700);
+  color: var(--color-neutral-200);
 }
 .buddy-collection-stats {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   padding-bottom: 12px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid var(--color-neutral-700);
   margin-bottom: 16px;
 }
 
@@ -434,9 +434,9 @@
   margin-bottom: 16px;
 }
 .buddy-card {
-  background: var(--buddy-card-bg, #1e293b);
-  border: 2px solid #334155;
-  border-radius: 10px;
+  background: var(--buddy-card-bg, var(--color-neutral-800));
+  border: 2px solid var(--color-neutral-700);
+  border-radius: var(--radius-lg);
   padding: 10px 8px;
   text-align: center;
   cursor: pointer;
@@ -448,10 +448,10 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .buddy-card.selected {
-  box-shadow: 0 0 0 2px #f59e0b, 0 4px 12px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 2px var(--color-warning-500), 0 4px 12px rgba(245, 158, 11, 0.3);
 }
 .buddy-card.active {
-  box-shadow: 0 0 0 2px #22c55e;
+  box-shadow: 0 0 0 2px var(--color-success-500);
 }
 .buddy-card-face {
   font-family: 'Courier New', Courier, monospace;
@@ -463,14 +463,14 @@
 .buddy-card-name {
   font-size: 11px;
   font-weight: bold;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .buddy-card-level {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   margin-top: 2px;
 }
 .buddy-card-species {
@@ -482,12 +482,12 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  background: #22c55e;
-  color: #0f172a;
+  background: var(--color-success-500);
+  color: var(--color-neutral-900);
   font-size: 8px;
   font-weight: bold;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 /* === V2: Collection Actions === */
@@ -498,33 +498,33 @@
   margin-bottom: 12px;
 }
 .buddy-collection-btn {
-  background: #334155;
-  border: 1px solid #475569;
-  border-radius: 8px;
+  background: var(--color-neutral-700);
+  border: 1px solid var(--color-neutral-600);
+  border-radius: var(--radius-lg);
   padding: 8px 20px;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
   cursor: pointer;
   font-size: 13px;
   transition: background 0.15s ease;
 }
 .buddy-collection-btn:hover:not(:disabled) {
-  background: #475569;
+  background: var(--color-neutral-600);
 }
 .buddy-collection-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .buddy-collection-btn-danger {
-  background: #7f1d1d;
-  border-color: #991b1b;
+  background: var(--color-danger-900);
+  border-color: var(--color-danger-800);
 }
 .buddy-collection-btn-danger:hover:not(:disabled) {
-  background: #991b1b;
+  background: var(--color-danger-800);
 }
 .buddy-collection-tip {
   text-align: center;
   font-size: 11px;
-  color: #64748b;
+  color: var(--color-neutral-500);
   min-height: 20px;
 }
 .buddy-collection-release {
@@ -545,7 +545,7 @@
   transform: translateX(-50%);
   font-size: 12px;
   font-weight: bold;
-  color: #f59e0b;
+  color: var(--color-warning-500);
   white-space: nowrap;
   animation: buddy-levelup-toast 2s ease-out forwards;
   pointer-events: none;
@@ -557,7 +557,7 @@
   position: relative;
 }
 .buddy-stat-bonus {
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 .buddy-stat-value {
   width: 56px;

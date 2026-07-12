@@ -31,9 +31,13 @@ vi.mock('../SchedulerManager', async () => ({
   },
 }));
 
-vi.mock('../../userDataADO/profileCacheManager', async () => ({
-  profileCacheManager: {
-    getChatSessionsAsync: vi.fn(async () => []),
+vi.mock('../sessionHistoryCleanup', async () => ({
+  cleanupAllSchedulerSessionHistory: vi.fn(async () => ({ totalDeleted: 3, jobsProcessed: 2, orphansDeleted: 1, errors: 0 })),
+}));
+
+vi.mock('../../userDataADO/chatSessionManager', async () => ({
+  chatSessionManager: {
+    getScheduledSessionsByJobId: vi.fn(async () => ({ sessions: [], total: 0, hasMore: false })),
   },
 }));
 
@@ -70,7 +74,7 @@ describe('SchedulerIPC - registerSchedulerIPC', () => {
   });
 
   it('createJob handler returns success', async () => {
-    const job = { id: 'j1', name: 'J', description: '', scheduleType: 'cron' as const, cronExpression: '0 * * * *', enabled: true, agentId: 'a', message: 'm', status: 'pending' as const };
+    const job = { id: 'j1', name: 'J', description: '', scheduleType: 'cron' as const, cronExpression: '0 * * * *', enabled: true, chat_id: 'a', message: 'm', status: 'pending' as const };
     const result = await capturedHandlers['createJob']?.({}, job);
     expect(result).toEqual({ success: true });
   });
@@ -155,7 +159,7 @@ describe('SchedulerIPC - registerSchedulerIPC', () => {
 
   it('getJobSessions handler returns error when no user alias', async () => {
     const { schedulerManager } = await import('../SchedulerManager');
-    vi.mocked(schedulerManager.getJob).mockResolvedValue({ id: 'j1', name: 'J', description: '', scheduleType: 'cron', cronExpression: '0 * * * *', enabled: true, agentId: 'a', message: 'm', status: 'pending' });
+    vi.mocked(schedulerManager.getJob).mockResolvedValue({ id: 'j1', name: 'J', description: '', scheduleType: 'cron', cronExpression: '0 * * * *', enabled: true, chat_id: 'a', message: 'm', status: 'pending' });
     vi.mocked(schedulerManager.getUserAlias).mockReturnValue(null);
     const result = await capturedHandlers['getJobSessions']?.({}, 'job-1');
     expect(result).toEqual({ success: false, error: 'No user alias' });
@@ -163,18 +167,23 @@ describe('SchedulerIPC - registerSchedulerIPC', () => {
 
   it('getJobSessions handler returns filtered sessions', async () => {
     const { schedulerManager } = await import('../SchedulerManager');
-    const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
-    const job = { id: 'j1', name: 'J', description: '', scheduleType: 'cron', cronExpression: '0 * * * *', enabled: true, agentId: 'agent-1', message: 'm', status: 'pending' };
+    const { chatSessionManager } = await import('../../userDataADO/chatSessionManager');
+    const job = { id: 'j1', name: 'J', description: '', scheduleType: 'cron', cronExpression: '0 * * * *', enabled: true, chat_id: 'agent-1', message: 'm', status: 'pending' };
     vi.mocked(schedulerManager.getJob).mockResolvedValue(job as any);
     vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
-    vi.mocked(profileCacheManager.getChatSessionsAsync).mockResolvedValue([
-      { chatSession_id: 's1', schedulerJobId: 'j1', title: 'T1', last_updated: '2026-05-10' } as any,
-      { chatSession_id: 's2', schedulerJobId: 'other', title: 'T2', last_updated: '2026-05-11' } as any,
-    ]);
+    vi.mocked(chatSessionManager.getScheduledSessionsByJobId).mockResolvedValue({
+      sessions: [
+        { chatSession_id: 's1', schedulerJobId: 'j1', title: 'T1', last_updated: '2026-05-10' } as any,
+      ],
+      total: 1,
+      hasMore: false,
+    });
     const result = await capturedHandlers['getJobSessions']?.({}, 'j1');
     expect(result.success).toBe(true);
-    expect(result.data).toHaveLength(1);
-    expect(result.data[0].chatSession_id).toBe('s1');
+    expect(result.data.sessions).toHaveLength(1);
+    expect(result.data.sessions[0].chatSession_id).toBe('s1');
+    expect(result.data.total).toBe(1);
+    expect(result.data.hasMore).toBe(false);
   });
 
   it('getJobSessions handler returns error on thrown exception', async () => {
@@ -182,6 +191,68 @@ describe('SchedulerIPC - registerSchedulerIPC', () => {
     vi.mocked(schedulerManager.getJob).mockRejectedValue(new Error('getJob failed'));
     const result = await capturedHandlers['getJobSessions']?.({}, 'j1');
     expect(result).toEqual({ success: false, error: 'getJob failed' });
+  });
+
+  it('cleanupAllSessionHistory handler deletes with orphan cleanup by default', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    const { cleanupAllSchedulerSessionHistory } = await import('../sessionHistoryCleanup');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockResolvedValue([]);
+
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: 'chat_1' });
+
+    expect(cleanupAllSchedulerSessionHistory).toHaveBeenCalledWith('alice', expect.any(Array), {
+      includeOrphans: true,
+      chatId: 'chat_1',
+    });
+    expect(result).toEqual({
+      success: true,
+      data: {
+        totalDeleted: 3,
+        jobsProcessed: 2,
+        orphansDeleted: 1,
+        errors: 0,
+      },
+    });
+  });
+
+  it('cleanupAllSessionHistory handler returns error when no user alias', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue(null);
+
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { includeOrphans: false, chatId: 'chat_1' });
+
+    expect(result).toEqual({ success: false, error: 'No user alias' });
+  });
+
+  it('cleanupAllSessionHistory handler rejects missing options', async () => {
+    const { cleanupAllSchedulerSessionHistory } = await import('../sessionHistoryCleanup');
+    vi.mocked(cleanupAllSchedulerSessionHistory).mockClear();
+
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, undefined as any);
+
+    expect(result).toEqual({ success: false, error: 'Chat id is required' });
+    expect(cleanupAllSchedulerSessionHistory).not.toHaveBeenCalled();
+  });
+
+  it('cleanupAllSessionHistory handler rejects blank agent id', async () => {
+    const { cleanupAllSchedulerSessionHistory } = await import('../sessionHistoryCleanup');
+    vi.mocked(cleanupAllSchedulerSessionHistory).mockClear();
+
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: '   ' });
+
+    expect(result).toEqual({ success: false, error: 'Chat id is required' });
+    expect(cleanupAllSchedulerSessionHistory).not.toHaveBeenCalled();
+  });
+
+  it('cleanupAllSessionHistory handler returns error on thrown exception', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockRejectedValue(new Error('cleanup failed'));
+
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { includeOrphans: false, chatId: 'chat_1' });
+
+    expect(result).toEqual({ success: false, error: 'cleanup failed' });
   });
 
   it('listJobs handler returns Unknown error when non-Error thrown', async () => {
@@ -231,5 +302,75 @@ describe('SchedulerIPC - registerSchedulerIPC', () => {
     vi.mocked(schedulerManager.getJob).mockRejectedValue('not an error');
     const result = await capturedHandlers['getJobSessions']?.({}, 'j1');
     expect(result).toEqual({ success: false, error: 'Unknown error' });
+  });
+
+  it('cleanupAllSessionHistory handler returns success with cleanup data', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockResolvedValue([]);
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { includeOrphans: true, chatId: 'chat_1' });
+    expect(result.success).toBe(true);
+    expect(result.data.totalDeleted).toBe(3);
+    expect(result.data.orphansDeleted).toBe(1);
+  });
+
+  it('cleanupAllSessionHistory handler returns error when no alias', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue(null);
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: 'chat_1' });
+    expect(result).toEqual({ success: false, error: 'No user alias' });
+  });
+
+  it('cleanupAllSessionHistory handler returns error on exception', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockRejectedValue(new Error('list failed'));
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: 'chat_1' });
+    expect(result).toEqual({ success: false, error: 'list failed' });
+  });
+
+  it('cleanupAllSessionHistory handler returns Unknown error when non-Error thrown', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockRejectedValue('oops');
+    const result = await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: 'chat_1' });
+    expect(result).toEqual({ success: false, error: 'Unknown error' });
+  });
+
+  it('cleanupAllSessionHistory handler filters jobs by agentId', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    const { cleanupAllSchedulerSessionHistory } = await import('../sessionHistoryCleanup');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockResolvedValue([
+      { id: 'j1', chat_id: 'chat_A', scheduleType: 'cron' } as any,
+      { id: 'j2', chat_id: 'chat_B', scheduleType: 'cron' } as any,
+      { id: 'j3', chat_id: 'chat_A', scheduleType: 'cron' } as any,
+    ]);
+
+    await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: 'chat_A' });
+
+    const calls = vi.mocked(cleanupAllSchedulerSessionHistory).mock.calls;
+    const passedJobs = calls[calls.length - 1][1];
+    expect(passedJobs).toHaveLength(2);
+    expect(passedJobs.every((j: any) => j.chat_id === 'chat_A')).toBe(true);
+  });
+
+  it('cleanupAllSessionHistory handler trims agent id before filtering jobs', async () => {
+    const { schedulerManager } = await import('../SchedulerManager');
+    const { cleanupAllSchedulerSessionHistory } = await import('../sessionHistoryCleanup');
+    vi.mocked(schedulerManager.getUserAlias).mockReturnValue('alice');
+    vi.mocked(schedulerManager.listJobs).mockResolvedValue([
+      { id: 'j1', chat_id: 'chat_A', scheduleType: 'cron' } as any,
+      { id: 'j2', chat_id: ' chat_A ', scheduleType: 'cron' } as any,
+    ]);
+
+    await capturedHandlers['cleanupAllSessionHistory']?.({}, { chatId: ' chat_A ' });
+
+    const calls = vi.mocked(cleanupAllSchedulerSessionHistory).mock.calls;
+    const [alias, passedJobs, options] = calls[calls.length - 1];
+    expect(alias).toBe('alice');
+    expect(passedJobs).toHaveLength(1);
+    expect(passedJobs[0].id).toBe('j1');
+    expect(options).toEqual({ includeOrphans: true, chatId: 'chat_A' });
   });
 });

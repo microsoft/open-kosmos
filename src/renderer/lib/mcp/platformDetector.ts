@@ -8,7 +8,8 @@ export type SupportedPlatform = 'macOS' | 'Windows' | 'Linux'
 export interface PlatformInfo {
   platform: SupportedPlatform
   isSupported: boolean
-  vscodeConfigPaths: string[]
+  vscodeConfigPath: string // Legacy single path for backward compatibility
+  vscodeConfigPaths: string[] // New multi-path support
   displayName: string
 }
 
@@ -60,11 +61,11 @@ const LINUX_VSCODE_PATHS = [
 ]
 
 /**
- * VSCode configuration file paths for different platforms
+ * VSCode configuration file paths for different platforms (legacy compatibility)
  */
 const VSCODE_CONFIG_PATHS = {
-  macOS: MACOS_VSCODE_PATHS[0],
-  Windows: WINDOWS_VSCODE_PATHS[0],
+  macOS: MACOS_VSCODE_PATHS[0], // First path for backward compatibility
+  Windows: WINDOWS_VSCODE_PATHS[0], // First path for backward compatibility
   Linux: LINUX_VSCODE_PATHS[0]
 }
 
@@ -122,7 +123,7 @@ export function getVSCodeConfigPaths(platform?: SupportedPlatform): string[] {
 }
 
 /**
- * Get VSCode configuration file path for the current platform
+ * Get VSCode configuration file path for the current platform (legacy compatibility)
  */
 export function getVSCodeConfigPath(platform?: SupportedPlatform): string {
   const currentPlatform = platform || getCurrentPlatform()
@@ -160,6 +161,7 @@ export function getPlatformInfo(platform?: SupportedPlatform): PlatformInfo {
   return {
     platform: currentPlatform,
     isSupported: isPlatformSupported(currentPlatform),
+    vscodeConfigPath: getVSCodeConfigPath(currentPlatform),
     vscodeConfigPaths: getVSCodeConfigPaths(currentPlatform),
     displayName: PLATFORM_DISPLAY_NAMES[currentPlatform]
   }

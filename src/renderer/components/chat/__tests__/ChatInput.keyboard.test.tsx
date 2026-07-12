@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../styles/ChatInput.css', async () => ({}));
 
@@ -20,6 +20,9 @@ vi.mock('../../../lib/chat/agentChatIpc', async () => ({
 
 vi.mock('lucide-react', async () => ({
   Globe: () => <svg data-testid="globe-icon" />,
+  CornerDownRight: () => <svg data-testid="corner-down-right-icon" />,
+  Pencil: () => <svg data-testid="pencil-icon" />,
+  Trash2: () => <svg data-testid="trash-icon" />,
 }));
 
 vi.mock('../../../ipc/screenshot-main', async () => ({
@@ -113,6 +116,12 @@ vi.mock('../../../lib/workspace/workspaceSearchService', async () => ({ quickSea
 
 vi.mock('../ErrorBar', () => ({ default: () => null }));
 
+vi.mock('../../../lib/featureFlags', async () => ({ useFeatureFlag: vi.fn(() => false) }));
+
+vi.mock('../VoiceInputButton', async () => ({ VoiceInputButton: () => null }));
+
+vi.mock('../../../lib/userData', async () => ({ useVoiceInputEnabled: vi.fn(() => false) }));
+
 vi.mock('../../../lib/chat/chatInputKeyboard', async () => ({
   getChatInputEnterAction: vi.fn(() => 'send'),
   getChatInputShortcutHint: vi.fn(() => 'Enter to send'),
@@ -137,38 +146,33 @@ describe('ChatInput render states', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
-  it('renders in read-only mode without crashing', () => {
-    render(<ChatInput onSendMessage={vi.fn()} isReadOnly />);
-    expect(screen.queryByTitle('Cancel Chat')).not.toBeInTheDocument();
-  });
-
   it('does not show cancel chat button when chatStatus is idle', () => {
     render(<ChatInput onSendMessage={vi.fn()} />);
-    expect(screen.queryByTitle('Cancel Chat')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Cancel current response')).not.toBeInTheDocument();
   });
 
   it('shows cancel chat button when chatStatus is sending_response', () => {
     mockSessionIdle.value = false;
     render(<ChatInput onSendMessage={vi.fn()} />);
-    expect(screen.getByTitle('Cancel Chat')).toBeInTheDocument();
+    expect(screen.getByTitle('Cancel current response')).toBeInTheDocument();
   });
 
   it('shows cancel chat button when chatStatus is compressing_context', () => {
     mockSessionIdle.value = false;
     render(<ChatInput onSendMessage={vi.fn()} />);
-    expect(screen.getByTitle('Cancel Chat')).toBeInTheDocument();
+    expect(screen.getByTitle('Cancel current response')).toBeInTheDocument();
   });
 
   it('shows cancel chat button when chatStatus is received_response', () => {
     mockSessionIdle.value = false;
     render(<ChatInput onSendMessage={vi.fn()} />);
-    expect(screen.getByTitle('Cancel Chat')).toBeInTheDocument();
+    expect(screen.getByTitle('Cancel current response')).toBeInTheDocument();
   });
 
   it('shows cancel chat button when chatStatus is compressed_context', () => {
     mockSessionIdle.value = false;
     render(<ChatInput onSendMessage={vi.fn()} />);
-    expect(screen.getByTitle('Cancel Chat')).toBeInTheDocument();
+    expect(screen.getByTitle('Cancel current response')).toBeInTheDocument();
   });
 
   it('renders Cancel and Send buttons in edit-inline mode', () => {
@@ -184,6 +188,36 @@ describe('ChatInput render states', () => {
     );
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+
+  it('asks whether to keep queued prompts before starting a new idle send', () => {
+    const onSendMessage = vi.fn();
+    render(
+      <ChatInput
+        onSendMessage={onSendMessage}
+        chatSessionId="session-1"
+        queuedMessages={[{
+          id: 'queued-1',
+          chatId: 'chat-1',
+          chatSessionId: 'session-1',
+          message: { id: 'queued-msg', role: 'user', content: [{ type: 'text', text: 'queued prompt' }], timestamp: 1 } as any,
+          createdAt: 1,
+          status: 'queued',
+        }]}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'new prompt' } });
+    const sendButton = screen.getAllByTitle('Enter to send')
+      .find((element) => element.tagName.toLowerCase() === 'button');
+    expect(sendButton).toBeDefined();
+    fireEvent.click(sendButton!);
+
+    expect(screen.getByRole('dialog', { name: 'Start with queued prompts?' })).toBeInTheDocument();
+    expect(onSendMessage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep queue' }));
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
   });
 
   it('renders without crashing when no chatStatus is provided', () => {

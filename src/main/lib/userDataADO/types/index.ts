@@ -7,6 +7,11 @@
 export * from './profile';
 
 /**
+ * Standalone agent store types (`agents/{id}/agent.json`, `agents/index.json`)
+ */
+export * from './agentStore';
+
+/**
  * Type definitions for App configuration (app.json)
  */
 export * from './app';

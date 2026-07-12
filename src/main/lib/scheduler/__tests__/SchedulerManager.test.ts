@@ -6,7 +6,25 @@ vi.mock('node-cron', async () => ({
   })),
 }));
 
+vi.mock('../../mcpRuntime/mcpClientManager', () => ({
+  mcpClientManager: {
+    waitForServersSettled: vi.fn(async () => undefined),
+    getMcpServerRuntimeState: vi.fn(() => undefined),
+    getInUseServerNames: vi.fn(() => []),
+  },
+}));
+
+vi.mock('../../mcpRuntime/builtinMcpClient', () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+}));
+
 vi.mock('../../unifiedLogger', async () => ({
+  createConsoleLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
   createLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -62,10 +80,6 @@ vi.mock('../schedulerRuntimeStateStore', async () => ({
   },
 }));
 
-vi.mock('../../remoteChannel/schedulerNotifier', async () => ({
-  notifyScheduledJobCompletion: vi.fn(),
-}));
-
 describe('SchedulerManager cold-start catch-up', () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -119,19 +133,19 @@ describe('SchedulerManager cold-start catch-up', () => {
       lastDeactivatedAt: '2026-04-07T00:10:00.000Z',
     });
 
-    vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      {
-        id: 'sched_20260401000000_abcd1234',
-        name: 'Morning briefing',
-        description: '',
-        scheduleType: 'cron',
-        cronExpression: '0 * * * *',
-        enabled: true,
-        agentId: 'agent-1',
-        message: 'hello',
-        status: 'pending',
-      },
-    ]);
+    const job = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([job]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(job);
 
     const { schedulerManager } = await import('../SchedulerManager');
     await schedulerManager.initialize('alice');
@@ -157,25 +171,66 @@ describe('SchedulerManager cold-start catch-up', () => {
       lastActivatedAt: '2026-04-07T00:10:00.000Z',
     });
 
-    vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      {
-        id: 'sched_20260401000000_abcd1234',
-        name: 'Morning briefing',
-        description: '',
-        scheduleType: 'cron',
-        cronExpression: '0 * * * *',
-        enabled: true,
-        agentId: 'agent-1',
-        message: 'hello',
-        status: 'pending',
-        lastRunAt: '2026-04-07T03:00:05.000Z',
-      },
-    ]);
+    const job = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+      lastRunAt: '2026-04-07T03:00:05.000Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([job]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(job);
 
     const { schedulerManager } = await import('../SchedulerManager');
     await schedulerManager.initialize('alice');
 
     expect(agentChatManager.runScheduledJob).not.toHaveBeenCalled();
+    expect(scheduleStore.markJobExecutionStarted).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the job before baseline cold-start catch-up so a live cron tick is not duplicated', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-04-07T03:20:00.000Z'));
+
+    const { scheduleStore } = await import('../scheduleStore');
+    const { schedulerRuntimeStateStore } = await import('../schedulerRuntimeStateStore');
+    const { agentChatManager } = await import('../../chat/agentChatManager');
+
+    vi.mocked(schedulerRuntimeStateStore.readState).mockResolvedValue({
+      schemaVersion: 1,
+      alias: 'alice',
+      isActive: true,
+      lastActivatedAt: '2026-04-07T00:10:00.000Z',
+    });
+
+    const staleStartupSnapshot = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+    };
+    const latestJob = {
+      ...staleStartupSnapshot,
+      lastRunAt: '2026-04-07T03:20:00.500Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([staleStartupSnapshot]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(latestJob);
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    expect(scheduleStore.getJob).toHaveBeenCalledWith('alice', staleStartupSnapshot.id);
+    expect(agentChatManager.runScheduledJob).not.toHaveBeenCalled();
+    expect(schedulerRuntimeStateStore.markPendingColdStartCatchUp).not.toHaveBeenCalled();
     expect(scheduleStore.markJobExecutionStarted).not.toHaveBeenCalled();
   });
 
@@ -199,20 +254,20 @@ describe('SchedulerManager cold-start catch-up', () => {
       },
     });
 
-    vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      {
-        id: 'sched_20260401000000_abcd1234',
-        name: 'Morning briefing',
-        description: '',
-        scheduleType: 'cron',
-        cronExpression: '0 * * * *',
-        enabled: true,
-        agentId: 'agent-1',
-        message: 'hello',
-        status: 'pending',
-        lastRunAt: '2026-04-07T03:20:02.000Z',
-      },
-    ]);
+    const job = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+      lastRunAt: '2026-04-07T03:20:02.000Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([job]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(job);
 
     const { schedulerManager } = await import('../SchedulerManager');
     await schedulerManager.initialize('alice');
@@ -220,6 +275,100 @@ describe('SchedulerManager cold-start catch-up', () => {
     expect(agentChatManager.runScheduledJob).toHaveBeenCalledTimes(1);
     expect(schedulerRuntimeStateStore.markPendingColdStartCatchUp).not.toHaveBeenCalled();
     expect(schedulerRuntimeStateStore.clearPendingColdStartCatchUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a pending cold-start catch-up when a live cron tick covered it after startup', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-04-07T03:25:00.000Z'));
+
+    const { scheduleStore } = await import('../scheduleStore');
+    const { schedulerRuntimeStateStore } = await import('../schedulerRuntimeStateStore');
+    const { agentChatManager } = await import('../../chat/agentChatManager');
+
+    vi.mocked(schedulerRuntimeStateStore.readState).mockResolvedValue({
+      schemaVersion: 1,
+      alias: 'alice',
+      isActive: true,
+      lastActivatedAt: '2026-04-07T03:20:00.000Z',
+      pendingColdStartCatchUps: {
+        sched_20260401000000_abcd1234: {
+          occurrenceAt: '2026-04-07T03:00:00.000Z',
+          recordedAt: '2026-04-07T03:20:01.000Z',
+        },
+      },
+    });
+
+    const staleStartupSnapshot = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+    };
+    const latestJob = {
+      ...staleStartupSnapshot,
+      lastRunAt: '2026-04-07T03:25:00.500Z',
+      lastFinishedAt: '2026-04-07T03:25:10.000Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([staleStartupSnapshot]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(latestJob);
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    expect(agentChatManager.runScheduledJob).not.toHaveBeenCalled();
+    expect(schedulerRuntimeStateStore.clearPendingColdStartCatchUp).toHaveBeenCalledWith(
+      'alice',
+      staleStartupSnapshot.id,
+    );
+    expect(scheduleStore.markJobExecutionStarted).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending cold-start catch-up that completed before pending state was cleared', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-04-07T03:25:00.000Z'));
+
+    const { scheduleStore } = await import('../scheduleStore');
+    const { schedulerRuntimeStateStore } = await import('../schedulerRuntimeStateStore');
+    const { agentChatManager } = await import('../../chat/agentChatManager');
+
+    vi.mocked(schedulerRuntimeStateStore.readState).mockResolvedValue({
+      schemaVersion: 1,
+      alias: 'alice',
+      isActive: true,
+      lastActivatedAt: '2026-04-07T03:20:00.000Z',
+      pendingColdStartCatchUps: {
+        sched_20260401000000_abcd1234: {
+          occurrenceAt: '2026-04-07T03:00:00.000Z',
+          recordedAt: '2026-04-07T03:20:01.000Z',
+        },
+      },
+    });
+
+    const job = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+      lastRunAt: '2026-04-07T03:20:02.000Z',
+      lastFinishedAt: '2026-04-07T03:20:45.000Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([job]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(job);
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    expect(agentChatManager.runScheduledJob).not.toHaveBeenCalled();
+    expect(schedulerRuntimeStateStore.clearPendingColdStartCatchUp).toHaveBeenCalledWith('alice', job.id);
+    expect(scheduleStore.markJobExecutionStarted).not.toHaveBeenCalled();
   });
 
   it('does not run the same occurrence twice when pending replay and baseline scan point to the same missed cron', async () => {
@@ -242,20 +391,20 @@ describe('SchedulerManager cold-start catch-up', () => {
       },
     });
 
-    vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      {
-        id: 'sched_20260401000000_abcd1234',
-        name: 'Morning briefing',
-        description: '',
-        scheduleType: 'cron',
-        cronExpression: '0 * * * *',
-        enabled: true,
-        agentId: 'agent-1',
-        message: 'hello',
-        status: 'pending',
-        lastRunAt: '2026-04-07T03:20:02.000Z',
-      },
-    ]);
+    const job = {
+      id: 'sched_20260401000000_abcd1234',
+      name: 'Morning briefing',
+      description: '',
+      scheduleType: 'cron' as const,
+      cronExpression: '0 * * * *',
+      enabled: true,
+      chat_id: 'agent-1',
+      message: 'hello',
+      status: 'pending' as const,
+      lastRunAt: '2026-04-07T03:20:02.000Z',
+    };
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([job]);
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(job);
 
     const { schedulerManager } = await import('../SchedulerManager');
     await schedulerManager.initialize('alice');
@@ -287,7 +436,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron',
       cronExpression: '0 * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending',
     });
@@ -345,7 +494,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -393,7 +542,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
       lastRunAt: '2026-04-07T03:02:30.000Z',
@@ -437,7 +586,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
       lastRunAt: '2026-04-07T03:01:30.000Z',
@@ -525,7 +674,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron',
       cronExpression: '* * * * *',
       enabled: false,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending',
     });
@@ -574,7 +723,7 @@ describe('SchedulerManager cold-start catch-up', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -662,7 +811,7 @@ describe('SchedulerManager resume-catchup dedup', () => {
         scheduleType: 'cron',
         cronExpression: '0 22 * * *',
         enabled: true,
-        agentId: 'agent-1',
+        chat_id: 'agent-1',
         message: 'hello',
         status: 'pending',
         lastRunAt: '2026-05-10T22:00:00.450Z',
@@ -705,7 +854,7 @@ describe('SchedulerManager resume-catchup dedup', () => {
         scheduleType: 'cron',
         cronExpression: '0 * * * *',
         enabled: true,
-        agentId: 'agent-1',
+        chat_id: 'agent-1',
         message: 'hello',
         status: 'pending',
         lastRunAt: '2026-05-09T08:00:00.000Z',
@@ -766,13 +915,13 @@ describe('SchedulerManager toggleJobsByAgent', () => {
     const { scheduleStore } = await import('../scheduleStore');
 
     vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      { id: 'job-1', name: 'J1', description: '', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, agentId: 'agent-x', message: 'hi', status: 'pending' },
-      { id: 'job-2', name: 'J2', description: '', scheduleType: 'cron', cronExpression: '0 17 * * *', enabled: false, agentId: 'agent-x', message: 'hi', status: 'pending' },
-      { id: 'job-3', name: 'J3', description: '', scheduleType: 'cron', cronExpression: '0 12 * * *', enabled: true, agentId: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-1', name: 'J1', description: '', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, chat_id: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-2', name: 'J2', description: '', scheduleType: 'cron', cronExpression: '0 17 * * *', enabled: false, chat_id: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-3', name: 'J3', description: '', scheduleType: 'cron', cronExpression: '0 12 * * *', enabled: true, chat_id: 'agent-x', message: 'hi', status: 'pending' },
     ]);
 
     vi.mocked(scheduleStore.toggleJob).mockImplementation(async (_alias, _jobId, enabled) => {
-      return { id: _jobId, name: '', description: '', scheduleType: 'cron' as const, cronExpression: '', enabled, agentId: 'agent-x', message: '', status: 'pending' as const };
+      return { id: _jobId, name: '', description: '', scheduleType: 'cron' as const, cronExpression: '', enabled, chat_id: 'agent-x', message: '', status: 'pending' as const };
     });
 
     const { schedulerManager } = await import('../SchedulerManager');
@@ -790,13 +939,13 @@ describe('SchedulerManager toggleJobsByAgent', () => {
     const { scheduleStore } = await import('../scheduleStore');
 
     vi.mocked(scheduleStore.listJobs).mockResolvedValue([
-      { id: 'job-1', name: 'J1', description: '', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: false, agentId: 'agent-x', message: 'hi', status: 'pending' },
-      { id: 'job-2', name: 'J2', description: '', scheduleType: 'cron', cronExpression: '0 17 * * *', enabled: true, agentId: 'agent-x', message: 'hi', status: 'pending' },
-      { id: 'job-3', name: 'J3', description: '', scheduleType: 'cron', cronExpression: '0 12 * * *', enabled: false, agentId: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-1', name: 'J1', description: '', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: false, chat_id: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-2', name: 'J2', description: '', scheduleType: 'cron', cronExpression: '0 17 * * *', enabled: true, chat_id: 'agent-x', message: 'hi', status: 'pending' },
+      { id: 'job-3', name: 'J3', description: '', scheduleType: 'cron', cronExpression: '0 12 * * *', enabled: false, chat_id: 'agent-x', message: 'hi', status: 'pending' },
     ]);
 
     vi.mocked(scheduleStore.toggleJob).mockImplementation(async (_alias, _jobId, enabled) => {
-      return { id: _jobId, name: '', description: '', scheduleType: 'cron' as const, cronExpression: '', enabled, agentId: 'agent-x', message: '', status: 'pending' as const };
+      return { id: _jobId, name: '', description: '', scheduleType: 'cron' as const, cronExpression: '', enabled, chat_id: 'agent-x', message: '', status: 'pending' as const };
     });
 
     const { schedulerManager } = await import('../SchedulerManager');

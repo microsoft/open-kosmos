@@ -243,7 +243,7 @@ describe('AgentChatManager notifications', () => {
       destroy: vi.fn(),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: {
@@ -281,7 +281,7 @@ describe('AgentChatManager notifications', () => {
       destroy: vi.fn(),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
 
     manager.registerManagedInstance('interactive_session_1', 'chat_interactive', instance, 'interactive');
@@ -308,7 +308,7 @@ describe('AgentChatManager notifications', () => {
       destroy: vi.fn(),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       agent: {
@@ -355,7 +355,7 @@ describe('AgentChatManager notifications', () => {
       destroy: vi.fn(),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
   manager.registerManagedInstance(activeSessionId, 'chat_1', instance, 'interactive');
   manager.sessionCoordinator.activateSession(activeSessionId, instance);
 
@@ -380,7 +380,7 @@ describe('AgentChatManager notifications', () => {
       getCurrentChatSession: vi.fn(() => ({ title: 'Focused Session' })),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     registerInteractiveSession(manager, activeSessionId, instance);
     manager.updateChatSessionReadStatus = vi.fn().mockResolvedValue(true);
@@ -423,7 +423,7 @@ describe('AgentChatManager notifications', () => {
       getCurrentChatSession: vi.fn(() => ({ title: 'Focused Session' })),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     registerInteractiveSession(manager, activeSessionId, instance);
     manager.updateChatSessionReadStatus = vi.fn().mockResolvedValue(true);
@@ -438,14 +438,14 @@ describe('AgentChatManager notifications', () => {
 
   it('syncs profile starred index when read status is updated', async () => {
     const manager = createManager() as any;
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
 
     const result = await manager.updateChatSessionReadStatus('chat_1', 'chatSession_active', 'read');
 
     expect(result).toBe(true);
-    expect(chatSessionStore.setReadStatus).toHaveBeenCalledWith('testuser', 'chat_1', 'chatSession_active', 'read');
+    expect(chatSessionStore.setReadStatus).toHaveBeenCalledWith('sample-user', 'chat_1', 'chatSession_active', 'read');
     expect(profileCacheManager.syncStarredChatSessionIndex).toHaveBeenCalledWith(
-      'testuser',
+      'sample-user',
       'chat_1',
       expect.objectContaining({
         chatSession_id: 'chatSession_active',
@@ -583,7 +583,7 @@ describe('AgentChatManager notifications', () => {
       getPendingInteractiveRequest: vi.fn(() => null),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     registerInteractiveSession(manager, activeSessionId, instance);
     manager.updateChatSessionReadStatus = vi.fn().mockResolvedValue(true);
@@ -615,7 +615,7 @@ describe('AgentChatManager notifications', () => {
       getPendingInteractiveRequest: vi.fn(() => null),
     };
 
-    manager.currentUserAlias = 'testuser';
+    manager.currentUserAlias = 'sample-user';
     manager.setMainWindow(window as any);
     registerInteractiveSession(manager, activeSessionId, instance);
     manager.updateChatSessionReadStatus = vi.fn().mockResolvedValue(true);

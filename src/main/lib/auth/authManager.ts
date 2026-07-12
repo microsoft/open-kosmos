@@ -87,7 +87,18 @@ export class MainAuthManager implements IAuthManager {
     try {
       const authJsonPath = path.join(profilePath, 'auth.json');
       const content = await fs.promises.readFile(authJsonPath, 'utf-8');
-      return JSON.parse(content) as AuthData;
+      const authData = JSON.parse(content) as AuthData & {
+        ghcAuth?: AuthData['ghcAuth'] & { aadAccount?: unknown };
+      };
+      if (
+        authData.ghcAuth
+        && Object.prototype.hasOwnProperty.call(authData.ghcAuth, 'aadAccount')
+      ) {
+        const sanitizedAuthData = this.sanitizeAuthData(authData as AuthData);
+        await this.writeAuthJson(profilePath, sanitizedAuthData);
+        return sanitizedAuthData;
+      }
+      return authData as AuthData;
     } catch (error) {
       logger.error(`[MainAuthManager] Error reading auth.json from ${profilePath}:`, error instanceof Error ? error.message : String(error));
       return null;

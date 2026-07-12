@@ -15,6 +15,7 @@ import type {
   InteractiveResponse,
 } from '@shared/types/interactiveRequestTypes';
 import '../../styles/InteractiveRequestCard.css';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 function normalizeCustomEntries(rawValue: string): string[] {
   return rawValue
@@ -58,6 +59,23 @@ function buildChoiceSubmissionValues(
   return mergeUniqueValues(selectedValues, customSelected ? normalizeCustomEntries(customValue) : []);
 }
 
+function buildChoiceCustomValues(
+  customSelected: boolean,
+  customValue: string,
+  mode: 'single' | 'multi',
+): string[] {
+  if (!customSelected) {
+    return [];
+  }
+
+  if (mode === 'single') {
+    const trimmedCustomValue = customValue.trim();
+    return trimmedCustomValue ? [trimmedCustomValue] : [];
+  }
+
+  return normalizeCustomEntries(customValue);
+}
+
 function buildFormSelectSubmissionValue(
   field: FormInteractionField,
   selectedValue: unknown,
@@ -88,6 +106,14 @@ interface InteractiveRequestCardProps {
 
 interface InteractiveRequestHistoryItemProps {
   entry: InteractionHistoryEntry;
+}
+
+interface FormValidationMessages {
+  required: string;
+  integer: string;
+  number: string;
+  minSelections: (count: number) => string;
+  maxSelections: (count: number) => string;
 }
 
 function getRequestIcon(requestType: InteractiveRequest['requestType']) {
@@ -175,6 +201,7 @@ function isFieldValueEmpty(value: unknown, field: FormInteractionField): boolean
 function validateFormValues(
   fields: FormInteractionField[],
   values: Record<string, unknown>,
+  messages: FormValidationMessages,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -183,7 +210,7 @@ function validateFormValues(
     const isEmpty = isFieldValueEmpty(value, field);
 
     if (field.required && isEmpty) {
-      errors[field.key] = 'This field is required';
+      errors[field.key] = messages.required;
       continue;
     }
 
@@ -192,23 +219,23 @@ function validateFormValues(
     }
 
     if (field.type === 'int' && !Number.isInteger(typeof value === 'number' ? value : Number(value))) {
-      errors[field.key] = 'Please enter a valid integer';
+      errors[field.key] = messages.integer;
       continue;
     }
 
     if (field.type === 'double' && Number.isNaN(typeof value === 'number' ? value : Number(value))) {
-      errors[field.key] = 'Please enter a valid number';
+      errors[field.key] = messages.number;
       continue;
     }
 
     if (isMultiValueField(field) && Array.isArray(value)) {
       if (typeof field.minSelections === 'number' && value.length < field.minSelections) {
-        errors[field.key] = `Please select at least ${field.minSelections} option${field.minSelections === 1 ? '' : 's'}`;
+        errors[field.key] = messages.minSelections(field.minSelections);
         continue;
       }
 
       if (typeof field.maxSelections === 'number' && value.length > field.maxSelections) {
-        errors[field.key] = `Please select no more than ${field.maxSelections} option${field.maxSelections === 1 ? '' : 's'}`;
+        errors[field.key] = messages.maxSelections(field.maxSelections);
       }
     }
   }
@@ -223,6 +250,7 @@ function ApprovalRequestContent({
   request: ApprovalInteractionRequest;
   onSubmit: (response: InteractiveResponse) => Promise<void> | void;
 }) {
+  const { t } = useI18n();
   const [decisions, setDecisions] = useState<Record<string, boolean | null>>({});
   const hasSubmittedRef = useRef(false);
 
@@ -275,10 +303,10 @@ function ApprovalRequestContent({
       {request.items.length > 1 ? (
         <div className="interactive-request-actions-row">
           <button type="button" className="interactive-secondary-button" onClick={() => setAllDecisions(true)}>
-            Approve All
+            {t('interactive.approveAll')}
           </button>
           <button type="button" className="interactive-secondary-button" onClick={() => setAllDecisions(false)}>
-            Reject All
+            {t('interactive.rejectAll')}
           </button>
         </div>
       ) : null}
@@ -299,14 +327,14 @@ function ApprovalRequestContent({
                     className={`interactive-choice-button ${decision === true ? 'is-selected-approve' : ''}`}
                     onClick={() => setDecisions((prev) => ({ ...prev, [item.itemId]: true }))}
                   >
-                    Approve
+                    {t('interactive.approve')}
                   </button>
                   <button
                     type="button"
                     className={`interactive-choice-button ${decision === false ? 'is-selected-reject' : ''}`}
                     onClick={() => setDecisions((prev) => ({ ...prev, [item.itemId]: false }))}
                   >
-                    Reject
+                    {t('interactive.reject')}
                   </button>
                 </div>
               </div>
@@ -333,6 +361,7 @@ function ChoiceRequestContent({
   request: Extract<InteractiveRequest, { requestType: 'choice' }>;
   onSubmit: (response: InteractiveResponse) => Promise<void> | void;
 }) {
+  const { t } = useI18n();
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const [customSelected, setCustomSelected] = useState(false);
   const [customValue, setCustomValue] = useState('');
@@ -376,13 +405,17 @@ function ChoiceRequestContent({
     () => buildChoiceSubmissionValues(selectedValues, customSelected, customValue, request.mode),
     [customSelected, customValue, request.mode, selectedValues],
   );
+  const customSubmissionValues = useMemo(
+    () => buildChoiceCustomValues(customSelected, customValue, request.mode),
+    [customSelected, customValue, request.mode],
+  );
 
   return (
     <>
       <div className="interactive-choice-meta">
         {request.mode === 'multi'
-          ? 'Select one or more options'
-          : 'Select one option'}
+          ? t('interactive.selectOneOrMore')
+          : t('interactive.selectOne')}
       </div>
 
       <div className="interactive-request-section">
@@ -424,22 +457,22 @@ function ChoiceRequestContent({
             })}
           >
             <div className="interactive-option-header">
-              <div className="interactive-option-label">Other</div>
+              <div className="interactive-option-label">{t('common.other')}</div>
             </div>
-            <div className="interactive-option-description">Enter a custom value if none of the preset options fit.</div>
+            <div className="interactive-option-description">{t('interactive.customDescription')}</div>
           </button>
         </div>
         {customSelected ? (
           <div className="interactive-custom-input-wrap">
             <label className="interactive-form-label" htmlFor={`${request.interactionId}_custom_choice`}>
-              Custom option
+              {t('interactive.customOption')}
             </label>
             <input
               id={`${request.interactionId}_custom_choice`}
               className="interactive-form-input"
               type="text"
               value={customValue}
-              placeholder={request.mode === 'multi' ? 'Enter one or more values, separated by commas' : 'Enter a custom value'}
+              placeholder={request.mode === 'multi' ? t('interactive.customMultiPlaceholder') : t('interactive.customSinglePlaceholder')}
               onChange={(event) => setCustomValue(event.target.value)}
             />
           </div>
@@ -457,7 +490,7 @@ function ChoiceRequestContent({
             action: 'skip',
           })}
         >
-          Skip
+          {t('interactive.skip')}
         </button>
         <button
           type="button"
@@ -469,9 +502,11 @@ function ChoiceRequestContent({
             requestType: request.requestType,
             action: 'submit',
             selectedValues: submissionValues,
+            selectedPresetValues: selectedValues,
+            customValues: customSubmissionValues,
           })}
         >
-          Continue
+          {t('interactive.continue')}
         </button>
       </div>
     </>
@@ -485,10 +520,24 @@ function FormRequestContent({
   request: FormInteractionRequest;
   onSubmit: (response: InteractiveResponse) => Promise<void> | void;
 }) {
+  const { t } = useI18n();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [customSelectEnabled, setCustomSelectEnabled] = useState<Record<string, boolean>>({});
   const [customSelectValues, setCustomSelectValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const validationMessages = useMemo<FormValidationMessages>(() => ({
+    required: t('interactive.validation.required'),
+    integer: t('interactive.validation.integer'),
+    number: t('interactive.validation.number'),
+    minSelections: (count) => t('interactive.validation.minSelections', {
+      count,
+      plural: count === 1 ? '' : 's',
+    }),
+    maxSelections: (count) => t('interactive.validation.maxSelections', {
+      count,
+      plural: count === 1 ? '' : 's',
+    }),
+  }), [t]);
 
   useEffect(() => {
     const initialValues: Record<string, unknown> = {};
@@ -573,7 +622,7 @@ function FormRequestContent({
       );
     }
 
-    const nextErrors = validateFormValues(request.fields, normalizedValues);
+    const nextErrors = validateFormValues(request.fields, normalizedValues, validationMessages);
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -615,7 +664,7 @@ function FormRequestContent({
                     checked={value === true}
                     onChange={(event) => setFieldValue(field, event.target.checked)}
                   />
-                  <span>{field.placeholder || 'Enabled'}</span>
+                  <span>{field.placeholder || t('interactive.enabled')}</span>
                 </label>
               ) : field.type === 'boolean' ? (
                 <select
@@ -624,9 +673,9 @@ function FormRequestContent({
                   value={value === true ? 'true' : value === false ? 'false' : ''}
                   onChange={(event) => setFieldValue(field, event.target.value === 'true')}
                 >
-                  <option value="">Select value</option>
-                  <option value="true">True</option>
-                  <option value="false">False</option>
+                  <option value="">{t('interactive.selectValue')}</option>
+                  <option value="true">{t('interactive.true')}</option>
+                  <option value="false">{t('interactive.false')}</option>
                 </select>
               ) : field.control === 'folder' ? (
                 <div className="interactive-folder-input">
@@ -635,7 +684,7 @@ function FormRequestContent({
                     className={`interactive-form-input ${error ? 'has-error' : ''}`}
                     value={String(value ?? '')}
                     readOnly
-                    placeholder={field.placeholder || 'Select a folder'}
+                    placeholder={field.placeholder || t('interactive.selectFolder')}
                   />
                   <button
                     type="button"
@@ -652,7 +701,7 @@ function FormRequestContent({
                     className={`interactive-form-input ${error ? 'has-error' : ''}`}
                     value={String(value ?? '')}
                     readOnly
-                    placeholder={field.placeholder || 'Select a file'}
+                    placeholder={field.placeholder || t('interactive.selectFile')}
                   />
                   <button
                     type="button"
@@ -667,7 +716,7 @@ function FormRequestContent({
                   id={inputId}
                   className={`interactive-form-input ${error ? 'has-error' : ''}`}
                   value={String(value ?? '')}
-                  placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
+                  placeholder={field.placeholder || t('interactive.enterField', { label: field.label.toLowerCase() })}
                   rows={4}
                   onChange={(event) => setFieldValue(field, event.target.value)}
                 />
@@ -678,7 +727,7 @@ function FormRequestContent({
                     className={`interactive-form-input ${error ? 'has-error' : ''}`}
                     type="time"
                     value={String(value ?? '')}
-                    placeholder={field.placeholder || 'Select time'}
+                    placeholder={field.placeholder || t('interactive.selectTime')}
                     onChange={(event) => setFieldValue(field, event.target.value)}
                   />
                 </div>
@@ -731,21 +780,21 @@ function FormRequestContent({
                         }
                       })}
                     >
-                      <span className="interactive-select-option-label">Other</span>
-                      <span className="interactive-select-option-description">Enter a custom value if the presets do not fit.</span>
+                      <span className="interactive-select-option-label">{t('common.other')}</span>
+                      <span className="interactive-select-option-description">{t('interactive.customDescriptionShort')}</span>
                     </button>
                   </div>
                   {customSelectEnabled[field.key] ? (
                     <div className="interactive-custom-input-wrap">
                       <label className="interactive-form-label" htmlFor={`${inputId}_custom`}>
-                        Custom option
+                        {t('interactive.customOption')}
                       </label>
                       <input
                         id={`${inputId}_custom`}
                         className={`interactive-form-input ${error ? 'has-error' : ''}`}
                         type="text"
                         value={customSelectValues[field.key] || ''}
-                        placeholder={isMultiValueField(field) ? 'Enter one or more values, separated by commas' : 'Enter a custom value'}
+                        placeholder={isMultiValueField(field) ? t('interactive.customMultiPlaceholder') : t('interactive.customSinglePlaceholder')}
                         onChange={(event) => setCustomSelectValues((prev) => ({ ...prev, [field.key]: event.target.value }))}
                       />
                     </div>
@@ -759,7 +808,7 @@ function FormRequestContent({
                     type={field.type === 'int' || field.type === 'double' || field.control === 'number' ? 'number' : 'text'}
                     step={field.type === 'double' ? 'any' : undefined}
                     value={String(value ?? '')}
-                    placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
+                    placeholder={field.placeholder || t('interactive.enterField', { label: field.label.toLowerCase() })}
                     onChange={(event) => setFieldValue(field, event.target.value)}
                   />
                 </div>
@@ -782,10 +831,10 @@ function FormRequestContent({
             action: 'skip',
           })}
         >
-          {request.skipLabel || 'Skip'}
+          {request.skipLabel || t('interactive.skip')}
         </button>
         <button type="button" className="interactive-primary-button" onClick={handleSubmit}>
-          {request.submitLabel || 'Continue'}
+          {request.submitLabel || t('interactive.continue')}
         </button>
       </div>
     </>

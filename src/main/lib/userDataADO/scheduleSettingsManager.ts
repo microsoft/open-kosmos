@@ -153,7 +153,12 @@ export class ScheduleSettingsManager {
         return { schedulerJobs: [] };
       }
 
-      return normalizeScheduleMonthFile(JSON.parse(content));
+      const normalized = normalizeScheduleMonthFile(JSON.parse(content));
+      // One-time on-disk migration: rewrite legacy `agentId` jobs as `chat_id`.
+      if (content.includes('"agentId"')) {
+        await this.writeFileAtomically(filePath, JSON.stringify(normalized, null, 2));
+      }
+      return normalized;
     } catch (error) {
       logger.error('[ScheduleSettingsManager] Failed to read schedule month', 'readScheduleMonth', {
         alias,

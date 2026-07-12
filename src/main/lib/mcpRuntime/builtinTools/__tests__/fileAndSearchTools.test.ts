@@ -16,6 +16,24 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn((n: string) => (n === 'userData' ? '/tmp/openkosmos-test' : os.tmpdir())) },
 }));
 
+vi.mock('../../../workspace/WorkspaceWatcher', () => ({
+  getWorkspaceWatcher: () => ({
+    searchFiles: vi.fn(async (query: any) => {
+      const fsSync = require('fs');
+      const pathMod = require('path');
+      const folder = query.folder;
+      if (!fsSync.existsSync(folder)) return { results: [] };
+      const files = fsSync.readdirSync(folder) as string[];
+      // Simple glob: *.ext matching
+      const extMatch = query.pattern.match(/^\*\.(.+)$/);
+      const filtered = extMatch
+        ? files.filter((f: string) => f.endsWith('.' + extMatch[1]))
+        : files;
+      return { results: filtered.map((f: string) => ({ path: pathMod.join(folder, f) })) };
+    }),
+  }),
+}));
+
 // ─────────────────────────────────────────────────────────────
 // WriteFileTool
 // ─────────────────────────────────────────────────────────────
@@ -152,6 +170,23 @@ describe('ReadFileTool', () => {
   it('getDefinition returns read_file name', async () => {
     const { ReadFileTool } = await import('../readFileTool');
     expect(ReadFileTool.getDefinition().name).toBe('read_file');
+  });
+
+  it('description routes Office and PDF files to read_office_file', async () => {
+    const { ReadFileTool } = await import('../readFileTool');
+    const { description } = ReadFileTool.getDefinition();
+    expect(description).toContain('read_office_file');
+    expect(description).toContain('.pdf');
+    expect(description).toContain('.docx');
+    expect(description).toContain('.xlsx');
+    expect(description).toContain('.pptx');
+  });
+
+  it('description routes HTML files to read_html', async () => {
+    const { ReadFileTool } = await import('../readFileTool');
+    const { description } = ReadFileTool.getDefinition();
+    expect(description).toContain('read_html');
+    expect(description).toContain('.html');
   });
 });
 

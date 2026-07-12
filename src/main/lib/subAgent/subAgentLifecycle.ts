@@ -16,6 +16,7 @@ import type {
 } from '../userDataADO/types/profile';
 import { SUB_AGENT_LIMITS } from '../userDataADO/types/profile';
 import { SubAgentTaskStore } from './subAgentTaskStore';
+import { recordPendingDelivery, peekPendingDeliveries } from './subAgentDeliveryLedger';
 import { sanitizeSubAgentResult } from './subAgentConfigResolver';
 import { createConsoleLogger } from '../unifiedLogger';
 
@@ -42,7 +43,6 @@ export interface SubAgentSharedState {
 
 /** Callback interface for lifecycle to delegate spawning back to manager */
 export interface SubAgentSpawner {
-  spawnSubAgent(params: any): Promise<SubAgentTaskResult>;
   spawnAdhocSubAgent(params: any): Promise<SubAgentTaskResult>;
 }
 
@@ -79,12 +79,10 @@ export class SubAgentLifecycle {
     parentSessionId: string;
     parentChatId: string;
     userAlias: string;
-    subAgentName: string;
     task: string;
     cancellationToken?: CancellationToken;
     eventSender?: Electron.WebContents;
     correlationId?: string;
-    adhoc?: boolean;
     systemPrompt?: string;
     tools?: string[];
     model?: string;
@@ -114,7 +112,7 @@ export class SubAgentLifecycle {
     this.backgroundTasks.set(taskId, {
       taskId,
       parentSessionId: params.parentSessionId,
-      subAgentName: params.adhoc ? `adhoc-${taskId.slice(0, 12)}` : params.subAgentName,
+      subAgentName: `adhoc-${taskId.slice(0, 12)}`,
       status: 'running',
       startTime: Date.now(),
       pendingMessages: [],
@@ -124,12 +122,12 @@ export class SubAgentLifecycle {
 
     SubAgentTaskStore.getInstance().createTask(params.userAlias, {
       taskId,
-      subAgentName: params.adhoc ? `adhoc-${taskId.slice(0, 12)}` : params.subAgentName,
+      subAgentName: `adhoc-${taskId.slice(0, 12)}`,
       parentSessionId: params.parentSessionId,
       parentChatId: params.parentChatId,
       startTime: Date.now(),
       model: params.model || 'default',
-      isAdhoc: !!params.adhoc,
+      isAdhoc: true,
       taskDescription: params.task,
     });
 
@@ -144,12 +142,10 @@ export class SubAgentLifecycle {
       parentSessionId: string;
       parentChatId: string;
       userAlias: string;
-      subAgentName: string;
       task: string;
       cancellationToken?: CancellationToken;
       eventSender?: Electron.WebContents;
       correlationId?: string;
-      adhoc?: boolean;
       systemPrompt?: string;
       tools?: string[];
       model?: string;
@@ -168,46 +164,32 @@ export class SubAgentLifecycle {
         },
       };
 
-      let result: SubAgentTaskResult;
-
-      if (params.adhoc) {
-        result = await this.spawner.spawnAdhocSubAgent({
-          parentSessionId: params.parentSessionId,
-          parentChatId: params.parentChatId,
-          userAlias: params.userAlias,
-          task: params.task,
-          systemPrompt: params.systemPrompt,
-          tools: params.tools,
-          model: params.model,
-          cancellationToken: bgCancellationToken,
-          eventSender: params.eventSender,
-          correlationId: params.correlationId,
-          noAutoPromote: true,
-          externalTaskId: taskId,
-        });
-      } else {
-        result = await this.spawner.spawnSubAgent({
-          parentSessionId: params.parentSessionId,
-          parentChatId: params.parentChatId,
-          userAlias: params.userAlias,
-          subAgentName: params.subAgentName,
-          task: params.task,
-          cancellationToken: bgCancellationToken,
-          eventSender: params.eventSender,
-          correlationId: params.correlationId,
-          noAutoPromote: true,
-          externalTaskId: taskId,
-        });
-      }
+      const result: SubAgentTaskResult = await this.spawner.spawnAdhocSubAgent({
+        parentSessionId: params.parentSessionId,
+        parentChatId: params.parentChatId,
+        userAlias: params.userAlias,
+        task: params.task,
+        systemPrompt: params.systemPrompt,
+        tools: params.tools,
+        model: params.model,
+        cancellationToken: bgCancellationToken,
+        eventSender: params.eventSender,
+        correlationId: params.correlationId,
+        noAutoPromote: true,
+        externalTaskId: taskId,
+      });
 
       this.enqueueResult(params.parentSessionId, result);
       if (bgTask) {
         bgTask.status = result.success ? 'completed' : 'failed';
       }
+      if (!result.success) {
+        this.completeTaskIfStillRunning(taskId, 'failed', undefined, result.error);
+      }
 
     } catch (error) {
       const errorResult: SubAgentTaskResult = {
-        subAgentName: params.adhoc ? `adhoc-${taskId.slice(0, 12)}` : params.subAgentName,
+        subAgentName: `adhoc-${taskId.slice(0, 12)}`,
         taskId,
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -218,6 +200,20 @@ export class SubAgentLifecycle {
       if (bgTask) {
         bgTask.status = 'failed';
       }
+      this.completeTaskIfStillRunning(taskId, 'failed', undefined, errorResult.error);
+    }
+  }
+
+  private completeTaskIfStillRunning(
+    taskId: string,
+    status: 'failed' | 'cancelled',
+    result?: string,
+    error?: string,
+  ): void {
+    const taskStore = SubAgentTaskStore.getInstance();
+    const taskFile = taskStore.getTaskFile(taskId);
+    if (taskFile?.status === 'running') {
+      taskStore.completeTask(taskId, status, result, error);
     }
   }
 
@@ -326,12 +322,46 @@ export class SubAgentLifecycle {
       this.resultQueue.set(parentSessionId, []);
     }
     this.resultQueue.get(parentSessionId)!.push(result);
+    // Persist to the durable ledger so the result survives an app restart that
+    // happens before the in-memory queue is drained. A ledger failure must
+    // never prevent the parent from being woken, so isolate it from the event.
+    try {
+      recordPendingDelivery(parentSessionId, result);
+    } catch (err) {
+      getLogger().warn('[SubAgentLifecycle] Failed to persist result to delivery ledger', 'enqueueResult', {
+        error: String(err),
+      });
+    }
     this.emitEvent('subAgentResultReady', { parentSessionId });
   }
 
   public drainResults(parentSessionId: string): SubAgentTaskResult[] {
     const results = this.resultQueue.get(parentSessionId) || [];
     this.resultQueue.delete(parentSessionId);
+    // Merge results persisted to the durable ledger so completed background
+    // results survive an app restart (or a crash) that happens before the parent
+    // injects them. Crucially we PEEK rather than remove: the parent acks a
+    // ledger entry only AFTER it has persisted the injected notification to its
+    // saved context (see AgentChat.drainBackgroundSubAgentResults). That keeps
+    // the result available for re-delivery if a crash happens in the
+    // drain->persist window (at-least-once delivery) instead of dropping it the
+    // moment it is read; and because the entry is removed from the ledger at
+    // persist time, an already-delivered result is gone from the ledger and is
+    // never replayed after a restart. A ledger failure must never drop the
+    // in-memory results, so isolate it.
+    try {
+      const seen = new Set(results.map((r) => r.taskId));
+      for (const persisted of peekPendingDeliveries(parentSessionId)) {
+        // Already merged from the in-memory queue this turn.
+        if (seen.has(persisted.taskId)) continue;
+        results.push(persisted);
+        seen.add(persisted.taskId);
+      }
+    } catch (err) {
+      getLogger().warn('[SubAgentLifecycle] Failed to merge persisted results from delivery ledger', 'drainResults', {
+        error: String(err),
+      });
+    }
     return results;
   }
 

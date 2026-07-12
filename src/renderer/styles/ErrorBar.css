@@ -7,7 +7,7 @@
   background: linear-gradient(135deg, rgba(254, 226, 226, 0.98) 0%, rgba(254, 202, 202, 0.98) 100%);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 12px rgba(239, 68, 68, 0.15);
   animation: errorSlideDown 0.3s ease-out;
   padding: 10px 14px;
@@ -42,7 +42,7 @@
   flex: 1;
   font-size: 13px;
   line-height: 1.5;
-  color: #7f1d1d;
+  color: var(--color-danger-900);
   font-weight: 500;
   white-space: pre-wrap;
   word-break: break-word;
@@ -54,10 +54,10 @@
   padding: 6px 10px;
   background: rgba(254, 243, 199, 0.8);
   border: 1px solid rgba(217, 119, 6, 0.3);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   font-weight: 400;
-  color: #92400e;
+  color: var(--color-warning-800);
   line-height: 1.5;
 }
 
@@ -67,16 +67,16 @@
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
   border: none;
-  background: #dc2626;
+  background: var(--color-danger-600);
   color: white;
 }
 
 .error-bar-btn.retry:hover {
-  background: #b91c1c;
+  background: var(--color-danger-700);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
 }

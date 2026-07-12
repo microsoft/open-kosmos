@@ -8,6 +8,7 @@
 import { BrowserWindow } from 'electron';
 import { ExternalAgentWsServer } from './wsServer';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
+import { getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 import { chatSessionStore } from '../chat/chatSessionStore';
 import { createLogger } from '../unifiedLogger';
 import { mainToRender } from '@shared/ipc/externalAgent';
@@ -52,9 +53,10 @@ export class ExternalAgentService {
       this.wsServer.setTokenValidator((token) => {
         const profile = profileCacheManager.getCachedProfile(alias);
         if (!profile) return false;
-        const chat = profile.chats.find(
-          c => c.agent?.source === 'EXTERNAL' && c.agent?.authToken === token
-        );
+        const chat = profile.chats.find(c => {
+          const primary = getChatPrimaryAgent(c);
+          return primary?.source === 'EXTERNAL' && primary?.authToken === token;
+        });
         if (chat) {
           this.tokenToChatId.set(token, chat.chat_id);
           return true;
@@ -101,7 +103,7 @@ export class ExternalAgentService {
   sendMessage(text: string, chatId: string, conversationId: string): boolean {
     if (!this.wsServer || !this.alias) return false;
     const chat = profileCacheManager.getChatConfig(this.alias, chatId);
-    const token = chat?.agent?.authToken;
+    const token = getChatPrimaryAgent(chat)?.authToken;
     if (!token) {
       logger.warn('[ExternalAgentService] No authToken for chat', 'sendMessage', { chatId });
       return false;

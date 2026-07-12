@@ -85,7 +85,7 @@ This service becomes the shared entry point for:
 
 1. chat tool installation with immediate-use intent
 2. renderer file-based installation
-3. renderer library installation
+3. renderer local-package installation
 4. future post-install automation flows
 
 ## 5. Data Contracts
@@ -107,9 +107,7 @@ export type SkillActivationResolution =
 
 ```ts
 export interface InstallAndActivateSkillArgs {
-  source:
-    | { type: 'device-path'; value: string }
-    | { type: 'library-name'; value: string };
+  source: { type: 'device-path'; value: string };
   activation: {
     mode: 'current-agent' | 'selected-agents' | 'all-agents' | 'install-only' | 'ask';
     chatId?: string;
@@ -117,7 +115,7 @@ export interface InstallAndActivateSkillArgs {
     targets?: Array<{ chatId: string; agentName: string }>;
   };
   userAlias: string;
-  requestSource: 'chat-tool' | 'file-tree' | 'generated-file' | 'overlay-viewer' | 'settings' | 'skill-library';
+  requestSource?: string;
 }
 ```
 
@@ -157,10 +155,6 @@ For `device-path`:
 
 1. reuse the existing `addSkillFromDevice(...)` path
 2. preserve overwrite confirmation behavior already implemented in [src/main/main.ts](../src/main/main.ts#L1367)
-
-For `library-name`:
-
-1. reuse the existing library install path already exposed through skill library IPC
 
 ### 6.2 Resolve Current Chat Context
 
@@ -236,7 +230,7 @@ export interface SkillAvailabilityResult {
 
 ### 7.3 IPC Extensions
 
-Extend `skillLibrary` IPC in [src/main/main.ts](../src/main/main.ts) and [src/preload/main.ts](../src/preload/main.ts):
+Extend the local Skill IPC surface in [src/main/startup/ipc/skill.ts](../src/main/startup/ipc/skill.ts) and [src/preload/main.ts](../src/preload/main.ts):
 
 1. `installSkillWithActivation(...)`
 2. `getSkillAvailability(...)`
@@ -265,7 +259,7 @@ This provides `chatId`, `chatSessionId`, and `userAlias` during chat tool execut
 `apply_skill_to_agents` handles the full lifecycle:
 
 1. Check if skill is already installed globally
-2. If not installed, install first (from library or device path)
+2. If not installed, install first from a device path
 3. Apply to target agents (defaults to current agent)
 4. Return a resolution payload with install and apply status
 
@@ -287,7 +281,7 @@ Keep [src/main/lib/mcpRuntime/builtinTools/installSkillFromDeviceTool.ts](../src
 
 The message should become:
 
-1. `Successfully added skill "X" to the profile skill library.`
+1. `Successfully installed skill "X" for this profile.`
 
 not:
 
@@ -302,7 +296,6 @@ Migrate these renderer flows to the shared orchestrator IPC:
 1. [src/renderer/components/layout/AppLayout.tsx](../src/renderer/components/layout/AppLayout.tsx#L724)
 2. [src/renderer/components/chat/GeneratedFileCards.tsx](../src/renderer/components/chat/GeneratedFileCards.tsx#L327)
 3. overlay viewer install path
-4. skill library install path
 
 ### 9.2 Dialog Reuse
 
@@ -345,33 +338,7 @@ Callable means:
 
 For current implementation, no extra runtime gate is needed beyond those two checks.
 
-## 11. Telemetry Changes
-
-### 11.1 Existing Event
-
-Keep the existing install analytics flow in:
-
-1. [src/main/lib/analytics/analyticsManager.ts](../src/main/lib/analytics/analyticsManager.ts)
-
-### 11.2 New Events
-
-Add:
-
-1. `skill_applied_to_agent`
-2. `skill_install_and_activate_completed`
-3. `skill_install_activation_abandoned`
-
-Suggested properties:
-
-1. `skillName`
-2. `skillVersion`
-3. `source`
-4. `chatId`
-5. `agentName`
-6. `resolution`
-7. `requestSource`
-
-## 12. Testing Plan
+## 11. Testing Plan
 
 ### 12.1 Unit Tests
 
@@ -393,7 +360,7 @@ Suggested test files:
 Add tests for:
 
 1. `apply_skill_to_agents` (install + apply lifecycle)
-2. `search_skills` (installed, library, GitHub sources)
+2. `search_skills` (installed and device-package sources)
 3. legacy messaging accuracy
 
 Suggested files:
@@ -431,7 +398,6 @@ Suggested affected areas:
 ### 13.3 Step 3
 
 1. update agent-facing prompt/tool usage strategy to prefer install-and-activate when user intent implies immediate use
-2. add telemetry dashboards
 
 ## 14. Backward Compatibility
 
@@ -457,7 +423,6 @@ Suggested affected areas:
 4. [src/main/lib/mcpRuntime/builtinTools/builtinToolsManager.ts](../src/main/lib/mcpRuntime/builtinTools/builtinToolsManager.ts)
 5. [src/renderer/components/layout/AppLayout.tsx](../src/renderer/components/layout/AppLayout.tsx)
 6. [src/renderer/components/chat/GeneratedFileCards.tsx](../src/renderer/components/chat/GeneratedFileCards.tsx)
-7. optionally Skill library related renderer entry points
 
 ## 16. Acceptance Criteria
 

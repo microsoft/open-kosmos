@@ -4,6 +4,9 @@
  */
 
 import { EventEmitter } from 'events';
+import { McpAuthMetadataService } from '../../auth/McpAuthMetadataService';
+import { McpAuthService } from '../../auth/McpAuthService';
+import type { McpResolvedAuthMetadata } from '../../auth/types';
 import type { McpServerConfig } from '../../../userDataADO/types/profile';
 
 export interface HttpTransportConfig {
@@ -24,6 +27,62 @@ export interface ConnectionState {
   state: 'stopped' | 'starting' | 'running' | 'error';
   code?: string;
   message?: string;
+}
+
+/**
+ * Error thrown when the server returns an HTTP 4xx/5xx response.  Carries
+ * the raw status so callers (and `send()`) can distinguish
+ * application-level rejections from transport-level failures (network
+ * errors, DNS failures) and avoid tearing down the transport state when
+ * the underlying connection is still healthy.
+ */
+export class HttpStatusError extends Error {
+  public readonly httpStatus: number;
+
+  constructor(httpStatus: number, message: string) {
+    super(message);
+    this.name = 'HttpStatusError';
+    this.httpStatus = httpStatus;
+  }
+}
+
+/**
+ * Merge user-supplied headers with internal headers case-insensitively.
+ * Internal headers always win — if the user provides `content-type`
+ * (lowercase) and we need `Content-Type`, only the internal value
+ * survives. This prevents `fetch` from concatenating duplicate headers.
+ */
+function mergeHeaders(
+  userHeaders: Record<string, string> | undefined,
+  internalHeaders: Record<string, string>,
+): Record<string, string> {
+  if (!userHeaders || Object.keys(userHeaders).length === 0) {
+    return { ...internalHeaders };
+  }
+  const internalLower = new Set(Object.keys(internalHeaders).map(k => k.toLowerCase()));
+  const merged: Record<string, string> = {};
+  for (const [k, v] of Object.entries(userHeaders)) {
+    if (!internalLower.has(k.toLowerCase())) {
+      merged[k] = v;
+    }
+  }
+  Object.assign(merged, internalHeaders);
+  return merged;
+}
+
+/**
+ * Set a header on the object after removing any existing case-variant.
+ * Prevents `fetch` from concatenating duplicate headers when the user
+ * provides e.g. lowercase `authorization` and OAuth adds `Authorization`.
+ */
+function setHeaderCaseInsensitive(headers: Record<string, string>, name: string, value: string): void {
+  const lower = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower && key !== name) {
+      delete headers[key];
+    }
+  }
+  headers[name] = value;
 }
 
 const enum HttpMode {
@@ -205,6 +264,15 @@ export class VscodeHttpTransport extends EventEmitter {
   private mode: HttpModeT = { value: HttpMode.Unknown };
   private readonly _abortCtrl = new AbortController();
   private _disposed = false;
+  private authMetadata: McpResolvedAuthMetadata | null = null;
+  /** Set on first 401/403; suppresses the SSE protocol-fallback path for
+   *  later non-auth 4xx — those are semantic failures, not a protocol
+   *  mismatch (the server demonstrably speaks Streamable HTTP). */
+  private _sawAuthChallenge = false;
+  /** Tracks whether the most recent token request actually returned a token.
+   *  Used to distinguish "OAuth succeeded but server denied" from "refresh
+   *  failed and we re-sent a stale token". */
+  private _lastTokenMintSucceeded = false;
 
   constructor(private config: HttpTransportConfig) {
     super();
@@ -250,6 +318,9 @@ export class VscodeHttpTransport extends EventEmitter {
         await this._send(message);
       }
     } catch (err) {
+      if (err instanceof HttpStatusError) {
+        throw err;
+      }
       const msg = `Error sending message to ${this.config.url}: ${String(err)}`;
       this.setState({ state: 'error', message: msg });
       throw new Error(msg);
@@ -269,12 +340,11 @@ export class VscodeHttpTransport extends EventEmitter {
    */
   private async _sendStreamableHttp(message: string, sessionId?: string): Promise<void> {
     const asBytes = new TextEncoder().encode(message);
-    const headers: Record<string, string> = {
-      ...this.config.headers,
+    const headers: Record<string, string> = mergeHeaders(this.config.headers, {
       'Content-Type': 'application/json',
       'Content-Length': String(asBytes.length),
       'Accept': 'text/event-stream, application/json',
-    };
+    });
 
     if (sessionId) {
       headers['Mcp-Session-Id'] = sessionId;
@@ -294,17 +364,20 @@ export class VscodeHttpTransport extends EventEmitter {
       this.mode = { value: HttpMode.Http, sessionId: nextSessionId };
     }
 
-    // Pre-auth-challenge 4xx (except 401/403) → switch to SSE.
+    // Pre-auth-challenge 4xx (except 401/403) → switch to SSE. After we've
+    // seen an OAuth challenge the server is known to speak Streamable HTTP,
+    // so a 4xx is a real semantic failure, not a protocol mismatch.
     if (this.mode.value === HttpMode.Unknown &&
         response.status >= 400 && response.status < 500 &&
-        response.status !== 401 && response.status !== 403) {
+        response.status !== 401 && response.status !== 403 &&
+        !this._sawAuthChallenge) {
       this.emit('log', 'info', `${response.status} status, falling back to SSE`);
       await this._sseFallbackWithMessage(message);
       return;
     }
 
-    // Same caveat for 5xx.
-    if (this.mode.value === HttpMode.Unknown && response.status >= 500) {
+    // Same caveat for 5xx pre-auth.
+    if (this.mode.value === HttpMode.Unknown && response.status >= 500 && !this._sawAuthChallenge) {
       this.emit('log', 'info', `${response.status} server error, trying SSE fallback`);
       await this._sseFallbackWithMessage(message);
       return;
@@ -317,9 +390,25 @@ export class VscodeHttpTransport extends EventEmitter {
                                  (response.status === 400 || response.status === 404);
 
       const errorBody = await this._getErrorText(response);
+      // OAuth succeeded but server still rejected — typically a feature/tier
+      // gate (e.g. GitLab MCP requires Premium + Beta features enabled).
+      // Only show this message when: (1) OAuth flow was used (authMetadata resolved),
+      // (2) not for static headers, and (3) the most recent token mint actually
+      // succeeded — if refresh failed, the 403 is from a stale token, not a tier gate.
+      if (this._sawAuthChallenge && this.authMetadata && this._lastTokenMintSucceeded && headers.Authorization && (response.status === 404 || response.status === 403)) {
+        throw new HttpStatusError(
+          response.status,
+          `${response.status} status from ${this.config.url} after successful sign-in: ${errorBody}. ` +
+          `The endpoint exists but is not available for your account — check that the MCP feature ` +
+          `is enabled, your account tier supports it, and any required beta/experimental flags are turned on.`
+        );
+      }
 
-      throw new Error(`${response.status} status sending message: ${errorBody}` +
-                     (retryWithNewSession ? '; will retry with new session ID' : ''));
+      throw new HttpStatusError(
+        response.status,
+        `${response.status} status sending message: ${errorBody}` +
+          (retryWithNewSession ? '; will retry with new session ID' : '')
+      );
     }
 
     if (this.mode.value === HttpMode.Unknown) {
@@ -395,10 +484,9 @@ export class VscodeHttpTransport extends EventEmitter {
       this._abortCtrl.signal.addEventListener('abort', mainAbortListener);
 
       try {
-        const headers: Record<string, string> = {
-          ...this.config.headers,
+        const headers: Record<string, string> = mergeHeaders(this.config.headers, {
           'Accept': 'text/event-stream',
-        };
+        });
 
         if (this.mode.value === HttpMode.Http && this.mode.sessionId) {
           headers['Mcp-Session-Id'] = this.mode.sessionId;
@@ -408,10 +496,27 @@ export class VscodeHttpTransport extends EventEmitter {
           headers['Last-Event-ID'] = lastEventId;
         }
 
-        const response = await this._fetchWithIndependentSignal(this.config.url, {
+        // Inject OAuth token if available (parity with POST path)
+        await this._addAuthHeader(headers);
+
+        let response = await this._fetchWithIndependentSignal(this.config.url, {
           method: 'GET',
           headers,
         }, retryAbortController.signal);
+
+        // Auth retry for backchannel: if 401/403 and we have auth metadata,
+        // refresh the token and retry once (mirrors _fetchWithAuthRetry logic)
+        if (this._isAuthStatusCode(response.status) && this.authMetadata) {
+          this.emit('log', 'info', `Backchannel auth challenge (${response.status}), refreshing token`);
+          const token = await this._requestToken(this.authMetadata, { forceRefresh: true });
+          if (token) {
+            setHeaderCaseInsensitive(headers, 'Authorization', `Bearer ${token}`);
+            response = await this._fetchWithIndependentSignal(this.config.url, {
+              method: 'GET',
+              headers,
+            }, retryAbortController.signal);
+          }
+        }
 
         if (response.status >= 400) {
           this.emit('log', 'debug', `${response.status} status on backchannel, disabling async notifications`);
@@ -466,10 +571,9 @@ export class VscodeHttpTransport extends EventEmitter {
    * Establish SSE connection and get POST endpoint
    */
   private async _attachSSE(): Promise<string | undefined> {
-    const headers: Record<string, string> = {
-      ...this.config.headers,
+    const headers: Record<string, string> = mergeHeaders(this.config.headers, {
       'Accept': 'text/event-stream',
-    };
+    });
 
     try {
       const response = await this._fetchWithAuthRetry(this.config.url, {
@@ -518,11 +622,10 @@ export class VscodeHttpTransport extends EventEmitter {
    */
   private async _sendLegacySSE(url: string, message: string): Promise<void> {
     const asBytes = new TextEncoder().encode(message);
-    const headers: Record<string, string> = {
-      ...this.config.headers,
+    const headers: Record<string, string> = mergeHeaders(this.config.headers, {
       'Content-Type': 'application/json',
       'Content-Length': String(asBytes.length),
-    };
+    });
 
     const response = await this._fetchWithAuthRetry(url, {
       method: 'POST',
@@ -646,8 +749,76 @@ export class VscodeHttpTransport extends EventEmitter {
   }
 
   private async _fetchWithAuthRetry(url: string, init: MinimalRequestInit, headers: Record<string, string>): Promise<Response> {
+    await this._addAuthHeader(headers);
     init.headers = headers;
-    return this._fetch(url, init);
+
+    let response = await this._fetch(url, init);
+
+    if (this._isAuthStatusCode(response.status)) {
+      this._sawAuthChallenge = true;
+      this.emit('log', 'info', `Received auth challenge for ${this.config.serverName}: status=${response.status}`);
+      if (!this.authMetadata) {
+        this.authMetadata = await McpAuthMetadataService.resolve(url, response.headers);
+        if (this.authMetadata) {
+          this.emit(
+            'log',
+            'info',
+            `Resolved MCP auth metadata for ${this.config.serverName}: `
+            + `provider=${this.authMetadata.providerLabel}, `
+            + `authority=${this.authMetadata.authorizationServerMetadata.issuer || this.authMetadata.authorizationServerUrl}, `
+            + `scopes=${JSON.stringify(this.authMetadata.scopes)}, `
+            + `resourceMetadataSource=${this.authMetadata.telemetry.resourceMetadataSource}, `
+            + `serverMetadataSource=${this.authMetadata.telemetry.serverMetadataSource}`
+          );
+        }
+      } else {
+        this.authMetadata = McpAuthMetadataService.updateFromHeaders(this.authMetadata, response.headers);
+        this.emit('log', 'info', `Updated MCP auth metadata from repeated challenge for ${this.config.serverName}: scopes=${JSON.stringify(this.authMetadata.scopes)}`);
+      }
+
+      if (this.authMetadata) {
+        const token = await this._requestToken(this.authMetadata);
+        this._lastTokenMintSucceeded = !!token;
+        if (token) {
+          this.emit('log', 'info', `Retrying ${this.config.serverName} request with Authorization header after auth challenge`);
+          setHeaderCaseInsensitive(headers, 'Authorization', `Bearer ${token}`);
+          init.headers = headers;
+          response = await this._fetch(url, init);
+        }
+      }
+    }
+
+    if (headers.Authorization && this._isAuthStatusCode(response.status) && this.authMetadata) {
+      this.emit('log', 'info', `Received ${response.status} with Authorization header for ${this.config.serverName}, retrying with forced refresh`);
+      const token = await this._requestToken(this.authMetadata, { forceRefresh: true });
+      this._lastTokenMintSucceeded = !!token;
+      if (token) {
+        setHeaderCaseInsensitive(headers, 'Authorization', `Bearer ${token}`);
+        init.headers = headers;
+        response = await this._fetch(url, init);
+      }
+    }
+
+    return response;
+  }
+
+  private async _addAuthHeader(headers: Record<string, string>): Promise<void> {
+    if (!this.authMetadata) {
+      return;
+    }
+
+    const token = await this._requestToken(this.authMetadata);
+    if (token) {
+      setHeaderCaseInsensitive(headers, 'Authorization', `Bearer ${token}`);
+    }
+  }
+
+  private async _requestToken(metadata: McpResolvedAuthMetadata, options?: { forceRefresh?: boolean }): Promise<string | undefined> {
+    this.emit('log', 'info', `Requesting token for ${this.config.serverName}: forceRefresh=${options?.forceRefresh ? 'true' : 'false'}, scopes=${JSON.stringify(metadata.scopes)}`);
+    return McpAuthService.getInstance().getTokenForServer(this.config.serverName, metadata, {
+      ...options,
+      cfg: this.config.mcpServerConfig,
+    });
   }
 
   private _isAuthStatusCode(status: number): boolean {

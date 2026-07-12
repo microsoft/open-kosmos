@@ -2,53 +2,30 @@
 
 import React, { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import '../../styles/ContentView.css'
+import '../../styles/ToolbarSettingsView.css'
 import '../../styles/AddNewMcpServerView.css';
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
 import { McpOps } from '../../lib/mcp/mcpOps'
+import { redactHeadersForLlm, restoreHeadersAfterLlm } from '../../lib/mcp/mcpConfigRedaction'
 import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
 import ApplyMcpToAgentsDialog from './ApplyMcpToAgentsDialog'
-
-// McpConfigFormatterResponse type definition
-interface McpConfigFormatterResponse {
-  success: boolean;
-  originalFormat?: string;
-  transportType?: string;
-  serverName?: string;
-  nameSource?: string;
-  config?: Record<string, any>;
-  warnings?: string[];
-  errors?: string[];
-  rawResponse?: string;
-}
-
-// Clean up invisible characters that can cause JSON parsing issues
-const cleanInvisibleCharacters = (text: string): string => {
-  return text
-    .replace(/\u00A0/g, ' ')  // Replace NBSP (non-breaking space) with regular space
-    .replace(/\u202F/g, ' ')  // Replace narrow no-break space
-    .replace(/\u2060/g, '')   // Remove word joiner
-    .replace(/\uFEFF/g, '')   // Remove byte order mark (BOM)
-    .replace(/\u180E/g, ' ')  // Replace Mongolian vowel separator
-    .replace(/\u200B/g, '')   // Remove zero-width space
-    .replace(/\u200C/g, '')   // Remove zero-width non-joiner
-    .replace(/\u200D/g, '')   // Remove zero-width joiner
-}
-
-// Generate timestamp-based server name
-const generateTimestampServerName = (): string => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-  const seconds = String(now.getSeconds()).padStart(2, '0')
-  return `mcp-server-${year}${month}${day}${hours}${minutes}${seconds}`
-}
+import {
+  cleanInvisibleCharacters,
+  generateTimestampServerName,
+  incrementPatchVersion,
+  validateServerConfig,
+  validateServerName,
+  type McpConfigFormatterResponse,
+  type McpServerTransport,
+} from './AddNewMcpServerFormModel'
+import { ServerConfigSection, ServerDetailsSection } from './AddNewMcpServerFormSections'
+import { buildMcpValidationMessages } from './AddNewMcpServerValidationMessages'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface AddNewMcpServerViewContentProps {
-  editServerName?: string // Optional prop for editing existing server
+  editServerName?: string
 }
 
 const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
@@ -57,45 +34,39 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   const navigate = useNavigate()
   const { servers, addServer, refreshRuntimeInfo, getServerByName, updateServer } = useMCPServers()
   const { showError, showSuccess, showWarning } = useToast()
+  const { t } = useI18n()
+  const validationMessages = React.useMemo(() => buildMcpValidationMessages(t), [t])
 
-  // Determine if we're in edit mode
   const isEditMode = !!editServerName
   const editingServer = isEditMode ? getServerByName(editServerName!) : null
 
-  // Local state management
   const [newServerName, setNewServerName] = useState('')
-  const [newServerType, setNewServerType] = useState<'stdio' | 'sse' | 'StreamableHttp'>('stdio')
+  const [newServerType, setNewServerType] = useState<McpServerTransport>('stdio')
   const [newServerConfig, setNewServerConfig] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showServerTypeDropdown, setShowServerTypeDropdown] = useState(false)
   const serverTypeDropdownRef = React.useRef<HTMLDivElement>(null)
 
-  // Verify functionality state
   const [isVerified, setIsVerified] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<string | null>(null)
   const [verifyError, setVerifyError] = useState<string | null>(null)
 
-  // Apply to agents dialog state
   const [applyDialogOpen, setApplyDialogOpen] = useState(false)
   const [applyMcpServerName, setApplyMcpServerName] = useState('')
 
-  // Validation state management
   const [validationErrors, setValidationErrors] = useState<{
     serverName?: string
     serverConfig?: string
   }>({})
 
-  // Get server names for validation (exclude current server name when editing)
   const serverNames = servers.map(s => s.name).filter(name => isEditMode ? name !== editServerName : true)
 
-  // Load existing server data when in edit mode
   React.useEffect(() => {
     if (isEditMode && editingServer) {
       setNewServerName(editingServer.name)
       setNewServerType(editingServer.transport)
 
-      // Convert server config to JSON format for editor
       const configObj: any = {}
 
       if (editingServer.transport === 'stdio') {
@@ -113,6 +84,10 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         if (editingServer.env && Object.keys(editingServer.env).length > 0) {
           configObj.env = editingServer.env
         }
+        // Include headers if it exists and has properties
+        if (editingServer.headers && Object.keys(editingServer.headers).length > 0) {
+          configObj.headers = editingServer.headers
+        }
       }
 
       const configJson = JSON.stringify(configObj, null, 2)
@@ -129,26 +104,20 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       setNewServerConfig('')
     }
     setValidationErrors({})
-
-    // Reset verify state
     setIsVerified(false)
     setIsVerifying(false)
     setVerifyResult(null)
     setVerifyError(null)
   }, [isEditMode, editServerName, refreshRuntimeInfo])
 
-  // Ensure proper focus when component mounts
   React.useEffect(() => {
-    // Small delay to ensure the component is fully rendered before focusing
     const timeoutId = setTimeout(() => {
       if (isEditMode) {
-        // In edit mode, focus the textarea (config field) since it's the only editable field
         const textarea = document.querySelector('.json-editor') as HTMLTextAreaElement
         if (textarea) {
           textarea.focus()
         }
       } else {
-        // In add mode, focus the server name input if verified, otherwise config textarea
         if (isVerified) {
           const input = document.querySelector('.server-name-input') as HTMLInputElement
           if (input) {
@@ -166,204 +135,9 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
     return () => clearTimeout(timeoutId)
   }, [isEditMode, isVerified])
 
-  // Validate server name
-  const validateServerName = useCallback((name: string) => {
-    const errors: string[] = []
-
-    // 1. Server name cannot be empty
-    if (!name.trim()) {
-      errors.push('Server name cannot be empty')
-    }
-
-    // 2. Server name cannot duplicate existing servers
-    if (name.trim() && serverNames.includes(name.trim())) {
-      errors.push('Server name already exists, please use a different name')
-    }
-
-    return errors.length > 0 ? errors.join('; ') : null
-  }, [serverNames])
-
-  // Validate MCP configuration
-  const validateServerConfig = useCallback((config: string, serverType: 'stdio' | 'sse' | 'StreamableHttp') => {
-    const errors: string[] = []
-
-    // 3. MCP command cannot be empty
-    if (!config.trim()) {
-      errors.push('MCP configuration cannot be empty')
-      return errors.join('; ')
-    }
-
-    // 4. MCP command cannot be sample
-    const stdioExample = `{
-  "command": "python",
-  "args": [
-    "main.py"
-  ],
-  "env": {
-    "API_KEY": "value"
-  }
-}`
-    const sseExample = `{
-  "url": "http://localhost:8000/sse",
-  "env": {
-    "API_KEY": "value"
-  }
-}`
-
-    const normalizedConfig = config.replace(/\s+/g, ' ').trim()
-    const normalizedStdioExample = stdioExample.replace(/\s+/g, ' ').trim()
-    const normalizedSseExample = sseExample.replace(/\s+/g, ' ').trim()
-
-    if (normalizedConfig === normalizedStdioExample || normalizedConfig === normalizedSseExample) {
-      errors.push('Please modify the example configuration, cannot use default examples')
-      return errors.join('; ')
-    }
-
-    // Clean up invisible characters before parsing JSON
-    const cleanedConfig = cleanInvisibleCharacters(config)
-
-    // Try to parse JSON
-    let parsedConfig: any
-    try {
-      parsedConfig = JSON.parse(cleanedConfig)
-    } catch (e) {
-      errors.push(`Configuration must be valid JSON format. Error: ${e instanceof Error ? e.message : 'Unknown error'}`)
-      return errors.join('; ')
-    }
-
-    if (serverType === 'stdio') {
-      // 5. stdio command validation
-      const configKeys = Object.keys(parsedConfig)
-      const requiredKeys = ['command', 'args']
-      const optionalKeys = ['env']
-      const allowedKeys = [...requiredKeys, ...optionalKeys]
-
-      // Check for required keys
-      const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
-      if (missingKeys.length > 0) {
-        errors.push(`Stdio configuration must contain required fields: ${missingKeys.join(', ')}`)
-      }
-
-      // Check for invalid keys
-      const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
-      if (invalidKeys.length > 0) {
-        errors.push(`Stdio configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
-      }
-
-      // command must be string and not empty
-      if (typeof parsedConfig.command !== 'string' || !parsedConfig.command.trim()) {
-        errors.push('command field must be a non-empty string')
-      }
-
-      // args must be string array and not empty
-      if (!Array.isArray(parsedConfig.args)) {
-        errors.push('args field must be an array')
-      } else if (parsedConfig.args.length === 0) {
-        errors.push('args array cannot be empty')
-      } else if (!parsedConfig.args.every((arg: any) => typeof arg === 'string')) {
-        errors.push('All elements in args array must be strings')
-      }
-
-      // env validation (optional)
-      if (parsedConfig.env !== undefined) {
-        if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
-          errors.push('env field must be an object with string key-value pairs')
-        } else {
-          const envEntries = Object.entries(parsedConfig.env)
-          for (const [key, value] of envEntries) {
-            if (typeof key !== 'string' || typeof value !== 'string') {
-              errors.push('All env entries must be string key-value pairs')
-              break
-            }
-          }
-        }
-      }
-    } else if (serverType === 'sse') {
-      // 6. sse command validation
-      const configKeys = Object.keys(parsedConfig)
-      const requiredKeys = ['url']
-      const optionalKeys = ['env']
-      const allowedKeys = [...requiredKeys, ...optionalKeys]
-
-      // Check for required keys
-      const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
-      if (missingKeys.length > 0) {
-        errors.push(`SSE configuration must contain required fields: ${missingKeys.join(', ')}`)
-      }
-
-      // Check for invalid keys
-      const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
-      if (invalidKeys.length > 0) {
-        errors.push(`SSE configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
-      }
-
-      // url cannot be empty
-      if (typeof parsedConfig.url !== 'string' || !parsedConfig.url.trim()) {
-        errors.push('url field must be a non-empty string')
-      }
-
-      // env validation (optional)
-      if (parsedConfig.env !== undefined) {
-        if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
-          errors.push('env field must be an object with string key-value pairs')
-        } else {
-          const envEntries = Object.entries(parsedConfig.env)
-          for (const [key, value] of envEntries) {
-            if (typeof key !== 'string' || typeof value !== 'string') {
-              errors.push('All env entries must be string key-value pairs')
-              break
-            }
-          }
-        }
-      }
-    } else if (serverType === 'StreamableHttp') {
-      // StreamableHttp command validation
-      const configKeys = Object.keys(parsedConfig)
-      const requiredKeys = ['url']
-      const optionalKeys = ['env']
-      const allowedKeys = [...requiredKeys, ...optionalKeys]
-
-      // Check for required keys
-      const missingKeys = requiredKeys.filter(key => !configKeys.includes(key))
-      if (missingKeys.length > 0) {
-        errors.push(`StreamableHttp configuration must contain required fields: ${missingKeys.join(', ')}`)
-      }
-
-      // Check for invalid keys
-      const invalidKeys = configKeys.filter(key => !allowedKeys.includes(key))
-      if (invalidKeys.length > 0) {
-        errors.push(`StreamableHttp configuration contains invalid fields: ${invalidKeys.join(', ')}. Only allowed: ${allowedKeys.join(', ')}`)
-      }
-
-      // url cannot be empty
-      if (typeof parsedConfig.url !== 'string' || !parsedConfig.url.trim()) {
-        errors.push('url field must be a non-empty string')
-      }
-
-      // env validation (optional)
-      if (parsedConfig.env !== undefined) {
-        if (typeof parsedConfig.env !== 'object' || parsedConfig.env === null || Array.isArray(parsedConfig.env)) {
-          errors.push('env field must be an object with string key-value pairs')
-        } else {
-          const envEntries = Object.entries(parsedConfig.env)
-          for (const [key, value] of envEntries) {
-            if (typeof key !== 'string' || typeof value !== 'string') {
-              errors.push('All env entries must be string key-value pairs')
-              break
-            }
-          }
-        }
-      }
-    }
-
-    return errors.length > 0 ? errors.join('; ') : null
-  }, [])
-
-  // Handle Verify button click
   const handleVerify = useCallback(async () => {
-    // Only check if config is empty
     if (!newServerConfig.trim()) {
-      setVerifyError('Please fill in Server Config')
+      setVerifyError(t('mcp.add.serverConfigRequired'))
       setVerifyResult(null)
       setIsVerified(false)
       return
@@ -374,8 +148,9 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       setVerifyError(null)
       setVerifyResult(null)
 
-      // Call the main process McpConfigLlmFormatter.formatMcpConfig via IPC
-      const ipcResult = await window.electronAPI?.llm?.formatMcpConfig(newServerConfig)
+      const { redacted, originalHeaders } = redactHeadersForLlm(newServerConfig)
+
+      const ipcResult = await window.electronAPI?.llm?.formatMcpConfig(redacted)
 
       if (!ipcResult) {
         throw new Error('LLM API not available')
@@ -394,38 +169,38 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
             config: parsedConfig,
             transportType: newServerType,
             serverName: newServerName || generateTimestampServerName(),
-            warnings: [`AI formatting failed (${ipcResult.error}), using basic validation`]
+            warnings: [t('mcp.add.aiFormattingFailed', { error: ipcResult.error || t('common.unknownError') })]
           }
         } catch (parseError) {
           llmResponse = {
             success: false,
-            errors: [`Configuration parsing failed: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`]
+            errors: [t('mcp.add.configParsingFailed', {
+              error: parseError instanceof Error ? parseError.message : t('common.unknownError'),
+            })]
           }
         }
       }
 
       if (!llmResponse.success) {
         // Format failed
-        const errorMessage = llmResponse.errors?.join(', ') || llmResponse.warnings?.join(', ') || 'Formatting failed'
-        setVerifyError(`Configuration validation failed: ${errorMessage}`)
+        const errorMessage = llmResponse.errors?.join(', ') || llmResponse.warnings?.join(', ') || t('mcp.add.formattingFailed')
+        setVerifyError(t('mcp.add.configValidationFailed', { error: errorMessage }))
         setVerifyResult(null)
         setIsVerified(false)
         return
       }
 
-      // Format successful - update UI
-
-      // Extract formatted config from LLM response (both Add and Update modes)
       if (llmResponse.config) {
-        // LLM should return config directly as an object (not nested under server name)
         let configToUse = llmResponse.config
 
-        // Handle case where config might be nested under server name (fallback)
         if (llmResponse.serverName && llmResponse.config[llmResponse.serverName]) {
           configToUse = llmResponse.config[llmResponse.serverName]
         }
 
-        // Update server config with formatted version
+        if (originalHeaders) {
+          restoreHeadersAfterLlm(configToUse, originalHeaders, llmResponse.serverName)
+        }
+
         const formattedConfig = JSON.stringify(configToUse, null, 2)
         setNewServerConfig(formattedConfig)
       }
@@ -446,20 +221,22 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         setNewServerName(serverName)
       }
 
-      setVerifyResult('Configuration validation successful')
+      setVerifyResult(t('mcp.add.validationSuccessful'))
       setIsVerified(true)
 
       // Clear validation errors
       setValidationErrors({})
 
     } catch (error) {
-      setVerifyError(`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setVerifyError(t('mcp.add.validationFailed', {
+        error: error instanceof Error ? error.message : t('common.unknownError'),
+      }))
       setVerifyResult(null)
       setIsVerified(false)
     } finally {
       setIsVerifying(false)
     }
-  }, [newServerConfig, isEditMode, newServerType, newServerName])
+  }, [newServerConfig, isEditMode, newServerType, newServerName, t])
 
   // Reset verify state when config changes
   const handleConfigChange = useCallback((value: string) => {
@@ -490,26 +267,13 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   // Check if there are validation errors
   const hasValidationErrors = validationErrors.serverName || validationErrors.serverConfig
 
-  // Helper function to increment patch version (e.g., "1.0.0" -> "1.0.1")
-  const incrementPatchVersion = (version: string): string => {
-    const parts = version.split('.')
-    if (parts.length === 3) {
-      const patch = parseInt(parts[2], 10)
-      if (!isNaN(patch)) {
-        return `${parts[0]}.${parts[1]}.${patch + 1}`
-      }
-    }
-    // Fallback: return original version if format is unexpected
-    return version
-  }
-
   const handleAddServer = useCallback(async () => {
     try {
       setIsLoading(true)
 
       // Both Add and Update modes require verification first
       if (!isVerified) {
-        showWarning('Please verify the configuration first')
+        showWarning(t('mcp.add.verifyFirst'))
         return
       }
 
@@ -519,10 +283,10 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       // For Update mode: only validate config (server name doesn't change)
       let nameError: string | null = null
       if (!isEditMode) {
-        nameError = validateServerName(newServerName)
+        nameError = validateServerName(newServerName, serverNames, validationMessages)
       }
 
-      const configError = validateServerConfig(newServerConfig, newServerType)
+      const configError = validateServerConfig(newServerConfig, newServerType, validationMessages)
 
       if (nameError || configError) {
         setValidationErrors({
@@ -533,7 +297,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       }
 
       if (!newServerName.trim() || !newServerConfig.trim()) {
-        showWarning('Please provide server name and configuration')
+        showWarning(t('mcp.add.nameAndConfigRequired'))
         return
       }
 
@@ -542,29 +306,16 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
       const cleanedConfig = cleanInvisibleCharacters(newServerConfig)
       const parsedConfig = JSON.parse(cleanedConfig)
 
-      // Determine version and source for the server config
-      let version: string
-      let source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
+      // Editing any persisted server creates a local revision.
+      let version = '1.0.0'
+      const source = 'ON-DEVICE' as const
 
       // 🔒 Re-fetch the latest server config to ensure source is never accidentally changed
       const currentEditingServer = isEditMode ? getServerByName(editServerName!) : null
 
       if (isEditMode && currentEditingServer) {
-        // Edit mode: preserve original source, handle version based on source type
-        source = currentEditingServer.source || 'ON-DEVICE'
-
-        if (source === 'ON-DEVICE') {
-          // ON-DEVICE: auto-increment patch version
-          const currentVersion = currentEditingServer.version || '1.0.0'
-          version = incrementPatchVersion(currentVersion)
-        } else {
-          // IN-LIBRARY: keep version unchanged
-          version = currentEditingServer.version || '1.0.0'
-        }
-      } else {
-        // Add mode: use default values
-        version = '1.0.0'
-        source = 'ON-DEVICE'
+        const currentVersion = currentEditingServer.version || '1.0.0'
+        version = incrementPatchVersion(currentVersion)
       }
 
       // Format config for McpOps API
@@ -576,10 +327,10 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         command: parsedConfig.command || '',
         args: parsedConfig.args || [],
         env: parsedConfig.env || {},
+        headers: parsedConfig.headers,
         version,
         source,
-        // 🆕 remoteVersion: empty string for ON-DEVICE source, keep original value for IN-LIBRARY
-        remoteVersion: source === 'ON-DEVICE' ? '' : (currentEditingServer?.remoteVersion || '')
+        remoteVersion: ''
       }
 
       let result: { success: boolean; error?: string }
@@ -611,7 +362,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
           }, 100)
         }
 
-        showSuccess(`Server "${newServerName}" ${isEditMode ? 'updated' : 'added'} successfully! ${isEditMode ? 'Reconnecting...' : 'Connecting...'}`)
+        showSuccess(t(isEditMode ? 'mcp.add.updateSuccess' : 'mcp.add.addSuccess', { name: newServerName }))
 
         // For new servers (not edit), show Apply to Agents dialog before navigating
         if (!isEditMode) {
@@ -622,15 +373,17 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
           navigate('/settings/mcp')
         }
       } else {
-        showError(`Failed to ${isEditMode ? 'update' : 'add'} server: ${result.error || 'Unknown error'}`)
+        showError(t(isEditMode ? 'mcp.add.updateFailed' : 'mcp.add.addFailed', {
+          error: result.error || t('common.unknownError'),
+        }))
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      showError(`Failed to ${isEditMode ? 'update' : 'add'} server: ${errorMessage}`)
+      const errorMessage = err instanceof Error ? err.message : t('common.unknownError')
+      showError(t(isEditMode ? 'mcp.add.updateFailed' : 'mcp.add.addFailed', { error: errorMessage }))
     } finally {
       setIsLoading(false)
     }
-  }, [newServerName, newServerConfig, newServerType, validateServerName, validateServerConfig, showWarning, showSuccess, showError, refreshRuntimeInfo, isEditMode, editServerName, navigate, isVerified, getServerByName])
+  }, [newServerName, newServerConfig, newServerType, serverNames, showWarning, showSuccess, showError, refreshRuntimeInfo, isEditMode, editServerName, navigate, isVerified, getServerByName, t, validationMessages])
 
   // Handle server type change
   const handleServerTypeChange = useCallback((serverType: 'stdio' | 'sse' | 'StreamableHttp') => {
@@ -664,7 +417,7 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
         }
       }, 0)
     }
-  }, [newServerConfig, validateServerConfig, isVerified])
+  }, [newServerConfig, isVerified])
 
   // Handle Apply to Agents dialog close - navigate to MCP view
   const handleApplyDialogClose = useCallback((open: boolean) => {
@@ -675,221 +428,43 @@ const AddNewMcpServerViewContent: React.FC<AddNewMcpServerViewContentProps> = ({
   }, [navigate])
 
   return (
-    <div className="add-server-content">
-      {/* Server Config section with Verify button in top right */}
-      <div className="server-config-section">
-        <div className="server-config-header">
-          <label className="form-label">Server Config:</label>
-          <button
-            type="button"
-            onClick={handleVerify}
-            disabled={isVerifying || !newServerConfig.trim()}
-            className="btn-primary"
-          >
-            {isVerifying ? 'Verifying with AI...' : 'Verify to Continue'}
-          </button>
-        </div>
+    <div className="content-view-container add-server-content">
+      <div className="toolbar-settings-content mcp-settings-editor-content">
+        <div className="toolbar-settings-form">
+          <div className="toolbar-settings-form-inner">
+            <ServerConfigSection
+              isEditMode={isEditMode}
+              isVerified={isVerified}
+              isVerifying={isVerifying}
+              newServerType={newServerType}
+              newServerConfig={newServerConfig}
+              validationErrors={validationErrors}
+              verifyError={verifyError}
+              verifyResult={verifyResult}
+              onVerify={handleVerify}
+              onConfigChange={handleConfigChange}
+            />
 
-        <textarea
-          value={newServerConfig}
-          onChange={(e) => handleConfigChange(e.target.value)}
-          className={`json-editor ${validationErrors.serverConfig ? 'error' : ''}`}
-          placeholder={(!isEditMode && !isVerified) ?
-            `Example 1 (Stdio):
-{
-  "command": "python",
-  "args": [
-    "main.py"
-  ],
-  "env": {
-    "API_KEY": "value"
-  }
-}
-
-Example 2 (Streamable HTTP):
-{
-  "url": "http://localhost:8000/sse",
-  "env": {
-    "API_KEY": "value"
-  }
-}` :
-            (newServerType === 'stdio' ?
-            `{
-  "command": "python",
-  "args": [
-    "main.py"
-  ],
-  "env": {
-    "API_KEY": "value"
-  }
-}` :
-            `{
-  "url": "http://localhost:8000/sse",
-  "env": {
-    "API_KEY": "value"
-  }
-}`)}
-          autoFocus={isEditMode || !isVerified}
-          tabIndex={0}
-        />
-
-        {validationErrors.serverConfig && (
-          <div className="validation-error">
-            {validationErrors.serverConfig}
-          </div>
-        )}
-
-        {/* Verify Status Messages */}
-        {verifyError && (
-          <div className="verify-error">
-            {verifyError}
-          </div>
-        )}
-
-        {verifyResult && (
-          <div className="verify-success">
-            {verifyResult}
-          </div>
-        )}
-      </div>
-
-      {/* Show Server Type and Server Name only after verification (Add mode) or always (Update mode) */}
-      {(isEditMode || isVerified) && (
-        <>
-          <div className="server-type-section">
-            <label className="form-label">Server Type:</label>
-            <div className="model-selector" ref={serverTypeDropdownRef}>
-              <button
-                type="button"
-                className="model-button"
-                onClick={() => setShowServerTypeDropdown(!showServerTypeDropdown)}
-                disabled={isLoading}
-              >
-                <svg
-                  className="model-icon"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <span className="model-name">
-                  {newServerType === 'stdio' ? 'Stdio' : newServerType === 'sse' ? 'SSE' : 'StreamableHttp'}
-                </span>
-                <svg
-                  className={`dropdown-arrow ${showServerTypeDropdown ? 'rotated' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {/* Server Type dropdown */}
-              {showServerTypeDropdown && (
-                <div className="model-dropdown">
-                  <div className="dropdown-header">Choose Server Type</div>
-                  <div className="model-list">
-                    <button
-                      type="button"
-                      className={`model-option ${newServerType === 'stdio' ? 'selected' : ''}`}
-                      onClick={() => handleServerTypeChange('stdio')}
-                      disabled={isLoading}
-                    >
-                      <div className="model-info">
-                        <span className="model-option-name">Stdio</span>
-                      </div>
-                      {newServerType === 'stdio' && (
-                        <svg className="check-icon" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className={`model-option ${newServerType === 'sse' ? 'selected' : ''}`}
-                      onClick={() => handleServerTypeChange('sse')}
-                      disabled={isLoading}
-                    >
-                      <div className="model-info">
-                        <span className="model-option-name">SSE</span>
-                      </div>
-                      {newServerType === 'sse' && (
-                        <svg className="check-icon" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className={`model-option ${newServerType === 'StreamableHttp' ? 'selected' : ''}`}
-                      onClick={() => handleServerTypeChange('StreamableHttp')}
-                      disabled={isLoading}
-                    >
-                      <div className="model-info">
-                        <span className="model-option-name">StreamableHttp</span>
-                      </div>
-                      {newServerType === 'StreamableHttp' && (
-                        <svg className="check-icon" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="server-name-section">
-            <label className="form-label">Server Name:</label>
-            <input
-              type="text"
-              className={`server-name-input ${validationErrors.serverName ? 'error' : ''}`}
-              value={newServerName}
-              onChange={(e) => handleServerNameChange(e.target.value)}
-              placeholder="Server Name"
-              disabled={isEditMode}
-              autoFocus={!isEditMode && isVerified}
-              tabIndex={isEditMode ? -1 : 0}
+            <ServerDetailsSection
+              isEditMode={isEditMode}
+              isVerified={isVerified}
+              isLoading={isLoading}
+              newServerType={newServerType}
+              newServerName={newServerName}
+              showServerTypeDropdown={showServerTypeDropdown}
+              serverTypeDropdownRef={serverTypeDropdownRef}
+              validationErrors={validationErrors}
+              hasValidationErrors={hasValidationErrors}
+              onToggleServerTypeDropdown={() => setShowServerTypeDropdown(!showServerTypeDropdown)}
+              onServerTypeChange={handleServerTypeChange}
+              onServerNameChange={handleServerNameChange}
+              onCancel={() => navigate('/settings/mcp')}
+              onSubmit={handleAddServer}
             />
           </div>
-          {validationErrors.serverName && (
-            <div className="validation-error">
-              {validationErrors.serverName}
-            </div>
-          )}
+        </div>
+      </div>
 
-          {/* Action buttons */}
-          <div className="server-actions">
-            <button
-              className="btn-secondary"
-              onClick={() => navigate('/settings/mcp')}
-            >
-              Cancel
-            </button>
-
-            <button
-              className="btn-primary"
-              onClick={handleAddServer}
-              disabled={isLoading || !!hasValidationErrors || (!isEditMode && !isVerified)}
-            >
-              {isLoading ? (isEditMode ? 'Updating...' : 'Adding...') : (isEditMode ? 'Update Server' : 'Add Server')}
-            </button>
-          </div>
-        </>
-      )}
       <ApplyMcpToAgentsDialog
         open={applyDialogOpen}
         onOpenChange={handleApplyDialogClose}

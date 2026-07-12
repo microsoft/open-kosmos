@@ -1,0 +1,44 @@
+[
+  {
+    "pathPrefix": "docs/open-source-release-cleanup.md",
+    "owner": "Open-source cleanup integration owner",
+    "publicationBlocking": false,
+    "exceptionType": "reviewed-governance-record",
+    "justification": "The cleanup record must name prohibited patterns so reviewers can verify their removal."
+  },
+  {
+    "pathPrefix": "docs/open-source-release-templates",
+    "owner": "Legal/Open Source owner",
+    "publicationBlocking": false,
+    "exceptionType": "approved-canonical-template",
+    "justification": "Canonical Microsoft templates contain approved Microsoft organization and conduct contact references."
+  },
+  {
+    "pathPrefix": "CODE_OF_CONDUCT.md",
+    "owner": "Legal/Open Source owner",
+    "publicationBlocking": false,
+    "exceptionType": "approved-canonical-template",
+    "justification": "The exact canonical code-of-conduct block contains an approved Microsoft conduct contact."
+  },
+  {
+    "pathPrefix": "scripts/check-public-governance.js",
+    "owner": "Repository maintainer",
+    "publicationBlocking": false,
+    "exceptionType": "validator-pattern",
+    "justification": "The validator must contain the prohibited expressions that it detects."
+  },
+  {
+    "pathPrefix": "scripts/check-public-release.js",
+    "owner": "Open-source cleanup integration owner",
+    "publicationBlocking": false,
+    "exceptionType": "validator-pattern",
+    "justification": "The release validator must contain the prohibited expressions that it detects."
+  },
+  {
+    "pathPrefix": "scripts/__tests__/public-release-gates.test.ts",
+    "owner": "Open-source cleanup integration owner",
+    "publicationBlocking": false,
+    "exceptionType": "validator-test",
+    "justification": "The release validator tests must construct prohibited examples to verify that scanning remains effective."
+  }
+]

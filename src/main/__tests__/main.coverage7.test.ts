@@ -149,19 +149,6 @@ vi.mock('electron', () => ({
   globalShortcut: mocks.mockGlobalShortcut,
 }));
 
-vi.mock('selection-hook', () => ({
-  default: vi.fn(() => ({
-    on: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    getCurrentSelection: vi.fn(() => null),
-  })),
-}));
-
-vi.mock('../lib/selectionHookEncoding', () => ({
-  recoverSelectionText: vi.fn((t: string) => t),
-}));
-
 vi.mock('../lib/unifiedLogger', () => ({
   createLogger: vi.fn(() => ({
     info: vi.fn(),
@@ -266,7 +253,6 @@ vi.mock('../startup/lazy', () => ({
   getMainTokenMonitor: vi.fn(() => Promise.resolve({ setMainWindow: vi.fn() })),
   getProfileCacheManagerSync: vi.fn(() => mockProfileCacheManagerSync),
   getAdvancedLogger: vi.fn(() => mockAdvancedLogger),
-  useRemoteChannelManager: vi.fn(async (fn: any) => fn({ stopAll: vi.fn(() => Promise.resolve()) })),
   useAdvancedLogger: vi.fn((fn: any) => fn(mockAdvancedLogger)),
 }));
 
@@ -284,28 +270,6 @@ vi.mock('../lib/llm/ghcModelsManager', () => ({
   ghcModelsManager: {
     refreshFromRemote: vi.fn(() => Promise.resolve(true)),
   },
-}));
-
-const mockAssetsLibraryManager = {
-  checkAndUpdateLibraries: vi.fn(() =>
-    Promise.resolve({
-      fetchResults: [{ success: true }],
-      updateResult: { updatedAgents: 1, updatedMcpServers: 0, updatedSkills: 0 },
-    }),
-  ),
-};
-vi.mock('../lib/assetsFetcher/assetsLibraryManager', () => ({
-  assetsLibraryManager: mockAssetsLibraryManager,
-}));
-
-const mockAnalyticsManager = {
-  init: vi.fn(() => Promise.resolve()),
-  recordAppStart: vi.fn(() => Promise.resolve()),
-  recordAppClose: vi.fn(() => Promise.resolve()),
-  shutdown: vi.fn(() => Promise.resolve()),
-};
-vi.mock('../lib/analytics', () => ({
-  analyticsManager: mockAnalyticsManager,
 }));
 
 const mockSchedulerManager = {
@@ -334,13 +298,6 @@ vi.mock('../lib/chat/chatSessionStore', () => ({
 
 vi.mock('../lib/scheduler/scheduleStore', () => ({
   scheduleStore: { setMainWindow: vi.fn() },
-}));
-
-vi.mock('../lib/autoUpdate/updateManager', () => ({
-  UpdateManager: vi.fn().mockImplementation(() => ({
-    startPeriodicCheck: vi.fn(),
-    destroy: vi.fn(),
-  })),
 }));
 
 vi.mock('../lib/screenshot', () => ({

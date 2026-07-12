@@ -213,7 +213,8 @@ export class MCPClient {
           this.childProcess = (this.transport as any).process;
         }
       } else if (this.server.transport === 'sse') {
-        const serverUrl = this.server.url;
+        // For SSE transport, use url first, then fall back to serverLink for backward compatibility
+        const serverUrl = this.server.url || (this.server as any).serverLink;
         if (!serverUrl) {
           throw new Error('SSE transport requires url field');
         }

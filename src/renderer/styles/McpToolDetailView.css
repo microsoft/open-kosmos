@@ -8,8 +8,8 @@
   height: 100%;
   max-height: 100%;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
 }
 
 .no-selection-state {
@@ -82,7 +82,7 @@
 
 .tool-icon {
   font-size: 1.5rem;
-  color: rgb(59, 130, 246);
+  color: var(--color-accent);
   flex-shrink: 0;
 }
 
@@ -106,7 +106,7 @@
   font-weight: 500;
   background: rgba(107, 114, 128, 0.1);
   padding: 0.25rem 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   display: inline-block;
   border: 1px solid rgba(107, 114, 128, 0.2);
 }
@@ -124,7 +124,7 @@
   cursor: pointer;
   padding: 8px;
   min-height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   font-size: 1rem;
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -138,8 +138,8 @@
 }
 
 .copy-all-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgb(var(--color-accent-rgb) / 0.1);
+  border-color: rgb(var(--color-accent-rgb) / 0.3);
 }
 
 .tool-detail-content {
@@ -177,30 +177,30 @@
 }
 
 .copy-schema-btn {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  color: rgb(37, 99, 235);
+  background: rgb(var(--color-accent-rgb) / 0.1);
+  border: 1px solid rgb(var(--color-accent-rgb) / 0.2);
+  color: var(--color-accent-strong);
   cursor: pointer;
   padding: 8px 12px;
   min-height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 0.75rem;
   font-weight: 600;
   transition: all 0.2s ease;
 }
 
 .copy-schema-btn:hover {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgb(var(--color-accent-rgb) / 0.15);
+  border-color: rgb(var(--color-accent-rgb) / 0.3);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-rgb) / 0.15);
 }
 
 .section-content {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(203, 213, 225, 0.5);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -219,7 +219,7 @@
   background: rgba(17, 24, 39, 0.95);
   color: rgb(229, 231, 235);
   padding: 1rem;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   font-size: 0.75rem;
   line-height: 1.5;
   overflow-x: auto;

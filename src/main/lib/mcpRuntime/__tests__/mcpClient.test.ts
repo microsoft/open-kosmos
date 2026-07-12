@@ -272,6 +272,13 @@ describe('MCPClient', () => {
       expect(mockSSETransportConstructor).toHaveBeenCalledWith(new URL('http://localhost:3000/sse'));
     });
 
+    it('falls back to serverLink for backward compatibility', async () => {
+      const cfg = { ...makeConfig({ transport: 'sse' }), serverLink: 'http://legacy/sse' } as any;
+      const client = new MCPClient(cfg);
+      await client.connectToServer();
+      expect(mockSSETransportConstructor).toHaveBeenCalled();
+    });
+
     it('returns Error when no url provided', async () => {
       const cfg = makeConfig({ transport: 'sse', url: undefined });
       const client = new MCPClient(cfg);

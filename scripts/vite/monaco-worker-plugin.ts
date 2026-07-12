@@ -32,7 +32,7 @@
  *
  * # Only applies to index.html
  *
- * The toolbar / screenshot entries do not use monaco and don't need injection.
+ * The screenshot entry does not use monaco and doesn't need injection.
  */
 
 import type { Plugin } from 'vite'

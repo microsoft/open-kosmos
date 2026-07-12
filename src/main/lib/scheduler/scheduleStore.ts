@@ -54,8 +54,8 @@ function validateJob(job: SchedulerJob): void {
     throw new Error('Schedule message is required');
   }
 
-  if (!job.agentId.trim()) {
-    throw new Error('Schedule agentId is required');
+  if (!job.chat_id.trim()) {
+    throw new Error('Schedule chat_id is required');
   }
 
   if (job.scheduleType === 'cron') {
@@ -149,7 +149,7 @@ export class ScheduleStore {
     });
   }
 
-  async getJobsProjection(alias: string, agentId?: string): Promise<ScheduleJobsProjection> {
+  async getJobsProjection(alias: string, chatId?: string): Promise<ScheduleJobsProjection> {
     const months = await scheduleSettingsManager.listScheduleMonths(alias);
     for (const monthKey of months) {
       await this.ensureMonthLoaded(alias, monthKey);
@@ -158,7 +158,7 @@ export class ScheduleStore {
     const jobs = Array.from(this.jobsById.values())
       .filter((aggregate) => aggregate.alias === alias)
       .map((aggregate) => cloneDeep(aggregate.settings))
-      .filter((job) => !agentId || job.agentId === agentId)
+      .filter((job) => !chatId || job.chat_id === chatId)
       .sort((a, b) => b.id.localeCompare(a.id));
 
     return {
@@ -168,8 +168,8 @@ export class ScheduleStore {
     };
   }
 
-  async listJobs(alias: string, agentId?: string): Promise<SchedulerJob[]> {
-    const projection = await this.getJobsProjection(alias, agentId);
+  async listJobs(alias: string, chatId?: string): Promise<SchedulerJob[]> {
+    const projection = await this.getJobsProjection(alias, chatId);
     return projection.jobs;
   }
 

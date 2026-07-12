@@ -1,13 +1,24 @@
 // src/renderer/components/chat/ToolCallsSection.tsx
 // Tool Calls Section component, renders the entire tool calls area and computes overall execution status
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useContext } from 'react';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { ToolCall, Message as MessageType, ToolMessage } from '@shared/types/chatTypes';
 import { ToolCallItem } from './ToolCallItem';
 import { getToolCallsSummaryText } from './toolCallDisplayConfig';
 import { ToolCallExecutionStatus } from './toolCallViews/types';
 import { ChatStatus, useMessages } from '@renderer/lib/chat/agentChatSessionCacheManager';
+
+/**
+ * Override message source for tool-result lookup and status computation.
+ *
+ * By default `ToolCallsSection` reads the current main chat session via
+ * `useMessages()`. When the section is rendered outside the main chat — e.g. the
+ * sub-agent sidepane, whose tool results live in a separate task store — the host
+ * must provide that message array here so status and per-tool results resolve
+ * against the correct conversation. `null` means "use the main chat session".
+ */
+export const ToolCallsMessagesContext = React.createContext<MessageType[] | null>(null);
 
 /**
  * Tool Calls overall execution status
@@ -137,7 +148,12 @@ export const ToolCallsSection: React.FC<ToolCallsSectionProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
-  const allMessages: MessageType[] = useMessages();
+  const overrideMessages = useContext(ToolCallsMessagesContext);
+  const sessionMessages: MessageType[] = useMessages();
+  // Prefer an explicit message source (e.g. sub-agent sidepane) so tool-result
+  // lookup and status resolve against the conversation actually being rendered;
+  // fall back to the current main chat session.
+  const allMessages: MessageType[] = overrideMessages ?? sessionMessages;
 
   // Filter valid tool calls
   const validToolCalls = toolCalls.filter(tc =>

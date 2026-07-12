@@ -10,6 +10,9 @@ import '../../../styles/AgentChatCreation.css'
 import { createLogger } from '../../../lib/utilities/logger';
 import { useFeatureFlag } from '../../../lib/featureFlags';
 import { useScrollSelectedIntoView } from '../../../lib/hooks/useScrollSelectedIntoView'
+import { resolveChatAgent } from '@/lib/agent'
+import { useI18n } from '../../../lib/i18n/useI18n'
+import { createDefaultAgentSystemPrompt } from '@shared/types/agentSystemPrompt'
 const logger = createLogger('[CreateCustomAgentViewContent]');
 
 interface CreateCustomAgentViewContentProps {
@@ -30,6 +33,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
   const navigate = useNavigate()
   const { addChat, chats } = useChats()
   const { showToast } = useToast()
+  const { t } = useI18n()
   const externalAgentEnabled = useFeatureFlag('openkosmosFeatureExternalAgent');
 
   // Form data
@@ -90,7 +94,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
     }
 
     // Check if the name duplicates an existing Agent
-    return !chats.some(chat => chat.agent?.name === name.trim())
+    return !chats.some(chat => resolveChatAgent(chat)?.name === name.trim())
   }, [chats])
 
   // Validate form data
@@ -166,13 +170,13 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
   // Create and continue to configure
   const handleCreateAndContinue = useCallback(async () => {
     if (!isFormValid || !formData.name.trim()) {
-      showToast('Please enter a valid agent name', 'error')
+      showToast(t('agent.create.validNameRequired'), 'error')
       return
     }
 
     // Re-validate the name for duplicates (guard against concurrent creation)
     if (!validateAgentName(formData.name)) {
-      showToast('Agent name already exists. Please choose a different name.', 'error')
+      showToast(t('agent.create.nameExistsChooseDifferent'), 'error')
       return
     }
 
@@ -191,7 +195,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
           model: formData.model,
           version: '1.0.0',
           source: formData.source,
-          system_prompt: '',
+          system_prompt: createDefaultAgentSystemPrompt(),
           mcp_servers: isExternal ? [] : [{ name: 'builtin-tools', tools: [] }],
           skills: isExternal ? [] : [...BUILTIN_SKILL_NAMES],
           ...(isExternal && { authToken: crypto.randomUUID() }),
@@ -206,51 +210,51 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
         const chatAvailable = await waitForChatInCache(chatId)
 
         if (chatAvailable) {
-          showToast(`Agent "${formData.name}" created successfully!`, 'success')
+          showToast(t('agent.create.createdSuccess', { name: formData.name }), 'success')
           // Navigate to the agent/chat/{chat_id}/settings/workspace page
           navigate(`/agent/chat/${chatId}/settings/workspace`)
         } else {
           logger.warn('[CreateCustomAgentViewContent] Chat not found in cache after timeout, navigating anyway')
-          showToast(`Agent "${formData.name}" created successfully!`, 'success')
+          showToast(t('agent.create.createdSuccess', { name: formData.name }), 'success')
           navigate(`/agent/chat/${chatId}/settings/workspace`)
         }
       } else {
-        showToast(result.error || 'Failed to create agent', 'error')
+        showToast(result.error || t('agent.create.failed'), 'error')
       }
     } catch (error) {
       logger.error('[CreateCustomAgentViewContent] Failed to create agent:', error)
-      showToast('Failed to create agent', 'error')
+      showToast(t('agent.create.failed'), 'error')
     } finally {
       setIsCreating(false)
     }
-  }, [formData, addChat, navigate, showToast, waitForChatInCache, validateAgentName])
+  }, [formData, addChat, navigate, showToast, t, waitForChatInCache, validateAgentName])
 
   return (
     <div className="create-agent-content">
       {/* Agent Avatar section */}
       <div className="agent-avatar-section">
-        <label className="form-label">Agent Avatar</label>
+        <label className="form-label">{t('agent.create.avatar')}</label>
         <div className="emoji-section">
           <div
             className="emoji-display"
             onClick={() => setShowEmojiPicker(true)}
-            title="Click to change emoji"
+            title={t('agent.create.clickChangeEmoji')}
           >
             {formData.emoji}
           </div>
-          <span className="emoji-hint">Click to choose avatar</span>
+          <span className="emoji-hint">{t('agent.create.clickChooseAvatar')}</span>
         </div>
       </div>
 
       {/* Agent Name section */}
       <div className="agent-name-section">
-        <label className="form-label">Agent Name</label>
+        <label className="form-label">{t('agent.create.name')}</label>
         <input
           type="text"
           className={`agent-name-input ${validationErrors.name ? 'error' : ''} ${nameWarning ? 'warning' : ''}`}
           value={formData.name}
           onChange={(e) => handleInputChange('name', e.target.value)}
-          placeholder="Enter agent name..."
+          placeholder={t('agent.create.namePlaceholder')}
         />
         {validationErrors.name && (
           <div className="validation-error">
@@ -267,7 +271,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
       {/* Agent Source section — only show when External Agent feature is enabled */}
       {externalAgentEnabled && (
       <div className="agent-model-section">
-        <label className="form-label">Agent Source</label>
+        <label className="form-label">{t('agent.create.source')}</label>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             type="button"
@@ -279,14 +283,14 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
               flex: 1,
               padding: '8px 12px',
               borderRadius: '6px',
-              border: `1px solid ${formData.source === 'ON-DEVICE' ? 'var(--accent-color, #0078d4)' : 'var(--border-color, #ddd)'}`,
+              border: `1px solid ${formData.source === 'ON-DEVICE' ? 'var(--accent-color, var(--color-primary-600))' : 'var(--border-color, var(--color-neutral-200))'}`,
               backgroundColor: formData.source === 'ON-DEVICE' ? 'var(--accent-bg, rgba(0,120,212,0.1))' : 'transparent',
               cursor: 'pointer',
               textAlign: 'left',
             }}
           >
-            <div style={{ fontWeight: 500 }}>🤖 Normal Agent</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>AI agent powered by your configured model</div>
+            <div style={{ fontWeight: 500 }}>{t('agent.create.normalAgent')}</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{t('agent.create.normalAgentDescription')}</div>
           </button>
           <button
             type="button"
@@ -298,14 +302,14 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
               flex: 1,
               padding: '8px 12px',
               borderRadius: '6px',
-              border: `1px solid ${formData.source === 'EXTERNAL' ? 'var(--accent-color, #0078d4)' : 'var(--border-color, #ddd)'}`,
+              border: `1px solid ${formData.source === 'EXTERNAL' ? 'var(--accent-color, var(--color-primary-600))' : 'var(--border-color, var(--color-neutral-200))'}`,
               backgroundColor: formData.source === 'EXTERNAL' ? 'var(--accent-bg, rgba(0,120,212,0.1))' : 'transparent',
               cursor: 'pointer',
               textAlign: 'left',
             }}
           >
-            <div style={{ fontWeight: 500 }}>🐾 External Agent</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Connect to an external AI service</div>
+            <div style={{ fontWeight: 500 }}>{t('agent.create.externalAgent')}</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{t('agent.create.externalAgentDescription')}</div>
           </button>
         </div>
       </div>
@@ -314,7 +318,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
       {/* Agent Model section (hidden for External Agent — external LLM) */}
       {formData.source !== 'EXTERNAL' && (
       <div className="agent-model-section">
-        <label className="form-label">Agent Model</label>
+        <label className="form-label">{t('agent.create.model')}</label>
         <div className="model-selector" ref={modelDropdownRef}>
           <button
             type="button"
@@ -335,7 +339,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
               />
             </svg>
             <span className="model-name">
-              {availableModels.find(m => m.id === formData.model)?.name || 'Select Model'}
+              {availableModels.find(m => m.id === formData.model)?.name || t('agent.create.selectModel')}
             </span>
             <svg
               className={`dropdown-arrow ${showModelDropdown ? 'rotated' : ''}`}
@@ -367,9 +371,9 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
                     <div className="model-info">
                       <span className="model-option-name">{model.name}</span>
                       <div className="model-badges">
-                        {(model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4')) && <span className="badge reasoning">Reasoning</span>}
-                        {model.capabilities.supports.tool_calls && <span className="badge tools">Tools</span>}
-                        {model.capabilities.supports.vision && <span className="badge files">Image</span>}
+                        {(model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4')) && <span className="badge reasoning">{t('agent.create.badgeReasoning')}</span>}
+                        {model.capabilities.supports.tool_calls && <span className="badge tools">{t('agent.create.badgeTools')}</span>}
+                        {model.capabilities.supports.vision && <span className="badge files">{t('agent.create.badgeImage')}</span>}
                       </div>
                     </div>
                     {formData.model === model.id && (
@@ -392,7 +396,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
           className="btn-secondary"
           onClick={() => navigate('/agent/chat/creation')}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
 
         <button
@@ -401,7 +405,7 @@ const CreateCustomAgentViewContent: React.FC<CreateCustomAgentViewContentProps> 
           disabled={isCreating || !isFormValid}
           type="button"
         >
-          {isCreating ? 'Creating...' : 'Create and Continue Configuration'}
+          {isCreating ? t('common.creating') : t('agent.create.createAndContinue')}
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef, useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { X, ZoomIn, ZoomOut, Hand, RotateCcw } from 'lucide-react';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface MermaidFullscreenViewProps {
   svgHtml: string;
@@ -12,6 +13,7 @@ const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.1;
 
 const MermaidFullscreenView: React.FC<MermaidFullscreenViewProps> = ({ svgHtml, onClose }) => {
+  const { t } = useI18n();
   const [zoom, setZoom] = useState(1); // 1 = 100% = fit-to-container
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [isPanMode, setIsPanMode] = useState(false);
@@ -126,27 +128,27 @@ const MermaidFullscreenView: React.FC<MermaidFullscreenViewProps> = ({ svgHtml, 
     <div className="mermaid-fullscreen-overlay" onClick={handleOverlayClick}>
       <div className="mermaid-fullscreen-content">
         <div className="mermaid-fullscreen-toolbar">
-          <button className="mermaid-toolbar-btn" onClick={handleZoomIn} title="Zoom In">
+          <button className="mermaid-toolbar-btn" onClick={handleZoomIn} title={t('chat.preview.zoomIn')}>
             <ZoomIn size={16} />
           </button>
-          <button className="mermaid-toolbar-btn" onClick={handleZoomOut} title="Zoom Out">
+          <button className="mermaid-toolbar-btn" onClick={handleZoomOut} title={t('chat.preview.zoomOut')}>
             <ZoomOut size={16} />
           </button>
           <span className="mermaid-toolbar-zoom-label">{zoomPercent}%</span>
           <button
             className={`mermaid-toolbar-btn ${isPanMode ? 'mermaid-toolbar-btn-active' : ''}`}
             onClick={handleTogglePan}
-            title="Pan"
+            title={t('chat.preview.pan')}
           >
             <Hand size={16} />
           </button>
-          <button className="mermaid-toolbar-btn" onClick={handleReset} title="Reset">
+          <button className="mermaid-toolbar-btn" onClick={handleReset} title={t('chat.preview.reset')}>
             <RotateCcw size={16} />
           </button>
           <button
             className="mermaid-fullscreen-close-btn"
             onClick={onClose}
-            title="Close"
+            title={t('common.close')}
           >
             <X size={18} />
           </button>

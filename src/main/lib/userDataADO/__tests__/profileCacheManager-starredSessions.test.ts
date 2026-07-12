@@ -8,14 +8,6 @@ vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
 
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({
-      cacheQuickStartImages: vi.fn(),
-    })),
-  },
-}));
-
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
   getDefaultAgentWorkspacePath: vi.fn(() => '/mock/workspace/agent'),
@@ -60,7 +52,6 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
     updatedAt: '2026-03-20T00:00:00.000Z',
     alias: 'testUser',
     freDone: true,
-    primaryAgent: 'Kobi',
     mcp_servers: [],
     skills: [],
     chats: [
@@ -74,12 +65,12 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent One',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledge: { knowledgeBase: '' },
+          knowledgeBase: '',
           version: '1.0.0',
           remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: 'test',
+          system_prompt: { 'Base.md': 'test', 'AGENTS.md': '' },
           skills: [],
           zero_states: { greeting: '', quick_starts: [] },
         },
@@ -98,7 +89,6 @@ function createStarredSession(overrides: Partial<ChatSession> = {}): ChatSession
     readStatus: 'unread',
     starred: true,
     starredAt: '2026-03-20T09:00:00.000Z',
-    source: { type: 'local' },
     ...overrides,
   };
 }
@@ -152,7 +142,6 @@ describe('ProfileCacheManager starred session index sync', () => {
           title: 'Old Title',
           lastUpdated: '2026-03-19T10:00:00.000Z',
           readStatus: 'unread',
-          source: { type: 'local' },
           agentName: 'Agent One',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -182,7 +171,7 @@ describe('ProfileCacheManager starred session index sync', () => {
     expect((manager as any).notifyProfileDataManager).not.toHaveBeenCalled();
   });
 
-  it('preserves existing readStatus and source on partial metadata sync', async () => {
+  it('preserves existing readStatus on partial metadata sync', async () => {
     const profile = createTestProfile({
       'starred-chat-sessions': [
         {
@@ -191,7 +180,6 @@ describe('ProfileCacheManager starred session index sync', () => {
           title: 'Old Title',
           lastUpdated: '2026-03-19T10:00:00.000Z',
           readStatus: 'unread',
-          source: { type: 'remote', channel: 'teams' },
           agentName: 'Agent One',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -216,7 +204,6 @@ describe('ProfileCacheManager starred session index sync', () => {
 
     const items = ((manager as any).cache.get('testUser') as ProfileV2)['starred-chat-sessions'] || [];
     expect(items[0].readStatus).toBe('unread');
-    expect(items[0].source).toEqual({ type: 'remote', channel: 'teams' });
   });
 
   it('removes an index entry when a session is unstarred', async () => {
@@ -228,7 +215,6 @@ describe('ProfileCacheManager starred session index sync', () => {
           title: 'Important Session',
           lastUpdated: '2026-03-20T10:00:00.000Z',
           readStatus: 'unread',
-          source: { type: 'local' },
           agentName: 'Agent One',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -262,7 +248,6 @@ describe('ProfileCacheManager starred session index sync', () => {
           title: 'Important Session',
           lastUpdated: '2026-03-20T10:00:00.000Z',
           readStatus: 'unread',
-          source: { type: 'local' },
           agentName: 'Agent One',
           agentEmoji: '🤖',
           agentAvatar: '',

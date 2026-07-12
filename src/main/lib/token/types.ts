@@ -14,7 +14,7 @@ export type { Message, TextContentPart, ImageContentPart, ToolCall };
 export interface TokenCounterConfig {
   /** TikToken encoder type (defaultEncoding is the common name) */
   defaultEncoding?: 'cl100k_base' | 'o200k_base';
-  /** TikToken encoder type (alias for defaultEncoding) */
+  /** TikToken encoder type (encoding is an alias, for backward compatibility) */
   encoding?: 'cl100k_base' | 'o200k_base';
   /** Whether to enable caching */
   enableCache?: boolean;

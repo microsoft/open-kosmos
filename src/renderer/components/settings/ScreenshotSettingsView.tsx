@@ -1,13 +1,16 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import ScreenshotSettingsHeaderView from './ScreenshotSettingsHeaderView'
 import ScreenshotSettingsContentView from './ScreenshotSettingsContentView'
 import { screenshotApi } from '../../ipc/screenshot-main'
 import type { ScreenshotSettings } from '@shared/ipc/screenshot'
+import { useI18n } from '../../lib/i18n/useI18n'
 import '../../styles/ScreenshotSettingsView.css'
 
 const ScreenshotSettingsView: React.FC = () => {
+  const { t } = useI18n()
+  const tRef = useRef(t)
   const [settings, setSettings] = useState<ScreenshotSettings>({
     enabled: true,
     shortcut: 'CommandOrControl+Shift+S',
@@ -18,31 +21,39 @@ const ScreenshotSettingsView: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadSettings()
-  }, [])
+    tRef.current = t
+  }, [t])
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const response = await screenshotApi.getSettings()
       if (response?.success && response.data) {
         setSettings(response.data)
       } else {
-        setError('Failed to load screenshot settings: ' + (response?.error || 'Unknown error'))
+        setError(tRef.current('settings.screenshot.loadFailed', {
+          error: response?.error || tRef.current('common.unknownError'),
+        }))
       }
     } catch (err) {
-      setError('Failed to load screenshot settings: ' + (err instanceof Error ? err.message : String(err)))
+      setError(tRef.current('settings.screenshot.loadFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
 
   const saveSettings = useCallback(async (newSettings: ScreenshotSettings) => {
     try {
       setError(null)
       const response = await screenshotApi.updateSettings(newSettings)
       if (!response?.success) {
-        setError('Failed to save settings: ' + (response?.error || 'Unknown error'))
+        setError(tRef.current('settings.screenshot.saveFailed', {
+          error: response?.error || tRef.current('common.unknownError'),
+        }))
       }
     } catch (err) {
-      setError('Failed to save settings: ' + (err instanceof Error ? err.message : String(err)))
+      setError(tRef.current('settings.screenshot.saveFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
   }, [])
 
@@ -67,7 +78,7 @@ const ScreenshotSettingsView: React.FC = () => {
         await saveSettings(newSettings)
       }
     } catch (err) {
-      setError('Failed to select save path: ' + (err instanceof Error ? err.message : String(err)))
+      setError(t('settings.screenshot.selectSavePathFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
   }
 

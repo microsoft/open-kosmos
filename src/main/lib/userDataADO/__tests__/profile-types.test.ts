@@ -3,7 +3,7 @@
  *
  * Tests pure functions and utility methods exported from profile.ts:
  * - isProfileV2(): ProfileV2 type guard
- * - detectProfileVersion(): removed
+ * - detectProfileVersion(): version detection
  * - isMcpServerConfig(): MCP server config type guard
  * - isBuiltinAgent() / getBuiltinAgentNames(): built-in agent checks
  * - ChatSessionUtils: ChatSession utility methods
@@ -22,6 +22,8 @@ vi.mock('../../llm/ghcModelsManager', async () => ({
 
 import {
   isProfileV2,
+  detectProfileVersion,
+  isProfile,
   isMcpServerConfig,
   isBuiltinAgent,
   getBuiltinAgentNames,
@@ -113,6 +115,36 @@ describe('isProfileV2', () => {
 });
 
 // ============================================================
+// detectProfileVersion
+// ============================================================
+describe('detectProfileVersion', () => {
+  it('should return "v2" for valid ProfileV2', () => {
+    const profile = { alias: 'user1', chats: [], mcp_servers: [] };
+    expect(detectProfileVersion(profile)).toBe('v2');
+  });
+
+  it('should return "unknown" for invalid profile', () => {
+    expect(detectProfileVersion({})).toBe('unknown');
+    expect(detectProfileVersion(null)).toBe('unknown');
+    expect(detectProfileVersion({ authProvider: 'github', alias: 'x', chats: [] })).toBe('unknown');
+  });
+});
+
+// ============================================================
+// isProfile (alias for isProfileV2)
+// ============================================================
+describe('isProfile', () => {
+  it('should behave identically to isProfileV2', () => {
+    const valid = { alias: 'user1', chats: [], mcp_servers: [] };
+    const invalid = { foo: 'bar' };
+
+    expect(isProfile(valid)).toBe(isProfileV2(valid));
+    expect(isProfile(invalid)).toBe(isProfileV2(invalid));
+    expect(isProfile(null)).toBe(isProfileV2(null));
+  });
+});
+
+// ============================================================
 // isMcpServerConfig type guard
 // ============================================================
 describe('isMcpServerConfig', () => {
@@ -173,13 +205,19 @@ describe('getBuiltinAgentNames', () => {
     expect(getBuiltinAgentNames('openkosmos')).toEqual(['Kobi']);
   });
 
-  it('should return ["Kobi"] regardless of brand argument', () => {
-    expect(getBuiltinAgentNames('unknown-brand')).toEqual(['Kobi']);
+  it('should ignore non-openkosmos brand arguments', () => {
+    expect(getBuiltinAgentNames('custom-brand')).toEqual(['Kobi']);
+    expect(getBuiltinAgentNames('OpenKosmos')).toEqual(['Kobi']);
+    expect(getBuiltinAgentNames('OpenKosmos')).toEqual(['Kobi']);
   });
 
-  it('should return ["Kobi"] when no brand is provided', () => {
+  it('should default to openkosmos when no brand is provided', () => {
     expect(getBuiltinAgentNames()).toEqual(['Kobi']);
     expect(getBuiltinAgentNames(undefined)).toEqual(['Kobi']);
+  });
+
+  it('should default to openkosmos for unknown brands', () => {
+    expect(getBuiltinAgentNames('unknown-brand')).toEqual(['Kobi']);
   });
 
   it('should match BUILTIN_AGENT_NAMES_OpenKosmos constant', () => {
@@ -191,14 +229,16 @@ describe('getBuiltinAgentNames', () => {
 // isBuiltinAgent
 // ============================================================
 describe('isBuiltinAgent', () => {
-  it('should return true for "Kobi"', () => {
+  it('should return true for "Kobi" in openkosmos brand', () => {
     expect(isBuiltinAgent('Kobi', 'openkosmos')).toBe(true);
-    expect(isBuiltinAgent('Kobi')).toBe(true);
   });
 
-  it('should return false for non-built-in agent names', () => {
-    expect(isBuiltinAgent('Custom Agent', 'openkosmos')).toBe(false);
-    expect(isBuiltinAgent('Custom Agent')).toBe(false);
+  it('should return true for "Kobi" when a non-openkosmos brand is passed', () => {
+    expect(isBuiltinAgent('Kobi', 'custom-brand')).toBe(true);
+  });
+
+  it('should return false for non-Kobi built-in candidates', () => {
+    expect(isBuiltinAgent('Legacy Agent', 'openkosmos')).toBe(false);
   });
 
   it('should be case-insensitive for agent name', () => {
@@ -208,7 +248,7 @@ describe('isBuiltinAgent', () => {
 
   it('should return false for custom agent names', () => {
     expect(isBuiltinAgent('My Custom Agent', 'openkosmos')).toBe(false);
-    expect(isBuiltinAgent('My Custom Agent')).toBe(false);
+    expect(isBuiltinAgent('My Custom Agent', 'custom-brand')).toBe(false);
   });
 
   it('should return false for null/undefined agent name', () => {
@@ -220,9 +260,9 @@ describe('isBuiltinAgent', () => {
     expect(isBuiltinAgent('', 'openkosmos')).toBe(false);
   });
 
-  it('should ignore the brandName parameter (openkosmos-only)', () => {
-    expect(isBuiltinAgent('Kobi', 'openkosmos')).toBe(true);
-    expect(isBuiltinAgent('Research Agent', 'openkosmos')).toBe(false);
+  it('should default to openkosmos when no brand is provided', () => {
+    expect(isBuiltinAgent('Kobi')).toBe(true);
+    expect(isBuiltinAgent('Demo Agent')).toBe(false);
   });
 });
 
@@ -409,15 +449,18 @@ describe('Default constants', () => {
     expect(DEFAULT_CHAT_AGENT.name).toBe('Kobi');
     expect(DEFAULT_CHAT_AGENT.emoji).toBe('\uD83D\uDC2C'); // dolphin emoji
     expect(DEFAULT_CHAT_AGENT.role).toBe('Default Assistant');
-    expect(DEFAULT_CHAT_AGENT.model).toBe('claude-sonnet-4.6');
+    expect(DEFAULT_CHAT_AGENT.model).toBe('claude-opus-4.6');
     expect(DEFAULT_CHAT_AGENT.mcp_servers).toEqual([{ name: 'builtin-tools', tools: [] }]);
     expect(DEFAULT_CHAT_AGENT.system_prompt).toBeTruthy();
-    expect(typeof DEFAULT_CHAT_AGENT.system_prompt).toBe('string');
+    expect(DEFAULT_CHAT_AGENT.system_prompt).toEqual(expect.objectContaining({
+      'Base.md': expect.any(String),
+      'AGENTS.md': '',
+    }));
   });
 
   it('DEFAULT_PROFILE_V2 should have correct version', () => {
     expect(DEFAULT_PROFILE_V2.version).toBe('2.0.0');
-    expect(DEFAULT_PROFILE_V2.primaryAgent).toBe('Kobi');
+    expect(DEFAULT_PROFILE_V2.primaryChat).toBeUndefined();
     expect(DEFAULT_PROFILE_V2.freDone).toBe(false);
     expect(DEFAULT_PROFILE_V2.mcp_servers).toEqual([]);
     expect(DEFAULT_PROFILE_V2.chats).toEqual([]);

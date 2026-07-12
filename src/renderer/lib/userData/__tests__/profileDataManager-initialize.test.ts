@@ -35,7 +35,7 @@ import { ProfileDataManager } from '../profileDataManager';
 
 describe('ProfileDataManager.initialize', () => {
   const createProfile = () => ({
-    alias: 'testuser',
+    alias: 'sample-user',
     chats: [
       {
         chat_id: 'chat-1',
@@ -50,7 +50,6 @@ describe('ProfileDataManager.initialize', () => {
       },
     ],
     skills: [],
-    sub_agents: [],
     mcp_servers: [],
   });
 
@@ -68,7 +67,7 @@ describe('ProfileDataManager.initialize', () => {
     const profile = createProfile();
 
     (manager as any).handleProfileCacheUpdate({
-      alias: 'testuser',
+      alias: 'sample-user',
       profile,
       timestamp: Date.now(),
     });
@@ -83,7 +82,7 @@ describe('ProfileDataManager.initialize', () => {
 
     // Simulate the original race: main process pushed profile before auth_set/userAlias init.
     (manager as any).handleProfileCacheUpdate({
-      alias: 'testuser',
+      alias: 'sample-user',
       profile,
       timestamp: Date.now() - 1000,
     });
@@ -93,9 +92,9 @@ describe('ProfileDataManager.initialize', () => {
       data: profile,
     });
 
-    await manager.initialize('testuser');
+    await manager.initialize('sample-user');
 
-    expect(getProfileMock).toHaveBeenCalledWith('testuser');
+    expect(getProfileMock).toHaveBeenCalledWith('sample-user');
     expect(manager.getCache().isInitialized).toBe(true);
     expect(manager.getCache().profile).toEqual(profile);
     expect(manager.getCache().chats).toHaveLength(1);

@@ -125,6 +125,7 @@ vi.mock('../../../lib/userData', () => ({
   },
 }));
 
+
 vi.mock('../../../lib/chat/startNewChatFor', () => ({
   startNewChatFor: vi.fn().mockResolvedValue({ success: true, chatSessionId: 'session-new' }),
 }));
@@ -189,6 +190,7 @@ describe('ChatView — initial-fetch when cache is empty', () => {
       success: true,
       data: { chatId: 'chat-1', chatSessionId: 'session-a' },
     });
+
     setupElectronAPI({ getCurrentChatSession });
 
     render(<ChatView />);
@@ -265,6 +267,49 @@ describe('ChatView — initial-fetch when cache is empty', () => {
     });
 
     expect(mockSetCurrentChatSessionId).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatView — scheduled session navigation', () => {
+  it('does not open the sidepane until route identifiers are available', () => {
+    routeChatId = undefined;
+    routeSessionId = undefined;
+    routeNavState = { openSchedulesSidepane: true };
+
+    render(<ChatView />);
+
+    expect(mockEffectiveShow).not.toHaveBeenCalled();
+  });
+
+  it('does not open the sidepane before the requested session becomes current', () => {
+    routeSessionId = 'session-b';
+    mockChatSessionId = 'session-a';
+    routeNavState = { openSchedulesSidepane: true };
+
+    render(<ChatView />);
+
+    expect(mockEffectiveShow).not.toHaveBeenCalled();
+  });
+
+  it('opens the sidepane after navigation reaches a scheduled session', () => {
+    routeSessionId = 'session-b';
+    mockChatSessionId = 'session-b';
+    routePathname = '/agent/chat/chat-1/session-b';
+    routeNavState = {
+      source: 'schedule-run-toast',
+      openSchedulesSidepane: true,
+    };
+
+    render(<ChatView />);
+
+    expect(mockEffectiveShow).toHaveBeenCalledOnce();
+    expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/chat-1/session-b', {
+      replace: true,
+      state: {
+        source: 'schedule-run-toast',
+        openSchedulesSidepane: false,
+      },
+    });
   });
 });
 
@@ -507,17 +552,6 @@ describe('ChatView — agent:editAgent dispatching', () => {
 
     expect(events).toHaveLength(0);
     window.removeEventListener('agent:editAgent', listener);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isReadOnly prop for remote vs non-remote sessions
-// ---------------------------------------------------------------------------
-
-describe('ChatView — isReadOnly prop', () => {
-  it('passes isReadOnly=false when session source is not remote', () => {
-    render(<ChatView />);
-    expect(capturedChatViewContentProps?.isReadOnly).toBe(false);
   });
 });
 

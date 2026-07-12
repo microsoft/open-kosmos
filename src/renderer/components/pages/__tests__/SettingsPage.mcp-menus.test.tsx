@@ -12,8 +12,6 @@
  *  - onMcpAddMenuToggle (open / close)
  *  - onSkillsAddMenuToggle (open / close)
  *  - onSkillMenuToggle (open, re-click same = close)
- *  - onSubAgentsAddMenuToggle (open / close)
- *  - onSubAgentMenuToggle (open, re-click same = close)
  *  - handleConfirmDeleteMcp (success / failure / throw / missing API)
  */
 
@@ -54,9 +52,6 @@ vi.mock('react-router-dom', async () => ({
         {/* Skills menus */}
         <button data-testid="skills-add-toggle" onClick={() => ctx.onSkillsAddMenuToggle?.(document.createElement('button'))} />
         <button data-testid="skill-menu-toggle" onClick={() => ctx.onSkillMenuToggle?.('skill1', document.createElement('button'))} />
-        {/* Sub-agents menus */}
-        <button data-testid="sub-agents-add-toggle" onClick={() => ctx.onSubAgentsAddMenuToggle?.(document.createElement('button'))} />
-        <button data-testid="sub-agent-menu-toggle" onClick={() => ctx.onSubAgentMenuToggle?.('sub1', document.createElement('button'))} />
       </div>
     );
   },
@@ -77,8 +72,8 @@ vi.mock('../../settings/SettingsNavigation', () => ({
 vi.mock('../../ui/ResizableDivider', () => ({ default: () => <div /> }));
 
 vi.mock('../../menu', () => ({
-  McpServerDropdownMenu: ({ serverName, onConnect, onDisconnect, onReconnect, onDelete, onEdit, onClose }: any) => (
-    <div data-testid="mcp-server-dropdown" data-server={serverName}>
+  McpServerDropdownMenu: ({ mcpServerMenuRef, serverName, onConnect, onDisconnect, onReconnect, onDelete, onEdit, onClose }: any) => (
+    <div ref={mcpServerMenuRef} data-testid="mcp-server-dropdown" data-server={serverName}>
       <button data-testid="dd-connect"    onClick={() => onConnect(serverName)}>Connect</button>
       <button data-testid="dd-disconnect" onClick={() => onDisconnect(serverName)}>Disconnect</button>
       <button data-testid="dd-reconnect"  onClick={() => onReconnect(serverName)}>Reconnect</button>
@@ -87,35 +82,18 @@ vi.mock('../../menu', () => ({
       <button data-testid="dd-close"      onClick={onClose}>Close</button>
     </div>
   ),
-  McpAddMenuDropdown: ({ onClose }: any) => (
-    <div data-testid="mcp-add-dropdown"><button data-testid="mcp-add-close" onClick={onClose}>Close</button></div>
+  McpAddMenuDropdown: ({ mcpAddMenuRef, onClose }: any) => (
+    <div ref={mcpAddMenuRef} data-testid="mcp-add-dropdown"><button data-testid="mcp-add-close" onClick={onClose}>Close</button></div>
   ),
-  SkillsAddMenuDropdown: ({ onClose }: any) => (
-    <div data-testid="skills-add-dropdown"><button data-testid="skills-add-close" onClick={onClose}>Close</button></div>
+  SkillsAddMenuDropdown: ({ skillsAddMenuRef, onClose }: any) => (
+    <div ref={skillsAddMenuRef} data-testid="skills-add-dropdown"><button data-testid="skills-add-close" onClick={onClose}>Close</button></div>
   ),
-  SkillDropdownMenu: ({ skillName, onClose }: any) => (
-    <div data-testid="skill-dropdown" data-skill={skillName}><button data-testid="skill-close" onClick={onClose}>Close</button></div>
-  ),
-  SubAgentsAddMenuDropdown: ({ onClose }: any) => (
-    <div data-testid="sub-agents-add-dropdown"><button data-testid="sub-agents-add-close" onClick={onClose}>Close</button></div>
+  SkillDropdownMenu: ({ skillMenuRef, skillName, onClose }: any) => (
+    <div ref={skillMenuRef} data-testid="skill-dropdown" data-skill={skillName}><button data-testid="skill-close" onClick={onClose}>Close</button></div>
   ),
 }));
 
 vi.mock('../../skills/ApplySkillToAgentsDialog', () => ({ default: () => null }));
-
-vi.mock('../../subAgents/SubAgentDropdownMenu', () => ({
-  default: ({ subAgentName, onClose }: any) => (
-    <div data-testid="sub-agent-dropdown2" data-name={subAgentName}>
-      <button data-testid="sub-agent-close" onClick={onClose}>Close</button>
-    </div>
-  ),
-}));
-
-vi.mock('../../subAgents/ApplySubAgentToAgentsDialog', () => ({
-  default: ({ open, subAgentName }: any) => (
-    <div data-testid="apply-sub-agent-dlg" data-open={String(open)} data-name={subAgentName} />
-  ),
-}));
 
 const mockShowSuccess = vi.fn();
 const mockShowError   = vi.fn();
@@ -123,7 +101,7 @@ const mockShowError   = vi.fn();
 vi.mock('../../userData/userDataProvider', () => ({
   useProfileData: () => ({
     chats: [
-      { chatId: 'c1', agent: { name: 'Agent A', skills: ['skill1'], sub_agents: ['sub1'] } },
+      { chatId: 'c1', agent: { name: 'Agent A', skills: ['skill1'] } },
     ],
   }),
   useChats: () => ({ chats: [] }),
@@ -163,8 +141,6 @@ vi.mock('../../../lib/utilities/dropdownPosition', () => ({
     mcpAddMenu:      {},
     skillsAddMenu:   {},
     skillMenu:       {},
-    subAgentsAddMenu:{},
-    subAgentMenu:    {},
   },
   getAnchoredDropdownPosition: vi.fn(() => ({ top: 10, left: 10 })),
 }));
@@ -185,9 +161,6 @@ function setupAPI(overrides: any = {}) {
     skills: {
       deleteSkill: vi.fn().mockResolvedValue({ success: true }),
     },
-    subAgent: {
-      delete: vi.fn().mockResolvedValue({ success: true }),
-    },
     ...overrides,
   };
 }
@@ -199,6 +172,83 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
     sessionStorage.clear();
     loc.pathname = '/settings/general';
     loc.state = null;
+  });
+
+  describe('page shell', () => {
+    it('uses the managed warm background utility', () => {
+      const { container } = render(<SettingsPage />);
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.classList.contains('bg-warm-50')).toBe(true);
+      expect(root.className).not.toContain('bg-[#FFFBF8]');
+    });
+
+    it('renders the mac titlebar region on macOS', () => {
+      setupAPI({ platform: 'darwin' });
+      render(<SettingsPage />);
+      expect(document.querySelector('.mac-titlebar-region')).toBeInTheDocument();
+    });
+
+    it('stores the previous path when entering settings', () => {
+      sessionStorage.setItem('previousPath', '/agent/chat/from-history');
+      render(<SettingsPage />);
+      expect(sessionStorage.getItem('settingsReturnPath')).toBe('/agent/chat/from-history');
+    });
+
+    it('navigates to the stored return path from route state', () => {
+      loc.state = { returnPath: '/agent/chat/custom-session' };
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByTestId('back-btn'));
+      expect(sessionStorage.getItem('settingsReturnPath')).toBeNull();
+      expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/custom-session');
+    });
+
+    it('falls back to the chat page when no return path is available', () => {
+      loc.pathname = '/profile';
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByTestId('back-btn'));
+      expect(mockNavigate).toHaveBeenCalledWith('/agent/chat');
+    });
+
+    it('closes all open floating menus on outside click', async () => {
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByTestId('mcp-toggle-srv1'));
+      fireEvent.click(screen.getByTestId('mcp-add-toggle'));
+      fireEvent.click(screen.getByTestId('skills-add-toggle'));
+      fireEvent.click(screen.getByTestId('skill-menu-toggle'));
+      await waitFor(() => {
+        expect(screen.getByTestId('mcp-server-dropdown')).toBeInTheDocument();
+        expect(screen.getByTestId('mcp-add-dropdown')).toBeInTheDocument();
+        expect(screen.getByTestId('skills-add-dropdown')).toBeInTheDocument();
+        expect(screen.getByTestId('skill-dropdown')).toBeInTheDocument();
+      });
+
+      fireEvent.mouseDown(document.body);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('mcp-server-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mcp-add-dropdown')).toBeNull();
+        expect(screen.queryByTestId('skills-add-dropdown')).toBeNull();
+        expect(screen.queryByTestId('skill-dropdown')).toBeNull();
+      });
+    });
+
+    it('keeps floating menus open when clicking inside them', async () => {
+      const cases = [
+        ['mcp-toggle-srv1', 'mcp-server-dropdown'],
+        ['mcp-add-toggle', 'mcp-add-dropdown'],
+        ['skills-add-toggle', 'skills-add-dropdown'],
+        ['skill-menu-toggle', 'skill-dropdown'],
+      ];
+
+      for (const [toggleId, dropdownId] of cases) {
+        const { unmount } = render(<SettingsPage />);
+        fireEvent.click(screen.getByTestId(toggleId));
+        await waitFor(() => expect(screen.getByTestId(dropdownId)).toBeInTheDocument());
+        fireEvent.mouseDown(screen.getByTestId(dropdownId));
+        expect(screen.getByTestId(dropdownId)).toBeInTheDocument();
+        unmount();
+      }
+    });
   });
 
   // ────────────────────────────────────────────────────────────────────────
@@ -326,62 +376,6 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // Sub-agents add menu toggle
-  // ────────────────────────────────────────────────────────────────────────
-
-  describe('onSubAgentsAddMenuToggle', () => {
-    it('opens sub-agents add menu', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agents-add-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agents-add-dropdown'));
-    });
-
-    it('closes sub-agents add menu when toggled again', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agents-add-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agents-add-dropdown'));
-      fireEvent.click(screen.getByTestId('sub-agents-add-toggle'));
-      await waitFor(() => expect(screen.queryByTestId('sub-agents-add-dropdown')).toBeNull());
-    });
-
-    it('closes sub-agents add menu via onClose', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agents-add-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agents-add-close'));
-      fireEvent.click(screen.getByTestId('sub-agents-add-close'));
-      await waitFor(() => expect(screen.queryByTestId('sub-agents-add-dropdown')).toBeNull());
-    });
-  });
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Sub-agent menu toggle
-  // ────────────────────────────────────────────────────────────────────────
-
-  describe('onSubAgentMenuToggle', () => {
-    it('opens sub-agent dropdown menu', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agent-menu-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agent-dropdown2'));
-    });
-
-    it('closes sub-agent dropdown when same agent toggled again', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agent-menu-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agent-dropdown2'));
-      fireEvent.click(screen.getByTestId('sub-agent-menu-toggle'));
-      await waitFor(() => expect(screen.queryByTestId('sub-agent-dropdown2')).toBeNull());
-    });
-
-    it('closes sub-agent dropdown via onClose', async () => {
-      render(<SettingsPage />);
-      fireEvent.click(screen.getByTestId('sub-agent-menu-toggle'));
-      await waitFor(() => screen.getByTestId('sub-agent-close'));
-      fireEvent.click(screen.getByTestId('sub-agent-close'));
-      await waitFor(() => expect(screen.queryByTestId('sub-agent-dropdown2')).toBeNull());
-    });
-  });
-
-  // ────────────────────────────────────────────────────────────────────────
   // MCP connect
   // ────────────────────────────────────────────────────────────────────────
 
@@ -412,6 +406,20 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
       render(<SettingsPage />);
       await act(async () => { fireEvent.click(screen.getByTestId('mcp-connect')); });
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Net error')));
+    });
+
+    it('uses fallback messages when connect fails without an error or throws a non-Error', async () => {
+      (window as any).electronAPI.profile.connectMcpServer = vi.fn().mockResolvedValueOnce({ success: false });
+      const { unmount } = render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-connect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+      unmount();
+
+      mockShowError.mockClear();
+      setupAPI({ profile: { ...(window as any).electronAPI.profile, connectMcpServer: vi.fn().mockRejectedValue('nope') } });
+      render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-connect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
     });
 
     it('shows error when connect API not available', async () => {
@@ -450,6 +458,20 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Crash')));
     });
 
+    it('uses fallback messages when disconnect fails without an error or throws a non-Error', async () => {
+      (window as any).electronAPI.profile.disconnectMcpServer = vi.fn().mockResolvedValueOnce({ success: false });
+      const { unmount } = render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-disconnect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+      unmount();
+
+      mockShowError.mockClear();
+      setupAPI({ profile: { ...(window as any).electronAPI.profile, disconnectMcpServer: vi.fn().mockRejectedValue('nope') } });
+      render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-disconnect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+    });
+
     it('shows error when disconnect API not available', async () => {
       (window as any).electronAPI.profile = undefined;
       render(<SettingsPage />);
@@ -483,6 +505,20 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
       render(<SettingsPage />);
       await act(async () => { fireEvent.click(screen.getByTestId('mcp-reconnect')); });
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Timeout')));
+    });
+
+    it('uses fallback messages when reconnect fails without an error or throws a non-Error', async () => {
+      (window as any).electronAPI.profile.reconnectMcpServer = vi.fn().mockResolvedValueOnce({ success: false });
+      const { unmount } = render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-reconnect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+      unmount();
+
+      mockShowError.mockClear();
+      setupAPI({ profile: { ...(window as any).electronAPI.profile, reconnectMcpServer: vi.fn().mockRejectedValue('nope') } });
+      render(<SettingsPage />);
+      await act(async () => { fireEvent.click(screen.getByTestId('mcp-reconnect')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
     });
 
     it('shows error when reconnect API not available', async () => {
@@ -547,6 +583,24 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
       await waitFor(() => screen.getByText('Delete'));
       await act(async () => { fireEvent.click(screen.getByText('Delete')); });
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('DB error')));
+    });
+
+    it('uses fallback messages when MCP deletion fails without an error or throws a non-Error', async () => {
+      (window as any).electronAPI.profile.deleteMcpServer = vi.fn().mockResolvedValueOnce({ success: false });
+      const { unmount } = render(<SettingsPage />);
+      fireEvent.click(screen.getByTestId('mcp-delete'));
+      await waitFor(() => screen.getByText('Delete'));
+      await act(async () => { fireEvent.click(screen.getByText('Delete')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+      unmount();
+
+      mockShowError.mockClear();
+      setupAPI({ profile: { ...(window as any).electronAPI.profile, deleteMcpServer: vi.fn().mockRejectedValue('nope') } });
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByTestId('mcp-delete'));
+      await waitFor(() => screen.getByText('Delete'));
+      await act(async () => { fireEvent.click(screen.getByText('Delete')); });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
     });
 
     it('shows error when deleteMcpServer API not available', async () => {
@@ -623,4 +677,88 @@ describe('SettingsPage — MCP + menu handler coverage', () => {
       );
     });
   });
+
+  describe('Skill deletion', () => {
+    function openSkillDeleteDialog() {
+      render(<SettingsPage />);
+      act(() => {
+        window.dispatchEvent(new CustomEvent('skill:delete', { detail: { skillName: 'skill1' } }));
+      });
+      return waitFor(() => screen.getByText('Delete Skill'));
+    }
+
+    it('opens and closes the skill delete dialog via onOpenChange', async () => {
+      await openSkillDeleteDialog();
+      expect(screen.getByText(/currently being used by 1 agent/)).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('dialog-oc-close'));
+      await waitFor(() => expect(screen.queryByText('Delete Skill')).toBeNull());
+    });
+
+    it('closes the skill delete dialog via No', async () => {
+      await openSkillDeleteDialog();
+      fireEvent.click(screen.getByText('No'));
+      await waitFor(() => expect(screen.queryByText('Delete Skill')).toBeNull());
+    });
+
+    it('confirms skill deletion and refreshes profile data', async () => {
+      await openSkillDeleteDialog();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => {
+        expect((window as any).electronAPI.skills.deleteSkill).toHaveBeenCalledWith('skill1');
+        expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('skill1'));
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+    });
+
+    it('shows an error when skill deletion fails', async () => {
+      (window as any).electronAPI.skills.deleteSkill = vi.fn().mockResolvedValue({ success: false, error: 'Locked' });
+      await openSkillDeleteDialog();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Locked')));
+    });
+
+    it('uses fallback messages when skill deletion fails without an error or throws a non-Error', async () => {
+      (window as any).electronAPI.skills.deleteSkill = vi.fn().mockResolvedValueOnce({ success: false });
+      await openSkillDeleteDialog();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')));
+
+      mockShowError.mockClear();
+      setupAPI({ skills: { deleteSkill: vi.fn().mockRejectedValue('nope') } });
+      act(() => {
+        window.dispatchEvent(new CustomEvent('skill:delete', { detail: { skillName: 'skill1' } }));
+      });
+      await waitFor(() => screen.getByText('Delete Skill'));
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('unknown error')));
+    });
+
+
+    it('shows an error when skill deletion throws', async () => {
+      (window as any).electronAPI.skills.deleteSkill = vi.fn().mockRejectedValue(new Error('Skill DB down'));
+      await openSkillDeleteDialog();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Skill DB down')));
+    });
+
+    it('shows an error when the skill deletion API is missing', async () => {
+      (window as any).electronAPI.skills = undefined;
+      await openSkillDeleteDialog();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Delete'));
+      });
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('not available')));
+    });
+  });
+
 });

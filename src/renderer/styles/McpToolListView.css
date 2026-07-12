@@ -8,8 +8,8 @@
   height: 100%;
   max-height: 100%;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
 }
 
 .tool-list-content {
@@ -32,21 +32,21 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tool-item:hover {
-  background: #F8F4F1;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--color-warm-100);
+  border: 1px solid var(--color-border-strong);
   box-shadow: none;
 }
 
 .tool-item.selected {
-  background: #F8F4F1;
+  background: var(--color-warm-100);
   border: 1px solid rgba(0, 0, 0, 0.18);
 }
 

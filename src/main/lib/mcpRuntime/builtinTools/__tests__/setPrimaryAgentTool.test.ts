@@ -1,7 +1,8 @@
 import { SetPrimaryAgentTool } from '../setPrimaryAgentTool';
 
 const mockGetCachedProfile = vi.fn();
-const mockUpdatePrimaryAgent = vi.fn();
+const mockGetAllChatConfigs = vi.fn();
+const mockUpdatePrimaryChat = vi.fn();
 let currentUserAlias: string | null = 'test-user';
 
 vi.mock('../../../userDataADO', () => ({
@@ -10,7 +11,8 @@ vi.mock('../../../userDataADO', () => ({
       return currentUserAlias;
     },
     getCachedProfile: (...args: any[]) => mockGetCachedProfile(...args),
-    updatePrimaryAgent: (...args: any[]) => mockUpdatePrimaryAgent(...args),
+    getAllChatConfigs: (...args: any[]) => mockGetAllChatConfigs(...args),
+    updatePrimaryChat: (...args: any[]) => mockUpdatePrimaryChat(...args),
   },
 }));
 
@@ -70,7 +72,8 @@ describe('SetPrimaryAgentTool', () => {
   // ========== Already primary agent ==========
 
   it('returns success immediately when agent is already primary', async () => {
-    mockGetCachedProfile.mockReturnValue({ primaryAgent: 'Kobi', mcp_servers: [] });
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_kobi', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([{ chat_id: 'chat_kobi', agent: { name: 'Kobi' } }]);
 
     const result = await SetPrimaryAgentTool.execute({ agent_name: 'Kobi' });
 
@@ -78,23 +81,28 @@ describe('SetPrimaryAgentTool', () => {
     expect(result.primaryAgent).toBe('Kobi');
     expect(result.previousPrimaryAgent).toBe('Kobi');
     expect(result.message).toContain('already the primary agent');
-    expect(mockUpdatePrimaryAgent).not.toHaveBeenCalled();
+    expect(mockUpdatePrimaryChat).not.toHaveBeenCalled();
   });
 
-  it('uses "Kobi" as default previousPrimaryAgent when profile has no primaryAgent', async () => {
-    mockGetCachedProfile.mockReturnValue({ mcp_servers: [] }); // no primaryAgent field
-    mockUpdatePrimaryAgent.mockResolvedValue(true);
+  it('reports empty previousPrimaryAgent when profile has no primaryChat', async () => {
+    mockGetCachedProfile.mockReturnValue({ mcp_servers: [] }); // no primaryChat field
+    mockGetAllChatConfigs.mockReturnValue([{ chat_id: 'chat_new', agent: { name: 'NewAgent' } }]);
+    mockUpdatePrimaryChat.mockResolvedValue(true);
 
     const result = await SetPrimaryAgentTool.execute({ agent_name: 'NewAgent' });
 
-    expect(result.previousPrimaryAgent).toBe('Kobi');
+    expect(result.previousPrimaryAgent).toBe('');
   });
 
   // ========== Successful update ==========
 
-  it('returns success when updatePrimaryAgent succeeds', async () => {
-    mockGetCachedProfile.mockReturnValue({ primaryAgent: 'OldAgent', mcp_servers: [] });
-    mockUpdatePrimaryAgent.mockResolvedValue(true);
+  it('returns success when updatePrimaryChat succeeds', async () => {
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_old', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([
+      { chat_id: 'chat_old', agent: { name: 'OldAgent' } },
+      { chat_id: 'chat_new', agent: { name: 'NewAgent' } },
+    ]);
+    mockUpdatePrimaryChat.mockResolvedValue(true);
 
     const result = await SetPrimaryAgentTool.execute({ agent_name: 'NewAgent' });
 
@@ -102,24 +110,65 @@ describe('SetPrimaryAgentTool', () => {
     expect(result.primaryAgent).toBe('NewAgent');
     expect(result.previousPrimaryAgent).toBe('OldAgent');
     expect(result.message).toContain('Successfully set "NewAgent"');
-    expect(mockUpdatePrimaryAgent).toHaveBeenCalledWith('test-user', 'NewAgent');
+    expect(mockUpdatePrimaryChat).toHaveBeenCalledWith('test-user', 'chat_new');
+  });
+
+  it('maps a secondary agent name to the owning chat when setting primary chat', async () => {
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_old', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([
+      { chat_id: 'chat_old', agent: { name: 'OldAgent' } },
+      {
+        chat_id: 'chat_multi',
+        agents: [{ name: 'PrimaryAgent' }, { name: 'SecondaryAgent' }],
+      },
+    ]);
+    mockUpdatePrimaryChat.mockResolvedValue(true);
+
+    const result = await SetPrimaryAgentTool.execute({ agent_name: 'SecondaryAgent' });
+
+    expect(result.success).toBe(true);
+    expect(result.primaryAgent).toBe('SecondaryAgent');
+    expect(mockUpdatePrimaryChat).toHaveBeenCalledWith('test-user', 'chat_multi');
   });
 
   it('trims whitespace from agent_name', async () => {
-    mockGetCachedProfile.mockReturnValue({ primaryAgent: 'OldAgent', mcp_servers: [] });
-    mockUpdatePrimaryAgent.mockResolvedValue(true);
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_old', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([
+      { chat_id: 'chat_old', agent: { name: 'OldAgent' } },
+      { chat_id: 'chat_new', agent: { name: 'NewAgent' } },
+    ]);
+    mockUpdatePrimaryChat.mockResolvedValue(true);
 
     const result = await SetPrimaryAgentTool.execute({ agent_name: '  NewAgent  ' });
 
     expect(result.success).toBe(true);
-    expect(mockUpdatePrimaryAgent).toHaveBeenCalledWith('test-user', 'NewAgent');
+    expect(mockUpdatePrimaryChat).toHaveBeenCalledWith('test-user', 'chat_new');
   });
 
   // ========== Failed update ==========
 
-  it('returns failure when updatePrimaryAgent returns false', async () => {
-    mockGetCachedProfile.mockReturnValue({ primaryAgent: 'OldAgent', mcp_servers: [] });
-    mockUpdatePrimaryAgent.mockResolvedValue(false);
+  it('returns failure when agent_name matches no chat', async () => {
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_old', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([
+      { chat_id: 'chat_old', agent: { name: 'OldAgent' } },
+    ]);
+
+    const result = await SetPrimaryAgentTool.execute({ agent_name: 'Ghost' });
+
+    expect(result.success).toBe(false);
+    expect(result.primaryAgent).toBe('OldAgent');
+    expect(result.previousPrimaryAgent).toBe('OldAgent');
+    expect(result.message).toContain('was not found');
+    expect(mockUpdatePrimaryChat).not.toHaveBeenCalled();
+  });
+
+  it('returns failure when updatePrimaryChat returns false', async () => {
+    mockGetCachedProfile.mockReturnValue({ primaryChat: 'chat_old', mcp_servers: [] });
+    mockGetAllChatConfigs.mockReturnValue([
+      { chat_id: 'chat_old', agent: { name: 'OldAgent' } },
+      { chat_id: 'chat_ns', agent: { name: 'NoSuchAgent' } },
+    ]);
+    mockUpdatePrimaryChat.mockResolvedValue(false);
 
     const result = await SetPrimaryAgentTool.execute({ agent_name: 'NoSuchAgent' });
 

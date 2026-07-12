@@ -11,7 +11,9 @@ import {
   isValidChatSessionId,
 } from '../userDataADO/pathUtils';
 import { createLogger } from '../unifiedLogger';
-import { cleanupSessionAttachmentDir } from '../remoteChannel/agentBridge/attachmentPipeline';
+import * as fs from 'fs';
+import * as path from 'path';
+import { app } from 'electron';
 
 const logger = createLogger();
 
@@ -24,10 +26,28 @@ function normalizeReadStatus(status?: ChatSessionReadStatus): ChatSessionReadSta
 }
 
 function buildMetadataSnapshot(metadata: ChatSession): ChatSession {
+  const { source: _legacySource, ...localMetadata } = cloneDeep(metadata) as ChatSession & { source?: unknown };
   return {
-    ...cloneDeep(metadata),
+    ...localMetadata,
     readStatus: normalizeReadStatus(metadata.readStatus),
   };
+}
+
+function hasLegacySessionSource(metadata: ChatSession): boolean {
+  return Object.prototype.hasOwnProperty.call(metadata, 'source');
+}
+
+async function cleanupLegacySessionAttachmentDir(chatSessionId: string): Promise<void> {
+  const attachmentDir = path.join(app.getPath('userData'), 'remote-attachments', chatSessionId);
+  try {
+    await fs.promises.rm(attachmentDir, { recursive: true, force: true });
+  } catch (error) {
+    logger.warn('[ChatSessionStore] Failed to remove legacy remote attachment directory', 'cleanupLegacySessionAttachmentDir', {
+      chatSessionId,
+      attachmentDir,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function buildFileSnapshot(file: ChatSessionFile, lastUpdated: string): ChatSessionFile {
@@ -134,9 +154,20 @@ export class ChatSessionStore {
       return null;
     }
 
-    const metadata = monthIndex.sessions.find((session) => session.chatSession_id === chatSessionId);
-    if (!metadata) {
+    const persistedMetadata = monthIndex.sessions.find((session) => session.chatSession_id === chatSessionId);
+    if (!persistedMetadata) {
       return null;
+    }
+    const hadLegacySource = hasLegacySessionSource(persistedMetadata);
+    const metadata = buildMetadataSnapshot(persistedMetadata);
+    if (hadLegacySource) {
+      monthIndex.sessions = monthIndex.sessions.map((session) =>
+        session.chatSession_id === chatSessionId ? metadata : session,
+      );
+      await Promise.all([
+        chatSessionManager.writeMonthIndex(alias, chatId, month, monthIndex),
+        cleanupLegacySessionAttachmentDir(chatSessionId),
+      ]);
     }
 
     const file = await chatSessionManager.getChatSessionFile(alias, chatId, chatSessionId);
@@ -445,7 +476,7 @@ export class ChatSessionStore {
         this.chatToSessionIds.delete(chatId);
       }
       this.notifySessionDeleted(alias, chatId, chatSessionId);
-      cleanupSessionAttachmentDir(chatSessionId).catch(() => {});
+      await cleanupLegacySessionAttachmentDir(chatSessionId);
       await this.notifyUnreadSummaryChanged(alias, chatId);
       return true;
     });
@@ -454,20 +485,13 @@ export class ChatSessionStore {
   }
 
   async getChatSessionsProjection(alias: string, chatId: string): Promise<ChatSessionListProjection> {
-    // Load all sessions across all months without pagination
-    const allSessions: ChatSession[] = [];
-    let result = await chatSessionManager.getChatSessions(alias, chatId, Number.MAX_SAFE_INTEGER);
-    allSessions.push(...result.sessions);
-    while (result.hasMore) {
-      result = await chatSessionManager.getMoreChatSessions(alias, chatId, result.nextMonthIndex).then(r => ({
-        sessions: r.sessions,
-        loadedMonths: r.loadedMonth ? [r.loadedMonth] : [],
-        hasMore: r.hasMore,
-        nextMonthIndex: r.nextMonthIndex,
-      }));
-      allSessions.push(...result.sessions);
+    const persisted = await chatSessionManager.getAllChatSessions(alias, chatId);
+    const legacySessionIds = persisted
+      .filter(hasLegacySessionSource)
+      .map((session) => session.chatSession_id);
+    if (legacySessionIds.length > 0) {
+      await Promise.all(legacySessionIds.map((sessionId) => this.ensureLoaded(alias, chatId, sessionId)));
     }
-    const persisted = allSessions;
     const overlays = this.chatToSessionIds.get(chatId);
     const byId = new Map<string, ChatSession>(persisted.map((session) => [session.chatSession_id, buildMetadataSnapshot(session)]));
 

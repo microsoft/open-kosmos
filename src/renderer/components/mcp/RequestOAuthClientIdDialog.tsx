@@ -7,9 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { Button } from '../ui/button';
 import { Copy, ExternalLink } from 'lucide-react';
 import type { McpAuthClientIdRequestPayload } from '../../../shared/types/mcpAuth';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const EMPTY_PAYLOAD: McpAuthClientIdRequestPayload = {
   requestId: '',
@@ -30,6 +30,7 @@ const EMPTY_PAYLOAD: McpAuthClientIdRequestPayload = {
  * IPC would overwrite the first mid-typing.
  */
 const RequestOAuthClientIdDialog: React.FC = () => {
+  const { t } = useI18n();
   const [state, setState] = useState<{
     isOpen: boolean;
     payload: McpAuthClientIdRequestPayload;
@@ -99,6 +100,7 @@ const RequestOAuthClientIdDialog: React.FC = () => {
 
   const handleSubmit = useCallback(() => {
     const trimmedId = clientId.trim();
+    /* v8 ignore next -- guard is unreachable from the UI: the submit button is disabled whenever clientId.trim() is empty */
     if (!trimmedId) return;
     setSubmitting(true);
     const trimmedSecret = clientSecret.trim();
@@ -141,11 +143,13 @@ const RequestOAuthClientIdDialog: React.FC = () => {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Connect to {state.payload.providerLabel}
+            {t('mcp.oauth.connectTo', { provider: state.payload.providerLabel })}
           </DialogTitle>
           <DialogDescription>
-            <strong>{state.payload.serverName}</strong> needs an OAuth Client ID.
-            Register an OAuth app with {state.payload.providerLabel}, then paste the Client ID below.
+            {t('mcp.oauth.clientIdDescription', {
+              serverName: state.payload.serverName,
+              provider: state.payload.providerLabel,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -153,86 +157,85 @@ const RequestOAuthClientIdDialog: React.FC = () => {
           {/* Step list */}
           {renderedSteps.length > 0 && (
             <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                How to register
+              <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1">
+                {t('mcp.oauth.howToRegister')}
               </div>
-              <ol className="list-decimal list-inside space-y-1 text-gray-700 dark:text-gray-300">
+              <ol className="list-decimal list-inside space-y-1 text-neutral-700 dark:text-neutral-300">
                 {renderedSteps.map((step, idx) => (
                   <li key={idx}>{step}</li>
                 ))}
               </ol>
               {state.payload.instructions.setupUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
+                <button
+                  className="btn-secondary w-fit mt-2"
                   onClick={handleOpenSetupUrl}
                 >
                   <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                  Open {state.payload.providerLabel} app registration
-                </Button>
+                  {t('mcp.oauth.openAppRegistration', { provider: state.payload.providerLabel })}
+                </button>
               )}
             </div>
           )}
 
           {/* Redirect URI block */}
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-              Redirect URI (paste this into the OAuth app)
+            <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1">
+              {t('mcp.oauth.redirectUriLabel')}
             </div>
             <div className="flex items-center gap-2">
-              <code className="flex-1 px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-xs font-mono break-all">
+              <code className="flex-1 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-xs font-mono break-all">
                 {state.payload.redirectUri}
               </code>
-              <Button variant="outline" size="sm" onClick={handleCopyRedirectUri}>
+              <button className="btn-secondary" onClick={handleCopyRedirectUri}>
                 <Copy className="w-3.5 h-3.5 mr-1" />
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
+                {copied ? t('common.copied') : t('common.copy')}
+              </button>
             </div>
           </div>
 
           {/* Client ID input */}
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1" htmlFor="mcp-oauth-client-id">
-              Client ID
+            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1" htmlFor="mcp-oauth-client-id">
+              {t('mcp.oauth.clientId')}
             </label>
             <input
               id="mcp-oauth-client-id"
               type="text"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder="Paste the Client ID from your OAuth app"
+              placeholder={t('mcp.oauth.clientIdPlaceholder')}
               autoFocus
-              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
           {/* Client Secret input (optional) */}
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1" htmlFor="mcp-oauth-client-secret">
-              Client Secret <span className="lowercase text-gray-400">(optional, only for confidential clients)</span>
+            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1" htmlFor="mcp-oauth-client-secret">
+              {t('mcp.oauth.clientSecret')} <span className="lowercase text-neutral-400">{t('mcp.oauth.clientSecretOptional')}</span>
             </label>
             <input
               id="mcp-oauth-client-secret"
               type="password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Leave empty for PKCE-only public apps"
-              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={t('mcp.oauth.clientSecretPlaceholder')}
+              className="w-full px-3 py-2 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleCancel} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
+          <button className="btn-secondary" onClick={handleCancel} disabled={submitting}>
+            {t('common.cancel')}
+          </button>
+          <button
+            className="btn-primary"
             onClick={handleSubmit}
             disabled={submitting || !clientId.trim()}
           >
-            Save & Continue
-          </Button>
+            {t('mcp.oauth.saveAndContinue')}
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

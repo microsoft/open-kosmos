@@ -1,39 +1,41 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { SchedulerJob } from '@shared/ipc/scheduler'
-import { ChevronDown, Mail, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 import '../../../styles/Agent.css'
 import { TabComponentProps } from './types'
 import SchedulesContentView, { ScheduleWakeNotice } from '../../settings/SchedulesContentView'
-import AddScheduleOverlay, { type AddScheduleOverlayAgentOption } from './AddScheduleOverlay'
+import { ScheduleCleanupSection } from '../../settings/ScheduleCleanupSection'
+import AddScheduleOverlay, { type AddScheduleOverlayChatOption } from './AddScheduleOverlay'
 import { schedulerApi } from '../../../ipc/scheduler'
 import { profileDataManager } from '../../../lib/userData'
 import { showScheduledRunStartedToast } from '../../../lib/scheduler/showScheduledRunStartedToast'
 import { useToast } from '../../ui/ToastProvider'
 import { useNavigate } from 'react-router-dom'
-import { SCHEDULE_TEMPLATES, type ScheduleTemplateInitialValues } from './scheduleTemplates'
+import { resolveChatAgent } from '@/lib/agent'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 const AgentSchedulesTab: React.FC<TabComponentProps> = ({
-  agentId,
+  chatId,
   agentData,
   readOnly = false,
-  isFromLibrary = false,
 }) => {
   const navigate = useNavigate()
   const { showToast, showSuccess, showError } = useToast()
+  const { t } = useI18n()
+  const tRef = useRef(t)
   const [jobs, setJobs] = useState<SchedulerJob[]>([])
   const [agentNames, setAgentNames] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [isOverlayOpen, setIsOverlayOpen] = useState(false)
   const [editingJob, setEditingJob] = useState<SchedulerJob | null>(null)
-  const [templateInitialValues, setTemplateInitialValues] = useState<ScheduleTemplateInitialValues | undefined>(undefined)
-  const [addMenuOpen, setAddMenuOpen] = useState(false)
-  const addMenuRef = useRef<HTMLDivElement>(null)
 
-  const hasTemplates = SCHEDULE_TEMPLATES.length > 0
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
 
   const loadJobs = useCallback(async () => {
-    if (!agentId) {
+    if (!chatId) {
       setJobs([])
       return
     }
@@ -42,14 +44,16 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       setError(null)
       const response = await schedulerApi.listJobs()
       if (response?.success && response.data) {
-        setJobs(response.data.filter(job => job.agentId === agentId))
+        setJobs(response.data.filter(job => job.chat_id === chatId))
       } else {
-        setError('Failed to load schedules: ' + (response?.error || 'Unknown error'))
+        setError(tRef.current('chat.schedule.loadFailed', {
+          error: response?.error || tRef.current('common.unknownError'),
+        }))
       }
     } catch (err) {
-      setError('Failed to load schedules: ' + (err instanceof Error ? err.message : String(err)))
+      setError(tRef.current('chat.schedule.loadFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
-  }, [agentId])
+  }, [chatId])
 
   useEffect(() => {
     loadJobs()
@@ -61,15 +65,15 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
     })
 
     const handleCreated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ agentId?: string }>
-      if (!customEvent.detail?.agentId || customEvent.detail.agentId === agentId) {
+      const customEvent = event as CustomEvent<{ chatId?: string }>
+      if (!customEvent.detail?.chatId || customEvent.detail.chatId === chatId) {
         loadJobs()
       }
     }
 
     const handleUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ agentId?: string }>
-      if (!customEvent.detail?.agentId || customEvent.detail.agentId === agentId) {
+      const customEvent = event as CustomEvent<{ chatId?: string }>
+      if (!customEvent.detail?.chatId || customEvent.detail.chatId === chatId) {
         loadJobs()
       }
     }
@@ -82,7 +86,7 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       window.removeEventListener('schedule:created', handleCreated as EventListener)
       window.removeEventListener('schedule:updated', handleUpdated as EventListener)
     }
-  }, [agentId, loadJobs])
+  }, [chatId, loadJobs])
 
   useEffect(() => {
     const profile = profileDataManager.getProfile()
@@ -90,18 +94,19 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
 
     if (profile?.chats) {
       for (const chat of profile.chats) {
-        if (chat.chat_id && chat.agent?.name) {
-          names[chat.chat_id] = chat.agent.name
+        const agent = resolveChatAgent(chat)
+        if (chat.chat_id && agent?.name) {
+          names[chat.chat_id] = agent.name
         }
       }
     }
 
-    if (agentId && agentData?.name && !names[agentId]) {
-      names[agentId] = agentData.name
+    if (chatId && agentData?.name && !names[chatId]) {
+      names[chatId] = agentData.name
     }
 
     setAgentNames(names)
-  }, [agentId, agentData?.name])
+  }, [chatId, agentData?.name])
 
   const handleToggle = useCallback(async (jobId: string, enabled: boolean) => {
     try {
@@ -110,12 +115,12 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       if (response?.success) {
         setJobs(prev => prev.map(j => j.id === jobId ? { ...j, enabled } : j))
       } else {
-        setError('Failed to toggle schedule: ' + (response?.error || 'Unknown error'))
+        setError(t('chat.schedule.toggleFailed', { error: response?.error || t('common.unknownError') }))
       }
     } catch (err) {
-      setError('Failed to toggle schedule: ' + (err instanceof Error ? err.message : String(err)))
+      setError(t('chat.schedule.toggleFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
-  }, [])
+  }, [t])
 
   const handleDelete = useCallback(async (jobId: string) => {
     try {
@@ -124,26 +129,26 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       if (response?.success) {
         setJobs(prev => prev.filter(j => j.id !== jobId))
       } else {
-        setError('Failed to delete schedule: ' + (response?.error || 'Unknown error'))
+        setError(t('chat.schedule.deleteFailed', { error: response?.error || t('common.unknownError') }))
       }
     } catch (err) {
-      setError('Failed to delete schedule: ' + (err instanceof Error ? err.message : String(err)))
+      setError(t('chat.schedule.deleteFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
-  }, [])
+  }, [t])
 
-  const handleUpdate = useCallback(async (jobId: string, updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'scheduleType' | 'cronExpression' | 'runAt' | 'description' | 'notifyOnCompletion'>>) => {
+  const handleUpdate = useCallback(async (jobId: string, updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'scheduleType' | 'cronExpression' | 'runAt' | 'description'>>) => {
     try {
       setError(null)
       const response = await schedulerApi.updateJob(jobId, updates)
       if (response?.success) {
         setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates } : j))
       } else {
-        setError('Failed to update schedule: ' + (response?.error || 'Unknown error'))
+        setError(t('chat.schedule.updateFailed', { error: response?.error || t('common.unknownError') }))
       }
     } catch (err) {
-      setError('Failed to update schedule: ' + (err instanceof Error ? err.message : String(err)))
+      setError(t('chat.schedule.updateFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
-  }, [])
+  }, [t])
 
   const handleRunNow = useCallback(async (jobId: string) => {
     try {
@@ -152,72 +157,51 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       if (response?.success) {
         showScheduledRunStartedToast({
           result: response.data,
-          agentId,
+          chatId,
           navigate,
           showToast,
           showSuccess,
+          t,
         })
         await loadJobs()
         return true
       }
 
-      const message = 'Failed to run schedule: ' + (response?.error || 'Unknown error')
+      const message = t('chat.schedule.runFailed', { error: response?.error || t('common.unknownError') })
       setError(message)
       showError(message)
       return false
     } catch (err) {
-      const message = 'Failed to run schedule: ' + (err instanceof Error ? err.message : String(err))
+      const message = t('chat.schedule.runFailed', { error: err instanceof Error ? err.message : String(err) })
       setError(message)
       showError(message)
       return false
     }
-  }, [agentId, loadJobs, navigate, showError, showSuccess, showToast])
+  }, [chatId, loadJobs, navigate, showError, showSuccess, showToast, t])
 
   const enabledCount = useMemo(() => jobs.filter(job => job.enabled).length, [jobs])
-  const availableScheduleAgents = useMemo<AddScheduleOverlayAgentOption[]>(() => {
+  const availableScheduleChats = useMemo<AddScheduleOverlayChatOption[]>(() => {
     const profile = profileDataManager.getProfile()
     return (profile?.chats || [])
-      .filter((chat) => !!chat.chat_id && !!chat.agent?.name)
-      .map((chat) => ({
+      .map((chat) => ({ chat, agent: resolveChatAgent(chat) }))
+      .filter(({ chat, agent }) => !!chat.chat_id && !!agent?.name)
+      .map(({ chat, agent }) => ({
         id: chat.chat_id,
-        name: chat.agent?.name || chat.chat_id,
+        name: agent?.name || chat.chat_id,
       }))
   }, [agentNames])
 
   const handleOpenAddSchedule = useCallback(() => {
     setEditingJob(null)
-    setTemplateInitialValues(undefined)
-    setAddMenuOpen(false)
     setIsOverlayOpen(true)
   }, [])
-
-  const handleOpenTemplateSchedule = useCallback((templateId: string) => {
-    const template = SCHEDULE_TEMPLATES.find(t => t.id === templateId)
-    if (!template || !agentData) return
-    setEditingJob(null)
-    setTemplateInitialValues(template.buildInitialValues(agentData))
-    setAddMenuOpen(false)
-    setIsOverlayOpen(true)
-  }, [agentData])
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!addMenuOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
-        setAddMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [addMenuOpen])
 
   const handleEditSchedule = useCallback((job: SchedulerJob) => {
     setEditingJob(job)
     setIsOverlayOpen(true)
   }, [])
 
-  const isScheduleReadOnly = readOnly || isFromLibrary
+  const isScheduleReadOnly = readOnly
   const isEmptyState = !error && jobs.length === 0
 
   return (
@@ -225,97 +209,19 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
       <div className="tab-header">
         <div className="header-summary">
           <span className="summary-text">
-            {enabledCount} enabled schedules
+            {t('agent.schedules.enabledCount', { count: enabledCount })}
           </span>
         </div>
         <div className="header-actions">
-          {hasTemplates ? (
-            <div ref={addMenuRef} style={{ position: 'relative' }}>
-              <button
-                className="manage-servers-btn"
-                onClick={() => setAddMenuOpen(prev => !prev)}
-                disabled={isScheduleReadOnly}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-              >
-                Add New Schedule
-                <ChevronDown size={14} />
-              </button>
-              {addMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: 0,
-                    marginTop: '4px',
-                    minWidth: '220px',
-                    background: '#fff',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    zIndex: 50,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <button
-                    onClick={handleOpenAddSchedule}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      width: '100%',
-                      padding: '10px 14px',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      color: '#111827',
-                      textAlign: 'left',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                  >
-                    <Plus size={14} />
-                    Blank Schedule
-                  </button>
-                  <div style={{ height: '1px', background: '#E5E7EB' }} />
-                  {SCHEDULE_TEMPLATES.map(tpl => (
-                    <button
-                      key={tpl.id}
-                      onClick={() => handleOpenTemplateSchedule(tpl.id)}
-                      title={tpl.description}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        width: '100%',
-                        padding: '10px 14px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        color: '#111827',
-                        textAlign: 'left',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                    >
-                      <Mail size={14} />
-                      {tpl.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              className="manage-servers-btn"
-              onClick={handleOpenAddSchedule}
-              title="Add new schedule"
-              disabled={isScheduleReadOnly}
-            >
-              Add New Schedule
-            </button>
-          )}
+          <button
+            className="manage-servers-btn"
+            onClick={handleOpenAddSchedule}
+            title={t('agent.schedules.addNew')}
+            disabled={isScheduleReadOnly}
+          >
+            <Plus size={14} />
+            {t('agent.schedules.addNew')}
+          </button>
         </div>
       </div>
 
@@ -347,36 +253,41 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
               }}
             >
               <p
+                className="schedule-empty-title"
                 style={{
                   margin: 0,
                   fontSize: '18px',
                   fontWeight: 600,
-                  color: '#111827',
+                  color: 'var(--color-neutral-900)',
                 }}
               >
-                Add one-time or recurring schedules for this agent.
+                {t('agent.schedules.emptyTitle')}
               </p>
               <p
+                className="schedule-empty-description"
                 style={{
                   margin: 0,
                   fontSize: '14px',
                   lineHeight: 1.6,
-                  color: '#6B7280',
+                  color: 'var(--color-neutral-500)',
                 }}
               >
-                Scheduled runs can automatically send prompts to this agent at the time you choose.
+                {t('agent.schedules.emptyDescription')}
               </p>
               <div style={{ width: '100%', marginTop: '2px' }}>
                 <ScheduleWakeNotice compact />
               </div>
+              <div style={{ width: '100%', marginTop: '8px' }}>
+                <ScheduleCleanupSection chatId={chatId!} disabled={isScheduleReadOnly} />
+              </div>
               <button
                 className="manage-servers-btn"
                 onClick={handleOpenAddSchedule}
-                title="Add new schedule"
+                title={t('agent.schedules.addNew')}
                 disabled={isScheduleReadOnly}
                 style={{ marginTop: '6px' }}
               >
-                Add New Schedule
+                {t('agent.schedules.addNew')}
               </button>
             </div>
           </div>
@@ -391,6 +302,7 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
             onRunNow={handleRunNow}
             onEdit={handleEditSchedule}
             readOnly={isScheduleReadOnly}
+            chatId={chatId!}
           />
         )}
       </div>
@@ -401,14 +313,12 @@ const AgentSchedulesTab: React.FC<TabComponentProps> = ({
           setIsOverlayOpen(open)
           if (!open) {
             setEditingJob(null)
-            setTemplateInitialValues(undefined)
           }
         }}
-        defaultAgentId={agentId}
-        lockAgent
-        agents={availableScheduleAgents}
+        defaultChatId={chatId}
+        lockChat
+        chatOptions={availableScheduleChats}
         editingJob={editingJob}
-        initialValues={templateInitialValues}
         onCreated={(job) => {
           setJobs((prev) => [job, ...prev])
         }}

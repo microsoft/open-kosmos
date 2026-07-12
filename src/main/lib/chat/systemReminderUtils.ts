@@ -10,7 +10,7 @@
  *   - Skill snapshots / skill listing / skill content
  *   - Knowledge-base context
  *   - Runtime environment notices (remote session, scheduled job)
- *   - Plugin hook additional context
+ *   - Agent Hook additional context
  *   - Sub-agent turn-progress hints
  *   - Tool results that carry system-level guidance (e.g. Skill tool output)
  *

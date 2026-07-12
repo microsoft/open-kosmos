@@ -8,15 +8,6 @@ vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
 
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({
-      cacheQuickStartImages: vi.fn(),
-      clearAgentCache: vi.fn(),
-    })),
-  },
-}));
-
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
   getDefaultAgentWorkspacePath: vi.fn((_alias: string, name: string) => `/mock/workspace/agent-${name.toLowerCase().replace(/\s+/g, '-')}-on-device`),
@@ -84,7 +75,6 @@ function createMockProfile(chats: ChatConfig[]): ProfileV2 {
     alias: 'testuser',
     primaryAgent: 'Test Agent',
     chats,
-    sub_agents: [],
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     mcp_servers: [],
@@ -103,15 +93,19 @@ function createMockProfileCacheManager(profile: ProfileV2) {
     addChatConfig: vi.fn(async (alias: string, chatConfig: ChatConfig) => {
       const p = cache.get(alias);
       if (!p) return false;
-      if (chatConfig.agent && (!chatConfig.agent.workspace || chatConfig.agent.workspace.trim() === '')) {
-        const name = chatConfig.agent.name || 'default';
-        chatConfig.agent.workspace = `/mock/workspace/agent-${name.toLowerCase().replace(/\s+/g, '-')}-on-device`;
+      if (chatConfig.agent && !chatConfig.agent.id) {
+        chatConfig.agent.id = `agent_new_${chatConfig.agent.name.toLowerCase().replace(/\s+/g, '_')}`;
+        chatConfig.agent_ids = [chatConfig.agent.id];
       }
-      if (chatConfig.agent?.workspace) {
+      if (!chatConfig.workspace || chatConfig.workspace.trim() === '') {
+        const name = chatConfig.agent?.name || 'default';
+        chatConfig.workspace = `/mock/workspace/chat-${name.toLowerCase().replace(/\s+/g, '-')}`;
+      }
+      if (chatConfig.agent && chatConfig.workspace) {
         const path = require('path');
         const knowledge = chatConfig.agent.knowledge || { knowledgeBase: '' };
         if (!knowledge.knowledgeBase || knowledge.knowledgeBase.trim() === '') {
-          knowledge.knowledgeBase = path.join(chatConfig.agent.workspace, 'knowledge');
+          knowledge.knowledgeBase = path.join('/mock/agents', chatConfig.agent.id || 'agent-new', 'knowledge');
         }
         chatConfig.agent.knowledge = knowledge;
       }
@@ -128,11 +122,12 @@ describe('duplicateAgent', () => {
     vi.clearAllMocks();
   });
 
-  it('creates a new agent with independent chat_id and workspace', async () => {
+  it('creates a new agent with independent chat_id and chat workspace', async () => {
     const sourceChat: ChatConfig = {
       chat_id: 'chat_source_001',
       chat_type: 'single_agent',
-      agent: createMockAgent(),
+      agent: createMockAgent({ id: 'agent_source_001' }),
+      agent_ids: ['agent_source_001'],
     };
     const profile = createMockProfile([sourceChat]);
     const pcm = createMockProfileCacheManager(profile);
@@ -148,7 +143,11 @@ describe('duplicateAgent', () => {
     expect(newChat).toBeDefined();
     expect(newChat!.agent!.name).toBe('Duplicated Agent');
     expect(newChat!.agent!.source).toBe('ON-DEVICE');
-    expect(newChat!.agent!.workspace).not.toBe(sourceChat.agent!.workspace);
+    expect(newChat!.agent!.id).toBe('agent_new_duplicated_agent');
+    expect(newChat!.agent_ids).toEqual(['agent_new_duplicated_agent']);
+    expect(newChat!.agent!.id).not.toBe(sourceChat.agent!.id);
+    expect(newChat!.workspace).not.toBe(sourceChat.workspace);
+    expect(newChat!.agent!.workspace).toBeUndefined();
   });
 
   it('returns error when source agent not found', async () => {
@@ -178,7 +177,7 @@ describe('duplicateAgent', () => {
         scheduleType: 'cron',
         cronExpression: '0 9 * * *',
         enabled: true,
-        agentId: 'chat_source_003',
+        chat_id: 'chat_source_003',
         message: 'Generate the daily report',
         status: 'pending',
       },
@@ -189,7 +188,7 @@ describe('duplicateAgent', () => {
         scheduleType: 'cron',
         cronExpression: '0 10 * * *',
         enabled: false,
-        agentId: 'chat_source_003',
+        chat_id: 'chat_source_003',
         message: 'Should not be duplicated',
         status: 'pending',
       },
@@ -202,7 +201,7 @@ describe('duplicateAgent', () => {
     // Only 1 enabled job should be duplicated via schedulerManager.createJob
     expect(schedulerManager.createJob).toHaveBeenCalledTimes(1);
     const createCall = vi.mocked(schedulerManager.createJob).mock.calls[0][0] as any;
-    expect(createCall.agentId).toBe(result.newChatId);
+    expect(createCall.chat_id).toBe(result.newChatId);
     expect(createCall.name).toBe('Daily Report');
     expect(createCall.status).toBe('pending');
   });

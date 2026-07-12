@@ -3,7 +3,6 @@
  * @vitest-environment happy-dom
  *
  * Coverage2 tests for AgentPage — covers branches not covered by AgentPage.coverage.test.tsx:
- * - handleStartupUpdateComplete / handleStartupUpdateSkip
  * - selectPrimaryAgentOnStartup: no profile, no chats, no primaryChat fallback, no chatId, fail result
  * - syncWithAgentChatManager: chatId set with no session → calls startNewChatFor
  * - syncWithAgentChatManager: chatId set with existing session → skips
@@ -20,7 +19,7 @@ const mocks = vi.hoisted(() => {
   const mockNavigate = vi.fn();
   const mockNeedsFRE = vi.fn(() => false);
   const mockSubscribe = vi.fn(() => vi.fn());
-  const mockGetProfile = vi.fn(() => ({ primaryAgent: 'Kobi' }));
+  const mockGetProfile = vi.fn(() => ({ primaryChat: 'chat-1' }));
   const mockGetChatConfigs = vi.fn(() => [
     { chat_id: 'chat-1', agent: { name: 'Kobi' } },
   ]);
@@ -55,13 +54,6 @@ vi.mock('../../fre', () => ({
       <button data-testid="fre-skip" onClick={onSkip}>Skip</button>
     </div>
   ),
-  InstallUpdateOnStartupView: ({ onComplete, onSkip, isWindows }: any) => (
-    <div data-testid="startup-update">
-      <button data-testid="startup-complete" onClick={onComplete}>Complete</button>
-      <button data-testid="startup-skip" onClick={onSkip}>Skip</button>
-      {isWindows && <span data-testid="is-windows" />}
-    </div>
-  ),
 }));
 
 vi.mock('../../../lib/userData', () => ({
@@ -77,6 +69,7 @@ vi.mock('../../../lib/userData', () => ({
 vi.mock('../../../lib/chat/startNewChatFor', () => ({
   startNewChatFor: (...a: any[]) => mocks.mockStartNewChatFor(...a),
 }));
+
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
   useMessagesWithStream: () => ({ messages: [], streamingMessageId: null }),
@@ -108,13 +101,13 @@ function setupElectronAPI(platform = 'darwin') {
 // Reset module-level vars: AgentPage uses module-level booleans that persist.
 // We use vi.resetModules to get a fresh import in separate describe blocks where needed.
 
-describe('AgentPage — coverage2 (startup update flow)', () => {
+describe('AgentPage — coverage2 (startup selection flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.mockNeedsFRE.mockReturnValue(false);
     mocks.mockSubscribe.mockReturnValue(vi.fn());
     mocks.mockStartNewChatFor.mockResolvedValue({ success: true, chatSessionId: 'session-1' });
-    mocks.mockGetProfile.mockReturnValue({ primaryAgent: 'Kobi' });
+    mocks.mockGetProfile.mockReturnValue({ primaryChat: 'chat-1' });
     mocks.mockGetChatConfigs.mockReturnValue([{ chat_id: 'chat-1', agent: { name: 'Kobi' } }]);
     mocks.mockGetCurrentUserAlias.mockReturnValue('user1');
     mocks.mockUseCurrentChatId.mockReturnValue(null);
@@ -125,53 +118,6 @@ describe('AgentPage — coverage2 (startup update flow)', () => {
   it('renders AppLayout', async () => {
     render(<AgentPage />);
     await act(async () => {});
-    expect(screen.getByTestId('app-layout')).toBeTruthy();
-  });
-
-  it('handleStartupUpdateComplete: calls selectPrimaryAgentOnStartup and navigates', async () => {
-    // Force startup update to show by triggering subscribe callback with needsFRE=false
-    let subscribeCb: (() => void) | undefined;
-    mocks.mockSubscribe.mockImplementation((cb: () => void) => {
-      subscribeCb = cb;
-      return vi.fn();
-    });
-    // Initially FRE needed to prevent immediate startup update
-    mocks.mockNeedsFRE.mockReturnValue(true);
-
-    render(<AgentPage />);
-    await act(async () => {});
-
-    // FRE overlay is shown; now simulate FRE done (needsFRE=false) via subscribe
-    mocks.mockNeedsFRE.mockReturnValue(false);
-    await act(async () => { subscribeCb?.(); });
-
-    // After that the startup-update may show; if so, click complete
-    const completeBtn = document.querySelector('[data-testid="startup-complete"]') as HTMLElement;
-    if (completeBtn) {
-      await act(async () => { completeBtn.click(); });
-      expect(mocks.mockStartNewChatFor).toHaveBeenCalled();
-    }
-  });
-
-  it('handleStartupUpdateSkip: calls selectPrimaryAgentOnStartup', async () => {
-    let subscribeCb: (() => void) | undefined;
-    mocks.mockSubscribe.mockImplementation((cb: () => void) => {
-      subscribeCb = cb;
-      return vi.fn();
-    });
-    mocks.mockNeedsFRE.mockReturnValue(true);
-
-    render(<AgentPage />);
-    await act(async () => {});
-
-    mocks.mockNeedsFRE.mockReturnValue(false);
-    await act(async () => { subscribeCb?.(); });
-
-    const skipBtn = document.querySelector('[data-testid="startup-skip"]') as HTMLElement;
-    if (skipBtn) {
-      await act(async () => { skipBtn.click(); });
-    }
-    // Either it navigated or startup wasn't shown; assert no crash
     expect(screen.getByTestId('app-layout')).toBeTruthy();
   });
 
@@ -242,8 +188,8 @@ describe('AgentPage — coverage2 (startup update flow)', () => {
     expect(mocks.mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('selectPrimaryAgentOnStartup: primaryAgent not in chats falls back to first chat', async () => {
-    mocks.mockGetProfile.mockReturnValue({ primaryAgent: 'NonExistent' });
+  it('selectPrimaryAgentOnStartup: primaryChat not in chats falls back to first chat', async () => {
+    mocks.mockGetProfile.mockReturnValue({ primaryChat: 'nonexistent-chat' });
     mocks.mockGetChatConfigs.mockReturnValue([
       { chat_id: 'first-chat', agent: { name: 'Kobi' } },
     ]);
@@ -300,7 +246,7 @@ describe('AgentPage — coverage2 (syncWithAgentChatManager)', () => {
     vi.clearAllMocks();
     mocks.mockNeedsFRE.mockReturnValue(false);
     mocks.mockSubscribe.mockReturnValue(vi.fn());
-    mocks.mockGetProfile.mockReturnValue({ primaryAgent: 'Kobi' });
+    mocks.mockGetProfile.mockReturnValue({ primaryChat: 'chat-1' });
     mocks.mockGetChatConfigs.mockReturnValue([{ chat_id: 'chat-1', agent: { name: 'Kobi' } }]);
     mocks.mockGetCurrentUserAlias.mockReturnValue('user1');
     setupElectronAPI('darwin');
@@ -314,7 +260,7 @@ describe('AgentPage — coverage2 (syncWithAgentChatManager)', () => {
     render(<AgentPage />);
     await act(async () => {});
 
-    expect(mocks.mockStartNewChatFor).toHaveBeenCalledWith('chat-1', undefined);
+    expect(mocks.mockStartNewChatFor).toHaveBeenCalledWith('chat-1');
   });
 
   it('skips startNewChatFor when currentChatId is set but session exists', async () => {

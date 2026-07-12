@@ -6,6 +6,7 @@ import { APP_NAME } from '@shared/constants/branding';
 import { useAppZoomLevel } from '../../lib/userData/useAppZoomLevel';
 import { LeftNavCollapsedAtom } from '@renderer/states/left-nav.atom';
 import { appIcon } from '../../lib/brandIcon';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const WindowsTitleBar: React.FC = () => {
   const location = useLocation();
@@ -13,6 +14,7 @@ const WindowsTitleBar: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const zoomLevel = useAppZoomLevel();
   const [leftSidebarCollapsed, { toggle: handleSidebarToggle }] = LeftNavCollapsedAtom.use();
+  const { t } = useI18n();
   const showSidebarToggle = location.pathname.startsWith('/agent');
   const [showPercent, setShowPercent] = useState(false);
   const percentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,9 +99,9 @@ const WindowsTitleBar: React.FC = () => {
                 <button
                   className={`menu-button sidebar-toggle-button ${leftSidebarCollapsed ? 'active' : ''}`}
                   onClick={handleSidebarToggle}
-                  aria-label={leftSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                  aria-label={leftSidebarCollapsed ? t('layout.sidebar.show') : t('layout.sidebar.hide')}
                   aria-pressed={leftSidebarCollapsed}
-                  title={leftSidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
+                  title={leftSidebarCollapsed ? t('layout.sidebar.show') : t('layout.sidebar.hide')}
                 >
                   <PanelLeft size={15} />
                 </button>
@@ -108,7 +110,7 @@ const WindowsTitleBar: React.FC = () => {
           <button
             className="menu-button"
             onClick={() => window.electronAPI?.window?.resetZoom?.()}
-            title={`Zoom: ${zoomPercent}% (Click to reset)`}
+            title={t('common.zoomResetTitle', { percent: zoomPercent })}
             style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '0 6px' }}
           >
             {showPercent ? (
@@ -121,19 +123,19 @@ const WindowsTitleBar: React.FC = () => {
         <button
           className="menu-button"
           onClick={handleMenuClick}
-          title="Menu"
+          title={t('common.menu')}
         >
           <Menu size={18} />
         </button>
 
         <div className="window-controls">
-          <button className="window-control-button minimize" onClick={handleMinimize} title="Minimize">
+          <button className="window-control-button minimize" onClick={handleMinimize} title={t('common.minimize')}>
             <Minus size={16} />
           </button>
-          <button className="window-control-button maximize" onClick={handleMaximize} title={isMaximized ? "Restore" : "Maximize"}>
+          <button className="window-control-button maximize" onClick={handleMaximize} title={isMaximized ? t('common.restore') : t('common.maximize')}>
             {isMaximized ? <Copy size={14} /> : <Square size={14} />}
           </button>
-          <button className="window-control-button close" onClick={handleClose} title="Close">
+          <button className="window-control-button close" onClick={handleClose} title={t('common.close')}>
             <X size={16} />
           </button>
         </div>

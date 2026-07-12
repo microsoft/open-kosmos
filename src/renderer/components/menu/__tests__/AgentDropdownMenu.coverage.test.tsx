@@ -73,6 +73,16 @@ vi.mock('../../overlay/DeleteOverlay', () => ({
   },
 }));
 
+// ── ArchiveOverlay — duck-typed atom mock ─────────────────────────────────────
+const mockArchiveShow = vi.hoisted(() => vi.fn());
+vi.mock('../../overlay/ArchiveOverlay', () => ({
+  ArchiveConfirmAtom: {
+    use:       () => [{ isOpen: false, chatId: null, agentName: null }, {}],
+    useChange: () => ({ show: mockArchiveShow, cancel: vi.fn(), confirm: vi.fn() }),
+    useData:   () => ({ isOpen: false }),
+  },
+}));
+
 // ── Lucide icons ──────────────────────────────────────────────────────────────
 vi.mock('lucide-react', () => ({
   Pencil:  (p: any) => <span {...p}>Pencil</span>,
@@ -89,7 +99,7 @@ function makeProfileData(overrides: any = {}) {
     chats: overrides.chats ?? [
       { chat_id: 'c1', agent: { name: 'MyAgent' } },
     ],
-    data: { profile: { primaryAgent: overrides.primaryAgent ?? 'OtherAgent' } },
+    data: { profile: { primaryChat: overrides.primaryChat ?? 'other-chat' } },
   };
 }
 
@@ -123,7 +133,7 @@ beforeEach(() => {
     writable: true, configurable: true,
     value: {
       profile: {
-        setPrimaryAgent: vi.fn().mockResolvedValue({ success: true }),
+        setPrimaryChat: vi.fn().mockResolvedValue({ success: true }),
         archiveChatConfig: vi.fn().mockResolvedValue({ success: true }),
       },
       agentChat: {
@@ -154,74 +164,76 @@ describe('AgentDropdownMenu — coverage', () => {
 
   it('Delete Agent calls showAgent with correct args', async () => {
     await renderOpenMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /delete agent/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
     expect(mockShowAgent).toHaveBeenCalledWith('c1', 'MyAgent', false);
   });
 
   it('Delete Agent falls back to "Unknown Agent" when no agent name', async () => {
     await renderOpenMenu('c1', { chats: [{ chat_id: 'c1', agent: {} }] });
-    fireEvent.click(screen.getByRole('menuitem', { name: /delete agent/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
     expect(mockShowAgent).toHaveBeenCalledWith('c1', 'Unknown Agent', false);
   });
 
   it('Set as Primary Agent: success path calls showSuccess and refresh', async () => {
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
     expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('MyAgent'));
     expect(mockRefresh).toHaveBeenCalled();
   });
 
   it('Set as Primary Agent: result.success=false shows error with result.error', async () => {
-    (window as any).electronAPI.profile.setPrimaryAgent = vi.fn().mockResolvedValue({ success: false, error: 'permission denied' });
+    (window as any).electronAPI.profile.setPrimaryChat = vi.fn().mockResolvedValue({ success: false, error: 'permission denied' });
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
   });
 
   it('Set as Primary Agent: result.success=false with no error shows Unknown error', async () => {
-    (window as any).electronAPI.profile.setPrimaryAgent = vi.fn().mockResolvedValue({ success: false });
+    (window as any).electronAPI.profile.setPrimaryChat = vi.fn().mockResolvedValue({ success: false });
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'));
   });
 
   it('Set as Primary Agent: no API shows error', async () => {
-    (window as any).electronAPI.profile.setPrimaryAgent = undefined;
+    (window as any).electronAPI.profile.setPrimaryChat = undefined;
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
-    expect(mockShowError).toHaveBeenCalledWith('setPrimaryAgent API not available');
+    expect(mockShowError).toHaveBeenCalledWith('setPrimaryChat API not available');
   });
 
   it('Set as Primary Agent: no electronAPI shows error', async () => {
     Object.defineProperty(window, 'electronAPI', { writable: true, configurable: true, value: undefined });
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
     expect(mockShowError).toHaveBeenCalled();
   });
 
-  it('Set as Primary Agent: no agent name shows error', async () => {
-    await renderOpenMenu('c1', { chats: [{ chat_id: 'c1' }] });
+  it('Set as Primary Agent: chat not found shows error', async () => {
+    // Toggle the menu for a chat id that is absent from the chats list, so the
+    // handler's chat_id guard fires instead of resolving a primary chat.
+    await renderOpenMenu('missing-chat', { chats: [{ chat_id: 'c1', agent: { name: 'MyAgent' } }] });
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
-    expect(mockShowError).toHaveBeenCalledWith('Agent name not found');
+    expect(mockShowError).toHaveBeenCalledWith('Chat not found');
   });
 
   it('Set as Primary Agent: exception shows error', async () => {
-    (window as any).electronAPI.profile.setPrimaryAgent = vi.fn().mockRejectedValue(new Error('network fail'));
+    (window as any).electronAPI.profile.setPrimaryChat = vi.fn().mockRejectedValue(new Error('network fail'));
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /set as primary agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
     });
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('network fail'));
   });
@@ -281,54 +293,53 @@ describe('AgentDropdownMenu — coverage', () => {
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('crash'));
   });
 
-  it('Archive Agent: success shows success toast and refreshes', async () => {
+  it('Archive: clicking shows archive confirmation with chatId and agentName', async () => {
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /archive agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /archive/i }));
     });
-    expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('archived successfully'));
-    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockArchiveShow).toHaveBeenCalledWith('c1', 'MyAgent');
   });
 
-  it('Archive Agent: no archiveChatConfig API shows error', async () => {
+  it('Archive: no archiveChatConfig API — still opens confirmation (logic moved to overlay)', async () => {
     (window as any).electronAPI.profile.archiveChatConfig = undefined;
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /archive agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /archive/i }));
     });
-    expect(mockShowError).toHaveBeenCalledWith('Archive API not available');
+    expect(mockArchiveShow).toHaveBeenCalledWith('c1', 'MyAgent');
   });
 
-  it('Archive Agent: result.success=false shows error with result.error', async () => {
+  it('Archive: result.success=false — still opens confirmation (logic moved to overlay)', async () => {
     (window as any).electronAPI.profile.archiveChatConfig = vi.fn().mockResolvedValue({ success: false, error: 'locked' });
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /archive agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /archive/i }));
     });
-    expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('locked'));
+    expect(mockArchiveShow).toHaveBeenCalledWith('c1', 'MyAgent');
   });
 
-  it('Archive Agent: exception shows error', async () => {
+  it('Archive: exception — still opens confirmation (logic moved to overlay)', async () => {
     (window as any).electronAPI.profile.archiveChatConfig = vi.fn().mockRejectedValue(new Error('io err'));
     await renderOpenMenu();
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /archive agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /archive/i }));
     });
-    expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('io err'));
+    expect(mockArchiveShow).toHaveBeenCalledWith('c1', 'MyAgent');
   });
 
   it('hides Archive and Delete when isBuiltinAgent returns true', async () => {
     mockIsBuiltinAgent.mockReturnValue(true);
     await renderOpenMenu();
-    expect(screen.queryByRole('menuitem', { name: /archive agent/i })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /delete agent/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /archive/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /delete/i })).toBeNull();
   });
 
   it('hides Archive, Delete and "Set as Primary" when agent is already primary', async () => {
-    await renderOpenMenu('c1', { primaryAgent: 'MyAgent' });
-    expect(screen.queryByRole('menuitem', { name: /archive agent/i })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /delete agent/i })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /set as primary agent/i })).toBeNull();
+    await renderOpenMenu('c1', { primaryChat: 'c1' });
+    expect(screen.queryByRole('menuitem', { name: /archive/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /delete/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^set as primary$/i })).toBeNull();
   });
 
   it('hides Duplicate button when currentChat has no agent.name', async () => {
@@ -347,19 +358,93 @@ describe('AgentDropdownMenu — coverage', () => {
     await act(async () => { resolveImport({ success: false, error: 'canceled' }); });
   });
 
-  it('Archive Agent: uses "Unknown Agent" fallback when chat has no agent name', async () => {
+  it('Archive: uses "Unknown Agent" fallback when chat has no agent name', async () => {
     await renderOpenMenu('c1', { chats: [{ chat_id: 'c1', agent: {} }] });
-    // No agent name means no Duplicate button, but Archive and Delete are still shown if not builtin/primary
-    // agent.name is undefined so Archive should still appear (onArchiveAgent is always set)
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: /archive agent/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /archive/i }));
     });
-    expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('Unknown Agent'));
+    expect(mockArchiveShow).toHaveBeenCalledWith('c1', 'Unknown Agent');
   });
 
   it('Duplicate Agent calls onDuplicateAgent with chatId and agentName', async () => {
     await renderOpenMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /duplicate/i }));
     expect(mockDuplicateShow).toHaveBeenCalledWith('c1', 'MyAgent');
+  });
+
+  it('Set as Primary Agent: non-Error exception shows "Unknown error"', async () => {
+    (window as any).electronAPI.profile.setPrimaryChat = vi.fn().mockRejectedValue('string error');
+    await renderOpenMenu();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /^set as primary$/i }));
+    });
+    expect(mockShowError).toHaveBeenCalledWith('Failed to set primary: Unknown error');
+  });
+
+  it('Import Chat Session: non-Error exception shows "Unknown error"', async () => {
+    (window as any).electronAPI.agentChat.importChatSession = vi.fn().mockRejectedValue('string error');
+    await renderOpenMenu();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /import chat session/i }));
+    });
+    expect(mockShowError).toHaveBeenCalledWith('Import failed: Unknown error');
+  });
+
+  it('Import Chat Session: blocks double-click while importing', async () => {
+    let resolveImport!: (v: any) => void;
+    (window as any).electronAPI.agentChat.importChatSession = vi.fn(
+      () => new Promise(r => { resolveImport = r; })
+    );
+    await renderOpenMenu();
+    // First click starts import
+    fireEvent.click(screen.getByRole('menuitem', { name: /import/i }));
+    // Second click is ignored (isImporting guard)
+    fireEvent.click(screen.getByRole('menuitem', { name: /import/i }));
+    expect((window as any).electronAPI.agentChat.importChatSession).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveImport({ success: true, importedSessionId: 'x' }); });
+  });
+
+  it('Import Chat Session: failure without error message shows "Unknown error"', async () => {
+    (window as any).electronAPI.agentChat.importChatSession = vi.fn().mockResolvedValue({ success: false });
+    await renderOpenMenu();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /import chat session/i }));
+    });
+    expect(mockShowError).toHaveBeenCalledWith('Import failed: Unknown error');
+  });
+
+  it('AgentMenuAtom toggle: closing menu when same chatId is toggled', async () => {
+    const { default: AgentDropdownMenu, AgentMenuAtom } = await import('../AgentDropdownMenu');
+    mockUseProfileData.mockReturnValue(makeProfileData());
+
+    const anchorEl = document.createElement('button');
+    document.body.appendChild(anchorEl);
+
+    const Wrapper = () => {
+      const actions = AgentMenuAtom.useChange();
+      return (
+        <>
+          <button data-testid="toggle" onClick={() => actions.toggle('c1', anchorEl)}>Toggle</button>
+          <AgentDropdownMenu />
+        </>
+      );
+    };
+
+    render(<WithStore><Wrapper /></WithStore>);
+    // Open menu
+    await act(async () => { fireEvent.click(screen.getByTestId('toggle')); });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    // Toggle same chatId → closes
+    await act(async () => { fireEvent.click(screen.getByTestId('toggle')); });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    anchorEl.remove();
+  });
+
+  it('useLayoutEffect cleanup cancels animation frame', async () => {
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+    const { unmount } = await renderOpenMenu();
+    unmount();
+    expect(cancelSpy).toHaveBeenCalled();
+    cancelSpy.mockRestore();
   });
 });

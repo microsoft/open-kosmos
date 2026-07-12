@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AppLayout from '../AppLayout';
 
 // ---- mock variables ----
@@ -13,6 +13,53 @@ import AppLayout from '../AppLayout';
 const mockShowToast = vi.fn();
 const mockShowSuccess = vi.fn();
 const mockShowError = vi.fn();
+const i18nState = vi.hoisted(() => {
+  const enMessages: Record<string, string> = {
+    'common.openFolder': 'Open Folder',
+    'common.unknownError': 'Unknown error',
+    'common.userNotAuthenticated': 'User not authenticated',
+    'chat.files.moveFileFailedWithError': 'Failed to move file: {error}',
+    'chat.files.noKnowledgeBasePathConfigured': 'No knowledge base path configured',
+    'chat.files.permissionDeniedMoveToKnowledgeBase': 'Permission denied when moving file to Agent Knowledge',
+    'chat.files.replaceExistingConfirm': 'File "{name}" already exists. Replace it?',
+    'chat.session.downloadFailed': 'Failed to download chat session',
+    'chat.session.downloadSuccess': 'Downloaded chat session to {name}',
+    'chat.session.starred': 'Session starred',
+    'chat.session.starUpdateFailed': 'Failed to update chat session star state',
+    'chat.session.unnamed': 'Unnamed session',
+    'chat.session.unstarred': 'Session unstarred',
+    'debugInfo.defaultFileName': 'debug info zip',
+    'debugInfo.exportFailed': 'Failed to export debug info',
+    'debugInfo.exportSuccess': 'Debug info exported to {name}',
+    'skills.install.apiUnavailable': 'Skill install API is not available',
+    'skills.install.failed': 'Failed to install skill: {error}',
+    'skills.install.success': 'Skill "{name}" installed successfully',
+  };
+  const zhMessages: Record<string, string> = {
+    ...enMessages,
+    'chat.session.downloadSuccess': 'ZH downloaded chat session to {name}',
+    'debugInfo.defaultFileName': 'ZH debug info zip',
+    'debugInfo.exportSuccess': 'ZH debug info exported to {name}',
+  };
+  const interpolate = (template: string, params?: Record<string, unknown>) =>
+    template.replace(/\{(\w+)\}/g, (_match, key) => String(params?.[key] ?? ''));
+  const makeTranslator = (language: 'en' | 'zh') => (key: string, params?: Record<string, unknown>) =>
+    interpolate((language === 'zh' ? zhMessages : enMessages)[key] ?? key, params);
+  const listeners = new Set<() => void>();
+  const state = {
+    language: 'en' as 'en' | 'zh',
+    listeners,
+    translators: {
+      en: makeTranslator('en'),
+      zh: makeTranslator('zh'),
+    },
+    setLanguage(language: 'en' | 'zh') {
+      state.language = language;
+      listeners.forEach((listener) => listener());
+    },
+  };
+  return state;
+});
 
 const { mockDeleteConfirmActions } = vi.hoisted(() => ({
   mockDeleteConfirmActions: {
@@ -49,6 +96,11 @@ const { mockAgentChatSessionCacheManager } = vi.hoisted(() => ({
 
 const mockMoveFileToKnowledgeBase = vi.fn().mockResolvedValue({ success: true });
 
+const { mockUseProfileData, mockUseCurrentChatId } = vi.hoisted(() => ({
+  mockUseProfileData: vi.fn((): any => ({ data: { chats: [] as any[], lastUpdated: 1 }, chats: [] as any[] })),
+  mockUseCurrentChatId: vi.fn((): string | null => null),
+}));
+
 // ---- vi.mock calls (paths relative to __tests__ dir) ----
 
 vi.mock('../../../styles/DropdownMenu.css', () => ({}));
@@ -71,14 +123,11 @@ vi.mock('../../ui/ToastProvider', () => ({
 }));
 
 vi.mock('../../userData/userDataProvider', () => ({
-  useProfileData: () => ({
-    data: { chats: [], lastUpdated: Date.now() },
-    chats: [],
-  }),
+  useProfileData: () => mockUseProfileData(),
 }));
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
-  useCurrentChatId: () => null,
+  useCurrentChatId: () => mockUseCurrentChatId(),
   agentChatSessionCacheManager: mockAgentChatSessionCacheManager,
 }));
 
@@ -89,6 +138,25 @@ vi.mock('../../../lib/userData', () => ({
 vi.mock('../../../lib/chat/moveToKnowledgeBase', () => ({
   moveFileToKnowledgeBase: (...args: any[]) => mockMoveFileToKnowledgeBase(...args),
 }));
+
+vi.mock('../../../lib/i18n/useI18n', async () => {
+  const ReactActual = await vi.importActual<typeof import('react')>('react');
+  return {
+    useI18n: () => {
+      const [, forceRender] = ReactActual.useReducer((value: number) => value + 1, 0);
+      ReactActual.useEffect(() => {
+        const listener = () => forceRender();
+        i18nState.listeners.add(listener);
+        return () => {
+          i18nState.listeners.delete(listener);
+        };
+      }, []);
+      return {
+        t: i18nState.translators[i18nState.language],
+      };
+    },
+  };
+});
 
 vi.mock('../../overlay/DeleteOverlay', () => ({
   DeleteConfirmAtom: {
@@ -133,6 +201,7 @@ vi.mock('../../chat/workspace/PasteToWorkspaceProvider', () => ({
 // ---- helpers ----
 
 function setupElectronAPI() {
+  i18nState.language = 'en';
   Object.defineProperty(window, 'electronAPI', {
     writable: true,
     configurable: true,
@@ -141,7 +210,7 @@ function setupElectronAPI() {
       profile: {
         setChatSessionStarred: vi.fn().mockResolvedValue({ success: true }),
       },
-      skillLibrary: {
+      skills: {
         installSkillFromFilePath: vi.fn().mockResolvedValue({
           success: true,
           skillName: 'my-skill',
@@ -328,6 +397,48 @@ describe('AppLayout - chatSession:download event', () => {
       expect(mockShowError).toHaveBeenCalledWith('User not authenticated');
     });
   });
+
+  it('does not re-subscribe listeners when only language changes', async () => {
+    let capturedDebugInfoDownloaded: (result: any) => void = () => {};
+    (window.electronAPI as any).on.mockImplementation((event: string, cb: any) => {
+      if (event === 'app:debugInfoDownloaded') {
+        capturedDebugInfoDownloaded = cb;
+      }
+      return () => {};
+    });
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue({ data: { chats: [], lastUpdated: 1 }, chats: [] });
+    const addListenerSpy = vi.spyOn(window, 'addEventListener');
+    const removeListenerSpy = vi.spyOn(window, 'removeEventListener');
+
+    render(<AppLayout />);
+    expect(addListenerSpy.mock.calls.filter(([event]) => event === 'chatSession:download')).toHaveLength(1);
+    expect((window.electronAPI as any).on).toHaveBeenCalledTimes(1);
+
+    addListenerSpy.mockClear();
+    removeListenerSpy.mockClear();
+    (window.electronAPI as any).on.mockClear();
+    mockShowToast.mockClear();
+
+    act(() => {
+      i18nState.setLanguage('zh');
+    });
+
+    expect(addListenerSpy).not.toHaveBeenCalled();
+    expect(removeListenerSpy).not.toHaveBeenCalled();
+    expect((window.electronAPI as any).on).not.toHaveBeenCalled();
+
+    capturedDebugInfoDownloaded({ success: true, filePath: '/tmp/debug.zip' });
+    expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining('ZH debug info zip'),
+      'success',
+      undefined,
+      expect.objectContaining({ persistent: true }),
+    );
+
+    addListenerSpy.mockRestore();
+    removeListenerSpy.mockRestore();
+  });
 });
 
 describe('AppLayout - app:debugInfoDownloaded event', () => {
@@ -414,7 +525,7 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
     const btn = screen.getByRole('button', { name: 'Install Skill' });
     fireEvent.click(btn);
     await waitFor(() => {
-      expect((window.electronAPI as any).skillLibrary.installSkillFromFilePath).toHaveBeenCalledWith(
+      expect((window.electronAPI as any).skills.installSkillFromFilePath).toHaveBeenCalledWith(
         '/some/skill.ts',
         expect.any(Object),
       );
@@ -431,7 +542,7 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
   });
 
   it('shows error when installSkillFromFilePath not available', async () => {
-    (window.electronAPI as any).skillLibrary = undefined;
+    (window.electronAPI as any).skills = undefined;
     render(<AppLayout />);
     const btn = screen.getByRole('button', { name: 'Install Skill' });
     fireEvent.click(btn);
@@ -441,7 +552,7 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
   });
 
   it('shows error when installSkillFromFilePath fails', async () => {
-    (window.electronAPI as any).skillLibrary.installSkillFromFilePath.mockResolvedValueOnce({
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockResolvedValueOnce({
       success: false,
       error: 'Install failed',
     });
@@ -454,7 +565,7 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
   });
 
   it('shows ApplySkillDialog when resolution is installed_but_needs_target_selection', async () => {
-    (window.electronAPI as any).skillLibrary.installSkillFromFilePath.mockResolvedValueOnce({
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockResolvedValueOnce({
       success: true,
       skillName: 'target-skill',
       message: 'Installed',
@@ -469,7 +580,7 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
   });
 
   it('shows error when installSkillFromFilePath throws', async () => {
-    (window.electronAPI as any).skillLibrary.installSkillFromFilePath.mockRejectedValueOnce(
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockRejectedValueOnce(
       new Error('Crash')
     );
     render(<AppLayout />);
@@ -478,5 +589,237 @@ describe('AppLayout - handleFileTreeNodeInstallSkill', () => {
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Crash'));
     });
+  });
+});
+
+// ---- additional branch/function coverage ----
+
+const DEFAULT_PROFILE_DATA = { data: { chats: [], lastUpdated: 1 }, chats: [] };
+
+describe('AppLayout - currentKnowledgeBasePath resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue(DEFAULT_PROFILE_DATA);
+  });
+
+  it('resolves the nested knowledgeBase for the current chat', () => {
+    const chats = [{ chat_id: 'chat-1', agent: { knowledge: { knowledgeBase: '/kb/nested' } } }];
+    mockUseCurrentChatId.mockReturnValue('chat-1');
+    mockUseProfileData.mockReturnValue({ data: { chats, lastUpdated: 2 }, chats });
+    render(<AppLayout />);
+    expect(screen.getByTestId('kb-path')).toHaveTextContent('/kb/nested');
+  });
+
+  it('falls back to the deprecated flat knowledgeBase', () => {
+    const chats = [{ chat_id: 'chat-1', agent: { knowledgeBase: '/kb/flat' } }];
+    mockUseCurrentChatId.mockReturnValue('chat-1');
+    mockUseProfileData.mockReturnValue({ data: { chats, lastUpdated: 3 }, chats });
+    render(<AppLayout />);
+    expect(screen.getByTestId('kb-path')).toHaveTextContent('/kb/flat');
+  });
+
+  it('resolves to an empty string when the agent has no knowledgeBase', () => {
+    const chats = [{ chat_id: 'chat-1', agent: { name: 'A' } }];
+    mockUseCurrentChatId.mockReturnValue('chat-1');
+    mockUseProfileData.mockReturnValue({ data: { chats, lastUpdated: 4 }, chats });
+    render(<AppLayout />);
+    expect(screen.getByTestId('kb-path').textContent).toBe('');
+  });
+});
+
+describe('AppLayout - move to knowledge with a configured KB path', () => {
+  const chats = [{ chat_id: 'chat-1', agent: { knowledge: { knowledgeBase: '/kb' } } }];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    window.alert = vi.fn();
+    mockUseCurrentChatId.mockReturnValue('chat-1');
+    mockUseProfileData.mockReturnValue({ data: { chats, lastUpdated: 5 }, chats });
+  });
+
+  const clickMove = () => fireEvent.click(screen.getByRole('button', { name: 'Move to Knowledge' }));
+
+  it('alerts permission-denied for an EACCES failure result', async () => {
+    mockMoveFileToKnowledgeBase.mockResolvedValueOnce({ success: false, error: 'EACCES: denied' });
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Permission denied')));
+  });
+
+  it('alerts a generic failure for a non-EACCES error result', async () => {
+    mockMoveFileToKnowledgeBase.mockResolvedValueOnce({ success: false, error: 'disk full' });
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to move file: disk full')));
+  });
+
+  it('does not alert when the user cancelled the replacement', async () => {
+    mockMoveFileToKnowledgeBase.mockResolvedValueOnce({ success: false, error: 'User cancelled replacement' });
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(mockMoveFileToKnowledgeBase).toHaveBeenCalled());
+    expect(window.alert).not.toHaveBeenCalled();
+  });
+
+  it('alerts permission-denied when the move throws an EACCES Error', async () => {
+    mockMoveFileToKnowledgeBase.mockRejectedValueOnce(new Error('EACCES boom'));
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Permission denied')));
+  });
+
+  it('alerts a generic failure when the move throws a non-EACCES Error', async () => {
+    mockMoveFileToKnowledgeBase.mockRejectedValueOnce(new Error('kaboom'));
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to move file: kaboom')));
+  });
+
+  it('stringifies a non-Error thrown by the move', async () => {
+    mockMoveFileToKnowledgeBase.mockRejectedValueOnce('plain string');
+    render(<AppLayout />);
+    clickMove();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to move file: plain string')));
+  });
+});
+
+describe('AppLayout - install skill extra branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue(DEFAULT_PROFILE_DATA);
+  });
+
+  it('uses the default success message when none is provided', async () => {
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockResolvedValueOnce({
+      success: true, skillName: 'sk', resolution: 'installed',
+    });
+    render(<AppLayout />);
+    fireEvent.click(screen.getByRole('button', { name: 'Install Skill' }));
+    await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Skill "sk" installed successfully'));
+  });
+
+  it('dispatches the folder-explorer refresh after installing', async () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockResolvedValueOnce({
+      success: true, skillName: 'sk', message: 'ok', resolution: 'installed',
+    });
+    render(<AppLayout />);
+    fireEvent.click(screen.getByRole('button', { name: 'Install Skill' }));
+    await waitFor(
+      () => expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'skills:refreshFolderExplorer' })),
+      { timeout: 2000 },
+    );
+    dispatchSpy.mockRestore();
+  });
+
+  it('shows "Unknown error" when a non-Error is thrown during install', async () => {
+    (window.electronAPI as any).skills.installSkillFromFilePath.mockRejectedValueOnce('string-crash');
+    render(<AppLayout />);
+    fireEvent.click(screen.getByRole('button', { name: 'Install Skill' }));
+    await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Failed to install skill: Unknown error'));
+  });
+});
+
+describe('AppLayout - delete confirm resolves the session title', () => {
+  const chats = [{ chat_id: 'chat-1', chatSessions: [{ chatSession_id: 'sess-1', title: 'My Session' }] }];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue({ data: { chats, lastUpdated: 6 }, chats });
+    mockAgentChatSessionCacheManager.getCurrentChatId.mockReturnValue('chat-1');
+    mockAgentChatSessionCacheManager.getCurrentChatSessionId.mockReturnValue('sess-1');
+  });
+
+  it('looks up the session title from the current chat', async () => {
+    render(<AppLayout />);
+    window.dispatchEvent(new CustomEvent('chatSession:delete', { detail: { sessionId: 'sess-1' } }));
+    await waitFor(() =>
+      expect(mockDeleteConfirmActions.showChatSession).toHaveBeenCalledWith('sess-1', 'My Session', true),
+    );
+  });
+});
+
+describe('AppLayout - toggleStar extra branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue(DEFAULT_PROFILE_DATA);
+  });
+
+  it('shows "Session unstarred" when unstarring succeeds', async () => {
+    render(<AppLayout />);
+    window.dispatchEvent(new CustomEvent('chatSession:toggleStar', { detail: { chatId: 'c', sessionId: 's', starred: false } }));
+    await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Session unstarred'));
+  });
+
+  it('falls back to a default error when the star toggle fails without a message', async () => {
+    (window.electronAPI as any).profile.setChatSessionStarred.mockResolvedValueOnce({ success: false });
+    render(<AppLayout />);
+    window.dispatchEvent(new CustomEvent('chatSession:toggleStar', { detail: { chatId: 'c', sessionId: 's', starred: true } }));
+    await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Failed to update chat session star state'));
+  });
+});
+
+describe('AppLayout - download extra branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue(DEFAULT_PROFILE_DATA);
+  });
+
+  it('reveals the downloaded file from the Open Folder toast action', async () => {
+    render(<AppLayout />);
+    window.dispatchEvent(new CustomEvent('chatSession:download', { detail: { chatId: 'c', sessionId: 's', title: 't' } }));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+    const call = mockShowToast.mock.calls.find((c: any[]) => c[1] === 'success');
+    (call![3] as any).actions[0].onClick();
+    expect((window.electronAPI as any).workspace.showInFolder).toHaveBeenCalledWith('/path/to/file.md');
+  });
+
+  it('falls back to a default error when download fails without a message', async () => {
+    (window.electronAPI as any).chatSessionOps.downloadChatSession.mockResolvedValueOnce({ success: false });
+    render(<AppLayout />);
+    window.dispatchEvent(new CustomEvent('chatSession:download', { detail: { chatId: 'c', sessionId: 's', title: 't' } }));
+    await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Failed to download chat session'));
+  });
+});
+
+describe('AppLayout - debug info extra branches', () => {
+  let captured: (result: any) => void = () => {};
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupElectronAPI();
+    mockUseCurrentChatId.mockReturnValue(null);
+    mockUseProfileData.mockReturnValue(DEFAULT_PROFILE_DATA);
+    captured = () => {};
+    (window.electronAPI as any).on.mockImplementation((event: string, cb: any) => {
+      if (event === 'app:debugInfoDownloaded') captured = cb;
+      return () => {};
+    });
+  });
+
+  it('defaults the file name and reveals the debug zip from the Open Folder action', () => {
+    render(<AppLayout />);
+    captured({ success: true, filePath: '/tmp/debug.zip' });
+    const call = mockShowToast.mock.calls.find((c: any[]) => c[1] === 'success');
+    expect(call![0]).toContain('debug info zip');
+    (call![3] as any).actions[0].onClick();
+    expect((window.electronAPI as any).workspace.showInFolder).toHaveBeenCalledWith('/tmp/debug.zip');
+  });
+
+  it('falls back to a default error when export fails without a message', () => {
+    render(<AppLayout />);
+    captured({ success: false });
+    expect(mockShowError).toHaveBeenCalledWith('Failed to export debug info');
   });
 });

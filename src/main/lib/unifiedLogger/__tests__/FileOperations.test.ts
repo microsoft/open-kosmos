@@ -62,6 +62,14 @@ describe('FileOperations log file selection', () => {
     expect(getCurrentLogFileName()).toBe(getTodayLogFileName());
   });
 
+  it('rejects resetting the development log name outside tests', () => {
+    process.env.NODE_ENV = 'production';
+
+    expect(() => resetDevStartupLogFileNameForTest()).toThrow(
+      'resetDevStartupLogFileNameForTest can only be used in tests',
+    );
+  });
+
   it('uses one timestamped dev log file for a dev process', () => {
     const startupTime = new Date(2026, 3, 25, 13, 6, 7);
     const laterTime = new Date(2026, 3, 25, 13, 7, 8);

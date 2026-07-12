@@ -29,6 +29,12 @@ function makeElectronAPI() {
       canEditUserMessage: vi.fn(async () => ({ success: true, data: { canEdit: true } })),
       cancelChatSession: vi.fn(async () => ({ success: true })),
       cancelChat: vi.fn(async () => ({ success: true })),
+      enqueueQueuedSteeringMessage: vi.fn(async () => ({ success: true })),
+      updateQueuedSteeringMessage: vi.fn(async () => ({ success: true })),
+      removeQueuedSteeringMessage: vi.fn(async () => ({ success: true })),
+      setQueuedSteeringMessageEditing: vi.fn(async () => ({ success: true })),
+      steerQueuedSteeringMessage: vi.fn(async () => ({ success: true, data: [{ id: 'steered' }] })),
+      clearQueuedSteeringMessages: vi.fn(async () => ({ success: true })),
       syncChatHistory: vi.fn(async () => ({ success: true })),
       refreshCurrentInstance: vi.fn(async () => ({ success: true, data: { id: 'inst-2' } })),
       getCurrentContextTokenUsage: vi.fn(async () => ({ success: true, data: { tokenCount: 100, totalMessages: 5, contextMessages: 3, compressionRatio: 0.6 } })),
@@ -55,9 +61,10 @@ describe('AgentChatIpc', () => {
     return mod.agentChatIpc;
   }
 
-  it('sets up all five IPC listeners on construction', async () => {
+  it('sets up all six IPC listeners on construction', async () => {
     await getInstance();
     expect(api.agentChat.onStreamingChunk).toHaveBeenCalled();
+    expect(api.agentChat.onStreamingMessage).toHaveBeenCalled();
     expect(api.agentChat.onToolUse).toHaveBeenCalled();
     expect(api.agentChat.onToolResult).toHaveBeenCalled();
     expect(api.agentChat.onToolMessageAdded).toHaveBeenCalled();
@@ -183,6 +190,105 @@ describe('AgentChatIpc', () => {
       { id: 'u1', role: 'user', content: [{ type: 'text', text: 'hi' }], timestamp: 0 },
     );
     expect(msgs).toEqual([{ id: 'm2' }]);
+  });
+
+  it('steerQueuedSteeringMessage() returns messages', async () => {
+    const ipc = await getInstance();
+    const msgs = await ipc.steerQueuedSteeringMessage('sess-1', 'queued-1');
+    expect(msgs).toEqual([{ id: 'steered' }]);
+    expect(api.agentChat.steerQueuedSteeringMessage).toHaveBeenCalledWith('sess-1', 'queued-1');
+  });
+
+  it('steerQueuedSteeringMessage() throws on failure', async () => {
+    api.agentChat.steerQueuedSteeringMessage.mockResolvedValue({ success: false, error: 'steer fail' });
+    const ipc = await getInstance();
+    await expect(ipc.steerQueuedSteeringMessage('sess-1', 'queued-1')).rejects.toThrow('steer fail');
+  });
+
+  it('steerQueuedSteeringMessage() returns [] when data is missing', async () => {
+    api.agentChat.steerQueuedSteeringMessage.mockResolvedValue({ success: true });
+    const ipc = await getInstance();
+    expect(await ipc.steerQueuedSteeringMessage('sess-1', 'queued-1')).toEqual([]);
+  });
+
+  it('steerQueuedSteeringMessage() throws default message when error is absent', async () => {
+    api.agentChat.steerQueuedSteeringMessage.mockResolvedValue({ success: false });
+    const ipc = await getInstance();
+    await expect(ipc.steerQueuedSteeringMessage('sess-1', 'queued-1')).rejects.toThrow(
+      'Failed to steer queued steering message',
+    );
+  });
+
+  it('enqueueQueuedSteeringMessage() resolves on success', async () => {
+    const ipc = await getInstance();
+    await expect(ipc.enqueueQueuedSteeringMessage('sess-1', { id: 'q1' })).resolves.toBeUndefined();
+    expect(api.agentChat.enqueueQueuedSteeringMessage).toHaveBeenCalledWith('sess-1', { id: 'q1' });
+  });
+
+  it('enqueueQueuedSteeringMessage() throws default message on failure', async () => {
+    api.agentChat.enqueueQueuedSteeringMessage.mockResolvedValue({ success: false });
+    const ipc = await getInstance();
+    await expect(ipc.enqueueQueuedSteeringMessage('sess-1', { id: 'q1' })).rejects.toThrow(
+      'Failed to enqueue queued steering message',
+    );
+  });
+
+  it('updateQueuedSteeringMessage() resolves on success', async () => {
+    const ipc = await getInstance();
+    await expect(ipc.updateQueuedSteeringMessage('sess-1', { id: 'q1' })).resolves.toBeUndefined();
+    expect(api.agentChat.updateQueuedSteeringMessage).toHaveBeenCalledWith('sess-1', { id: 'q1' });
+  });
+
+  it('updateQueuedSteeringMessage() throws on failure', async () => {
+    api.agentChat.updateQueuedSteeringMessage.mockResolvedValue({ success: false, error: 'update fail' });
+    const ipc = await getInstance();
+    await expect(ipc.updateQueuedSteeringMessage('sess-1', { id: 'q1' })).rejects.toThrow('update fail');
+  });
+
+  it('removeQueuedSteeringMessage() resolves on success', async () => {
+    const ipc = await getInstance();
+    await expect(ipc.removeQueuedSteeringMessage('sess-1', 'q1')).resolves.toBeUndefined();
+    expect(api.agentChat.removeQueuedSteeringMessage).toHaveBeenCalledWith('sess-1', 'q1');
+  });
+
+  it('removeQueuedSteeringMessage() throws default message on failure', async () => {
+    api.agentChat.removeQueuedSteeringMessage.mockResolvedValue({ success: false });
+    const ipc = await getInstance();
+    await expect(ipc.removeQueuedSteeringMessage('sess-1', 'q1')).rejects.toThrow(
+      'Failed to remove queued steering message',
+    );
+  });
+
+  it('setQueuedSteeringMessageEditing() resolves on success', async () => {
+    const ipc = await getInstance();
+    await expect(ipc.setQueuedSteeringMessageEditing('sess-1', 'q1', true)).resolves.toBeUndefined();
+    expect(api.agentChat.setQueuedSteeringMessageEditing).toHaveBeenCalledWith('sess-1', 'q1', true);
+  });
+
+  it('setQueuedSteeringMessageEditing() throws default message on failure', async () => {
+    api.agentChat.setQueuedSteeringMessageEditing.mockResolvedValue({ success: false });
+    const ipc = await getInstance();
+    await expect(ipc.setQueuedSteeringMessageEditing('sess-1', 'q1', false)).rejects.toThrow(
+      'Failed to set queued steering message editing state',
+    );
+  });
+
+  it('setQueuedSteeringMessageEditing() throws the provided error on failure', async () => {
+    api.agentChat.setQueuedSteeringMessageEditing.mockResolvedValue({ success: false, error: 'editing fail' });
+    const ipc = await getInstance();
+    await expect(ipc.setQueuedSteeringMessageEditing('sess-1', 'q1', true)).rejects.toThrow('editing fail');
+  });
+
+  it('clearQueuedSteeringMessages() resolves on success', async () => {
+    const ipc = await getInstance();
+    await expect(ipc.clearQueuedSteeringMessages('sess-1')).resolves.toBeUndefined();
+    expect(api.agentChat.clearQueuedSteeringMessages).toHaveBeenCalledWith('sess-1');
+  });
+
+  it('clearQueuedSteeringMessages() throws on failure', async () => {
+    api.agentChat.clearQueuedSteeringMessages.mockResolvedValue({ success: false, error: 'clear fail' });
+    const ipc = await getInstance();
+    await expect(ipc.clearQueuedSteeringMessages('sess-1')).rejects.toThrow('clear fail');
   });
 
   it('retryChat() returns messages', async () => {
@@ -365,6 +471,7 @@ describe('AgentChatIpc', () => {
     ipc.destroy();
 
     expect(cleanupFns.chunk).toHaveBeenCalled();
+    expect(cleanupFns.streaming).toHaveBeenCalled();
     expect(cleanupFns.toolUse).toHaveBeenCalled();
     expect(cleanupFns.toolResult).toHaveBeenCalled();
     expect(cleanupFns.toolMessageAdded).toHaveBeenCalled();
@@ -387,6 +494,25 @@ describe('AgentChatIpc', () => {
     expect(eventListener).toHaveBeenCalledTimes(1);
 
     window.removeEventListener('agentChat:toolMessageAdded', eventListener);
+  });
+
+  it('streaming message listener error does not crash the handler', async () => {
+    let streamingHandler: ((msg: any) => void) | null = null;
+    api.agentChat.onStreamingMessage.mockImplementation((cb: (msg: any) => void) => {
+      streamingHandler = cb;
+      return vi.fn();
+    });
+
+    const ipc = await getInstance();
+    const badListener = vi.fn().mockImplementation(() => { throw new Error('boom'); });
+    // Directly push into internal list via streamMessage to add then trigger
+    const msg = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'hi' }], timestamp: 0 } as any;
+
+    // Start a stream to register callback
+    const streamPromise = ipc.streamMessage(msg, { onAssistantMessage: badListener });
+    streamingHandler!({ id: 'a1' });
+    await streamPromise;
+    // No throw means error was swallowed
   });
 
   it('toolUse listener error is swallowed', async () => {
@@ -452,5 +578,128 @@ describe('AgentChatIpc', () => {
     const ipc = await getInstance();
     ipc.destroy();
     expect(() => ipc.destroy()).not.toThrow();
+  });
+
+  describe('default fallback and data-absent branches', () => {
+    it('initialize() throws the default message when error is absent', async () => {
+      api.agentChat.initialize.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.initialize('alice')).rejects.toThrow('Failed to initialize AgentChatManager');
+    });
+
+    it('switchToChatSession() throws the default message when error is absent', async () => {
+      api.agentChat.switchToChatSession.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.switchToChatSession('chat-1', 'sess-1')).rejects.toThrow('Failed to switch to chat session');
+    });
+
+    it('getCurrentChatIdAsync() returns null when data is absent', async () => {
+      api.agentChat.getCurrentChatId.mockResolvedValue({ success: true, data: undefined });
+      const ipc = await getInstance();
+      expect(await ipc.getCurrentChatIdAsync()).toBeNull();
+    });
+
+    it('getChatHistoryAsync() returns an empty array when data is absent', async () => {
+      api.agentChat.getChatHistory.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      expect(await ipc.getChatHistoryAsync()).toEqual([]);
+    });
+
+    it('getDisplayMessagesAsync() returns an empty array when data is absent', async () => {
+      api.agentChat.getDisplayMessages.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      expect(await ipc.getDisplayMessagesAsync()).toEqual([]);
+    });
+
+    it('streamMessage() throws the default message when error is absent', async () => {
+      api.agentChat.streamMessage.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      const msg = { id: 'u1', role: 'user', content: [], timestamp: 0 } as any;
+      await expect(ipc.streamMessage(msg)).rejects.toThrow('Failed to process conversation');
+    });
+
+    it('streamMessage() returns an empty array when data is absent', async () => {
+      api.agentChat.streamMessage.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      const msg = { id: 'u1', role: 'user', content: [], timestamp: 0 } as any;
+      expect(await ipc.streamMessage(msg)).toEqual([]);
+    });
+
+    it('retryChat() throws the default message when error is absent', async () => {
+      api.agentChat.retryChat.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.retryChat('sess-1')).rejects.toThrow('Failed to retry chat');
+    });
+
+    it('retryChat() returns an empty array when data is absent', async () => {
+      api.agentChat.retryChat.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      expect(await ipc.retryChat('sess-1')).toEqual([]);
+    });
+
+    it('editUserMessage() throws the default message when error is absent', async () => {
+      api.agentChat.editUserMessage.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      const msg = { id: 'm1', role: 'user', content: [], timestamp: 0 } as any;
+      await expect(ipc.editUserMessage('sess-1', 'm1', msg)).rejects.toThrow('Failed to edit user message');
+    });
+
+    it('editUserMessage() returns an empty array when data is absent', async () => {
+      api.agentChat.editUserMessage.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      const msg = { id: 'm1', role: 'user', content: [], timestamp: 0 } as any;
+      expect(await ipc.editUserMessage('sess-1', 'm1', msg)).toEqual([]);
+    });
+
+    it('canEditUserMessage() throws the default message when error is absent', async () => {
+      api.agentChat.canEditUserMessage.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.canEditUserMessage('sess-1', 'm1')).rejects.toThrow(
+        'Failed to validate user message editability',
+      );
+    });
+
+    it('canEditUserMessage() returns the default result when data is absent', async () => {
+      api.agentChat.canEditUserMessage.mockResolvedValue({ success: true });
+      const ipc = await getInstance();
+      expect(await ipc.canEditUserMessage('sess-1', 'm1')).toEqual({
+        canEdit: false,
+        error: 'Failed to validate user message editability',
+      });
+    });
+
+    it('cancelChatSession() throws the default message when error is absent', async () => {
+      api.agentChat.cancelChatSession.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.cancelChatSession('sess-1')).rejects.toThrow('Failed to cancel chat session');
+    });
+
+    it('cancelChat() throws the default message when error is absent', async () => {
+      api.agentChat.cancelChat.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.cancelChat('chat-1')).rejects.toThrow('Failed to cancel chat');
+    });
+
+    it('updateQueuedSteeringMessage() throws the default message when error is absent', async () => {
+      api.agentChat.updateQueuedSteeringMessage.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.updateQueuedSteeringMessage('sess-1', { id: 'q1' })).rejects.toThrow(
+        'Failed to update queued steering message',
+      );
+    });
+
+    it('clearQueuedSteeringMessages() throws the default message when error is absent', async () => {
+      api.agentChat.clearQueuedSteeringMessages.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.clearQueuedSteeringMessages('sess-1')).rejects.toThrow(
+        'Failed to clear queued steering messages',
+      );
+    });
+
+    it('syncChatHistory() swallows an unsuccessful result without throwing', async () => {
+      api.agentChat.syncChatHistory.mockResolvedValue({ success: false });
+      const ipc = await getInstance();
+      await expect(ipc.syncChatHistory([])).resolves.toBeUndefined();
+    });
   });
 });

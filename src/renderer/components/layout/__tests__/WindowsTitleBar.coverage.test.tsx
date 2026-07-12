@@ -13,7 +13,6 @@ const {
   mockUseLocation,
   mockZoomLevel,
   mockLeftNavUse,
-  mockRightPaneUse,
   mockIsMaximized,
   mockOnWindowStateChanged,
   mockMinimize, mockMaximize, mockUnmaximize, mockClose, mockShowAppMenu,
@@ -22,7 +21,6 @@ const {
   mockUseLocation: vi.fn(() => ({ pathname: '/' })),
   mockZoomLevel: vi.fn(() => 0),
   mockLeftNavUse: vi.fn(() => [false, { toggle: vi.fn() }]),
-  mockRightPaneUse: vi.fn(() => [false, { toggle: vi.fn() }]),
   mockIsMaximized: vi.fn(async () => false),
   mockOnWindowStateChanged: vi.fn(() => () => {}),
   mockMinimize: vi.fn(),
@@ -44,10 +42,6 @@ vi.mock('../../../lib/userData/useAppZoomLevel', async () => ({
 
 vi.mock('@renderer/states/left-nav.atom', async () => ({
   LeftNavCollapsedAtom: { use: mockLeftNavUse },
-}));
-
-vi.mock('@renderer/states/right-pane.atom', async () => ({
-  RightPaneCollapsedAtom: { use: mockRightPaneUse },
 }));
 
 vi.mock('../../../styles/WindowsTitleBar.css', async () => ({}));
@@ -98,7 +92,6 @@ describe('WindowsTitleBar', () => {
     mockUseLocation.mockReturnValue({ pathname: '/' });
     mockZoomLevel.mockReturnValue(0);
     mockLeftNavUse.mockReturnValue([false, { toggle: vi.fn() }]);
-    mockRightPaneUse.mockReturnValue([false, { toggle: vi.fn() }]);
     mockIsMaximized.mockResolvedValue(false);
     mockOnWindowStateChanged.mockReturnValue(() => {});
     mockGetPlatformInfo.mockResolvedValue({ platform: 'win32' });
@@ -198,7 +191,7 @@ describe('WindowsTitleBar', () => {
     expect(mockShowAppMenu).toHaveBeenCalled();
   });
 
-  it('shows sidebar and right panel toggles on /agent path', async () => {
+  it('shows sidebar toggle on /agent path', async () => {
     setupElectronAPI('win32');
     mockUseLocation.mockReturnValue({ pathname: '/agent/chat-1' });
     render(<WindowsTitleBar />);
@@ -233,6 +226,25 @@ describe('WindowsTitleBar', () => {
     expect(zoomBtn).not.toBeNull();
     fireEvent.click(zoomBtn);
     expect(mockResetZoom).toHaveBeenCalled();
+  });
+
+  it('briefly shows zoom percentage when zoom level changes', async () => {
+    vi.useFakeTimers();
+    setupElectronAPI('win32');
+    mockZoomLevel.mockReturnValue(0);
+    const { rerender } = render(<WindowsTitleBar />);
+    await act(async () => {});
+
+    mockZoomLevel.mockReturnValue(2);
+    rerender(<WindowsTitleBar />);
+    await act(async () => {});
+    expect(screen.getByText('144%')).toBeDefined();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.queryByText('144%')).toBeNull();
+    vi.useRealTimers();
   });
 
   it('shows Copy icon when maximized', async () => {

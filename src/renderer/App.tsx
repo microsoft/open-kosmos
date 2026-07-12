@@ -7,14 +7,16 @@ import {
   ToastProvider,
   ToastContextSetter,
 } from './components/ui/ToastProvider';
-import { UpdateProvider } from './components/autoUpdate/UpdateProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import WindowsTitleBar from './components/layout/WindowsTitleBar';
 import WindowZoomHotkeys from './components/layout/WindowZoomHotkeys';
 import McpAuthConsentDialog from './components/mcp/McpAuthConsentDialog';
 import RequestOAuthClientIdDialog from './components/mcp/RequestOAuthClientIdDialog';
+import { EmbeddedBrowserAtom } from './components/browser/embeddedBrowser.atom';
+import { ThemeProvider } from './components/theme/ThemeProvider';
 import { useMcpConnectionFailureToast } from './lib/mcp/useMcpConnectionFailureToast';
 import { createLogger } from './lib/utilities/logger';
+import { useI18n } from './lib/i18n/useI18n';
 
 const logger = createLogger('[App]');
 
@@ -29,14 +31,28 @@ const McpConnectionFailureToastListener: React.FC = () => {
   return dialog;
 };
 
-const AppContent: React.FC = () => {
-  // ToolBar window feature removed
+const EmbeddedBrowserDisableListener: React.FC = () => {
+  const browserActions = EmbeddedBrowserAtom.useChange();
 
+  useEffect(() => {
+    const handleDisable = () => {
+      browserActions.closeAllAndDestroy();
+    };
+
+    window.addEventListener('embedded-browser:disable', handleDisable);
+    return () => window.removeEventListener('embedded-browser:disable', handleDisable);
+  }, [browserActions]);
+
+  return null;
+};
+
+const AppContent: React.FC = () => {
   return (
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       {/* McpConnectionFailureToastListener must be inside HashRouter because it uses useNavigate */}
       <McpConnectionFailureToastListener />
       <WindowZoomHotkeys />
+      <EmbeddedBrowserDisableListener />
       <McpAuthConsentDialog />
       <RequestOAuthClientIdDialog />
       <div className="h-screen flex flex-col overflow-hidden">
@@ -51,6 +67,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   logger.debug('Main App component rendering');
+  const { t } = useI18n();
 
   // State to track if this is debug window
   const [isDebugWindow, setIsDebugWindow] = useState(
@@ -186,52 +203,55 @@ const App: React.FC = () => {
 
   if (isDebugWindow) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-2">Debug Mode Unavailable</h2>
-          <p className="text-neutral-600">
-            Debug window functionality has been removed.
-          </p>
+      <ThemeProvider>
+        <div className="h-screen flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-2">{t('app.debugModeUnavailable')}</h2>
+            <p className="text-neutral-600">
+              {t('app.debugWindowRemoved')}
+            </p>
+          </div>
         </div>
-      </div>
+      </ThemeProvider>
     );
   }
 
   // 🚀 Loading Screen (Wait for Backend Services)
-  // ToolBar window bypasses this check if needed, or follows same flow
   // We check isAppReady for everyone to ensure backend is ready
   if (!isAppReady) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#1c1c1c] text-white gap-6 select-none app-drag-region">
-        {/* Logo/Icon Area */}
-        <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-blue-500 to-purple-600 animate-pulse flex items-center justify-center shadow-lg shadow-purple-500/20">
-             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-             </svg>
+      <ThemeProvider>
+        <div className="h-screen w-screen flex flex-col items-center justify-center bg-[var(--color-neutral-900)] text-white gap-6 select-none app-drag-region">
+          {/* Logo/Icon Area */}
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-primary-500 to-primary-600 animate-pulse flex items-center justify-center shadow-lg shadow-primary-500/20">
+               <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+               </svg>
+            </div>
           </div>
-        </div>
 
-        {/* Loading Text */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-neutral-200 font-medium text-lg tracking-wide">OpenKosmos</div>
-          <div className="flex items-center gap-2 text-neutral-500 text-sm">
-            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Initializing Core Services...</span>
+          {/* Loading Text */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-neutral-200 font-medium text-lg tracking-wide">OpenKosmos</div>
+            <div className="flex items-center gap-2 text-neutral-500 text-sm">
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>{t('app.initializingCoreServices')}</span>
+            </div>
           </div>
         </div>
-      </div>
+      </ThemeProvider>
     );
   }
 
   // Render main application with AuthProvider V2.0
   return (
-    <ToastProvider>
-      <ToastContextSetter />
-      <UpdateProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <ToastContextSetter />
         <AuthProvider>
           <ReauthProvider>
             <ProfileDataProvider>
@@ -239,8 +259,8 @@ const App: React.FC = () => {
             </ProfileDataProvider>
           </ReauthProvider>
         </AuthProvider>
-      </UpdateProvider>
-    </ToastProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 

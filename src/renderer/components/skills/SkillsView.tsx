@@ -1,14 +1,15 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { useOutletContext, useNavigate } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { useSkills, useProfileDataRefresh } from '../userData/userDataProvider';
 import { useToast } from '../ui/ToastProvider';
 import SkillsHeaderView from './SkillsHeaderView';
 import SkillsContentView from './SkillsContentView';
-import { SkillConfig } from '../../lib/userData/types';
+import type { SkillConfig } from '../../lib/userData/types';
 import { AgentContextType } from '../../types/agentContextTypes';
 import { ApplySkillDialogAtom } from './ApplySkillToAgentsDialog';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const SkillsView: React.FC = () => {
   const {
@@ -16,7 +17,7 @@ const SkillsView: React.FC = () => {
     onSkillMenuToggle,
   } = useOutletContext<AgentContextType>();
 
-  const navigate = useNavigate();
+  const { t } = useI18n();
 
   // Use ProfileDataManager for Skills data
   const { skills, stats: skillsStats, isLoading } = useSkills();
@@ -29,20 +30,20 @@ const SkillsView: React.FC = () => {
 
   const handleAddFromDevice = useCallback(async (selectionMode?: 'artifact' | 'folder') => {
     try {
-      if (!window.electronAPI?.skillLibrary?.addSkillFromDevice) {
-        showError('Add skill from device API not available');
+      if (!window.electronAPI?.skills?.addSkillFromDevice) {
+        showError(t('skills.add.apiUnavailable'));
         return;
       }
 
       const currentlySelectedSkillName = selectedSkill?.name;
 
-      const result = await window.electronAPI.skillLibrary.addSkillFromDevice(undefined, {
+      const result = await window.electronAPI.skills.addSkillFromDevice(undefined, {
         requestSource: 'settings',
         selectionMode,
       });
 
       if (result.success) {
-        showSuccess(result.message || `Skill "${result.skillName}" added successfully`);
+        showSuccess(result.message || t('skills.add.success', { name: result.skillName || '' }));
 
         setTimeout(() => {
           refresh().catch(() => {});
@@ -64,10 +65,10 @@ const SkillsView: React.FC = () => {
       }
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to add skill from device: ${errorMessage}`);
+        error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('skills.add.failed', { error: errorMessage }));
     }
-  }, [refresh, selectedSkill?.name, showError, showSuccess, showToast]);
+  }, [refresh, selectedSkill?.name, showError, showSuccess, showToast, t]);
 
 
 
@@ -129,21 +130,8 @@ const SkillsView: React.FC = () => {
     [onSkillsAddMenuToggle],
   );
 
-  // Handle skill library callback
-  const handleSkillAdded = useCallback(() => {
-    // Refresh profile data to reflect newly added skill
-    setTimeout(() => {
-      refresh().catch(() => {});
-    }, 500);
-  }, [refresh]);
-
   // Listen for Skills add menu events from AppLayout
   useEffect(() => {
-    const handleAddFromLibrary = () => {
-      // Navigate to skill library page
-      navigate('/settings/skills/skill-library');
-    };
-
     const handleAddFromDeviceArtifact = () => {
       void handleAddFromDevice('artifact');
     };
@@ -152,7 +140,10 @@ const SkillsView: React.FC = () => {
       void handleAddFromDevice('folder');
     };
 
-    window.addEventListener('skills:addFromLibrary', handleAddFromLibrary);
+    const handleAddFromDeviceLegacy = () => {
+      void handleAddFromDevice();
+    };
+
     window.addEventListener(
       'skills:addFromDeviceArtifact',
       handleAddFromDeviceArtifact as EventListener,
@@ -161,9 +152,12 @@ const SkillsView: React.FC = () => {
       'skills:addFromDeviceFolder',
       handleAddFromDeviceFolder as EventListener,
     );
+    window.addEventListener(
+      'skills:addFromDevice',
+      handleAddFromDeviceLegacy as EventListener,
+    );
 
     return () => {
-      window.removeEventListener('skills:addFromLibrary', handleAddFromLibrary);
       window.removeEventListener(
         'skills:addFromDeviceArtifact',
         handleAddFromDeviceArtifact as EventListener,
@@ -172,8 +166,12 @@ const SkillsView: React.FC = () => {
         'skills:addFromDeviceFolder',
         handleAddFromDeviceFolder as EventListener,
       );
+      window.removeEventListener(
+        'skills:addFromDevice',
+        handleAddFromDeviceLegacy as EventListener,
+      );
     };
-  }, [handleAddFromDevice, navigate]);
+  }, [handleAddFromDevice]);
 
   return (
     <div className="skills-view">

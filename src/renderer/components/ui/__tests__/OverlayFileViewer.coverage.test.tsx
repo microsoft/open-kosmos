@@ -94,6 +94,18 @@ vi.mock('../../lib/utilities/logger', () => ({
   }),
 }));
 
+vi.mock('monaco-editor', () => ({
+  editor: {
+    create: vi.fn(() => ({
+      getValue: vi.fn(() => 'edited content'),
+      setValue: vi.fn(),
+      dispose: vi.fn(),
+      focus: vi.fn(),
+      onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
+    })),
+  },
+}));
+
 // Mock lucide-react icons
 vi.mock('lucide-react', () => {
   const Icon = ({ size, ...rest }: any) => <span data-icon {...rest} />;

@@ -3,11 +3,15 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 import type { Context } from './shared';
-import { SkillLibraryFetcher } from "../../lib/skill/skillLibraryFetcher";
 import { installAndActivateSkill } from "../../lib/skill/installAndActivateSkill";
 import { applySkillToAgents } from "../../lib/skill/applySkillToAgents";
 import { updateSkillFromDevice } from "../../lib/skill/skillDeviceImporter";
 import { deleteInstalledSkill } from "../../lib/skill/deleteInstalledSkill";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export default function(ctx: Context) {
 
   const resolveSingleSelectedPath = (result: unknown): string | undefined => {
@@ -107,121 +111,8 @@ export default function(ctx: Context) {
     return resolveSingleSelectedPath(result);
   };
 
-  // Skill Library Operations - AUTHORIZED
-  ipcMain.handle('skillLibrary:getLibraryData', async () => {
-    try {
-      const fetcher = SkillLibraryFetcher.getInstance();
-      const result = await fetcher.getLibraryData();
-      return result;
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
-  // New:Compliance check API
-  ipcMain.handle('skillLibrary:validateSkill', async (event, skillName: string) => {
-    try {
-      if (!ctx.currentUserAlias) {
-        return { success: false, error: 'No current user alias set' };
-      }
-
-      const fetcher = SkillLibraryFetcher.getInstance();
-      const result = await fetcher.validateSkill(skillName, ctx.currentUserAlias);
-      return result;
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
-  ipcMain.handle('skillLibrary:addSkill', async (event, skillName: string, options?: { overwrite?: boolean; chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) => {
-    try {
-      if (!ctx.currentUserAlias) {
-        return { success: false, error: 'No current user alias set' };
-      }
-
-      const result = await installAndActivateSkill({
-        userAlias: ctx.currentUserAlias,
-        source: { type: 'library-name', value: skillName },
-        overwrite: options?.overwrite,
-        activation: {
-          mode: options?.applyToCurrentAgent ? 'current-agent' : 'install-only',
-          chatId: options?.chatId,
-          agentName: options?.agentName,
-        },
-        requestSource: options?.requestSource,
-      });
-
-      // Record skill installed analytics (fire-and-forget)
-      if (result.success) {
-      }
-
-      return {
-        success: result.success,
-        skillName: result.skillName,
-        skillVersion: result.skillVersion,
-        error: result.error,
-        isOverwrite: result.install.isOverwrite,
-        resolution: result.resolution,
-        currentChat: result.currentChat,
-        activation: result.activation,
-        message: result.message,
-      };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
-  // New:Show skill override confirmation dialog
-  ipcMain.handle('skillLibrary:showOverwriteConfirmDialog', async (event, skillName: string) => {
-    try {
-      if (!ctx.mainWindow) {
-        return { success: false, error: 'No main window available' };
-      }
-
-      const confirmResult = await dialog.showMessageBox(ctx.mainWindow, {
-        type: 'warning',
-        title: 'Skill Already Exists',
-        message: `A skill named "${skillName}" already exists in your ON-DEVICE version.`,
-        detail: 'Do you want to overwrite it with the new Skills from library? This action cannot be undone.',
-        buttons: ['Cancel', 'Overwrite'],
-        defaultId: 0,
-        cancelId: 0
-      });
-
-      // Handle both old and new Electron API formats
-      let confirmed = false;
-      if (typeof confirmResult === 'number') {
-        confirmed = confirmResult === 1; // Old API format
-      } else {
-        confirmed = (confirmResult as any).response === 1; // New API format
-      }
-
-      return { success: true, confirmed };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
-  ipcMain.handle('skillLibrary:updateSkill', async (event, skillName: string) => {
-    try {
-      if (!ctx.currentUserAlias) {
-        return { success: false, error: 'No current user alias set' };
-      }
-
-      const fetcher = SkillLibraryFetcher.getInstance();
-      const result = await fetcher.updateSkill(skillName, ctx.currentUserAlias);
-
-      if (result.success) {
-      }
-
-      return result;
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
   // Install skill from a known file path (e.g., from file card / assistant message attachment)
-  ipcMain.handle('skillLibrary:installSkillFromFilePath', async (event, filePath: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) => {
+  ipcMain.handle('skills:installSkillFromFilePath', async (event, filePath: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) => {
     try {
       if (!ctx.currentUserAlias) {
         return { success: false, error: 'No current user alias set' };
@@ -267,10 +158,6 @@ export default function(ctx: Context) {
         confirmOverwrite: confirmCallback,
       });
 
-      // Record skill installed analytics (fire-and-forget)
-      if (importResult.success) {
-      }
-
       return {
         success: importResult.success,
         skillName: importResult.skillName,
@@ -284,12 +171,12 @@ export default function(ctx: Context) {
         message: importResult.message,
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
   // Add skill from local device (.zip, .skill, or folder)
-  ipcMain.handle('skillLibrary:addSkillFromDevice', async (event, selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) => {
+  ipcMain.handle('skills:addSkillFromDevice', async (event, selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) => {
     try {
       if (!ctx.currentUserAlias) {
         return { success: false, error: 'No current user alias set' };
@@ -347,10 +234,6 @@ export default function(ctx: Context) {
         confirmOverwrite: confirmCallback,
       });
 
-      // Record skill installed analytics (fire-and-forget)
-      if (importResult.success) {
-      }
-
       return {
         success: importResult.success,
         skillName: importResult.skillName,
@@ -364,11 +247,11 @@ export default function(ctx: Context) {
         message: importResult.message,
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
-  ipcMain.handle('skillLibrary:applySkillToAgents', async (event, skillName: string, targets?: Array<{ chatId: string; agentName: string }>) => {
+  ipcMain.handle('skills:applySkillToAgents', async (event, skillName: string, targets?: Array<{ chatId: string; agentName: string }>) => {
     try {
       if (!ctx.currentUserAlias) {
         return { success: false, error: 'No current user alias set' };
@@ -382,19 +265,19 @@ export default function(ctx: Context) {
       return {
         success: false,
         skillName,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: getErrorMessage(error),
         appliedCount: 0,
         alreadyAppliedCount: 0,
         failedCount: 0,
         appliedTargets: [],
         skippedTargets: [],
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: getErrorMessage(error),
       };
     }
   });
 
   // Update skill from local device (.zip, .skill, or folder) with specific skill name validation
-  ipcMain.handle('skillLibrary:updateSkillFromDevice', async (event, targetSkillName: string) => {
+  ipcMain.handle('skills:updateSkillFromDevice', async (event, targetSkillName: string) => {
     try {
       if (!ctx.currentUserAlias) {
         return { success: false, error: 'No current user alias set' };
@@ -455,12 +338,9 @@ export default function(ctx: Context) {
 
       const importResult = await updateSkillFromDevice(selectedPath, ctx.currentUserAlias, targetSkillName, validateSkillNameCallback, confirmCallback);
 
-      if (importResult.success) {
-      }
-
       return importResult;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -492,7 +372,7 @@ export default function(ctx: Context) {
       const content = fs.readFileSync(skillMarkdownPath, 'utf8');
       return { success: true, content };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -567,7 +447,7 @@ export default function(ctx: Context) {
         }
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -649,7 +529,7 @@ export default function(ctx: Context) {
         }
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -666,7 +546,7 @@ export default function(ctx: Context) {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -696,8 +576,7 @@ export default function(ctx: Context) {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 }
-

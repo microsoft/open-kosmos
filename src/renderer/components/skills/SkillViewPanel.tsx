@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState, useCallback } from 'react'
-import { SkillConfig } from '../../lib/userData/types'
+import type { SkillConfig } from '../../lib/userData/types'
 import SkillFolderExplorer from './SkillFolderExplorer'
 import SkillFileViewer from './SkillFileViewer'
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[SkillViewPanel]');
 
 interface SkillViewPanelProps {
@@ -27,6 +28,7 @@ export interface FileInfo {
 const SkillViewPanel: React.FC<SkillViewPanelProps> = ({
   skill
 }) => {
+  const { t } = useI18n();
   // View mode: folder (directory browsing) or file (file viewing)
   const [viewMode, setViewMode] = useState<ViewMode>('folder')
   // Currently selected file info
@@ -90,7 +92,7 @@ const SkillViewPanel: React.FC<SkillViewPanelProps> = ({
   if (!skill) {
     return (
       <div className="skill-view-panel-empty">
-        <span>Select a skill to view details</span>
+        <span>{t('skills.detail.selectSkill')}</span>
       </div>
     )
   }

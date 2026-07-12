@@ -69,7 +69,7 @@ beforeEach(() => {
   mockChats.length = 0;
 
   window.electronAPI = {
-    skillLibrary: {
+    skills: {
       applySkillToAgents: mockApplySkillToAgents,
     },
   } as any;
@@ -110,6 +110,20 @@ describe('ApplySkillToAgentsDialog – empty agent list', () => {
   });
 });
 
+describe('ApplySkillToAgentsDialog – unresolvable single_agent', () => {
+  it('skips a single_agent chat whose agent resolves to null', () => {
+    mockChats.push({
+      chat_id: 'c-missing',
+      chat_type: 'single_agent',
+      // No inline agent and an agent_ids entry the empty cache cannot resolve
+      // -> resolveChatAgent returns null -> item is not pushed.
+      agent_ids: ['agent_not_in_cache'],
+    });
+    render(<ApplySkillToAgentsDialog />);
+    expect(screen.getByText('No agents found.')).toBeTruthy();
+  });
+});
+
 describe('ApplySkillToAgentsDialog – single_agent chats', () => {
   beforeEach(() => {
     mockChats.push(
@@ -130,6 +144,18 @@ describe('ApplySkillToAgentsDialog – single_agent chats', () => {
     render(<ApplySkillToAgentsDialog />);
     expect(screen.getByText('Alpha')).toBeTruthy();
     expect(screen.getByText('Beta')).toBeTruthy();
+  });
+
+  it('treats missing skills as not already applied', () => {
+    mockChats.length = 0;
+    mockChats.push({
+      chat_id: 'c-no-skills',
+      chat_type: 'single_agent',
+      agent: { name: 'No Skills', emoji: '🧩' },
+    });
+    render(<ApplySkillToAgentsDialog />);
+    expect(screen.getByText('No Skills')).toBeTruthy();
+    expect(screen.queryByText('Applied')).toBeFalsy();
   });
 
   it('already-applied agent shows Applied badge', () => {
@@ -211,6 +237,20 @@ describe('ApplySkillToAgentsDialog – multi_agent chats', () => {
     expect(screen.getByText('Gamma')).toBeTruthy();
     expect(screen.getByText('Delta')).toBeTruthy();
   });
+
+  it('treats missing multi-agent skills as not already applied', () => {
+    mockChats.length = 0;
+    mockChats.push({
+      chat_id: 'm-no-skills',
+      chat_type: 'multi_agent',
+      agents: [
+        { name: 'No Skill Multi', emoji: '🧩' },
+      ],
+    });
+    render(<ApplySkillToAgentsDialog />);
+    expect(screen.getByText('No Skill Multi')).toBeTruthy();
+    expect(screen.queryByText('Applied')).toBeFalsy();
+  });
 });
 
 describe('ApplySkillToAgentsDialog – Apply success', () => {
@@ -270,6 +310,21 @@ describe('ApplySkillToAgentsDialog – Apply partial failure', () => {
     await act(async () => { await Promise.resolve(); });
     expect(mockShowSuccess).toHaveBeenCalled();
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('2 agent'));
+  });
+
+  it('uses singular "agent" in failure toast when failedCount=1', async () => {
+    mockApplySkillToAgents.mockResolvedValue({
+      success: true,
+      appliedCount: 1,
+      failedCount: 1,
+    });
+    render(<ApplySkillToAgentsDialog />);
+    fireEvent.click(screen.getByText('Zeta').closest('[role="checkbox"]')!);
+    fireEvent.click(screen.getByText('Apply (1)'));
+    await act(async () => { await Promise.resolve(); });
+    const msg = mockShowError.mock.calls[0][0] as string;
+    expect(msg).toContain('1 agent');
+    expect(msg).not.toContain('agents');
   });
 
   it('uses plural "agents" in error toast when failedCount > 1', async () => {

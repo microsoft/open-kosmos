@@ -22,7 +22,7 @@
  *   triggered when the remote has no Claude models but the local cache does; if neither side has Claude, the
  *   update proceeds normally.
  *
- * Models used by OpenKosmos are dynamically matched from the GHC model set via OpenKosmos_MODEL_PATTERNS,
+ * Models used by OpenKosmos are dynamically matched from the GHC model set via OPENKOSMOS_MODEL_PATTERNS,
  * eliminating the need to manually maintain a static ID list — new models matching an existing pattern
  * are automatically included when they go live on GHC.
  */
@@ -46,8 +46,9 @@ const MODELS_FILE_NAME = 'github-copilot-models.json';
 /**
  * OpenKosmos model matching rules (dynamically filtered from the full GHC model set)
  *
- * Version constraints (derived from the version range covered by the original OpenKosmos_USED_MODEL_IDS):
+ * Version constraints (derived from the version range covered by the original OPENKOSMOS_USED_MODEL_IDS):
  *   - Claude  ≥ 4.0 : claude-(opus|sonnet)-4, 4.5, 4.6, 5, … — excludes haiku
+ *   - Claude  ≥ 5.0 : claude-(mythos|fable)-5, 5.1, 6, …
  *   - Gemini  ≥ 2.5 : gemini-2.5-pro, gemini-3-pro, …        — excludes flash
  *   - GPT     > 5.0 : gpt-5.1, gpt-5.2-codex, gpt-6, …      — excludes mini
  *
@@ -62,10 +63,13 @@ const MODELS_FILE_NAME = 'github-copilot-models.json';
  */
 
 /** Matching rule: include represents the regex for model IDs to include */
-const OpenKosmos_MODEL_PATTERNS: { include: RegExp; sortGroup: number }[] = [
-  // Claude ≥4.0 opus / sonnet (excludes haiku)
-  // Matches claude-(opus|sonnet)-4, 4.5, 4.6, 5, 10, … (major version ≥4)
-  { include: /^claude-(opus|sonnet)-([4-9]|\d{2,})/, sortGroup: 0 },
+const OPENKOSMOS_MODEL_PATTERNS: { include: RegExp; sortGroup: number; familySortRank?: number }[] = [
+  // Claude ≥5.0 mythos / fable and Claude ≥4.0 opus / sonnet (excludes haiku)
+  // Matches claude-(mythos|fable)-5, 5.1, 6, 10, … and claude-(opus|sonnet)-4, 4.5, 5, 10, …
+  { include: /^claude-mythos-([5-9]|\d{2,})/, sortGroup: 0, familySortRank: 0 },
+  { include: /^claude-fable-([5-9]|\d{2,})/, sortGroup: 0, familySortRank: 1 },
+  { include: /^claude-opus-([4-9]|\d{2,})/, sortGroup: 0, familySortRank: 2 },
+  { include: /^claude-sonnet-([4-9]|\d{2,})/, sortGroup: 0, familySortRank: 3 },
   // Gemini ≥2.5 pro series (excludes flash)
   // Matches gemini-2.5-pro, gemini-3-pro, gemini-10-pro, … (major version ≥3 or 2.5+)
   { include: /^gemini-(2\.[5-9]|2\.\d{2,}|[3-9]|\d{2,}).*pro/, sortGroup: 1 },
@@ -75,11 +79,11 @@ const OpenKosmos_MODEL_PATTERNS: { include: RegExp; sortGroup: number }[] = [
 ];
 
 /** Global exclusion: lightweight and reasoning-only variants (\b prevents matching "mini" inside "gemini") */
-const OpenKosmos_MODEL_EXCLUDE = /\bmini|\bflash|\bhaiku/i;
+const OPENKOSMOS_MODEL_EXCLUDE = /\bmini|\bflash|\bhaiku/i;
 
 // Model categories for UI organization (dynamically maintained is not needed here, kept for backward compat)
 const MODEL_CATEGORIES = {
-  claude: ['claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.6-1m', 'claude-opus-41'],
+  claude: ['claude-mythos-5', 'claude-fable-5', 'claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.6-1m', 'claude-opus-41'],
   gpt: ['gpt-4.1', 'gpt-5', 'gpt-4o', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.1-codex-mini'],
   gemini: ['gemini-2.5-pro', 'gemini-3-pro-preview', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview'],
   reasoning: ['o3-mini', 'o3', 'o4-mini']
@@ -395,19 +399,18 @@ class GhcModelsManager {
    * Matching logic:
    *   1. capabilities.type === 'chat'
    *   2. model_picker_enabled === true
-   *   3. Model ID matches at least one OpenKosmos_MODEL_PATTERNS include regex
-   *      (Claude ≥4.0 opus/sonnet, Gemini ≥2.5 pro, GPT >5.0)
-   *   4. Model ID does not match OpenKosmos_MODEL_EXCLUDE (mini/flash/haiku)
+   *   3. Model ID matches at least one OPENKOSMOS_MODEL_PATTERNS include regex
+   *      (Claude ≥5.0 mythos/fable, Claude ≥4.0 opus/sonnet, Gemini ≥2.5 pro, GPT >5.0)
+   *   4. Model ID does not match OPENKOSMOS_MODEL_EXCLUDE (mini/flash/haiku)
    *
-   * Sort: grouped by sortGroup (Claude → Gemini → GPT), within each group sorted by ID descending
-   * (leveraging the natural alphabetical ordering of version numbers; newer versions have larger digits/letters,
-   * so descending order means "newest first")
+   * Sort: grouped by sortGroup (Claude → Gemini → GPT); Claude families sort mythos → fable → opus → sonnet,
+   * and models inside the same family/group sort by ID descending.
    */
   getAllOpenKosmosUsedModels(): GhcCopilotModel[] {
     this.ensureInitialized();
 
     // Collect matched models with their sortGroup information
-    const matched: { model: GhcCopilotModel; sortGroup: number }[] = [];
+    const matched: { model: GhcCopilotModel; sortGroup: number; familySortRank: number }[] = [];
 
     for (const model of this.modelsCache) {
       // Keep only chat-type models that are enabled in the model picker
@@ -416,22 +419,30 @@ class GhcModelsManager {
       }
 
       // Globally exclude lightweight / reasoning-only variants
-      if (OpenKosmos_MODEL_EXCLUDE.test(model.id)) {
+      if (OPENKOSMOS_MODEL_EXCLUDE.test(model.id)) {
         continue;
       }
 
       // Check if the model matches any include pattern
-      for (const pattern of OpenKosmos_MODEL_PATTERNS) {
+      for (const pattern of OPENKOSMOS_MODEL_PATTERNS) {
         if (pattern.include.test(model.id)) {
-          matched.push({ model, sortGroup: pattern.sortGroup });
+          matched.push({
+            model,
+            sortGroup: pattern.sortGroup,
+            familySortRank: pattern.familySortRank ?? Number.MAX_SAFE_INTEGER,
+          });
           break; // Each model is assigned to only the first matching group
         }
       }
     }
 
-    // Sort: ascending by sortGroup (Claude=0, Gemini=1, GPT=2), then descending by ID within each group
+    // Sort: ascending by sortGroup (Claude=0, Gemini=1, GPT=2), then family-specific ordering where applicable.
     matched.sort((a, b) => {
       if (a.sortGroup !== b.sortGroup) return a.sortGroup - b.sortGroup;
+      if (a.sortGroup === 0) {
+        const familyCompare = a.familySortRank - b.familySortRank;
+        if (familyCompare !== 0) return familyCompare;
+      }
       return b.model.id.localeCompare(a.model.id);
     });
 
@@ -490,7 +501,7 @@ class GhcModelsManager {
 
   /** Get the default model ID */
   getDefaultModel(): string {
-    return 'claude-sonnet-4.6';
+    return 'claude-opus-4.6';
   }
 
   /** Model categories (static) */

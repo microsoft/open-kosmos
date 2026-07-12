@@ -1,11 +1,13 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { MoreHorizontal } from 'lucide-react'
-import { SkillConfig } from '../../lib/userData/types'
+import type { SkillConfig } from '../../lib/userData/types'
 import { isBuiltinSkill } from '../../../shared/constants/builtinSkills'
 import '../../styles/ServerCard.css'
 import ListSearchBox from '../ui/ListSearchBox'
+import { useAutoHideScrollbar } from '../../lib/hooks/useAutoHideScrollbar'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface SkillListPanelProps {
   skills: SkillConfig[]
@@ -26,8 +28,8 @@ const LoadingSpinner = () => (
       xmlns="http://www.w3.org/2000/svg"
       style={{ animation: 'spin 1s linear infinite' }}
     >
-      <circle cx="12" cy="12" r="10" stroke="#e0e0e0" strokeWidth="2"/>
-      <path d="M22 12C22 17.5228 17.5228 22 12 22" stroke="#272320" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="12" cy="12" r="10" stroke="var(--color-neutral-200)" strokeWidth="2"/>
+      <path d="M22 12C22 17.5228 17.5228 22 12 22" stroke="var(--color-warm-900)" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   </div>
 )
@@ -46,8 +48,8 @@ const SkillCard: React.FC<SkillCardProps> = ({
   onSelect,
   onMenuClick
 }) => {
+  const { t } = useI18n()
   const isBuiltin = isBuiltinSkill(skill.name)
-  const isPlugin = skill.source === 'PLUGIN' || skill.name.startsWith('plugin--')
 
   return (
     <div
@@ -60,8 +62,7 @@ const SkillCard: React.FC<SkillCardProps> = ({
             <div className="skill-card-name-group">
               <div className="skill-card-title-row">
                 <span className="skill-card-name">{skill.name}</span>
-                {isBuiltin && <span className="builtin-badge">Built-in</span>}
-                {isPlugin && <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)', opacity: 0.85 }}>Plugin</span>}
+                {isBuiltin && <span className="builtin-badge">{t('common.builtIn')}</span>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'row', gap: '6px', alignItems: 'center' }}>
                 {skill.version && (
@@ -73,16 +74,14 @@ const SkillCard: React.FC<SkillCardProps> = ({
               </div>
             </div>
           </div>
-          {!isPlugin && (
-            <div className="skill-menu-container">
-              <button
-                className="skill-menu-btn"
-                onClick={onMenuClick}
-              >
-                <MoreHorizontal size={16} strokeWidth={1.5} />
-              </button>
-            </div>
-          )}
+          <div className="skill-menu-container">
+            <button
+              className="skill-menu-btn"
+              onClick={onMenuClick}
+            >
+              <MoreHorizontal size={16} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -96,8 +95,15 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
   onSelectSkill,
   onSkillMenuToggle
 }) => {
+  const { t } = useI18n()
   // Search filter — hooks must be at top level, before any early returns
   const [searchQuery, setSearchQuery] = useState('')
+  const scrollRef = useAutoHideScrollbar<HTMLDivElement>()
+  const searchChangedRef = useRef(false)
+  const handleSearchChange = (value: string) => {
+    searchChangedRef.current = true
+    setSearchQuery(value)
+  }
 
   // Sort skills: built-in skills first, then the rest
   const sortedSkills = useMemo(() => [...skills].sort((a, b) => {
@@ -121,8 +127,12 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
   // Keep selection in sync with filtered results (also handles initial selection)
   // Depend on selectedSkill?.name so external selection changes (e.g. skills:selectSkill event) are caught
   useEffect(() => {
+    const isUserSearch = searchChangedRef.current
+    searchChangedRef.current = false
+
     if (filteredSkills.length === 0) {
       if (selectedSkill) {
+        if (isUserSearch) return
         onSelectSkill(null)
       }
       return
@@ -134,7 +144,7 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
     const currentInFiltered = filteredSkills.some(s => s.name === selectedSkill.name)
     if (!currentInFiltered) {
       // External selection of an off-filter item — clear search to reveal it
-      if (searchQuery && sortedSkills.some(s => s.name === selectedSkill.name)) {
+      if (!isUserSearch && searchQuery && sortedSkills.some(s => s.name === selectedSkill.name)) {
         setSearchQuery('')
         return
       }
@@ -154,7 +164,7 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
     return (
       <div className="skill-list-loading">
         <LoadingSpinner />
-        <span>Loading skills...</span>
+        <span>{t('skills.list.loading')}</span>
       </div>
     )
   }
@@ -162,20 +172,20 @@ const SkillListPanel: React.FC<SkillListPanelProps> = ({
   if (skills.length === 0) {
     return (
       <div className="skill-list-empty">
-        <span>No skills available</span>
-        <span className="skill-list-empty-hint">Add a skill to get started</span>
+        <span>{t('skills.list.empty')}</span>
+        <span className="skill-list-empty-hint">{t('skills.list.emptyHint')}</span>
       </div>
     )
   }
 
   return (
     <div className="skill-list-container">
-      <div className="skill-cards">
-        <ListSearchBox
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search skills..."
-        />
+      <ListSearchBox
+        value={searchQuery}
+        onChange={handleSearchChange}
+        placeholder={t('skills.list.searchPlaceholder')}
+      />
+      <div className="skill-cards" ref={scrollRef}>
         {filteredSkills.map((skill) => (
           <SkillCard
             key={skill.name}

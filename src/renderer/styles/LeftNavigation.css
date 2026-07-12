@@ -26,7 +26,7 @@
   top: 0px;
   gap: 32px;
   padding: 12px;
-  background: #FFFBF8;
+  background: var(--color-warm-50);
   border-right: none; /* border moved away; divider handles the visual separator */
   opacity: 1;
 }
@@ -54,6 +54,25 @@
 }
 
 .agent-list-scroll-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+/*
+ * Inner scroll viewports that render a custom hover overlay scrollbar must hide
+ * the native one. globals.css declares a global `::-webkit-scrollbar { width: 6px
+ * !important }`, so the inline `scrollbar-width: none` alone does not suppress the
+ * WebKit scrollbar in Electron/Chromium -- these explicit rules are required.
+ *  - .agent-list-scroll-viewport: the regular (searchable) agent list (Task 4)
+ *  - .chat-sessions-list: each built-in agent's fixed-height session list
+ */
+.agent-list-scroll-viewport,
+.chat-sessions-list {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.agent-list-scroll-viewport::-webkit-scrollbar,
+.chat-sessions-list::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Edge */
 }
 

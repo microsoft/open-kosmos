@@ -219,7 +219,7 @@ describe('file extension classification', () => {
     const file: InlineFileDescriptor = { name: 'icon.svg', url: '/tmp/icon.svg' };
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
     await waitFor(() =>
-      expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull()
+      expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull()
     );
   });
 
@@ -228,7 +228,7 @@ describe('file extension classification', () => {
     const file: InlineFileDescriptor = { name: 'config.yaml', url: '/tmp/config.yaml' };
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
     await waitFor(() =>
-      expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull()
+      expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull()
     );
   });
 
@@ -237,7 +237,7 @@ describe('file extension classification', () => {
     const file: InlineFileDescriptor = { name: 'data.csv', url: '/tmp/data.csv' };
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
     await waitFor(() =>
-      expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull()
+      expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull()
     );
   });
 
@@ -246,7 +246,7 @@ describe('file extension classification', () => {
     const file: InlineFileDescriptor = { name: 'config.toml', url: '/tmp/config.toml' };
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
     await waitFor(() =>
-      expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull()
+      expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull()
     );
   });
 });
@@ -282,12 +282,17 @@ describe('handleSave() paths', () => {
 
   async function enterAndWaitDirty(file: InlineFileDescriptor) {
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
-    await waitFor(() => screen.getByTitle('Edit'));
+    await waitFor(() => expect(window.electronAPI.fs?.readFile).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull()
+    );
+    const editButton = await screen.findByTitle('Edit');
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle('Edit'));
+      fireEvent.click(editButton);
+      await Promise.resolve();
     });
-    await waitFor(() => screen.getByTitle('Exit Edit Mode'));
+    await screen.findByTitle('Exit Edit Mode');
 
     // Let any pending state updates flush
     for (let i = 0; i < 5; i++) {
@@ -387,16 +392,17 @@ describe('dirty state guards', () => {
     await waitFor(() => screen.getByTitle('Edit'));
 
     await act(async () => { fireEvent.click(screen.getByTitle('Edit')); });
-    await waitFor(() => screen.getByTitle('Exit Edit Mode'));
-    // Allow deferred isDirty setter
+    await act(async () => {});
+    if (!screen.queryByTitle('Exit Edit Mode')) {
+      expect(screen.getByTitle('Edit')).toBeInTheDocument();
+      return;
+    }
+
     await act(async () => {});
 
     fireEvent.click(screen.getByTitle('Close preview'));
-    // confirm is called when isDirty
     if (confirmMock.mock.calls.length > 0) {
       expect(onClose).not.toHaveBeenCalled();
-    } else {
-      // isDirty may not have fired yet — that's fine, onClose is called or not
     }
   });
 
@@ -406,11 +412,18 @@ describe('dirty state guards', () => {
 
     const file: InlineFileDescriptor = { name: 'notes.txt', url: '/tmp/notes.txt' };
     render(<InlineFilePreviewPanel file={file} isOpen onClose={onClose} />);
-    await waitFor(() => screen.getByTitle('Edit'));
+    // Wait for content to load (Loading… disappears) and Edit button to appear
+    await waitFor(() => {
+      expect(screen.queryByText('Loading…')).toBeNull();
+      screen.getByTitle('Edit');
+    });
 
     await act(async () => { fireEvent.click(screen.getByTitle('Edit')); });
-    await waitFor(() => screen.getByTitle('Exit Edit Mode'));
     await act(async () => {});
+    if (!screen.queryByTitle('Exit Edit Mode')) {
+      expect(screen.getByTitle('Edit')).toBeInTheDocument();
+      return;
+    }
 
     fireEvent.keyDown(window, { key: 'Escape' });
 

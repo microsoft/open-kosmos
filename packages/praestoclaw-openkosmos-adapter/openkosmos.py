@@ -48,14 +48,14 @@ class OpenKosmosChannel(BaseChannel):
     ) -> None:
         # Resolve allow_from: if None, check env var for allow-all default
         if allow_from is None:
-            allow_all = os.getenv("OpenKosmos_ALLOW_ALL_USERS", "true").lower() in ("true", "1", "yes")
+            allow_all = os.getenv("OPENKOSMOS_ALLOW_ALL_USERS", "true").lower() in ("true", "1", "yes")
             if allow_all:
                 allow_from = []  # empty = allow all
 
         super().__init__(bus, allow_from)
 
-        self._url = url or os.getenv("OpenKosmos_URL", "")
-        self._token = token or os.getenv("OpenKosmos_TOKEN", "")
+        self._url = url or os.getenv("OPENKOSMOS_URL", "")
+        self._token = token or os.getenv("OPENKOSMOS_TOKEN", "")
 
         # WebSocket state
         self._ws: Any = None
@@ -79,10 +79,10 @@ class OpenKosmosChannel(BaseChannel):
     async def start(self) -> None:
         """Start the channel — begin connecting to OpenKosmos."""
         if not self._url:
-            logger.error("[openkosmos] No URL configured. Set OpenKosmos_URL env var")
+            logger.error("[openkosmos] No URL configured. Set OPENKOSMOS_URL env var")
             return
         if not self._token:
-            logger.error("[openkosmos] No token configured. Set OpenKosmos_TOKEN env var")
+            logger.error("[openkosmos] No token configured. Set OPENKOSMOS_TOKEN env var")
             return
 
         self._running = True

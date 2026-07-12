@@ -18,6 +18,9 @@ import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { BuiltinToolDefinition } from './types';
 
+// Re-export types for backward compatibility
+export type { BuiltinToolDefinition } from './types';
+
 // ============ Safety thresholds ============
 const HTML_READ_LIMITS = {
   PROBE_BYTES: 64 * 1024,           // 64KB for DOM probing (slightly larger than original design, covers more structure)

@@ -486,12 +486,17 @@ describe('GhcModelsManager', () => {
     it('should filter and sort models by pattern rules', async () => {
       const manager = await getManager();
       const models = [
+        makeModel('claude-mythos-5'),
+        makeModel('claude-fable-5'),
+        makeModel('claude-opus-5.1'),
         makeModel('claude-sonnet-4.6'),
         makeModel('claude-opus-4.5'),
         makeModel('gemini-2.5-pro'),
         makeModel('gpt-5.5'),
         makeModel('gpt-4.1'), // Should be excluded (< 5.1)
-        makeModel('claude-haiku-4.5'), // Should be excluded by OpenKosmos_MODEL_EXCLUDE
+        makeModel('claude-mythos-4.9'), // Should be excluded (< 5.0 for mythos)
+        makeModel('claude-fable-4.9'), // Should be excluded (< 5.0 for fable)
+        makeModel('claude-haiku-4.5'), // Should be excluded by OPENKOSMOS_MODEL_EXCLUDE
         makeModel('gemini-2.5-flash'), // Should be excluded
       ];
       mockReadFile.mockResolvedValue(JSON.stringify({ models }));
@@ -499,11 +504,34 @@ describe('GhcModelsManager', () => {
       await manager.initialize('test-alias');
       const openkosmos = manager.getAllOpenKosmosUsedModels();
 
-      // Should include: claude-sonnet-4.6, claude-opus-4.5, gemini-2.5-pro, gpt-5.5
-      expect(openkosmos).toHaveLength(4);
-      // Claude first (sortGroup 0), then Gemini (1), then GPT (2)
-      expect(openkosmos[0].id).toMatch(/^claude/);
-      expect(openkosmos[openkosmos.length - 1].id).toMatch(/^gpt/);
+      expect(openkosmos.map(model => model.id)).toEqual([
+        'claude-mythos-5',
+        'claude-fable-5',
+        'claude-opus-5.1',
+        'claude-opus-4.5',
+        'claude-sonnet-4.6',
+        'gemini-2.5-pro',
+        'gpt-5.5',
+      ]);
+    });
+
+    it('should sort models within the same Claude family by ID descending', async () => {
+      const manager = await getManager();
+      const models = [
+        makeModel('claude-mythos-5'),
+        makeModel('claude-mythos-5.2'),
+        makeModel('claude-mythos-5.1'),
+      ];
+      mockReadFile.mockResolvedValue(JSON.stringify({ models }));
+
+      await manager.initialize('test-alias');
+      const openkosmos = manager.getAllOpenKosmosUsedModels();
+
+      expect(openkosmos.map(model => model.id)).toEqual([
+        'claude-mythos-5.2',
+        'claude-mythos-5.1',
+        'claude-mythos-5',
+      ]);
     });
 
     it('should exclude non-chat and non-picker-enabled models', async () => {
@@ -548,9 +576,9 @@ describe('GhcModelsManager', () => {
       expect(manager.validateModelId('nonexistent')).toBe(false);
     });
 
-    it('getDefaultModel returns claude-sonnet-4.6', async () => {
+    it('getDefaultModel returns claude-opus-4.6', async () => {
       const manager = await getManager();
-      expect(manager.getDefaultModel()).toBe('claude-sonnet-4.6');
+      expect(manager.getDefaultModel()).toBe('claude-opus-4.6');
     });
 
     it('isReasoningModel detects o3/o4 models', async () => {
@@ -629,6 +657,36 @@ describe('GhcModelsManager', () => {
       expect(caps!.supportsAttachments).toBe(true);
       expect(caps!.supportsReasoning).toBe(false);
       expect(caps!.supportsTemperature).toBe(true);
+    });
+
+    it('getModelCapabilities handles disabled supports, reasoning effort, and cl100k tokenizer', async () => {
+      const manager = await getManager();
+      const modelWithReasoningEffort = makeModel('claude-mythos-5', {
+        capabilities: {
+          family: 'claude-mythos-5',
+          object: 'model_capabilities',
+          tokenizer: 'cl100k_base',
+          type: 'chat',
+          supports: {
+            streaming: false,
+            tool_calls: false,
+            vision: false,
+            reasoning_effort: ['High', 'high'],
+          },
+        },
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify({ models: [modelWithReasoningEffort] }));
+      await manager.initialize('test-alias');
+
+      const caps = manager.getModelCapabilities('claude-mythos-5');
+      expect(caps).toMatchObject({
+        supportsStreaming: false,
+        supportsTools: false,
+        supportsImages: false,
+        supportsReasoning: true,
+        reasoningEfforts: ['high'],
+        tokenizer: 'cl100k_base',
+      });
     });
 
     it('getModelCapabilities detects reasoning model (o3)', async () => {
@@ -861,7 +919,7 @@ describe('module-level exports', () => {
     expect(mod.getModelCapabilities('claude-sonnet-4.6')).not.toBeNull();
     expect(mod.validateModelId('claude-sonnet-4.6')).toBe(true);
     expect(mod.isReasoningModel('claude-sonnet-4.6')).toBe(false);
-    expect(mod.getDefaultModel()).toBe('claude-sonnet-4.6');
+    expect(mod.getDefaultModel()).toBe('claude-opus-4.6');
     expect(mod.MODEL_CATEGORIES).toBeDefined();
     await mod.ensureModelsReady(); // should resolve without error
   });

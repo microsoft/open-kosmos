@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, createElement } from 'react';
 import { adjustAnchoredDropdownToViewport, ANCHORED_DROPDOWN_SIZE_PRESETS, AnchoredDropdownPosition, getAnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const zeroState: {
   isOpen: boolean;
@@ -34,6 +35,7 @@ interface InnerProps {
 const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
   const { close: onClose } = EditAgentMenuAtom.useChange();
   const editAgentMenuRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
 
   useClickOut(editAgentMenuRef, onClose);
 
@@ -82,19 +84,6 @@ const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
     onClose();
   };
 
-  const handleConfigContextEnhancement = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    // Trigger open Context Enhancement tab event
-    window.dispatchEvent(new CustomEvent('agent:editAgent', {
-      detail: {
-        chatId: null, // Will be obtained from the current chatId in ContentContainer
-        initialTab: 'context'
-      }
-    }));
-    onClose();
-  };
-
   return (
     <div
       ref={editAgentMenuRef}
@@ -121,7 +110,7 @@ const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
             />
           </svg>
         </span>
-        <span className="dropdown-menu-item-text">Select MCP Tools</span>
+        <span className="dropdown-menu-item-text">{t('agent.menu.selectMcpTools')}</span>
       </button>
       <button
         className="dropdown-menu-item"
@@ -139,7 +128,7 @@ const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
             />
           </svg>
         </span>
-        <span className="dropdown-menu-item-text">Select Skills</span>
+        <span className="dropdown-menu-item-text">{t('agent.menu.selectSkills')}</span>
       </button>
       <button
         className="dropdown-menu-item"
@@ -157,7 +146,7 @@ const EditAgentMenuDropdown: React.FC<InnerProps> = ({ position }) => {
             />
           </svg>
         </span>
-        <span className="dropdown-menu-item-text">Edit System Prompt</span>
+        <span className="dropdown-menu-item-text">{t('agent.menu.editSystemPrompt')}</span>
       </button>
     </div>
   );

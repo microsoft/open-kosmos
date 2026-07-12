@@ -90,17 +90,17 @@ describe('ArchivedAgentsView', () => {
     let resolvePromise: any;
     mockGetArchivedAgents.mockReturnValue(new Promise((r) => { resolvePromise = r; }));
     render(<ArchivedAgentsView />);
-    expect(screen.getByText('Loading archived agents...')).toBeInTheDocument();
+    expect(screen.getByText('Loading archived chats...')).toBeInTheDocument();
     // Resolve to clean up
     resolvePromise({ success: true, data: [] });
   });
 
   // ── Empty state ────────────────────────────────────────────────────────────
-  it('shows empty state when no archived agents', async () => {
+  it('shows empty state when no archived chats', async () => {
     mockGetArchivedAgents.mockResolvedValue({ success: true, data: [] });
     render(<ArchivedAgentsView />);
     await waitFor(() => {
-      expect(screen.getByText('No archived agents')).toBeInTheDocument();
+      expect(screen.getByText('No archived chats')).toBeInTheDocument();
     });
   });
 
@@ -109,7 +109,7 @@ describe('ArchivedAgentsView', () => {
     mockGetArchivedAgents.mockResolvedValue({ success: false });
     render(<ArchivedAgentsView />);
     await waitFor(() => {
-      expect(screen.getByText('No archived agents')).toBeInTheDocument();
+      expect(screen.getByText('No archived chats')).toBeInTheDocument();
     });
   });
 
@@ -122,7 +122,7 @@ describe('ArchivedAgentsView', () => {
     });
     render(<ArchivedAgentsView />);
     await waitFor(() => {
-      expect(screen.getByText('No archived agents')).toBeInTheDocument();
+      expect(screen.getByText('No archived chats')).toBeInTheDocument();
     });
   });
 
@@ -131,12 +131,12 @@ describe('ArchivedAgentsView', () => {
     mockGetArchivedAgents.mockRejectedValue(new Error('Network error'));
     render(<ArchivedAgentsView />);
     await waitFor(() => {
-      expect(screen.getByText('No archived agents')).toBeInTheDocument();
+      expect(screen.getByText('No archived chats')).toBeInTheDocument();
     });
   });
 
-  // ── Renders archived agents ────────────────────────────────────────────────
-  it('renders archived agents when data is returned', async () => {
+  // ── Renders archived chats ────────────────────────────────────────────────
+  it('renders archived chats when data is returned', async () => {
     const agent = makeArchivedAgent();
     mockGetArchivedAgents.mockResolvedValue({ success: true, data: [agent] });
     render(<ArchivedAgentsView />);
@@ -316,14 +316,14 @@ describe('ArchivedAgentsView', () => {
   });
 
   // ── Header renders correctly ───────────────────────────────────────────────
-  it('renders header with "Archived Agents" title', async () => {
+  it('renders header with "Archived Chats" title', async () => {
     mockGetArchivedAgents.mockResolvedValue({ success: true, data: [] });
     render(<ArchivedAgentsView />);
-    expect(screen.getByText('Archived Agents')).toBeInTheDocument();
+    expect(screen.getByText('Archived Chats')).toBeInTheDocument();
   });
 
   // ── Multiple agents rendered ───────────────────────────────────────────────
-  it('renders multiple archived agents', async () => {
+  it('renders multiple archived chats', async () => {
     const agents = [
       makeArchivedAgent({ chat_id: 'c1', agent: { name: 'Agent A' } }),
       makeArchivedAgent({ chat_id: 'c2', agent: { name: 'Agent B' } }),

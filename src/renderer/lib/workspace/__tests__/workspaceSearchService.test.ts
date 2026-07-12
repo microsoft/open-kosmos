@@ -119,6 +119,23 @@ describe('workspaceSearchService', () => {
       expect(results).toHaveLength(1);
     });
 
+    it('prefers the chat-owned workspace over the legacy agent workspace', async () => {
+      mockGetCurrentChat.mockReturnValue({
+        workspace: '/home/projects/chat-workspace',
+        agent: { workspace: '/home/projects/legacy-agent-workspace' },
+      });
+      mockSearchFiles.mockResolvedValue({
+        success: true,
+        data: { results: [{ path: '/home/projects/chat-workspace/src/foo.ts' }], limitHit: false },
+      });
+
+      await quickSearchFiles('foo');
+
+      expect(mockSearchFiles).toHaveBeenCalledWith(
+        expect.objectContaining({ folder: '/home/projects/chat-workspace', pattern: 'foo' })
+      );
+    });
+
     it('returns empty array when profileDataManager.getCurrentChat throws', async () => {
       mockGetCurrentChat.mockImplementation(() => { throw new Error('not ready'); });
       const results = await quickSearchFiles('foo');

@@ -447,7 +447,7 @@ describe('AgentList - search keyboard navigation', () => {
 // ── handleAgentClick, handleChatSessionClick ─────────────────────────────────
 
 describe('AgentList - agent and session click handlers', () => {
-  it('clicking an agent calls onSelectChat with chatId', async () => {
+  it('clicking an agent toggles its sessions without starting a new chat', async () => {
     const onSelectChat = vi.fn();
     render(
       <AgentList
@@ -461,6 +461,23 @@ describe('AgentList - agent and session click handlers', () => {
     });
 
     fireEvent.click(screen.getByText('Test Agent'));
+    expect(onSelectChat).not.toHaveBeenCalled();
+  });
+
+  it('clicking the new-chat button calls onSelectChat with chatId', async () => {
+    const onSelectChat = vi.fn();
+    render(
+      <AgentList
+        chats={[makeChat()]}
+        onSelectChat={onSelectChat}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Agent')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Start new conversation'));
     expect(onSelectChat).toHaveBeenCalledWith('chat-1');
   });
 
@@ -776,10 +793,10 @@ describe('AgentList - delete and fork chat session', () => {
   });
 });
 
-// ── primaryAgent ordering ─────────────────────────────────────────────────────
+// ── primaryChat ordering ──────────────────────────────────────────────────────
 
-describe('AgentList - primaryAgent ordering', () => {
-  it('places primary agent first in the sorted list', async () => {
+describe('AgentList - primaryChat ordering', () => {
+  it('places primary chat first in the sorted list', async () => {
     const chats = [
       makeChat({ chat_id: 'chat-2', agent: { name: 'Agent B' } }),
       makeChat({ chat_id: 'chat-1', agent: { name: 'Primary Agent' } }),
@@ -788,7 +805,7 @@ describe('AgentList - primaryAgent ordering', () => {
     render(
       <AgentList
         chats={chats}
-        primaryAgent="Primary Agent"
+        primaryChat="chat-1"
         excludeBuiltinAgents={false}
       />,
     );

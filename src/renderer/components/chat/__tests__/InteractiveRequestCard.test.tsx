@@ -6,10 +6,17 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import InteractiveRequestCard from '../InteractiveRequestCard';
 import type { InteractiveRequest } from '@shared/types/interactiveRequestTypes';
+import { WithStore } from '../../../atom';
+import { appDataManager } from '../../../lib/userData/appDataManager';
 
 vi.mock('../../../styles/InteractiveRequestCard.css', async () => ({}));
 
 const otherOptionButtonName = /^Other\b/i;
+
+function renderWithLanguage(ui: React.ReactElement, language: 'en' | 'zh-CN' = 'en') {
+  (appDataManager as any).cache = { uiLanguage: language };
+  return render(<WithStore>{ui}</WithStore>);
+}
 
 describe('InteractiveRequestCard', () => {
   it('auto-submits a single approval decision without showing bulk actions', async () => {
@@ -136,6 +143,8 @@ describe('InteractiveRequestCard', () => {
       requestType: 'choice',
       action: 'submit',
       selectedValues: ['staging'],
+      selectedPresetValues: ['staging'],
+      customValues: [],
     });
   });
 
@@ -169,6 +178,8 @@ describe('InteractiveRequestCard', () => {
       requestType: 'choice',
       action: 'submit',
       selectedValues: ['Escalation thread'],
+      selectedPresetValues: [],
+      customValues: ['Escalation thread'],
     });
   });
 
@@ -228,6 +239,8 @@ describe('InteractiveRequestCard', () => {
       requestType: 'choice',
       action: 'submit',
       selectedValues: ['group-1', '1:1 Alice'],
+      selectedPresetValues: ['group-1'],
+      customValues: ['group-1', '1:1 Alice'],
     });
   });
 
@@ -269,6 +282,76 @@ describe('InteractiveRequestCard', () => {
       action: 'submit',
       formValues: { email: 'user@example.com' },
     });
+  });
+
+  it('localizes form validation errors and generated placeholders', () => {
+    const onSubmit = vi.fn();
+    const request: InteractiveRequest = {
+      interactionId: 'form-localized-validation',
+      chatId: 'chat-1',
+      chatSessionId: 'session-1',
+      requestType: 'form',
+      status: 'pending',
+      title: 'Provide configuration',
+      createdAt: Date.now(),
+      source: 'assistant',
+      fields: [
+        {
+          key: 'name',
+          label: 'Name',
+          type: 'string',
+          control: 'text',
+          required: true,
+        },
+        {
+          key: 'count',
+          label: 'Count',
+          type: 'int',
+          control: 'text',
+          defaultValue: 'abc',
+        },
+        {
+          key: 'ratio',
+          label: 'Ratio',
+          type: 'double',
+          control: 'text',
+          defaultValue: 'abc',
+        },
+        {
+          key: 'minChoices',
+          label: 'Minimum choices',
+          type: 'string',
+          control: 'multiselect',
+          minSelections: 2,
+          defaultValue: ['one'],
+          options: [{ value: 'one', label: 'One' }],
+        },
+        {
+          key: 'maxChoices',
+          label: 'Maximum choices',
+          type: 'string',
+          control: 'multiselect',
+          maxSelections: 1,
+          defaultValue: ['one', 'two'],
+          options: [
+            { value: 'one', label: 'One' },
+            { value: 'two', label: 'Two' },
+          ],
+        },
+      ],
+    };
+
+    renderWithLanguage(<InteractiveRequestCard request={request} onSubmit={onSubmit} />, 'zh-CN');
+
+    expect(screen.getByPlaceholderText('输入name')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('此字段为必填项')).toBeInTheDocument();
+    expect(screen.getByText('请输入有效的整数')).toBeInTheDocument();
+    expect(screen.getByText('请输入有效的数字')).toBeInTheDocument();
+    expect(screen.getByText('请至少选择 2 个选项')).toBeInTheDocument();
+    expect(screen.getByText('请最多选择 1 个选项')).toBeInTheDocument();
   });
 
   it('submits form requests with textarea and select controls', () => {

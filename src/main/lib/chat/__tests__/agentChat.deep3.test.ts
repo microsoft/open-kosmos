@@ -9,7 +9,6 @@
  *   createStreamingService, getStreamingService, createTurnRunner, getTurnRunner)
  * - Delegating public/private methods (getContextHistory, getChatHistory,
  *   getCancellationToken, invalidateActiveExecution, cancelActiveToolExecution,
- *   registerActiveToolCancellationHandler, getSubAgentConfig, getContextSummary,
  *   forceIdleStatus, destroy, updateSessionTitle, initializeEmptyChatSession,
  *   addMessageToChatHistory, getSchedulerMetadata, hasInjectedMcpImageHash,
  *   createMcpImageHash, getAgentInfo null-config branch,
@@ -77,6 +76,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   userInputPlaceholderParser: {},
   UserInputField: class {},
 }));
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class {},
 }));
@@ -128,24 +128,6 @@ vi.mock('../agentChatUtilities', async () => ({
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn(() => undefined) })),
-  },
-}));
-
-const { mockAnalyticsManager } = vi.hoisted(() => ({
-  mockAnalyticsManager: { recordChatSessionActivated: vi.fn().mockResolvedValue(undefined) },
-}));
-
-vi.mock('../../analytics', async () => ({ analyticsManager: mockAnalyticsManager }));
-
-const { mockHookRegistry } = vi.hoisted(() => ({
-  mockHookRegistry: { execute: vi.fn().mockResolvedValue({ additionalContexts: [] }) },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({ hookRegistry: mockHookRegistry }));
-
 const { mockAgentChatManager } = vi.hoisted(() => ({
   mockAgentChatManager: { exitNewChatSessionFor: vi.fn() },
 }));
@@ -176,7 +158,6 @@ vi.mock('../agentChatTurnRunner', async () => ({
 vi.mock('../agentChatPromptService', async () => ({
   AgentChatPromptService: vi.fn().mockImplementation(function (this: any) {
     this.getAgentSpecificSystemPrompt = vi.fn(() => []);
-    this.buildSubAgentsSystemPrompt = vi.fn(() => '');
     this.getCombinedSystemPromptForContext = vi.fn(() => []);
     this.getLatestCustomSystemPrompt = vi.fn(() => []);
     this.getCombinedSystemPromptForCurrentTurn = vi.fn(async () => []);
@@ -225,8 +206,6 @@ vi.mock('../agentChatToolPostProcessor', async () => ({
   AgentChatToolPostProcessor: vi.fn().mockImplementation(function (this: any) {
     this.postProcessToolResult = vi.fn(async (_tc: any, tr: any) => tr);
     this.postProcessForRequestInteractiveInputTool = vi.fn(async (r: any) => r);
-    this.postProcessForGetMcpTemplateFromLibraryTool = vi.fn(async (r: any) => r);
-    this.postProcessForGetAgentTemplateFromLibraryTool = vi.fn(async (r: any) => r);
   }),
 }));
 
@@ -677,23 +656,7 @@ describe('AgentChat - getContextSummary', () => {
   });
 });
 
-// ── getSubAgentConfig ──────────────────────────────────────────────────────────
 
-describe('AgentChat - getSubAgentConfig', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns undefined when agent does not reference the sub-agent', () => {
-    const agent = createAgent({}, { sub_agents: ['other-agent'] });
-    expect(agent.getSubAgentConfig('my-agent')).toBeUndefined();
-  });
-
-  it('returns undefined when chatConfig has no agent property — via direct mock after construction', () => {
-    const agent = createAgent();
-    // Override getChatConfig to return no agent after construction
-    mockProfileCacheManager.getChatConfig.mockReturnValue({ chat_id: 'chat-deep3' });
-    expect(agent.getSubAgentConfig('some-agent')).toBeUndefined();
-  });
-});
 
 // ── getAgentInfo ───────────────────────────────────────────────────────────────
 

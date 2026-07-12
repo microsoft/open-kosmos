@@ -39,9 +39,9 @@ describe('errors', () => {
 
   describe('AuthProviderNotFoundError', () => {
     it('creates error with provider name in message', () => {
-      const err = new AuthProviderNotFoundError('custom-provider');
-      expect(err.message).toContain('custom-provider');
-      expect(err.provider).toBe('custom-provider');
+      const err = new AuthProviderNotFoundError('azure');
+      expect(err.message).toContain('azure');
+      expect(err.provider).toBe('azure');
       expect(err.name).toBe('AuthProviderNotFoundError');
       expect(err).toBeInstanceOf(ProviderError);
     });

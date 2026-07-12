@@ -14,6 +14,10 @@ import { Message } from '@shared/types/chatTypes';
 import { streamingConfigManager } from '../../lib/streaming/streamingConfig';
 import { streamingOptimizer } from '../../lib/streaming/streamingOptimizer';
 import { streamingCompatibility } from '../../lib/streaming/compatibilityLayer';
+import { MarkdownLink } from './MarkdownLink';
+import { linkifyFilePaths, stripFileScheme, isLocalFilePath, isFilePathString, getFileName } from '../../lib/chat/filePathUtils';
+import { LocalFileLink, createFileOpenHandler } from './LocalFileLink';
+import { useI18n } from '../../lib/i18n/useI18n';
 import '../../styles/StreamingV2Message.css';
 import '../../styles/markdown-render.css';
 
@@ -65,6 +69,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
   onStreamingComplete,
   onHeightChange
 }) => {
+  const { t } = useI18n();
   const [showMetrics, setShowMetrics] = useState(false);
   const [displayedText, setDisplayedText] = useState('');
   const lastHeightRef = useRef(0);
@@ -269,14 +274,14 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
 
   // Watch for height changes
   useEffect(() => {
-    if (containerRef.current && onHeightChange) {
+    if ((isStreaming || isTyping) && containerRef.current && onHeightChange) {
       const currentHeight = containerRef.current.scrollHeight;
       if (currentHeight !== lastHeightRef.current) {
         lastHeightRef.current = currentHeight;
         onHeightChange(currentHeight);
       }
     }
-  }, [displayedText, onHeightChange]);
+  }, [displayedText, onHeightChange, isStreaming, isTyping]);
 
   // Auto-hide performance metrics
   useEffect(() => {
@@ -320,6 +325,36 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
       if (className && className.includes('language-')) {
         // Block code inside <pre> — preserve className for pre handler detection
         return <code className={className}>{children}</code>;
+      }
+      const text = typeof children === 'string' ? children : String(children ?? '');
+      const isAssistant = message.role === 'assistant';
+
+      const handleOpenFile = createFileOpenHandler;
+
+      // Defense: linkifyFilePaths may leak [filename](path) into inline code.
+      // Gate by role — user messages never run linkifyFilePaths, so any leaked-link
+      // pattern there is the user's literal text, not our preprocessing.
+      if (isAssistant) {
+        const mdLinkMatch = text.match(/^\[([^\]]+)\]\((.+)\)$/);
+        if (mdLinkMatch) {
+          const [, fileName, rawUrl] = mdLinkMatch;
+          if (isLocalFilePath(rawUrl)) {
+            return (
+              <a href="#" className="text-primary-600 hover:text-primary-800 underline cursor-pointer"
+                title={stripFileScheme(rawUrl)} onClick={handleOpenFile(rawUrl)}>
+                {fileName}
+              </a>
+            );
+          }
+        }
+        if (isFilePathString(text)) {
+          return (
+            <a href="#" className="text-primary-600 hover:text-primary-800 underline cursor-pointer"
+              title={text} onClick={handleOpenFile(text)}>
+              {getFileName(text)}
+            </a>
+          );
+        }
       }
       return (
         <code className="inline-code">
@@ -444,25 +479,14 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     },
     a(props: any) {
       const { href, children, ...rest } = props;
-      // Detect local file paths (starting with / but not //, or starting with a drive letter)
-      const isLocalPath = href && (/^\/[^/]/.test(href) || /^[A-Za-z]:[\\/]/.test(href));
-      if (isLocalPath) {
+      if (href && isLocalFilePath(href)) {
         return (
-          <a
-            {...rest}
-            href="#"
-            className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
-            onClick={(e: React.MouseEvent) => {
-              e.preventDefault();
-              const decodedPath = decodeURIComponent(href);
-              window.electronAPI?.workspace?.openPath(decodedPath);
-            }}
-          >
+          <LocalFileLink href={href}>
             {children}
-          </a>
+          </LocalFileLink>
         );
       }
-      return <a {...props} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" />;
+      return <MarkdownLink {...rest} href={href}>{children}</MarkdownLink>;
     },
     strong(props: any) {
       return <strong {...props} className="font-bold" />;
@@ -470,7 +494,12 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
     em(props: any) {
       return <em {...props} className="italic" />;
     }
-  }), []); // Empty dependency array, only create once
+  }), [message.role]);
+
+  const processedMarkdown = useMemo(
+    () => encodeMarkdownLinkSpaces(message.role === 'assistant' ? linkifyFilePaths(displayedText) : displayedText),
+    [displayedText, message.role]
+  );
 
   return (
     <div
@@ -496,7 +525,7 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
       >
         {displayedText.trim().length > 0 && (
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
-            {encodeMarkdownLinkSpaces(displayedText)}
+            {processedMarkdown}
           </ReactMarkdown>
         )}
       </div>
@@ -508,40 +537,54 @@ export const StreamingV2Message: React.FC<StreamingV2MessageProps> = ({
           onClick={handleMetricsClick}
           style={{
             fontSize: '0.75rem',
-            color: '#666',
+            color: 'var(--color-warm-500)',
             marginTop: '0.5rem',
             padding: '0.25rem 0.5rem',
-            backgroundColor: '#f5f5f5',
+            backgroundColor: 'var(--color-neutral-100)',
             borderRadius: '0.25rem',
             cursor: 'pointer',
             userSelect: 'none'
           }}
         >
           <div className="metrics-summary">
-            ⚡ {streamingMetrics.wordsPerSecond.toFixed(1)} words/s
+            {t('streaming.metrics.wordsPerSecond', {
+              rate: streamingMetrics.wordsPerSecond.toFixed(1),
+            })}
             {streamingMetrics.timeToFirstContent && (
               <span className="ml-2">
-                • {streamingMetrics.timeToFirstContent}ms TTFC
+                {t('streaming.metrics.ttfc', {
+                  ms: streamingMetrics.timeToFirstContent,
+                })}
               </span>
             )}
           </div>
 
           {showMetrics && (
             <div className="metrics-detail" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
-              <div>Total time: {streamingMetrics.totalTime}ms</div>
-              <div>Fragments: {streamingMetrics.totalFragments} ({streamingMetrics.fragmentsPerSecond.toFixed(2)}/s)</div>
-              <div>Content: {streamingMetrics.contentLength} chars, {streamingMetrics.wordCount} words</div>
+              <div>{t('streaming.metrics.totalTime', { ms: streamingMetrics.totalTime })}</div>
+              <div>{t('streaming.metrics.fragments', {
+                count: streamingMetrics.totalFragments,
+                rate: streamingMetrics.fragmentsPerSecond.toFixed(2),
+              })}</div>
+              <div>{t('streaming.metrics.content', {
+                chars: streamingMetrics.contentLength,
+                words: streamingMetrics.wordCount,
+              })}</div>
               {streamingMetrics.latencyMetrics && (
                 <div>
-                  Latency: avg {streamingMetrics.latencyMetrics.average.toFixed(1)}ms,
-                  peak {streamingMetrics.latencyMetrics.peak}ms
+                  {t('streaming.metrics.latency', {
+                    average: streamingMetrics.latencyMetrics.average.toFixed(1),
+                    peak: streamingMetrics.latencyMetrics.peak,
+                  })}
                 </div>
               )}
               {streamingMetrics.fragmentsByType && (
                 <div>
-                  Types: {Object.entries(streamingMetrics.fragmentsByType)
-                    .map(([type, count]) => `${type}:${count}`)
-                    .join(', ')}
+                  {t('streaming.metrics.types', {
+                    types: Object.entries(streamingMetrics.fragmentsByType)
+                      .map(([type, count]) => `${type}:${count}`)
+                      .join(', '),
+                  })}
                 </div>
               )}
             </div>

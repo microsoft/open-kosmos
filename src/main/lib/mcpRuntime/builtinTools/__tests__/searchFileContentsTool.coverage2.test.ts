@@ -234,7 +234,7 @@ describe('SearchFileContentsTool — context invalid non-integer', () => {
   });
 });
 
-// ── isOAuthAuthority via windows.net URL ──────────────────────────────────
+// ── isMicrosoftAuthority via windows.net URL ──────────────────────────────────
 describe('SearchFileContentsTool — shouldSkipByGlob private', () => {
   const skip = (rel: string, glob?: string) =>
     (SearchFileContentsTool as any).shouldSkipByGlob(rel, glob);

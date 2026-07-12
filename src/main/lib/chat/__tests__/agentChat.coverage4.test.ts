@@ -5,7 +5,6 @@
  *   - handlePushChunk / handlePushComplete / cancelPush
  *   - callWithToolsStreaming
  *   - executeToolCall
- *   - getSubAgentConfig (more paths)
  *   - addMessageToContext / addMessageToSession
  *   - getInteractionHistory (with session data)
  *   - getChatHistory / getContextHistory
@@ -134,21 +133,12 @@ vi.mock('../agentChatUtilities', async () => ({
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn(() => ({ name: 'helper-bot' })) })),
-  },
-}));
-
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordChatSessionActivated: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: {
-    execute: vi.fn().mockResolvedValue({ additionalContexts: [] }),
+vi.mock('../../agentHooks/agentHookManager', async () => ({
+  AgentHookManager: {
+    getInstance: () => ({
+      runHooks: vi.fn().mockResolvedValue({}),
+      isEnabled: vi.fn(() => false),
+    }),
   },
 }));
 
@@ -198,6 +188,12 @@ vi.mock('../agentChatSessionService', async () => ({
     generateFallbackTitle = vi.fn().mockReturnValue('Fallback Title');
     addMessageToSession = vi.fn().mockResolvedValue(undefined);
     editUserMessage = vi.fn().mockResolvedValue([{ role: 'assistant', content: [] }]);
+    prepareEditedUserMessage = vi.fn().mockImplementation((_messageId: string, message: any) => ({
+      normalizedMessage: { id: message.id ?? 'm1', role: 'user', timestamp: message.timestamp ?? 1, content: message.content },
+      targetUserIndex: 0,
+      targetContextUserIndex: 0,
+    }));
+    applyEditedUserMessage = vi.fn().mockResolvedValue(undefined);
     validateUserMessageEditable = vi.fn().mockReturnValue({
       canEdit: true, targetUserIndex: 0, targetUserMessage: null, targetContextUserIndex: 0,
     });
@@ -211,7 +207,6 @@ vi.mock('../agentChatPromptService', async () => ({
     getLatestCustomSystemPrompt = vi.fn().mockReturnValue([{ role: 'system', content: [{ type: 'text', text: 'custom' }] }]);
     getGlobalSystemPrompt = vi.fn().mockReturnValue([]);
     getAgentSpecificSystemPrompt = vi.fn().mockReturnValue([]);
-    buildSubAgentsSystemPrompt = vi.fn().mockReturnValue('');
     getCombinedSystemPromptForContext = vi.fn().mockReturnValue([]);
     getCombinedSystemPromptForCurrentTurn = vi.fn().mockResolvedValue([]);
     refreshSkillSnapshotIfNeeded = vi.fn().mockResolvedValue(undefined);
@@ -237,8 +232,6 @@ vi.mock('../agentChatToolPostProcessor', async () => ({
   AgentChatToolPostProcessor: class {
     postProcessToolResult = vi.fn().mockResolvedValue(undefined);
     postProcessForRequestInteractiveInputTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetMcpTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetAgentTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
@@ -301,6 +294,15 @@ vi.mock('../agentChatRuntimeState', async () => ({
     setPendingInteractiveRequest = vi.fn().mockImplementation(function(this: any, r: any) { this.pendingInteractiveRequest = r; });
     setMessagesToSave = vi.fn().mockImplementation(function(this: any, m: any[]) { this.messagesToSave = m; });
     setSaveChain = vi.fn().mockImplementation(function(this: any, c: Promise<any>) { this.saveChain = c; });
+
+    queuedSteeringMessages: any[] = [];
+    enqueueSteeringMessage = vi.fn();
+    removeSteeringMessage = vi.fn();
+    promoteSteeringMessage = vi.fn().mockReturnValue(null);
+    peekNextSteeringMessage = vi.fn().mockReturnValue(null);
+    takeSteeringMessage = vi.fn().mockReturnValue(null);
+    takeNextSteeringMessage = vi.fn().mockReturnValue(null);
+    clearSteeringMessages = vi.fn();
   },
 }));
 
@@ -313,6 +315,7 @@ vi.mock('../agentChatPushReceiver', async () => ({
     destroy = vi.fn();
   },
 }));
+
 
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
@@ -330,7 +333,6 @@ const AGENT_CONFIG4 = {
     model: 'gpt-5',
     mcp_servers: [],
     system_prompt: 'You are helpful',
-    sub_agents: ['helper-bot'],
   },
 };
 
@@ -499,7 +501,10 @@ describe('AgentChat – retryChat', () => {
 
   it('passes token and callbacks to turnRunner', async () => {
     const agent = createAgent4();
-    const token = {} as any;
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+    } as any;
     const callbacks = { onChunk: vi.fn() };
     const result = await agent.retryChat(token, callbacks);
     expect(Array.isArray(result)).toBe(true);
@@ -518,17 +523,10 @@ describe('AgentChat – streamMessage (normal path)', () => {
     expect(Array.isArray(result)).toBe(true);
   });
 
-  it('streamMessage with isRemoteSession option', async () => {
-    const agent = createAgent4();
-    const userMsg = { role: 'user', content: [{ type: 'text', text: 'hello' }], id: 'msg-1' } as any;
-    const result = await agent.streamMessage(userMsg, undefined, undefined, { isRemoteSession: true });
-    expect(Array.isArray(result)).toBe(true);
-  });
-
   it('streamMessage with interactionPolicy option', async () => {
     const agent = createAgent4();
     const userMsg = { role: 'user', content: [{ type: 'text', text: 'hello' }], id: 'msg-1' } as any;
-    const result = await agent.streamMessage(userMsg, undefined, undefined, { interactionPolicy: 'plain-text-only' });
+    const result = await agent.streamMessage(userMsg, undefined, undefined, { interactionPolicy: 'forbid' });
     expect(Array.isArray(result)).toBe(true);
   });
 });
@@ -613,37 +611,6 @@ describe('AgentChat – destroy', () => {
   });
 });
 
-describe('AgentChat – getSubAgentConfig', () => {
-  it('returns undefined when chatConfig has no sub_agents', () => {
-    const agent = createAgent4({ sub_agents: undefined });
-    const result = agent.getSubAgentConfig('helper-bot');
-    expect(result).toBeUndefined();
-  });
-
-  it('returns undefined when sub-agent is not in allowed list', () => {
-    const agent = createAgent4({ sub_agents: ['other-bot'] });
-    const result = agent.getSubAgentConfig('helper-bot');
-    expect(result).toBeUndefined();
-  });
-
-  it('returns config when sub-agent is in the list', () => {
-    const agent = createAgent4({ sub_agents: ['helper-bot'] });
-    const result = agent.getSubAgentConfig('helper-bot');
-    expect(result).toBeDefined();
-  });
-
-  it('returns undefined when userAlias is empty', () => {
-    mockProfileCacheManager4.getChatConfig.mockReturnValue(AGENT_CONFIG4);
-    const agent = new AgentChat('user1', 'chat-1', 'session-1', makeSession4());
-    // Force currentUserAlias to empty via direct assignment is not possible,
-    // but we can test the branch via getChatConfig returning undefined
-    mockProfileCacheManager4.getChatConfig.mockReturnValue(null);
-    // Reinitialize with config that returns null for sub_agents lookup
-    const result = agent.getSubAgentConfig('helper-bot');
-    // With null config there are no sub_agents, so should return undefined
-    expect(result).toBeUndefined();
-  });
-});
 
 describe('AgentChat – getCurrentModelId', () => {
   it('returns model from agent config', () => {

@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-09 -->
+<!-- Last verified: 2026-07-11 -->
 # Screenshot Module
 
 > Capture-first-then-select screenshot system: spawns per-display overlay windows, captures native images, and resolves a promise when the user completes or cancels.

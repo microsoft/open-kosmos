@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Clipboard, Loader2, FileText, Sparkles } from 'lucide-react';
 import '../../../styles/PasteToWorkspaceDialog.css';
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[PasteToWorkspaceDialog]');
 
 export interface PasteToWorkspaceDialogProps {
@@ -26,6 +27,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
   onSave,
   workspacePath
 }) => {
+  const { t } = useI18n();
   // State
   const [content, setContent] = useState('');
   const [fileName, setFileName] = useState('');
@@ -137,12 +139,12 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
   // Save file
   const handleSave = useCallback(async () => {
     if (!content.trim()) {
-      setError('Please enter some content to save.');
+      setError(t('pasteWorkspace.errorContentRequired'));
       return;
     }
 
     if (!fileName.trim()) {
-      setError('Please enter a file name.');
+      setError(t('pasteWorkspace.errorFileNameRequired'));
       return;
     }
 
@@ -156,11 +158,11 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
       }
     } catch (err) {
       logger.error('[PasteToWorkspaceDialog] Error saving file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save file.');
+      setError(err instanceof Error ? err.message : t('pasteWorkspace.errorSaveFailed'));
     } finally {
       setIsSaving(false);
     }
-  }, [content, fileName, onSave, handleClose]);
+  }, [content, fileName, onSave, handleClose, t]);
 
   // Handle Ctrl+Enter shortcut to save
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -192,12 +194,12 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
         <div className="paste-dialog-header">
           <div className="paste-dialog-title">
             <Clipboard size={20} />
-            <span>Paste to Knowledge Base</span>
+            <span>{t('pasteWorkspace.title')}</span>
           </div>
           <button
             className="paste-dialog-close-btn"
             onClick={handleClose}
-            title="Close (Esc)"
+            title={t('pasteWorkspace.closeEsc')}
           >
             <X size={18} />
           </button>
@@ -207,13 +209,13 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
         <div className="paste-dialog-body">
           {/* Text Input */}
           <div className="paste-content-section">
-            <label className="paste-section-label">Content</label>
+            <label className="paste-section-label">{t('pasteWorkspace.content')}</label>
             <textarea
               ref={textareaRef}
               className="paste-content-textarea"
               value={content}
               onChange={handleContentChange}
-              placeholder="Paste content here..."
+              placeholder={t('pasteWorkspace.contentPlaceholder')}
               disabled={isSaving}
             />
           </div>
@@ -223,17 +225,17 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
             <div className="paste-filename-header">
               <label className="paste-section-label">
                 <FileText size={14} />
-                <span>File Name</span>
+                <span>{t('pasteWorkspace.fileName')}</span>
               </label>
               {content.trim().length >= 10 && (
                 <button
                   className="paste-regenerate-btn"
                   onClick={handleRegenerateFileName}
                   disabled={isGeneratingName || isSaving}
-                  title="Regenerate file name with AI"
+                  title={t('pasteWorkspace.regenerateTitle')}
                 >
                   <Sparkles size={14} />
-                  <span>Regenerate</span>
+                  <span>{t('pasteWorkspace.regenerate')}</span>
                 </button>
               )}
             </div>
@@ -243,7 +245,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
                 className="paste-filename-input"
                 value={fileName}
                 onChange={handleFileNameChange}
-                placeholder={isGeneratingName ? 'Generating...' : 'Enter file name...'}
+                placeholder={isGeneratingName ? t('pasteWorkspace.generating') : t('pasteWorkspace.fileNamePlaceholder')}
                 disabled={isSaving}
               />
               {isGeneratingName && (
@@ -253,7 +255,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
               )}
             </div>
             <p className="paste-filename-hint">
-              AI auto-generates file name based on content format (text, markdown, json, html, js, etc.)
+              {t('pasteWorkspace.hint')}
             </p>
           </div>
 
@@ -272,7 +274,7 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
             onClick={handleClose}
             disabled={isSaving}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="paste-dialog-btn primary"
@@ -282,10 +284,10 @@ const PasteToWorkspaceDialog: React.FC<PasteToWorkspaceDialogProps> = ({
             {isSaving ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                <span>Saving...</span>
+                <span>{t('common.saving')}</span>
               </>
             ) : (
-              <span>Save</span>
+              <span>{t('common.save')}</span>
             )}
           </button>
         </div>

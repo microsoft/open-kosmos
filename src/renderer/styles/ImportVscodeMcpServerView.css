@@ -8,29 +8,27 @@
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: #FFFFFF;
+  background: var(--color-white);
 }
 
 /* Section containers - unified spacing */
 .vscode-importer-content .detection-section {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .vscode-importer-content .server-selection {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .vscode-importer-content .import-options {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .vscode-importer-content .status-section {
-  margin-bottom: 24px;
+  margin-bottom: 0;
   padding: 32px;
   text-align: center;
-  color: #8E8E93;
-  background: #F2F2F7;
-  border-radius: 12px;
+  color: var(--color-neutral-400);
 }
 
 /* Detection Status - follows application status styles */
@@ -38,11 +36,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
-  background: rgba(255, 251, 248, 0.8);
-  border: 1px solid rgba(255, 251, 248, 0.9);
-  border-radius: 8px;
-  color: #8E8E93;
+  padding: 10px 12px;
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-500);
   font-size: 14px;
   line-height: 20px;
 }
@@ -58,23 +56,23 @@
 }
 
 .vscode-importer-content .detection-result {
-  padding: 16px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid;
 }
 
 .vscode-importer-content .detection-result.success {
-  background: rgba(52, 199, 89, 0.1);
-  border-color: rgba(52, 199, 89, 0.2);
+  background: var(--color-success-100);
+  border-color: var(--color-success-200);
 }
 
 .vscode-importer-content .detection-result.error {
-  background: rgba(255, 59, 48, 0.1);
-  border-color: rgba(255, 59, 48, 0.2);
+  background: var(--color-danger-50);
+  border-color: var(--color-danger-200);
 }
 
 .vscode-importer-content .success-message {
-  color: #34C759;
+  color: var(--color-success-800);
   font-weight: 600;
   font-size: 14px;
   line-height: 20px;
@@ -82,7 +80,7 @@
 }
 
 .vscode-importer-content .warning-message {
-  color: #FF9500;
+  color: var(--color-warning-800);
   font-weight: 600;
   font-size: 14px;
   line-height: 20px;
@@ -90,7 +88,7 @@
 }
 
 .vscode-importer-content .error-message {
-  color: #FF3B30;
+  color: var(--color-danger-700);
   font-weight: 600;
   font-size: 14px;
   line-height: 20px;
@@ -100,26 +98,26 @@
 .vscode-importer-content .detection-path {
   font-size: 12px;
   line-height: 16px;
-  color: #8E8E93;
+  color: var(--color-neutral-500);
   margin-top: 8px;
   word-break: break-all;
-  background: #F2F2F7;
+  background: var(--color-neutral-100);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .vscode-importer-content .help-message {
   margin-top: 12px;
   font-size: 13px;
   line-height: 18px;
-  color: #8E8E93;
+  color: var(--color-neutral-400);
 }
 
 .vscode-importer-content .help-message h4 {
   margin: 0 0 8px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .vscode-importer-content .help-message ul {
@@ -141,18 +139,18 @@
 
 .vscode-importer-content .selection-header h3 {
   margin: 0;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .vscode-importer-content .import-options h3 {
   margin: 0 0 12px 0;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .vscode-importer-content .selection-controls {
@@ -164,9 +162,9 @@
 .vscode-importer-content .server-list {
   max-height: 320px;
   overflow-y: auto;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  background: #FFFFFF;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
 }
 
 .vscode-importer-content .server-item {
@@ -184,17 +182,17 @@
 }
 
 .vscode-importer-content .server-item:hover {
-  background: rgba(255, 251, 248, 0.5);
+  background: var(--color-neutral-50);
 }
 
 .vscode-importer-content .server-item.selected {
-  background: rgba(255, 251, 248, 0.8);
-  border-left: 3px solid #FFFBF8;
+  background: var(--color-neutral-100);
+  border-left: 3px solid var(--color-warm-900);
 }
 
 .vscode-importer-content .server-item.conflict {
   background: rgba(255, 149, 0, 0.1);
-  border-left: 3px solid #FF9500;
+  border-left: 3px solid var(--color-orange-system);
 }
 
 /* Server Item Content */
@@ -211,7 +209,7 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  accent-color: #000000;
+  accent-color: var(--color-black);
 }
 
 .vscode-importer-content .server-info {
@@ -225,25 +223,25 @@
   font-weight: 500;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .vscode-importer-content .server-transport {
   font-size: 12px;
   line-height: 16px;
-  color: #8E8E93;
-  background: #F2F2F7;
+  color: var(--color-neutral-500);
+  background: var(--color-neutral-100);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .vscode-importer-content .conflict-badge {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 6px;
-  background: rgba(255, 149, 0, 0.2);
-  color: #FF9500;
-  border-radius: 4px;
+  background: var(--color-warning-100);
+  color: var(--color-warning-800);
+  border-radius: var(--radius);
 }
 
 /* Info Tooltip */
@@ -255,14 +253,14 @@
 }
 
 .vscode-importer-content .info-icon {
-  color: #8E8E93;
+  color: var(--color-neutral-400);
   cursor: help;
   transition: color 0.2s ease;
   flex-shrink: 0;
 }
 
 .vscode-importer-content .info-icon:hover {
-  color: #636366;
+  color: var(--color-neutral-500);
 }
 
 /* Fixed tooltip rendered outside server-list to avoid overflow clipping */
@@ -270,9 +268,9 @@
   min-width: 300px;
   max-width: 480px;
   padding: 12px;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   pointer-events: none;
 }
@@ -280,7 +278,7 @@
 .vscode-importer-content .tooltip-header {
   font-size: 12px;
   font-weight: 600;
-  color: #8E8E93;
+  color: var(--color-neutral-400);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -289,10 +287,10 @@
 .vscode-importer-content .tooltip-json-preview {
   font-size: 11px;
   line-height: 1.4;
-  background: #1D1D1F;
-  color: #F2F2F7;
+  background: var(--syntax-surface);
+  color: var(--color-neutral-100);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 0;
   max-height: 200px;
@@ -312,7 +310,7 @@
   margin: 0 0 8px 0;
   font-size: 13px;
   font-weight: 500;
-  color: #8E8E93;
+  color: var(--color-neutral-500);
 }
 
 .vscode-importer-content .radio-group {
@@ -328,14 +326,14 @@
   gap: 8px;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
   cursor: pointer;
   padding: 4px 0;
 }
 
 .vscode-importer-content .radio-group input[type="radio"] {
   cursor: pointer;
-  accent-color: #000000;
+  accent-color: var(--color-black);
 }
 
 .vscode-importer-content .checkbox-label {
@@ -344,14 +342,14 @@
   gap: 8px;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
   cursor: pointer;
   padding: 8px 0;
 }
 
 .vscode-importer-content .checkbox-label input[type="checkbox"] {
   cursor: pointer;
-  accent-color: #000000;
+  accent-color: var(--color-black);
 }
 
 /* Status Section */
@@ -359,7 +357,7 @@
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .vscode-importer-content .status-section p {
@@ -373,23 +371,24 @@
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin-top: 0;
+  padding: 10px 4px 0;
+  border-top: none;
 }
 
 .vscode-importer-content .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 20px;
-  font-weight: 600;
-  font-size: 14px;
+  height: 32px;
+  padding: 0 16px;
+  font-weight: 500;
+  font-size: 13px;
   line-height: 20px;
-  color: #FFFFFF;
-  background: #000000;
+  color: var(--color-white);
+  background: var(--color-warm-900);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
@@ -407,23 +406,126 @@
 }
 
 .vscode-importer-content .btn-primary:disabled {
-  background: #C7C7CC;
-  color: #8E8E93;
+  background: var(--color-neutral-300);
+  color: var(--color-neutral-400);
   cursor: not-allowed;
+}
+
+[data-theme="dark"] .vscode-importer-content {
+  background: var(--color-surface-default);
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .vscode-importer-content .detection-result.success {
+  background: var(--color-success-surface-subtle);
+  border-color: var(--color-success-border);
+}
+
+[data-theme="dark"] .vscode-importer-content .detection-result.error {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+[data-theme="dark"] .vscode-importer-content .success-message {
+  color: var(--color-success-300);
+}
+
+[data-theme="dark"] .vscode-importer-content .warning-message,
+[data-theme="dark"] .vscode-importer-content .help-message,
+[data-theme="dark"] .vscode-importer-content .detection-path {
+  color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .vscode-importer-content .error-message {
+  color: var(--color-danger-300);
+}
+
+[data-theme="dark"] .vscode-importer-content h3,
+[data-theme="dark"] .vscode-importer-content h4,
+[data-theme="dark"] .vscode-importer-content .help-message h4,
+[data-theme="dark"] .vscode-importer-content .server-name,
+[data-theme="dark"] .vscode-importer-content .status-section h3 {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .vscode-importer-content .detection-path,
+[data-theme="dark"] .vscode-importer-content .scanning-status,
+[data-theme="dark"] .vscode-importer-content .server-list,
+[data-theme="dark"] .vscode-importer-content .server-item {
+  background: var(--form-control-bg);
+  border-color: var(--form-control-border);
+  color: var(--form-control-fg);
+}
+
+[data-theme="dark"] .vscode-importer-content .server-item {
+  border-bottom-color: var(--color-border-strong);
+}
+
+[data-theme="dark"] .vscode-importer-content .server-item:hover,
+[data-theme="dark"] .vscode-importer-content .server-item.selected {
+  background: var(--color-surface-active);
+  border-color: var(--color-border-strongest);
+}
+
+[data-theme="dark"] .vscode-importer-content .server-transport,
+[data-theme="dark"] .vscode-importer-content .conflict-badge {
+  background: var(--color-surface-subtle);
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .vscode-importer-content .radio-group label,
+[data-theme="dark"] .vscode-importer-content .checkbox-label {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .vscode-importer-content input[type="checkbox"],
+[data-theme="dark"] .vscode-importer-content input[type="radio"] {
+  accent-color: var(--color-primary-500);
+  color-scheme: dark;
+}
+
+[data-theme="dark"] .vscode-importer-content .btn-primary {
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+}
+
+[data-theme="dark"] .vscode-importer-content .btn-primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg);
+  border-color: var(--button-primary-hover-bg);
+}
+
+[data-theme="dark"] .vscode-importer-content .btn-primary:disabled {
+  background: var(--button-disabled-bg);
+  border-color: var(--button-disabled-bg);
+  color: var(--button-disabled-fg);
+}
+
+[data-theme="dark"] .vscode-importer-content .btn-secondary {
+  background: var(--button-secondary-bg);
+  border-color: var(--button-secondary-border);
+  color: var(--button-secondary-fg);
+}
+
+[data-theme="dark"] .vscode-importer-content .btn-secondary:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+  border-color: var(--button-secondary-hover-border);
+  color: var(--button-secondary-hover-fg);
 }
 
 .vscode-importer-content .btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
-  font-weight: 600;
+  height: 32px;
+  padding: 0 12px;
+  font-weight: 500;
   font-size: 13px;
   line-height: 18px;
-  color: #272320;
-  background: #FFFFFF;
-  border: 1px solid #272320;
-  border-radius: 6px;
+  color: var(--color-warm-900);
+  background: var(--color-white);
+  border: 1px solid var(--color-warm-900);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
@@ -433,8 +535,8 @@
 
 .vscode-importer-content .btn-secondary:hover:not(:disabled) {
   background: rgba(39, 35, 32, 0.05) !important;
-  border-color: #272320 !important;
-  color: #272320 !important;
+  border-color: var(--color-warm-900) !important;
+  color: var(--color-warm-900) !important;
 }
 
 .vscode-importer-content .btn-secondary:active:not(:disabled) {
@@ -443,8 +545,8 @@
 }
 
 .vscode-importer-content .btn-secondary:disabled {
-  color: #C7C7CC;
-  border-color: #C7C7CC;
+  color: var(--color-neutral-300);
+  border-color: var(--color-neutral-300);
   cursor: not-allowed;
 }
 

@@ -19,27 +19,34 @@ import {
   Monitor,
   Minimize,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import type * as monaco from 'monaco-editor';
-import { FrontMatter, parseFrontMatter } from '../../lib/utils/yamlFrontMatter';
 import { atom } from '@/atom';
 import { isInstallableSkillArtifact } from '../../lib/skills/installableSkillArtifacts';
 import { useToast } from './ToastProvider';
+import { useI18n } from '../../lib/i18n/useI18n';
 import '../../styles/OverlayFileViewer.css';
 import { createLogger } from '../../lib/utilities/logger';
+import FileContentRenderer, {
+  classifyFileContent,
+  getFileExtension,
+  getMonacoLanguage,
+  type FileContentCategory,
+  type FileContentViewMode,
+} from './FileContentRenderer';
+import { formatFileSize, getLocalPath, getOfficeLabel, isLocalFile } from './fileViewerMetadata';
 const logger = createLogger('[OverlayFileViewer]');
+type MonacoEditorModule = typeof import('monaco-editor');
+
+const defaultLoadMonacoEditor = () => import(/* webpackChunkName: "monaco-editor" */ 'monaco-editor');
+let loadMonacoEditor: () => Promise<MonacoEditorModule> = defaultLoadMonacoEditor;
+
+export function __setLoadMonacoEditorForTests(loader: () => Promise<MonacoEditorModule>) {
+  loadMonacoEditor = loader;
+}
 
 // ============================================================
 // Types
 // ============================================================
-
-/** File type classification */
-type FileCategory = 'code' | 'text' | 'json' | 'markdown' | 'html' | 'pdf' | 'office' | 'other';
-
-/** View mode for renderable files */
-type RenderViewMode = 'render' | 'source';
 
 /** File descriptor passed as input */
 export interface OverlayFileDescriptor {
@@ -94,129 +101,7 @@ export const FileViewerAtom = atom(zeroFileViewerState, (_get, set) => {
 // Helpers
 // ============================================================
 
-const HTML_EXTENSIONS = new Set(['html', 'htm']);
-
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown']);
-
-const JSON_EXTENSIONS = new Set(['json']);
-
-/** File extension → Monaco Editor language identifier */
-const MONACO_EXTENSION_LANG: Record<string, string> = {
-  // Language mapping for Monaco Editor edit mode
-  html: 'html', htm: 'html',
-  md: 'markdown', markdown: 'markdown',
-  json: 'json',
-  txt: 'plaintext', csv: 'plaintext', tsv: 'plaintext',
-  cfg: 'plaintext', conf: 'plaintext', env: 'plaintext', log: 'plaintext',
-  gitignore: 'plaintext',
-};
-
-/** Code file extension → Prism language identifier */
-const CODE_EXTENSION_LANG: Record<string, string> = {
-  // Web
-  js: 'javascript', jsx: 'jsx', mjs: 'javascript', cjs: 'javascript',
-  ts: 'typescript', tsx: 'tsx',
-  css: 'css', scss: 'scss', less: 'less', sass: 'sass',
-  // Python
-  py: 'python',
-  // Ruby
-  rb: 'ruby',
-  // JVM
-  java: 'java', kt: 'kotlin', kts: 'kotlin', scala: 'scala', groovy: 'groovy',
-  // C/C++
-  c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', hxx: 'cpp',
-  // C#
-  cs: 'csharp',
-  // Go
-  go: 'go',
-  // Rust
-  rs: 'rust',
-  // Swift / ObjC
-  swift: 'swift', m: 'objectivec',
-  // Shell
-  sh: 'bash', bash: 'bash', zsh: 'bash', ps1: 'powershell',
-  bat: 'batch', cmd: 'batch',
-  // SQL
-  sql: 'sql',
-  // GraphQL
-  graphql: 'graphql', gql: 'graphql',
-  // Markup / Config
-  xml: 'xml', svg: 'xml',
-  yaml: 'yaml', yml: 'yaml',
-  toml: 'toml',
-  ini: 'ini',
-  // Docker / Make
-  dockerfile: 'docker',
-  makefile: 'makefile',
-  // PHP / Perl / Lua / R
-  php: 'php',
-  pl: 'perl', pm: 'perl',
-  lua: 'lua',
-  r: 'r',
-  // Dart / Elixir / Haskell
-  dart: 'dart',
-  ex: 'elixir', exs: 'elixir',
-  hs: 'haskell',
-};
-
-const CODE_EXTENSIONS = new Set(Object.keys(CODE_EXTENSION_LANG));
-
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'csv', 'tsv',
-  'cfg', 'conf', 'env', 'log',
-  'gitignore',
-]);
-
-const PDF_EXTENSIONS = new Set(['pdf']);
-
-const OFFICE_EXTENSIONS = new Set([
-  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  'odt', 'ods', 'odp',
-]);
-
-function getExtension(filename: string): string {
-  const parts = filename.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-}
-
-function classifyFile(file: OverlayFileDescriptor): FileCategory {
-  const ext = getExtension(file.name);
-
-  // Prefer MIME type for classification
-  if (file.mimeType) {
-    if (file.mimeType === 'application/pdf') return 'pdf';
-    if (file.mimeType === 'text/html') return 'html';
-    if (file.mimeType === 'text/markdown') return 'markdown';
-    if (file.mimeType === 'application/json') return 'json';
-    if (file.mimeType.startsWith('text/')) return 'text';
-    if (
-      file.mimeType.includes('msword') ||
-      file.mimeType.includes('spreadsheet') ||
-      file.mimeType.includes('presentation') ||
-      file.mimeType.includes('officedocument')
-    )
-      return 'office';
-  }
-
-  if (HTML_EXTENSIONS.has(ext)) return 'html';
-  if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown';
-  if (JSON_EXTENSIONS.has(ext)) return 'json';
-  if (CODE_EXTENSIONS.has(ext)) return 'code';
-  if (TEXT_EXTENSIONS.has(ext)) return 'text';
-  if (PDF_EXTENSIONS.has(ext)) return 'pdf';
-  if (OFFICE_EXTENSIONS.has(ext)) return 'office';
-  return 'other';
-}
-
-function formatFileSize(bytes?: number): string {
-  if (bytes === undefined || bytes === null) return 'Unknown';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function getFileIcon(category: FileCategory) {
+function getFileIcon(category: FileContentCategory) {
   switch (category) {
     case 'code':
       return <Code size={20} />;
@@ -237,162 +122,6 @@ function getFileIcon(category: FileCategory) {
   }
 }
 
-function getOfficeLabel(ext: string): string {
-  const map: Record<string, string> = {
-    doc: 'Word Document',
-    docx: 'Word Document',
-    xls: 'Excel Spreadsheet',
-    xlsx: 'Excel Spreadsheet',
-    ppt: 'PowerPoint Presentation',
-    pptx: 'PowerPoint Presentation',
-    odt: 'OpenDocument Text',
-    ods: 'OpenDocument Spreadsheet',
-    odp: 'OpenDocument Presentation',
-  };
-  return map[ext] || 'Office File';
-}
-
-/**
- * Determine whether a URL is a local file path.
- * Local path forms:
- * - file:// protocol
- * - macOS/Linux absolute path (starts with /)
- * - Windows absolute path (e.g. C:\ or D:/)
- *
- * Everything else (http, https, blob, data, etc.) is considered non-local.
- */
-function isLocalFile(url: string): boolean {
-  if (url.startsWith('file://')) return true;
-  if (url.startsWith('/')) return true; // macOS / Linux absolute path
-  if (/^[a-zA-Z]:[/\\]/.test(url)) return true; // Windows absolute path
-  return false;
-}
-
-/** Prism language name → Monaco language name mapping */
-const PRISM_TO_MONACO: Record<string, string> = {
-  javascript: 'javascript', jsx: 'javascript',
-  typescript: 'typescript', tsx: 'typescript',
-  css: 'css', scss: 'scss', less: 'less', sass: 'scss',
-  python: 'python', ruby: 'ruby',
-  java: 'java', kotlin: 'kotlin', scala: 'scala', groovy: 'plaintext',
-  c: 'c', cpp: 'cpp', csharp: 'csharp',
-  go: 'go', rust: 'rust', swift: 'swift',
-  objectivec: 'objective-c',
-  bash: 'shell', powershell: 'powershell', batch: 'bat',
-  sql: 'sql', graphql: 'graphql',
-  xml: 'xml', yaml: 'yaml', toml: 'plaintext', ini: 'ini',
-  docker: 'dockerfile', makefile: 'plaintext',
-  php: 'php', perl: 'perl', lua: 'lua', r: 'r',
-  dart: 'dart', elixir: 'plaintext', haskell: 'plaintext',
-};
-
-/** Get Monaco Editor language identifier by file extension */
-function getMonacoLanguage(ext: string): string {
-  if (MONACO_EXTENSION_LANG[ext]) return MONACO_EXTENSION_LANG[ext];
-  const prismLang = CODE_EXTENSION_LANG[ext];
-  if (!prismLang) return 'plaintext';
-  return PRISM_TO_MONACO[prismLang] || 'plaintext';
-}
-
-/** Extract local file path from url field (supports file:// prefix and bare paths) */
-function getLocalPath(url: string): string {
-  if (url.startsWith('file://')) {
-    return decodeURIComponent(url.replace('file://', ''));
-  }
-  return url;
-}
-
-/** Read-only Monaco Editor viewer (for browsing text files in non-edit mode) */
-const ReadonlyMonacoViewer: React.FC<{ content: string; language: string }> = ({ content, language }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    let destroyed = false;
-
-    import(/* webpackChunkName: "monaco-editor" */ 'monaco-editor').then((monacoModule) => {
-      if (destroyed || !containerRef.current) return;
-
-      const editor = monacoModule.editor.create(containerRef.current, {
-        value: content,
-        language,
-        theme: 'vs-dark',
-        automaticLayout: true,
-        readOnly: true,
-        domReadOnly: true,
-        minimap: { enabled: false },
-        fontSize: 13,
-        fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-        lineHeight: 21,
-        padding: { top: 16, bottom: 16 },
-        scrollBeyondLastLine: false,
-        wordWrap: 'off',
-        tabSize: 2,
-        renderWhitespace: 'none',
-        overviewRulerLanes: 0,
-        hideCursorInOverviewRuler: true,
-        overviewRulerBorder: false,
-        scrollbar: {
-          verticalScrollbarSize: 10,
-          horizontalScrollbarSize: 10,
-        },
-        folding: true,
-        lineNumbers: 'on',
-        contextmenu: false,
-        cursorStyle: 'line',
-        cursorBlinking: 'solid',
-      });
-
-      editorRef.current = editor;
-      setIsReady(true);
-    });
-
-    return () => {
-      destroyed = true;
-      editorRef.current?.dispose();
-      editorRef.current = null;
-    };
-  }, [content, language]);
-
-  return (
-    <div className="file-viewer-edit-wrapper" style={{ position: 'relative' }}>
-      {!isReady && (
-        <div className="file-viewer-loading">
-          <div className="loading-spinner-large">
-            <div className="spinner-circle-large"></div>
-          </div>
-          <div className="loading-text">Loading editor...</div>
-        </div>
-      )}
-      <div ref={containerRef} className="file-viewer-monaco-container" />
-    </div>
-  );
-};
-
-// Front Matter table component (for displaying YAML metadata in Markdown files)
-const OverlayFrontMatterTable: React.FC<{ frontMatter: FrontMatter }> = ({ frontMatter }) => {
-  const entries = Object.entries(frontMatter);
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="file-viewer-frontmatter">
-      <table className="file-viewer-frontmatter-table">
-        <tbody>
-          {entries.map(([key, value]) => (
-            <tr key={key}>
-              <td className="file-viewer-frontmatter-key">{key}</td>
-              <td className="file-viewer-frontmatter-value">{value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
 // ============================================================
 // Component
 // ============================================================
@@ -404,6 +133,12 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const onClose = actions.close;
 
   const { showSuccess, showError } = useToast();
+  const { t } = useI18n();
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   // Listen for fileViewer:open custom events
   useEffect(() => {
@@ -432,7 +167,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<RenderViewMode>('render');
+  const [viewMode, setViewMode] = useState<FileContentViewMode>('render');
   const [isContentReady, setIsContentReady] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -440,12 +175,12 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   const [fileSize, setFileSize] = useState<number | undefined>(undefined);
   const [isEditorLoading, setIsEditorLoading] = useState(false);
+  const [editorContainerReady, setEditorContainerReady] = useState(false);
   const monacoEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const monacoContainerRef = useRef<HTMLDivElement>(null);
+  const monacoContainerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   /** Baseline content for isDirty comparison (last saved value or initial value) */
   const savedContentRef = useRef<string>('');
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   // Track the currently loaded file identifier for synchronous file change detection
   const loadedFileKeyRef = useRef<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -454,20 +189,12 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const fileKey = file ? `${file.name}|${file.url}` : null;
 
   // Classification
-  const category: FileCategory = file ? classifyFile(file) : 'other';
+  const category: FileContentCategory = file ? classifyFileContent(file) : 'other';
 
-  // Synchronously generate blob URL for HTML content (avoids blank screen from useEffect async race conditions)
-  const htmlBlobUrl = useMemo(() => {
-    if (category !== 'html' || !textContent) return null;
-    return URL.createObjectURL(new Blob([textContent], { type: 'text/html;charset=utf-8' }));
-  }, [category, textContent]);
-
-  // Clean up old blob URL
-  useEffect(() => {
-    return () => {
-      if (htmlBlobUrl) URL.revokeObjectURL(htmlBlobUrl);
-    };
-  }, [htmlBlobUrl]);
+  const setMonacoContainer = useCallback((node: HTMLDivElement | null) => {
+    monacoContainerRef.current = node;
+    setEditorContainerReady(Boolean(node));
+  }, []);
 
   // Sync fullscreen state with browser Fullscreen API
   useEffect(() => {
@@ -556,7 +283,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
             const statResult = await window.electronAPI?.fs?.stat(localPath);
             if (!statResult?.success) {
               if (cancelled) return;
-              setLoadError(`File not found: ${localPath}`);
+              setLoadError(tRef.current('viewer.file.fileNotFound', { path: localPath }));
               setIsLoading(false);
               return;
             }
@@ -567,13 +294,13 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               setTextContent(result.content);
               loadedFileKeyRef.current = fileKey;
             } else {
-              setLoadError(result?.error || 'Failed to load file');
+              setLoadError(result?.error || tRef.current('viewer.file.failedToLoadFile'));
             }
             setIsLoading(false);
           } catch (err) {
             if (cancelled) return;
             logger.error('[OverlayFileViewer] Failed to load local text:', err);
-            setLoadError(`File not found or cannot be read: ${localPath}`);
+            setLoadError(tRef.current('viewer.file.cannotReadOrNotFound', { path: localPath }));
             setIsLoading(false);
           }
         };
@@ -594,7 +321,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
           .catch((err) => {
             if (cancelled) return;
             logger.error('[OverlayFileViewer] Failed to load remote text:', err);
-            setLoadError('Failed to load file');
+            setLoadError(tRef.current('viewer.file.failedToLoadFile'));
             setIsLoading(false);
           });
       }
@@ -606,7 +333,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
     }
 
     return () => { cancelled = true; };
-  }, [isOpen, file, category]);
+  }, [isOpen, file, category, fileKey]);
 
   // Delay rendering heavy content after loading, ensuring loading spinner is painted to screen first
   useEffect(() => {
@@ -621,13 +348,13 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
 
   // Monaco Editor lifecycle management
   useEffect(() => {
-    if (!isEditing || !monacoContainerRef.current || textContent === null) return;
+    if (!isEditing || !editorContainerReady || !monacoContainerRef.current || textContent === null) return;
 
     // Set baseline content
     savedContentRef.current = textContent;
 
     // Get Monaco language ID
-    const ext = file ? getExtension(file.name) : '';
+    const ext = file ? getFileExtension(file.name) : '';
     const monacoLang = getMonacoLanguage(ext);
 
     let destroyed = false;
@@ -635,7 +362,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
 
     setIsEditorLoading(true);
 
-    import(/* webpackChunkName: "monaco-editor" */ 'monaco-editor').then((monacoModule) => {
+    loadMonacoEditor().then((monacoModule) => {
       if (destroyed || !monacoContainerRef.current) return;
 
       const editor = monacoModule.editor.create(monacoContainerRef.current, {
@@ -690,7 +417,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
       monacoEditorRef.current = null;
       setIsEditorLoading(false);
     };
-  }, [isEditing]); // Only create/destroy when isEditing toggles
+  }, [isEditing, editorContainerReady]);
 
   // Enter edit mode
   const handleEdit = useCallback(() => {
@@ -704,7 +431,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const handleCancelEdit = useCallback(() => {
     if (isDirty) {
       const discard = window.confirm(
-        'You have unsaved changes. Do you want to discard them?'
+        t('viewer.file.discardUnsavedConfirm')
       );
       if (!discard) return;
     }
@@ -716,7 +443,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
     setIsEditing(false);
     setIsDirty(false);
     setSaveError(null);
-  }, [isDirty]);
+  }, [isDirty, t]);
 
   // Save edit
   const handleSave = useCallback(async () => {
@@ -733,20 +460,20 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
         setTextContent(content);
         savedContentRef.current = content;
         setIsDirty(false);
-        showSuccess(`Saved ${file.name}`);
+        showSuccess(t('viewer.file.saved', { name: file.name }));
       } else {
-        const errorMessage = result?.error || 'Failed to save file';
+        const errorMessage = result?.error || t('viewer.file.saveFailed');
         setSaveError(errorMessage);
         showError(errorMessage);
       }
     } catch (err) {
       logger.error('[OverlayFileViewer] Failed to save file:', err);
-      showError('Failed to save file');
-      setSaveError('Failed to save file');
+      showError(t('viewer.file.saveFailed'));
+      setSaveError(t('viewer.file.saveFailed'));
     } finally {
       setIsSaving(false);
     }
-  }, [file, isEditable, isDirty, showError, showSuccess]);
+  }, [file, isEditable, isDirty, showError, showSuccess, t]);
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -792,7 +519,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   const handleClose = useCallback(async () => {
     if (isDirty) {
       const discard = window.confirm(
-        'You have unsaved changes. Do you want to discard them?'
+        t('viewer.file.discardUnsavedConfirm')
       );
       if (!discard) return;
     }
@@ -800,7 +527,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
       await document.exitFullscreen();
     }
     onClose();
-  }, [isDirty, onClose]);
+  }, [isDirty, onClose, t]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -852,7 +579,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
   // ---- guard ----
   if (!isOpen || !file) return null;
 
-  const ext = getExtension(file.name);
+  const ext = getFileExtension(file.name);
 
   // ---- Render file body ----
   const renderBody = () => {
@@ -865,7 +592,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
         <div className="file-viewer-error">
           <AlertTriangle size={48} />
           <p>{loadError}</p>
-          <button onClick={onClose}>Close</button>
+          <button onClick={onClose}>{t('viewer.file.close')}</button>
         </div>
       );
     }
@@ -877,7 +604,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
           <div className="loading-spinner-large">
             <div className="spinner-circle-large"></div>
           </div>
-          <div className="loading-text">Loading...</div>
+          <div className="loading-text">{t('viewer.loading')}</div>
         </div>
       );
     }
@@ -891,7 +618,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               <div className="loading-spinner-large">
                 <div className="spinner-circle-large"></div>
               </div>
-              <div className="loading-text">Loading editor...</div>
+              <div className="loading-text">{t('viewer.loadingEditor')}</div>
             </div>
           )}
           {saveError && (
@@ -901,7 +628,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
             </div>
           )}
           <div
-            ref={monacoContainerRef}
+            ref={setMonacoContainer}
             className="file-viewer-monaco-container"
           />
         </div>
@@ -910,75 +637,23 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
 
     switch (category) {
       // ---------- HTML Rendering ----------
-      case 'html': {
-        if (viewMode === 'source') {
-          return <ReadonlyMonacoViewer content={textContent ?? ''} language="html" />;
-        }
-        // Render mode: load HTML via blob URL (separate CSP context, allows external resources)
-        if (!htmlBlobUrl) return null;
-        return (
-          <iframe
-            ref={iframeRef}
-            className="file-viewer-html-embed"
-            src={htmlBlobUrl}
-            title={file.name}
-            sandbox="allow-scripts allow-popups"
-          />
-        );
-      }
-
       // ---------- JSON ----------
       case 'json':
-        return <ReadonlyMonacoViewer content={textContent ?? ''} language="json" />;
-
       // ---------- Markdown Rendering ----------
-      case 'markdown': {
-        if (viewMode === 'source') {
-          return <ReadonlyMonacoViewer content={textContent ?? ''} language="markdown" />;
-        }
-        const { frontMatter, content: markdownBody } = parseFrontMatter(textContent ?? '');
-        return (
-          <div className="file-viewer-markdown-content">
-            {frontMatter && <OverlayFrontMatterTable frontMatter={frontMatter} />}
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                a: ({ href, children, ...props }) => {
-                  // External links (http/https) open with system default browser
-                  if (href && /^https?:\/\//.test(href)) {
-                    return (
-                      <a
-                        {...props}
-                        href={href}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          window.open(href, '_blank', 'noopener,noreferrer');
-                        }}
-                        title={href}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {children}
-                      </a>
-                    );
-                  }
-                  return <a {...props} href={href}>{children}</a>;
-                },
-              }}
-            >
-              {markdownBody}
-            </ReactMarkdown>
-          </div>
-        );
-      }
-
+      case 'markdown':
       // ---------- Code Files ----------
       case 'code':
-        return <ReadonlyMonacoViewer content={textContent ?? ''} language={getMonacoLanguage(ext)} />;
-
       // ---------- Text ----------
       case 'text':
-        return <ReadonlyMonacoViewer content={textContent ?? ''} language={getMonacoLanguage(ext)} />;
+      case 'html':
+        return (
+          <FileContentRenderer
+            name={file.name}
+            mimeType={file.mimeType}
+            content={textContent ?? ''}
+            viewMode={viewMode}
+          />
+        );
 
       // ---------- PDF ----------
       case 'pdf': {
@@ -1016,25 +691,25 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               <FileSpreadsheet size={48} />
             </div>
             <p className="file-viewer-metadata-hint">
-              This file format ({getOfficeLabel(ext)}) cannot be previewed directly. You can open it with your default application.
+              {t('viewer.file.officeUnsupported', { type: getOfficeLabel(ext, t) })}
             </p>
             <table className="file-viewer-metadata-table">
               <tbody>
                 <tr>
-                  <td>Filename</td>
+                  <td>{t('viewer.file.filename')}</td>
                   <td>{file.name}</td>
                 </tr>
                 <tr>
-                  <td>Type</td>
-                  <td>{getOfficeLabel(ext)}</td>
+                  <td>{t('viewer.file.type')}</td>
+                  <td>{getOfficeLabel(ext, t)}</td>
                 </tr>
                 <tr>
-                  <td>Size</td>
-                  <td>{formatFileSize(fileSize)}</td>
+                  <td>{t('viewer.file.size')}</td>
+                  <td>{formatFileSize(fileSize, t('viewer.file.unknown'))}</td>
                 </tr>
                 {file.lastModified && (
                   <tr>
-                    <td>Modified</td>
+                    <td>{t('viewer.file.modified')}</td>
                     <td>{file.lastModified}</td>
                   </tr>
                 )}
@@ -1044,7 +719,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               className="file-viewer-office-open-btn"
               onClick={handleOpenExternal}
             >
-              Open with Default App
+              {t('viewer.file.openDefaultApp')}
             </button>
           </div>
         );
@@ -1058,25 +733,25 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
               <FileIcon size={48} />
             </div>
             <p className="file-viewer-metadata-hint">
-              This file type ({ext.toUpperCase() || file.mimeType || 'Unknown'}) is not supported for preview. You can open it with your default application.
+              {t('viewer.file.typeUnsupported', { type: ext.toUpperCase() || file.mimeType || t('viewer.file.unknown') })}
             </p>
             <table className="file-viewer-metadata-table">
               <tbody>
                 <tr>
-                  <td>Filename</td>
+                  <td>{t('viewer.file.filename')}</td>
                   <td>{file.name}</td>
                 </tr>
                 <tr>
-                  <td>Type</td>
-                  <td>{file.mimeType || ext.toUpperCase() || 'Unknown'}</td>
+                  <td>{t('viewer.file.type')}</td>
+                  <td>{file.mimeType || ext.toUpperCase() || t('viewer.file.unknown')}</td>
                 </tr>
                 <tr>
-                  <td>Size</td>
-                  <td>{formatFileSize(fileSize)}</td>
+                  <td>{t('viewer.file.size')}</td>
+                  <td>{formatFileSize(fileSize, t('viewer.file.unknown'))}</td>
                 </tr>
                 {file.lastModified && (
                   <tr>
-                    <td>Modified</td>
+                    <td>{t('viewer.file.modified')}</td>
                     <td>{file.lastModified}</td>
                   </tr>
                 )}
@@ -1087,7 +762,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                 className="file-viewer-office-open-btn"
                 onClick={handleOpenExternal}
               >
-                Open with Default App
+                {t('viewer.file.openDefaultApp')}
               </button>
               {onInstallSkill && isLocalFile(file.url) && isInstallableSkillArtifact(getLocalPath(file.url)) && (
                 <button
@@ -1095,7 +770,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                   onClick={() => onInstallSkill(getLocalPath(file.url))}
                 >
                   <Download size={16} />
-                  Install Skill
+                  {t('viewer.file.installSkill')}
                 </button>
               )}
             </div>
@@ -1120,7 +795,7 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
             <div className="file-viewer-file-meta">
               {ext.toUpperCase()} {fileSize !== undefined ? `· ${formatFileSize(fileSize)}` : ''}
               <span className={`file-viewer-mode-badge ${isEditing ? 'file-viewer-mode-edit' : 'file-viewer-mode-preview'}`}>
-                {isEditing ? 'EDIT' : 'PREVIEW'}
+                {isEditing ? t('viewer.file.editMode') : t('viewer.file.previewMode')}
               </span>
             </div>
           </div>
@@ -1133,8 +808,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                   className={`file-viewer-header-btn file-viewer-save${isDirty ? ' file-viewer-save-dirty' : ''}`}
                   onClick={handleSave}
                   disabled={isSaving || !isDirty}
-                  aria-label="Save"
-                  title={isDirty ? 'Save (⌘S)' : 'No changes'}
+                  aria-label={t('viewer.file.save')}
+                  title={isDirty ? t('viewer.file.saveShortcut') : t('viewer.file.noChanges')}
                 >
                   <Save size={24} />
                 </button>
@@ -1142,8 +817,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                   className="file-viewer-header-btn"
                   onClick={handleCancelEdit}
                   disabled={isSaving}
-                  aria-label="Exit editing"
-                  title="Exit Edit Mode"
+                  aria-label={t('viewer.file.exitEditing')}
+                  title={t('viewer.file.exitEditMode')}
                 >
                   <LogOut size={24} />
                 </button>
@@ -1155,8 +830,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                   <button
                     className="file-viewer-header-btn"
                     onClick={() => setViewMode(viewMode === 'render' ? 'source' : 'render')}
-                    aria-label={viewMode === 'render' ? 'View source code' : 'View rendered'}
-                    title={viewMode === 'render' ? 'View Source' : 'View Rendered'}
+                    aria-label={viewMode === 'render' ? t('viewer.file.viewSourceCode') : t('viewer.file.viewRendered')}
+                    title={viewMode === 'render' ? t('viewer.file.viewSource') : t('viewer.file.viewRenderedTitle')}
                   >
                     {viewMode === 'render' ? <Code size={24} /> : <Eye size={24} />}
                   </button>
@@ -1164,8 +839,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                 <button
                   className={`file-viewer-header-btn${isFullscreen ? ' file-viewer-header-btn-active' : ''}`}
                   onClick={() => { void toggleFullscreen(); }}
-                  aria-label={isFullscreen ? 'Exit fullscreen presentation' : 'Enter fullscreen presentation'}
-                  title={isFullscreen ? 'Exit Fullscreen (⌘⇧F)' : 'Fullscreen Presentation (⌘⇧F)'}
+                  aria-label={isFullscreen ? t('viewer.file.exitFullscreen') : t('viewer.file.enterFullscreen')}
+                  title={isFullscreen ? t('viewer.file.exitFullscreenShortcut') : t('viewer.file.fullscreenShortcut')}
                 >
                   {isFullscreen ? <Minimize size={24} /> : <Monitor size={24} />}
                 </button>
@@ -1173,8 +848,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                   <button
                     className="file-viewer-header-btn file-viewer-edit"
                     onClick={handleEdit}
-                    aria-label="Edit file"
-                    title="Edit"
+                    aria-label={t('viewer.file.editFile')}
+                    title={t('common.edit')}
                   >
                     <Pencil size={24} />
                   </button>
@@ -1182,8 +857,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
                 <button
                   className="file-viewer-header-btn"
                   onClick={handleDownload}
-                  aria-label="Download"
-                  title="Download"
+                  aria-label={t('viewer.file.download')}
+                  title={t('viewer.file.download')}
                 >
                   <Download size={24} />
                 </button>
@@ -1192,8 +867,8 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
             <button
               className="file-viewer-header-btn file-viewer-close"
               onClick={handleClose}
-              aria-label="Close file viewer"
-              title="Close"
+              aria-label={t('viewer.file.closeViewer')}
+              title={t('viewer.file.close')}
             >
               <X size={24} />
             </button>
@@ -1205,4 +880,12 @@ export const OverlayFileViewer: React.FC<OverlayFileViewerProps> = ({
       </div>
     </div>
   );
+};
+
+export const __testables = {
+  formatFileSize,
+  getFileExtension,
+  getLocalPath,
+  getMonacoLanguage,
+  isLocalFile,
 };

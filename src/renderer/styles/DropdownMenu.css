@@ -36,11 +36,11 @@
   opacity: 0.8;
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .dropdown-menu-trigger:hover svg path {
-  fill: #000000;
+  fill: var(--color-black);
 }
 
 .dropdown-menu-trigger:active {
@@ -50,7 +50,7 @@
 .dropdown-menu-trigger:focus-visible {
   outline: 2px solid rgba(0, 0, 0, 0.2);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 /* ===== Dropdown Menu Popup Layer ===== */
@@ -73,9 +73,9 @@
   max-width: calc(100vw - 20px);
 
   /* Background and border */
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
 
   /* Shadow - slightly deeper than avatar for more layering */
   box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15),
@@ -116,7 +116,7 @@
   min-height: 36px;
 
   /* Corner radius */
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 
   /* Inside auto layout */
   flex: none;
@@ -170,7 +170,7 @@
   font-size: 14px;
   line-height: 20px;
 
-  color: #272320;
+  color: var(--color-warm-900);
   font-variation-settings: 'opsz' 10.5;
 
   /* Inside auto layout */
@@ -207,12 +207,12 @@
 
 .dropdown-menu-item.danger .dropdown-menu-item-text,
 .dropdown-menu-item.dropdown-menu-item-danger .dropdown-menu-item-text {
-  color: #DC2626;
+  color: var(--color-danger-600);
 }
 
 .dropdown-menu-item.danger .dropdown-menu-item-icon,
 .dropdown-menu-item.dropdown-menu-item-danger .dropdown-menu-item-icon {
-  color: #DC2626;
+  color: var(--color-danger-600);
 }
 
 .dropdown-menu-item.danger:active,
@@ -246,6 +246,49 @@
   z-index: 1000;
 }
 
+html[data-theme="dark"] .user-dropdown-menu {
+  background: var(--color-surface-elevated) !important;
+  border-color: var(--color-border-strong) !important;
+  box-shadow: var(--shadow-glass-card) !important;
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-default);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item:active {
+  background: var(--color-surface-active);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item:focus-visible {
+  outline-color: var(--form-control-focus-border);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item-icon,
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item-text {
+  color: inherit;
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item.disabled {
+  color: var(--color-text-subtle);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item.danger,
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item.dropdown-menu-item-danger {
+  color: var(--color-danger-400);
+}
+
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item.danger:hover,
+html[data-theme="dark"] .user-dropdown-menu .dropdown-menu-item.dropdown-menu-item-danger:hover {
+  background: color-mix(in srgb, var(--color-danger-500) 16%, transparent);
+  color: var(--color-danger-300);
+}
+
 /* ===== ChatSession Related Styles ===== */
 /* ChatSession item styles */
 .chat-session-item {
@@ -253,7 +296,7 @@
 }
 
 .chat-session-item.menu-open {
-  background-color: #F5F5F7 !important;
+  background-color: var(--color-neutral-100) !important;
 }
 
 /* ChatSession More button styles - consistent with .dropdown-menu-trigger */
@@ -286,11 +329,11 @@
   opacity: 0.8;
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .chat-session-more-btn:hover svg path {
-  fill: #000000;
+  fill: var(--color-black);
 }
 
 .chat-session-more-btn:active {
@@ -300,7 +343,7 @@
 .chat-session-more-btn:focus-visible {
   outline: 2px solid rgba(0, 0, 0, 0.2);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 /* ChatSession dropdown menu - to the right of the ChatSession item */
@@ -316,9 +359,9 @@
   max-width: calc(100vw - 20px);
 
   /* Background and border */
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
 
   /* Shadow */
   box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15),

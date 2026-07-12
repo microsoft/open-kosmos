@@ -6,6 +6,7 @@ import { Message, MessageHelper, UserMessage } from '@shared/types/chatTypes';
 import { interactiveRequestManager } from './interactiveRequestManager';
 import { BuiltinToolsManager } from '../mcpRuntime/builtinTools/builtinToolsManager';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
+import { getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 import { generateChatSessionId as generateRuntimeChatSessionId } from '../userDataADO/pathUtils';
 import { chatSessionStore } from './chatSessionStore';
 import type {
@@ -95,6 +96,12 @@ export class AgentChatManager {
         this.showChatSessionCompletionNotification(chatId, chatSessionId, chatSessionName, outcome),
       disposeManagedInstance: (chatSessionId, notifyFrontend) =>
         this.disposeManagedInstance(chatSessionId, notifyFrontend),
+      getRuntimeMode: (chatSessionId) =>
+        this.getRuntimeMode(chatSessionId),
+      getOrCreateCancellationSource: (chatSessionId) =>
+        this.registry.getOrCreateCancellationSource(chatSessionId),
+      clearCancellationSource: (chatSessionId) =>
+        this.registry.clearCancellationSource(chatSessionId),
     });
   }
 
@@ -136,11 +143,10 @@ export class AgentChatManager {
           getSessionInstance: (id: string) => this.registry.getInstance(id),
           reattachEventSender: (instance: AgentChat) => this.attachEventSenderToMainWindow(instance),
           log: (msg: string, method?: string, meta?: Record<string, unknown>) => logger.info(msg, method, meta),
-          isFeatureEnabled: (flag: string) => require('../featureFlags').isFeatureEnabled(flag),
         });
       } catch {
         // Non-fatal in test environments
-        this._autoWakeController = { setup() {} };
+        this._autoWakeController = { setup() {}, recoverPendingForSession() {} };
       }
     }
     return this._autoWakeController;
@@ -243,6 +249,12 @@ export class AgentChatManager {
       // Set up context change listener for the new current instance
       this.setupContextChangeListener(instance, chatSessionId);
 
+      // Proactively deliver any durable sub-agent results that completed while
+      // the app was closed. Fire-and-forget: the controller only schedules a
+      // debounced auto-wake when the ledger actually holds a pending result for
+      // this session, and only on the session's first activation this app run.
+      this.autoWakeController.recoverPendingForSession(chatSessionId);
+
       logger.info('[AgentChatManager] switchToChatSession -> activated instance and mark read', 'switchToChatSession', {
         chatId,
         chatSessionId,
@@ -316,7 +328,8 @@ export class AgentChatManager {
     }
 
     const chatConfig = profileCacheManager.getChatConfig(this.currentUserAlias, chatId);
-    if (!chatConfig || !chatConfig.agent) {
+    const primaryAgent = getChatPrimaryAgent(chatConfig);
+    if (!chatConfig || !primaryAgent) {
       logger.error(`[AgentChatManager] No chat config or agent found for chat: ${chatId}`);
       return null;
     }
@@ -325,7 +338,7 @@ export class AgentChatManager {
       logger.info('[AgentChatManager] Creating new AgentChat instance', 'getOrCreateInstanceByChatSession', {
         chatId,
         chatSessionId,
-        agentName: chatConfig.agent.name
+        agentName: primaryAgent.name
       });
 
       let chatSessionData: any = null;
@@ -759,12 +772,17 @@ export class AgentChatManager {
 
   async runScheduledJob(
     job: SchedulerJob,
-    options?: { chatSessionId?: string; onReady?: (payload: { chatSessionId: string }) => void },
-  ): Promise<{ success: boolean; chatSessionId?: string; messagesCount?: number; error?: string }> {
+    options?: {
+      chatSessionId?: string;
+      onReady?: (payload: { chatSessionId: string }) => void;
+      isManualTrigger?: boolean;
+      preflightError?: string;
+    },
+  ): Promise<{ success: boolean; cancelled?: boolean; chatSessionId?: string; messagesCount?: number; error?: string }> {
     if (!this.currentUserAlias) {
       logger.warn('scheduler.runtime.runScheduledJob.end', 'runScheduledJob', {
         jobId: job.id,
-        agentId: job.agentId,
+        chatId: job.chat_id,
         success: false,
         error: 'No current user alias set',
       });
@@ -776,19 +794,21 @@ export class AgentChatManager {
       alias: this.currentUserAlias,
       jobId: job.id,
       name: job.name,
-      agentId: job.agentId,
+      chatId: job.chat_id,
       chatSessionId,
     });
 
     const result = await this.scheduledRunner.run(this.currentUserAlias, chatSessionId, job, {
       onReady: options?.onReady,
+      isManualTrigger: options?.isManualTrigger,
+      preflightError: options?.preflightError,
     });
 
     logger.info('scheduler.runtime.runScheduledJob.end', 'runScheduledJob', {
       alias: this.currentUserAlias,
       jobId: job.id,
       name: job.name,
-      agentId: job.agentId,
+      chatId: job.chat_id,
       chatSessionId,
       success: result.success,
       messagesCount: result.messagesCount,
@@ -1032,8 +1052,8 @@ export class AgentChatManager {
   async streamMessage(
     chatSessionId: string,
     message: UserMessage,
-    options?: { emitUserMessage?: boolean; isRemoteSession?: boolean }
-  ): Promise<{ success: boolean; data?: Message[]; error?: string }> {
+    options?: { emitUserMessage?: boolean; persistUserMessage?: boolean; onUserMessageCommitted?: () => void }
+  ): Promise<{ success: boolean; data?: Message[]; error?: string; cancelled?: boolean }> {
     const agentChat = this.registry.getInstance(chatSessionId);
     if (!agentChat) {
       logger.error('[AgentChatManager] No agent instance found', 'streamMessage', { chatSessionId });
@@ -1105,8 +1125,8 @@ export class AgentChatManager {
         // Clean up source after cancellation
         this.registry.clearCancellationSource(chatSessionId);
 
-        // Cancellation is not an error, return success
-        return { success: true, data: [] };
+        // Cancellation is not an error; queued-steering callers use this flag to stop draining.
+        return { success: true, cancelled: true, data: [] };
       }
 
       logger.error('[AgentChatManager] Stream message failed', 'streamMessage', {
@@ -1127,6 +1147,48 @@ export class AgentChatManager {
         success: false,
         error: statusCode ? `[HTTP ${statusCode}] ${errorMessage}` : errorMessage
       };
+    }
+  }
+
+  async drainQueuedSteeringWhileIdle(
+    chatSessionId: string,
+  ): Promise<{ success: boolean; data?: Message[]; error?: string; cancelled?: boolean }> {
+    const agentChat = this.registry.getInstance(chatSessionId);
+    if (!agentChat) {
+      logger.error('[AgentChatManager] No agent instance found', 'drainQueuedSteeringWhileIdle', { chatSessionId });
+      return { success: false, error: 'No agent instance found for this chat session' };
+    }
+
+    if (agentChat.getChatStatus() !== 'idle') return { success: true, data: [] };
+
+    try {
+      this.sessionCoordinator.handleStatusChange(chatSessionId, 'sending_response', this.getRuntimeMode(chatSessionId));
+      const source = this.getOrCreateCancellationSource(chatSessionId);
+      const messages = await agentChat.drainQueuedSteeringWhileIdle(source.token);
+      this.registry.clearCancellationSource(chatSessionId);
+      const finalStatus = agentChat.getChatStatus();
+      const shouldMarkUnread = this.sessionCoordinator.shouldMarkUnreadAfterCompletion(chatSessionId, finalStatus, messages.length);
+      if (shouldMarkUnread) {
+        this.sessionCoordinator.clearPendingUnread(chatSessionId);
+        await this.markChatSessionAsUnreadIfNeeded(chatSessionId);
+      }
+
+      return { success: true, data: messages };
+    } catch (error) {
+      this.registry.clearCancellationSource(chatSessionId);
+
+      if (error instanceof CancellationError) {
+        logger.info('[AgentChatManager] Queued steering drain cancelled', 'drainQueuedSteeringWhileIdle', { chatSessionId });
+        return { success: true, cancelled: true, data: [] };
+      }
+
+      logger.error('[AgentChatManager] Queued steering drain failed', 'drainQueuedSteeringWhileIdle', {
+        chatSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const statusCode = (error as any)?.statusCode;
+      return { success: false, error: statusCode ? `[HTTP ${statusCode}] ${errorMessage}` : errorMessage };
     }
   }
 
@@ -1428,8 +1490,9 @@ export class AgentChatManager {
   private async createAgentWithChatSession(userAlias: string, chatId: string, chatSessionId: string, chatSessionData?: any, chatSessionMetadata?: any): Promise<AgentChat> {
     // Verify config exists
     const chatConfig = profileCacheManager.getChatConfig(userAlias, chatId);
+    const primaryAgent = getChatPrimaryAgent(chatConfig);
 
-    if (!chatConfig || !chatConfig.agent) {
+    if (!chatConfig || !primaryAgent) {
       const error = new Error(`No chat config or agent found for userAlias: ${userAlias}, chatId: ${chatId}`);
       logger.error('[AgentChatManager] Failed to create agent - config not found', 'createAgentWithChatSession', {
         userAlias,
@@ -1443,7 +1506,7 @@ export class AgentChatManager {
       userAlias,
       chatId,
       chatSessionId,
-      agentName: chatConfig.agent.name
+      agentName: primaryAgent.name
     });
 
     // Create AgentChat instance
@@ -1463,7 +1526,7 @@ export class AgentChatManager {
         userAlias,
         chatId,
         chatSessionId,
-        agentName: chatConfig.agent.name
+        agentName: primaryAgent.name
       });
 
       return agent;
@@ -1523,7 +1586,7 @@ export class AgentChatManager {
         const latestConfig = this.currentUserAlias
           ? profileCacheManager.getChatConfig(this.currentUserAlias, instance.getChatId())
           : null;
-        agentName = latestConfig?.agent?.name || 'Unknown';
+        agentName = getChatPrimaryAgent(latestConfig)?.name || 'Unknown';
       } catch {
       }
 
@@ -1579,6 +1642,16 @@ export class AgentChatManager {
    * 🔥 New: Clean up idle instance
    */
   private cleanupIdleInstance(chatSessionId: string): void {
+    // Never reclaim the session the user is currently viewing — even if the
+    // window lost foreground (Alt+Tab).  Destroying it would null out
+    // currentChatSessionId and make the UI fall back to the default agent.
+    if (this.sessionCoordinator.getCurrentChatSessionId() === chatSessionId) {
+      logger.info('[AgentChatManager] Skipping cleanup for current session', 'cleanupIdleInstance', {
+        chatSessionId,
+      });
+      return;
+    }
+
     // Check again if this is a protected session
     if (this.isProtectedSession(chatSessionId)) {
       logger.info('[AgentChatManager] Skipping cleanup for protected session', 'cleanupIdleInstance', {

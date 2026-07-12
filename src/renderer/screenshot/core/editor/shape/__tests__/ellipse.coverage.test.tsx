@@ -3,7 +3,7 @@
 import React from 'react';
 import { render, act } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 // -- hoisted mocks --
 const mockHandleDrag = vi.hoisted(() => vi.fn());
@@ -39,8 +39,13 @@ beforeAll(() => {
 });
 
 import { EllipsePainter, EllipseShape } from '../ellipse';
+import { appDataManager } from '../../../../../lib/userData/appDataManager';
 
 const area: [number, number, number, number] = [0, 0, 800, 600];
+
+beforeEach(() => {
+  (appDataManager as any).cache = { uiLanguage: 'en' };
+});
 
 describe('EllipsePainter', () => {
   it('renders null when no rect in state', () => {
@@ -296,5 +301,15 @@ describe('EllipseShape', () => {
       <svg><EllipseShape area={area} model={model} onChange={onChange} onActive={onActive} active={false} /></svg>
     );
     expect(container.querySelector('ellipse')!.getAttribute('aria-label')).toBe('render ellipse');
+  });
+
+  it('uses the selected language for the ellipse aria-label', () => {
+    (appDataManager as any).cache = { uiLanguage: 'zh-CN' };
+    const onChange = vi.fn();
+    const onActive = vi.fn(() => vi.fn());
+    const { container } = render(
+      <svg><EllipseShape area={area} model={model} onChange={onChange} onActive={onActive} active={false} /></svg>
+    );
+    expect(container.querySelector('ellipse')!.getAttribute('aria-label')).toBe('渲染椭圆');
   });
 });

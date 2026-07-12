@@ -6,6 +6,7 @@ import StickArea from '../../components/stick-area';
 import { css } from '../../common/styled';
 import { editor_handlers, state_handlers } from '../../state';
 import { useModel } from '../../context';
+import { useI18n } from '../../../../lib/i18n/useI18n';
 
 const SBox = css`
   padding: 8px;
@@ -47,6 +48,7 @@ interface Props {
 
 function Toolbar(props: Props) {
   const { area, onCopy } = props;
+  const { t } = useI18n();
   const { save } = editor_handlers.use();
   const { undo, quit } = state_handlers.use();
   const model = useModel();
@@ -56,7 +58,7 @@ function Toolbar(props: Props) {
     <StickArea
       className={SBox} area={area} gap={8}
       onMouseDown={stopEvent} onDoubleClick={stopEvent}
-      role="toolbar" aria-label="Screenshot Editor"
+      role="toolbar" aria-label={t('screenshot.editor.ariaLabel')}
     >
       <PainterTools />
       <div className={SDivider} aria-hidden="true" />

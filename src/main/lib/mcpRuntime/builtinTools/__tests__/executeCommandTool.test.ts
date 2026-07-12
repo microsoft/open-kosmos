@@ -51,46 +51,28 @@ vi.mock('../../../backgroundProcessManager', async () => ({
   }),
 }));
 
-describe('ExecuteCommandTool timeout selection', () => {
-  it('uses the standard default timeout for ordinary commands', () => {
-    const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(undefined, 'pwd');
-    expect(timeoutMs).toBe(60_000);
+describe('ExecuteCommandTool interactive-auth detection', () => {
+  const isAuth = (cmd: string) => (ExecuteCommandTool as any).isInteractiveAuthCommand(cmd);
+
+  it('treats ordinary commands as non-interactive-auth', () => {
+    expect(isAuth('pwd')).toBe(false);
   });
 
-  it('extends the default timeout for gh auth login', () => {
-    const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(undefined, 'gh auth login -h github.com -p https -w');
-    expect(timeoutMs).toBe(900_000);
+  it('detects gh auth login as interactive auth', () => {
+    expect(isAuth('gh auth login -h github.com -p https -w')).toBe(true);
   });
 
-  it('extends the default timeout for other interactive auth commands', () => {
+  it('detects other interactive auth commands', () => {
     const commands = [
       'gh auth refresh -h github.com -s repo',
-      'az login',
       'npm login',
       'npm adduser',
       'pnpm login',
       'yarn npm login'
     ];
-
     for (const command of commands) {
-      const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(undefined, command);
-      expect(timeoutMs).toBe(900_000);
+      expect(isAuth(command)).toBe(true);
     }
-  });
-
-  it('enforces a 15-minute minimum even when gh auth login passes a shorter explicit timeout', () => {
-    const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(120, 'gh auth login -h github.com -p https -w');
-    expect(timeoutMs).toBe(900_000);
-  });
-
-  it('still respects longer explicit timeouts for interactive auth commands', () => {
-    const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(900, 'gh auth login -h github.com -p https -w');
-    expect(timeoutMs).toBe(900_000);
-  });
-
-  it('still respects explicit timeouts for ordinary commands', () => {
-    const timeoutMs = (ExecuteCommandTool as any).normalizeTimeout(120, 'pwd');
-    expect(timeoutMs).toBe(120_000);
   });
 
   it('extracts interactive auth hints from command output', () => {
@@ -167,7 +149,7 @@ describe('ExecuteCommandTool timeout selection', () => {
 });
 
 describe('ExecuteCommandTool DANGEROUS_PATTERNS safety check', () => {
-  const baseArgs = { timeoutSeconds: 10, description: 'test', cwd: '/tmp' };
+  const baseArgs = { description: 'test', cwd: '/tmp' };
 
   const expectBlocked = async (command: string, args?: string[]) => {
     await expect(
@@ -198,12 +180,12 @@ describe('ExecuteCommandTool DANGEROUS_PATTERNS safety check', () => {
   });
 
   // --- OAuth logout/revoke/signout URLs ---
-  it('blocks commands containing Microsoft OAuth logout URL', async () => {
-    await expectBlocked('python -c "import requests; requests.get(\'https://login.microsoftonline.com/common/oauth2/logout\')"');
+  it('blocks commands containing an OAuth logout URL', async () => {
+    await expectBlocked('python -c "import requests; requests.get(\'https://id.example.com/oauth2/logout\')"');
   });
 
-  it('blocks commands containing Google logout URL', async () => {
-    await expectBlocked('curl https://accounts.google.com/Logout');
+  it('blocks commands containing a root logout URL', async () => {
+    await expectBlocked('curl https://id.example.com/logout');
   });
 
   it('blocks commands containing generic /oauth2/revoke path', async () => {
@@ -214,35 +196,35 @@ describe('ExecuteCommandTool DANGEROUS_PATTERNS safety check', () => {
     await expectBlocked('curl https://example.com/oauth/signout');
   });
 
-  it('blocks login.live.com logout', async () => {
-    await expectBlocked('curl https://login.live.com/oauth20_logout.srf');
+  it('blocks a nested signout endpoint', async () => {
+    await expectBlocked('curl https://id.example.com/session/signout');
   });
 
   // --- Browser profile directory access ---
-  it('blocks commands targeting Windows Edge User Data directory', async () => {
-    await expectBlocked('Remove-Item -Recurse "C:\\Users\\user\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Cookies"');
+  it('blocks commands targeting a Windows browser User Data directory', async () => {
+    await expectBlocked('Remove-Item -Recurse "C:\\Users\\user\\AppData\\Local\\Nova\\User Data\\Default\\Cookies"');
   });
 
-  it('blocks commands targeting Windows Chrome User Data directory', async () => {
+  it('blocks script commands targeting a Windows browser User Data directory', async () => {
     // In Python/script strings, backslashes are escaped as \\
-    await expectBlocked('python -c "import shutil; shutil.rmtree(\'C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Google\\\\Chrome\\\\User Data\\\\Default\')"');
+    await expectBlocked('python -c "import shutil; shutil.rmtree(\'C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Nova\\\\User Data\\\\Default\')"');
   });
 
-  it('blocks commands targeting macOS Chrome profile directory', async () => {
-    await expectBlocked('rm -rf ~/Library/Application Support/Google/Chrome/Default/Cookies');
+  it('blocks commands targeting a macOS browser default profile directory', async () => {
+    await expectBlocked('rm -rf ~/Library/Application Support/Nova Browser/Default/Cookies');
   });
 
-  it('blocks commands targeting macOS Edge profile directory', async () => {
-    await expectBlocked('rm -rf ~/Library/Application Support/Microsoft Edge/Default/Cookies');
+  it('blocks commands targeting a macOS numbered browser profile directory', async () => {
+    await expectBlocked('rm -rf "~/Library/Application Support/Nova Browser/Profile 2/Cookies"');
   });
 
   // --- Args-based bypass prevention ---
   it('blocks dangerous patterns even when passed via args array', async () => {
-    await expectBlocked('python', ['-c', 'import webbrowser; webbrowser.open("https://login.microsoftonline.com/common/oauth2/logout")']);
+    await expectBlocked('python', ['-c', 'import webbrowser; webbrowser.open("https://id.example.com/oauth2/logout")']);
   });
 
   it('blocks credential deletion passed entirely in args', async () => {
-    await expectBlocked('powershell', ['-Command', 'Remove-Item -Force "$env:LOCALAPPDATA\\Microsoft\\TokenBroker\\credentials\\tokenCache.enc"']);
+    await expectBlocked('powershell', ['-Command', 'Remove-Item -Force "$env:LOCALAPPDATA\\AuthStore\\credentials\\tokenCache.enc"']);
   });
 
   // --- False positive avoidance ---

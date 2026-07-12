@@ -1,44 +1,24 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 import '../../styles/Header.css';
-import { Eye, EyeOff, Pin, PinOff, RotateCw, Play, Square, AlarmClock, Copy, Check, Bot } from 'lucide-react';
+import { Pin, PinOff, Play, Square, AlarmClock, Copy, Check, Bot, Globe } from 'lucide-react';
 import StatusBadges from '../ui/StatusBadges';
 import { useAgentConfig } from '../userData/userDataProvider';
 import { useLayout } from '../layout/LayoutProvider';
-import { agentChatSessionCacheManager, ChatSessionCache, CurrentSessionStatus, useMessages, useCurrentChatId, useCurrentChatSessionId } from '../../lib/chat/agentChatSessionCacheManager';
+import { agentChatSessionCacheManager, CurrentSessionStatus, useMessages, useCurrentChatId, useCurrentChatSessionId } from '../../lib/chat/agentChatSessionCacheManager';
 import { hasRealSessionContentMessages, isRealSessionContentMessage } from '../../lib/chat/sessionMessageVisibility';
 import { AgentAvatar } from '../common/AgentAvatar';
 import UnreadCountBadge from '../common/UnreadCountBadge';
 import { createLogger } from '../../lib/utilities/logger';
-import { useToast } from '../ui/ToastProvider';
 import { ScheduleSidepaneAtom, WorkspaceExplorerAtom, SubAgentTasksSidepaneAtom } from './chat-side.atom';
+import { EmbeddedBrowserAtom, isBrowserOpenFor } from '../browser/embeddedBrowser.atom';
 import { useAuthContext } from '../auth/AuthProvider';
 import { useChatUnreadSummary } from '@renderer/lib/chat/useChatUnreadSummary';
+import { useEmbeddedBrowserEnabled } from '../../lib/userData/useEmbeddedBrowserEnabled';
+import { ToggleMemexMemory } from './MemexMemorySidepane';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const logger = createLogger('[ChatViewHeader]');
-const ENABLE_TOGGLE_MINIMAL_MODE = false;
-
-/**
- * Compare version strings; returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
- * Supports semver format (e.g. 1.0.0, 2.1.3).
- */
-function compareVersions(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-
-  const maxLength = Math.max(parts1.length, parts2.length);
-
-  for (let i = 0; i < maxLength; i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-
-    if (p1 > p2) return 1;
-    if (p1 < p2) return -1;
-  }
-
-  return 0;
-}
 
 /** Dev-only popover showing version & IDs, click to toggle, click-outside to close */
 function DevInfoBadge({ appVersion, chatId, sessionId }: {
@@ -46,6 +26,7 @@ function DevInfoBadge({ appVersion, chatId, sessionId }: {
   chatId: string | null;
   sessionId?: string | null;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -68,9 +49,9 @@ function DevInfoBadge({ appVersion, chatId, sessionId }: {
   };
 
   const rows = [
-    { key: 'version', label: 'Version', value: appVersion },
-    ...(chatId ? [{ key: 'chat', label: 'Chat ID', value: chatId }] : []),
-    ...(sessionId ? [{ key: 'session', label: 'Session ID', value: sessionId }] : []),
+    { key: 'version', label: t('chat.header.dev.version'), value: appVersion },
+    ...(chatId ? [{ key: 'chat', label: t('chat.header.dev.chatId'), value: chatId }] : []),
+    ...(sessionId ? [{ key: 'session', label: t('chat.header.dev.sessionId'), value: sessionId }] : []),
   ];
 
   return (
@@ -79,7 +60,7 @@ function DevInfoBadge({ appVersion, chatId, sessionId }: {
         className={`dev-info-badge${open ? ' dev-info-badge--active' : ''}`}
         onClick={() => setOpen(v => !v)}
       >
-        DEV
+        {t('chat.header.dev.badge')}
       </button>
       {open && (
         <div className="dev-info-popover">
@@ -109,11 +90,11 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
   onOpenSkills,
   currentChatSessionId,
 }) => {
+  const { t } = useI18n();
   // Get minimal-mode state and always-on-top toggle from LayoutProvider
-  const { isMinimalMode, setMinimalMode, isAlwaysOnTop, toggleAlwaysOnTop } = useLayout();
+  const { isMinimalMode, isAlwaysOnTop, toggleAlwaysOnTop } = useLayout();
 
   // For programmatic navigation
-  const navigate = useNavigate();
 
 
   // Get currentChatId from agentChatSessionCacheManager
@@ -145,86 +126,6 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
   // Get current agent configuration data - depends on currentChatId to update on switch
   const { agent } = useAgentConfig();
 
-  /**
-   * Check whether all ChatSessions for the current chatId are in Idle state.
-   * If any session is active, the config cannot be updated because it would affect ongoing sessions.
-   */
-  const areAllChatSessionsIdle = useCallback((): boolean => {
-    if (!currentChatId) {
-      return true; // Default to true when there is no chatId
-    }
-
-    const allCaches = agentChatSessionCacheManager.getAllChatSessionCaches();
-
-    // Find all ChatSessions that belong to the current chatId
-    const sessionsForCurrentChat: ChatSessionCache[] = [];
-    Object.values(allCaches).forEach((cache) => {
-      if (cache && cache.chatId === currentChatId) {
-        sessionsForCurrentChat.push(cache);
-      }
-    });
-
-    // Default to true when there are no sessions
-    if (sessionsForCurrentChat.length === 0) {
-      return true;
-    }
-
-    // Check whether all sessions are idle
-    return sessionsForCurrentChat.every((cache) => cache.chatStatus === 'idle');
-  }, [currentChatId]);
-
-  // Compute whether to show the Update button and its tooltip
-  const updateButtonInfo = useMemo(() => {
-    if (!agent) {
-      return { show: false, tooltip: '' };
-    }
-
-    const { version, remoteVersion, source } = agent;
-
-    // Condition 0: ON-DEVICE agents should not show the Update button
-    // ON-DEVICE agents are user-created and have no remote library version to update to
-    if (source === 'ON-DEVICE') {
-      return { show: false, tooltip: '' };
-    }
-
-    // Condition 1: remoteVersion must not be empty
-    if (!remoteVersion || remoteVersion.trim() === '') {
-      return { show: false, tooltip: '' };
-    }
-
-    // Condition 2: all ChatSessions for the current chatId must be Idle
-    // Cannot update config while a session is active
-    if (!areAllChatSessionsIdle()) {
-      return { show: false, tooltip: '' };
-    }
-
-    // Condition 3: version is empty OR remoteVersion > version
-    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
-      return { show: true, tooltip: 'Update to latest version in library' };
-    }
-
-    return { show: false, tooltip: '' };
-  }, [agent, areAllChatSessionsIdle]);
-
-  /**
-   * Handle Update button click.
-   * Navigate to the Agent Library page, passing the agent name as a URL parameter.
-   * The Agent Library page will auto-select the matching agent.
-   */
-  const handleUpdateClick = useCallback(() => {
-    if (!agent?.name) {
-      logger.warn('Update button clicked but agent name is not available');
-      return;
-    }
-
-    logger.debug('Update button clicked for agent:', agent.name);
-
-    // Navigate to Agent Library with the agent name as a query parameter.
-    // Use encodeURIComponent to safely encode any special characters in the agent name.
-    const agentLibraryUrl = `/agent/chat/creation/agent-library?selectAgent=${encodeURIComponent(agent.name)}`;
-    navigate(agentLibraryUrl);
-  }, [agent?.name, navigate]);
-
   return (
     <header className="unified-header">
       <div className="header-title">
@@ -240,7 +141,7 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
             />
           </span>
         )}
-        <span className="header-name">{agent ? agent.name : 'Chat'}</span>
+        <span className="header-name">{agent ? agent.name : t('chat.header.defaultTitle')}</span>
         <StatusBadges
           onOpenMcpTools={onOpenMcpTools}
           onOpenSkills={onOpenSkills}
@@ -255,40 +156,24 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
         )}
       </div>
       <div className="header-actions">
-        {/* Update Agent button - shown when remote version is newer */}
-        {updateButtonInfo.show && (
-          <button
-            className="update-agent-button"
-            onClick={handleUpdateClick}
-            title={updateButtonInfo.tooltip}
-            aria-label={updateButtonInfo.tooltip}
-            type="button"
-          >
-            <RotateCw className="update-agent-icon" />
-            <span className="update-agent-text">Update</span>
-          </button>
-        )}
 
         {/* Always on top toggle button - only shown in minimal mode */}
         {isMinimalMode && (
           <button
             className={`btn-action ${isAlwaysOnTop ? 'active' : ''}`}
             onClick={toggleAlwaysOnTop}
-            title={isAlwaysOnTop ? "Disable always on top" : "Enable always on top"}
-            aria-label={isAlwaysOnTop ? "Disable always on top" : "Enable always on top"}
+            title={isAlwaysOnTop ? t('chat.header.disableAlwaysOnTop') : t('chat.header.enableAlwaysOnTop')}
+            aria-label={isAlwaysOnTop ? t('chat.header.disableAlwaysOnTop') : t('chat.header.enableAlwaysOnTop')}
           >
             {isAlwaysOnTop ? <Pin size={24} /> : <PinOff size={24} />}
           </button>
         )}
 
         {!isMinimalMode && <ToggleSubAgentTasks />}
+        {!isMinimalMode && <ToggleMemexMemory />}
         {!isMinimalMode && <ToggleSchedulesSidepane />}
+        {!isMinimalMode && <ToggleEmbeddedBrowser />}
         {!isMinimalMode && <ToggleWorkspaceExplorer />}
-
-        {/* Minimal/Focus mode toggle - currently disabled */}
-        {ENABLE_TOGGLE_MINIMAL_MODE && (
-          <ToggleMinimal isMinimalMode={isMinimalMode} setMinimalMode={setMinimalMode} />
-        )}
       </div>
 
     </header>
@@ -297,19 +182,20 @@ const ChatViewHeader: React.FC<ChatViewHeaderProps> = ({
 
 function ToggleWorkspaceExplorer() {
   const [{ visible }, actions] = WorkspaceExplorerAtom.use();
+  const { t } = useI18n();
   return (
     <button
       className={`btn-action ${visible ? 'active' : ''}`}
       onClick={actions.effectiveToggle}
-      title={visible ? "Hide workspace explorer" : "Show workspace explorer"}
-      aria-label={visible ? "Hide workspace explorer" : "Show workspace explorer"}
+      title={visible ? t('chat.header.hideWorkspace') : t('chat.header.showWorkspace')}
+      aria-label={visible ? t('chat.header.hideWorkspace') : t('chat.header.showWorkspace')}
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <mask id="mask0_428_1507" style={{ maskType: 'alpha' }} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-          <path d="M3.5 6.25V8H8.12868C8.32759 8 8.51836 7.92098 8.65901 7.78033L10.1893 6.25L8.65901 4.71967C8.51836 4.57902 8.32759 4.5 8.12868 4.5H5.25C4.2835 4.5 3.5 5.2835 3.5 6.25ZM2 6.25C2 4.45507 3.45507 3 5.25 3H8.12868C8.72542 3 9.29771 3.23705 9.71967 3.65901L11.5607 5.5H18.75C20.5449 5.5 22 6.95507 22 8.75V17.75C22 19.5449 20.5449 21 18.75 21H5.25C3.45507 21 2 19.5449 2 17.75V6.25ZM3.5 9.5V17.75C3.5 18.7165 4.2835 19.5 5.25 19.5H18.75C19.7165 19.5 20.5 18.7165 20.5 17.75V8.75C20.5 7.7835 19.7165 7 18.75 7H11.5607L9.71967 8.84099C9.29771 9.26295 8.72542 9.5 8.12868 9.5H3.5Z" fill="#242424" />
+          <path d="M3.5 6.25V8H8.12868C8.32759 8 8.51836 7.92098 8.65901 7.78033L10.1893 6.25L8.65901 4.71967C8.51836 4.57902 8.32759 4.5 8.12868 4.5H5.25C4.2835 4.5 3.5 5.2835 3.5 6.25ZM2 6.25C2 4.45507 3.45507 3 5.25 3H8.12868C8.72542 3 9.29771 3.23705 9.71967 3.65901L11.5607 5.5H18.75C20.5449 5.5 22 6.95507 22 8.75V17.75C22 19.5449 20.5449 21 18.75 21H5.25C3.45507 21 2 19.5449 2 17.75V6.25ZM3.5 9.5V17.75C3.5 18.7165 4.2835 19.5 5.25 19.5H18.75C19.7165 19.5 20.5 18.7165 20.5 17.75V8.75C20.5 7.7835 19.7165 7 18.75 7H11.5607L9.71967 8.84099C9.29771 9.26295 8.72542 9.5 8.12868 9.5H3.5Z" fill="currentColor" />
         </mask>
         <g mask="url(#mask0_428_1507)">
-          <rect width="24" height="24" fill="#272320" />
+          <rect width="24" height="24" fill="currentColor" />
         </g>
       </svg>
     </button>
@@ -318,6 +204,7 @@ function ToggleWorkspaceExplorer() {
 
 function ToggleSubAgentTasks() {
   const [state, actions] = SubAgentTasksSidepaneAtom.use();
+  const { t } = useI18n();
   const currentSessionId = useCurrentChatSessionId();
   const [hasTasks, setHasTasks] = useState(false);
   const [hasRunning, setHasRunning] = useState(false);
@@ -371,8 +258,8 @@ function ToggleSubAgentTasks() {
     <button
       className={`btn-action subagent-toggle-button ${state.visible ? 'active' : ''}`}
       onClick={actions.effectiveToggle}
-      title={state.visible ? "Hide sub-agent tasks" : "Show sub-agent tasks"}
-      aria-label={state.visible ? "Hide sub-agent tasks" : "Show sub-agent tasks"}
+      title={state.visible ? t('chat.header.hideSubAgentTasks') : t('chat.header.showSubAgentTasks')}
+      aria-label={state.visible ? t('chat.header.hideSubAgentTasks') : t('chat.header.showSubAgentTasks')}
     >
       <Bot size={20} />
       {hasRunning && <span className="subagent-running-badge" />}
@@ -382,6 +269,7 @@ function ToggleSubAgentTasks() {
 
 function ToggleSchedulesSidepane() {
   const [visible, actions] = ScheduleSidepaneAtom.use();
+  const { t } = useI18n();
   const { user } = useAuthContext();
   const currentChatId = useCurrentChatId();
   const { scheduledUnreadCount } = useChatUnreadSummary(currentChatId, user?.login || null);
@@ -390,97 +278,41 @@ function ToggleSchedulesSidepane() {
     <button
       className={`btn-action schedule-toggle-button ${visible ? 'active' : ''}`}
       onClick={actions.effectiveToggle}
-      title={visible ? "Hide schedules" : "Show schedules"}
-      aria-label={visible ? "Hide schedules" : "Show schedules"}
+      title={visible ? t('chat.header.hideSchedules') : t('chat.header.showSchedules')}
+      aria-label={visible ? t('chat.header.hideSchedules') : t('chat.header.showSchedules')}
     >
       <AlarmClock size={20} />
       <UnreadCountBadge
         count={scheduledUnreadCount}
         className="schedule-unread-badge"
-        ariaLabel={`Schedules has ${scheduledUnreadCount} unread sessions`}
+        ariaLabel={t('chat.header.schedulesUnread', { count: scheduledUnreadCount })}
       />
     </button>
   );
 }
 
-function ToggleMinimal(props: {
-  disabled?: boolean,
-  isMinimalMode?: boolean,
-  setMinimalMode: (value: boolean) => void,
-}) {
-  const { disabled, isMinimalMode, setMinimalMode } = props;
-  const { showError } = useToast();
-  const [originalWindowSize, setOriginalWindowSize] = useState<{ width: number; height: number } | null>(null);
+function ToggleEmbeddedBrowser() {
+  const browserEnabled = useEmbeddedBrowserEnabled();
+  const { t } = useI18n();
+  const currentSessionId = useCurrentChatSessionId();
+  const [state, actions] = EmbeddedBrowserAtom.use();
+  const open = isBrowserOpenFor(state, currentSessionId);
 
-  // Handle minimal mode toggle
-  const onToggleMinimalMode = async () => {
-    try {
-      if (!isMinimalMode) {
-        // Entering minimal mode
+  // App-level feature switch: hide the entry entirely when disabled.
+  if (!browserEnabled) return null;
 
-        // Store current window size and constraints
-        if (window.electronAPI?.window?.getSize) {
-          const currentSize = await window.electronAPI.window.getSize();
-          setOriginalWindowSize(currentSize);
-        }
-
-        // Set minimal mode constraints
-        // Minimal mode: min width 400, min height 600; max width 800, max height unlimited
-        if (window.electronAPI?.window?.setMinSize) {
-          await window.electronAPI.window.setMinSize(400, 600);
-        }
-        if (window.electronAPI?.window?.setMaxSize) {
-          await window.electronAPI.window.setMaxSize(800, 0); // 0 means no height limit
-        }
-
-        // Set minimal mode default size: width 600, height 800
-        if (window.electronAPI?.window?.setSize) {
-          await window.electronAPI.window.setSize(600, 800);
-        }
-
-        setMinimalMode(true);
-      } else {
-        // Exiting minimal mode
-
-        // Restore normal mode constraints
-        // Normal mode: keep existing settings minWidth: 800, minHeight: 600, no max limit
-        if (window.electronAPI?.window?.setMinSize) {
-          await window.electronAPI.window.setMinSize(800, 600);
-        }
-        if (window.electronAPI?.window?.setMaxSize) {
-          await window.electronAPI.window.setMaxSize(0, 0); // 0 means no limit
-        }
-
-        // Restore original size or default
-        if (window.electronAPI?.window?.setSize) {
-          if (originalWindowSize) {
-            await window.electronAPI.window.setSize(
-              originalWindowSize.width,
-              originalWindowSize.height,
-            );
-          } else {
-            // Fallback to default size if original size is not available
-            await window.electronAPI.window.setSize(1200, 800);
-          }
-        }
-
-        setMinimalMode(false);
-        setOriginalWindowSize(null);
-      }
-    } catch (error) {
-      showError('Failed to resize window');
-    }
-  };
+  // The browser is chat-session-scoped; without an active session there is
+  // nothing to attach a view to.
+  if (!currentSessionId) return null;
 
   return (
     <button
-      className={`btn-action ${isMinimalMode ? 'active' : ''}`}
-      onClick={onToggleMinimalMode}
-      disabled={disabled}
-      title={isMinimalMode ? "Exit minimal mode" : "Enter minimal mode"}
-      aria-label={isMinimalMode ? "Exit minimal mode" : "Enter minimal mode"}
+      className={`btn-action ${open ? 'active' : ''}`}
+      onClick={() => actions.toggle(currentSessionId)}
+      title={open ? t('chat.header.hideBrowser') : t('chat.header.showBrowser')}
+      aria-label={open ? t('chat.header.hideBrowser') : t('chat.header.showBrowser')}
     >
-      {isMinimalMode ? <Eye size={24} /> : <EyeOff size={24} />}
+      <Globe size={20} />
     </button>
   );
 }

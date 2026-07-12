@@ -499,10 +499,10 @@ describe('Session list scroll and pagination', () => {
     resolve!({ success: true, data: { sessions: [], hasMore: false, nextMonthIndex: 0 } });
   });
 
-  it('loadMore shows loading indicator during pagination', async () => {
+  it('loadMore shows loading indicator while fetching the next page via Show more', async () => {
     const initialSessions = Array.from({ length: 100 }, (_, i) => ({
       chatSession_id: `s${i}`,
-      title: i === 0 ? 'First Session' : `Session ${i}`,
+      title: `Session ${i}`,
       last_updated: '2024-01-01T00:00:00Z',
       readStatus: 'read',
     }));
@@ -516,22 +516,25 @@ describe('Session list scroll and pagination', () => {
     mockGetMoreChatSessions.mockReturnValue(new Promise(r => { resolveMore = r; }));
 
     render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    await waitFor(() => screen.getByText('First Session'));
+    await waitFor(() => screen.getByText('Session 0'));
 
-    const list = document.querySelector('.chat-sessions-list')!;
-    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true });
-    Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 300, configurable: true });
-    fireEvent.scroll(list);
+    // Reveal in +10 steps until the visible window passes the 100 loaded, forcing a fetch.
+    for (let i = 0; i < 14 && !screen.queryByText('Loading...'); i++) {
+      const btn = screen.queryByText('Show more');
+      if (btn) {
+        fireEvent.click(btn);
+      }
+      await Promise.resolve();
+    }
 
     await waitFor(() => screen.getByText('Loading...'));
     resolveMore!({ success: true, data: { sessions: [], hasMore: false, nextMonthIndex: 0 } });
   });
 
-  it('triggers all-loaded hint when loadMore completes with no more sessions', async () => {
+  it('loads and reveals the next page via Show more', async () => {
     const initialSessions = Array.from({ length: 100 }, (_, i) => ({
       chatSession_id: `s${i}`,
-      title: i === 0 ? 'More Session' : `Session ${i}`,
+      title: `Session ${i}`,
       last_updated: '2024-01-01T00:00:00Z',
       readStatus: 'read',
     }));
@@ -542,45 +545,26 @@ describe('Session list scroll and pagination', () => {
     });
     mockGetMoreChatSessions.mockResolvedValueOnce({
       success: true,
-      data: { sessions: [], hasMore: false, nextMonthIndex: 0 },
+      data: {
+        sessions: [{ chatSession_id: 'extra1', title: 'Extra Session', last_updated: '2024-02-01T00:00:00Z', readStatus: 'read' }],
+        hasMore: false,
+        nextMonthIndex: 0,
+      },
     });
 
     render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    await waitFor(() => screen.getByText('More Session'));
+    await waitFor(() => screen.getByText('Session 0'));
 
-    const list = document.querySelector('.chat-sessions-list')!;
-    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true });
-    Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 300, configurable: true });
-    fireEvent.scroll(list);
+    for (let i = 0; i < 14 && !screen.queryByText('Extra Session'); i++) {
+      const btn = screen.queryByText('Show more');
+      if (btn) {
+        fireEvent.click(btn);
+      }
+      await Promise.resolve();
+    }
 
-    await waitFor(() => screen.getByText('All conversations loaded'), { timeout: 5000 });
-  });
-
-  it('scroll: no trigger when state.isLoading is true', async () => {
-    mockGetChatSessions.mockResolvedValueOnce({
-      success: true,
-      data: { sessions: [{ chatSession_id: 's1', title: 'ScrollSession', last_updated: '2024-01-01T00:00:00Z', readStatus: 'read' }], hasMore: true, nextMonthIndex: 1 },
-    });
-    let pendingResolve: (v: any) => void;
-    mockGetMoreChatSessions.mockReturnValue(new Promise(r => { pendingResolve = r; }));
-
-    render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    // Wait for initial sessions to load
-    await waitFor(() => expect(mockGetChatSessions).toHaveBeenCalled());
-    // Give state update a tick
-    await new Promise(r => setTimeout(r, 50));
-
-    const list = document.querySelector('.chat-sessions-list')!;
-    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true });
-    Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 300, configurable: true });
-    fireEvent.scroll(list);
-    // While loading, scroll again shouldn't call getMoreChatSessions twice
-    fireEvent.scroll(list);
-    // Only one call to getMoreChatSessions
-    await waitFor(() => expect(mockGetMoreChatSessions).toHaveBeenCalledTimes(1));
-    pendingResolve!({ success: true, data: { sessions: [], hasMore: false, nextMonthIndex: 0 } });
+    await waitFor(() => expect(screen.getByText('Extra Session')).toBeInTheDocument(), { timeout: 5000 });
+    expect(mockGetMoreChatSessions).toHaveBeenCalled();
   });
 });
 

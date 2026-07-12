@@ -1,12 +1,9 @@
 import React from 'react';
-import { RotateCw } from 'lucide-react';
 import { userMenuVisibleAtom } from './UserMenu';
-import DoctorStatusIndicator from '../doctor/DoctorStatusIndicator';
-import DoctorInquiry from '../doctor/DoctorInquiry';
 import '../../styles/UserSection.css';
 import { BuddyEntryButton } from '../buddy';
-import { useUpdate } from '../autoUpdate/UpdateProvider';
 import { useAuthContext } from '../auth/AuthProvider';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 
 const UserSection: React.FC = () => {
@@ -15,14 +12,7 @@ const UserSection: React.FC = () => {
   const userDisplayName = user?.name || user?.login || authData?.ghcAuth?.alias || 'Unknown User';
   const userAvatarUrl = user?.avatarUrl;
   const setUserMenuVisible = userMenuVisibleAtom.useChange();
-  const { status, installUpdate, isDialogOpen } = useUpdate();
-
-  const showUpdateButton = status === 'downloaded' && !isDialogOpen;
-  const onInstallUpdate = async () => {
-    try {
-      await installUpdate();
-    } catch (error) {}
-  };
+  const { t } = useI18n();
 
   return (
     <div className="user-section">
@@ -31,7 +21,7 @@ const UserSection: React.FC = () => {
         className="profile-icon-button"
         onClick={() => setUserMenuVisible((prev) => !prev)}
         title={userDisplayName}
-        aria-label="User menu"
+        aria-label={t('userSection.userMenu')}
         type="button"
       >
         {userAvatarUrl ? (
@@ -53,27 +43,6 @@ const UserSection: React.FC = () => {
       {/* Buddy Egg Icon */}
       <BuddyEntryButton />
 
-      {/* Install Update Button */}
-      {showUpdateButton && (
-        <button
-          className="restart-update-button"
-          onClick={onInstallUpdate}
-          title="Click to install the latest update"
-          aria-label="Install Update Now"
-          type="button"
-        >
-          <RotateCw className="restart-update-icon" />
-          <span className="restart-update-text">Install Update Now</span>
-        </button>
-      )}
-
-      {/* Doctor Status Indicator — right-aligned */}
-      <div style={{ marginLeft: 'auto', display: 'inline-flex' }}>
-        <DoctorStatusIndicator />
-      </div>
-
-      {/* Doctor inquiry dialog (mounted globally so state survives menu close) */}
-      <DoctorInquiry />
     </div>
   );
 };

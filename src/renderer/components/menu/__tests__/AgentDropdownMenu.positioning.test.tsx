@@ -45,14 +45,14 @@ describe('AgentDropdownMenu positioning', () => {
         {
           chat_id: 'chat-builtin',
           agent: {
-            name: 'Research Agent',
+            name: 'Demo Agent',
             source: 'IN-LIBRARY',
           },
         },
       ],
       data: {
         profile: {
-          primaryAgent: 'Primary Agent',
+          primaryChat: 'other-chat',
         },
       },
     });

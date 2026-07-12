@@ -16,6 +16,7 @@ const mockStatSync = vi.hoisted(() => vi.fn());
 const mockMkdirSync = vi.hoisted(() => vi.fn());
 const mockCreateWriteStream = vi.hoisted(() => vi.fn());
 const mockUnlinkSync = vi.hoisted(() => vi.fn());
+const mockRenameSync = vi.hoisted(() => vi.fn());
 
 vi.mock('node-fetch', () => ({ default: mockFetch }));
 
@@ -37,6 +38,7 @@ vi.mock('fs', async (importOriginal) => {
     mkdirSync: mockMkdirSync,
     createWriteStream: mockCreateWriteStream,
     unlinkSync: mockUnlinkSync,
+    renameSync: mockRenameSync,
   };
 });
 
@@ -98,6 +100,7 @@ function makeFakeWriteStream() {
       setImmediate(() => emit('finish'));
     }),
     close: vi.fn(),
+    destroy: vi.fn(),
     on,
     emit: vi.fn(emit),
     _written: written,
@@ -206,18 +209,6 @@ describe('DownloadFileTool.execute — argument validation errors', () => {
     await expect(
       DownloadFileTool.execute({ url: 'https://example.com/f', filename: 'f.txt', maxSizeBytes: 2_000_000_000 }),
     ).rejects.toThrow('maxSizeBytes');
-  });
-
-  it('throws when timeout is < 1000', async () => {
-    await expect(
-      DownloadFileTool.execute({ url: 'https://example.com/f', filename: 'f.txt', timeout: 500 }),
-    ).rejects.toThrow('timeout');
-  });
-
-  it('throws when timeout > 300000', async () => {
-    await expect(
-      DownloadFileTool.execute({ url: 'https://example.com/f', filename: 'f.txt', timeout: 400000 }),
-    ).rejects.toThrow('timeout');
   });
 
   it('throws when saveDirectory is empty string', async () => {
@@ -373,7 +364,12 @@ describe('DownloadFileTool.execute — successful download', () => {
 
   beforeEach(() => {
     fakeStream = makeFakeWriteStream();
+    mockCreateWriteStream.mockReset();
     mockCreateWriteStream.mockReturnValue(fakeStream);
+    mockRenameSync.mockReset();
+    mockRenameSync.mockReturnValue(undefined);
+    mockUnlinkSync.mockReset();
+    mockUnlinkSync.mockReturnValue(undefined);
     mockExistsSync.mockImplementation((p: string) => {
       // dir exists, file does not (overwrite=false default)
       return p === path.join(HOME, 'Downloads');
@@ -402,6 +398,59 @@ describe('DownloadFileTool.execute — successful download', () => {
     expect(result.error).toBeUndefined();
   });
 
+  it('ignores a stray timeout argument (no longer agent-configurable)', async () => {
+    const chunk = Buffer.from('fake image data');
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse([chunk], { contentType: 'image/png' }),
+      body: (async function* () { yield chunk; })(),
+    });
+
+    const result = await DownloadFileTool.execute({
+      url: 'https://example.com/image.png',
+      filename: 'image.png',
+      timeout: 500,
+    } as never);
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('reports activity for each streamed chunk to reset the no-response watchdog', async () => {
+    const chunks = [Buffer.from('part-1'), Buffer.from('part-2'), Buffer.from('part-3')];
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse(chunks, { contentType: 'image/png' }),
+      body: (async function* () { for (const c of chunks) yield c; })(),
+    });
+    const reportActivity = vi.fn();
+
+    const result = await DownloadFileTool.execute(
+      {
+        url: 'https://example.com/image.png',
+        filename: 'image.png',
+      },
+      { executionContext: { reportActivity } as never },
+    );
+
+    expect(result.success).toBe(true);
+    expect(reportActivity).toHaveBeenCalledTimes(chunks.length);
+  });
+
+  it('downloads successfully when no execution context is provided', async () => {
+    const chunk = Buffer.from('no-context data');
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse([chunk], { contentType: 'image/png' }),
+      body: (async function* () { yield chunk; })(),
+    });
+
+    const result = await DownloadFileTool.execute({
+      url: 'https://example.com/image.png',
+      filename: 'image.png',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
   it('overwrites existing file when overwrite=true', async () => {
     // Both dir and file exist
     mockExistsSync.mockReturnValue(true);
@@ -418,7 +467,12 @@ describe('DownloadFileTool.execute — successful download', () => {
       filename: 'f.txt',
       overwrite: true,
     });
+    const finalPath = path.join(HOME, 'Downloads', 'f.txt');
+    const tempPath = mockCreateWriteStream.mock.calls[0][0];
     expect(result.success).toBe(true);
+    expect(tempPath).not.toBe(finalPath);
+    expect(mockRenameSync).toHaveBeenCalledWith(tempPath, finalPath);
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(finalPath);
   });
 
   it('uses default Downloads folder when saveDirectory is not specified', async () => {
@@ -453,15 +507,21 @@ describe('DownloadFileTool.execute — successful download', () => {
 
 // ─── mid-stream size exceeded ────────────────────────────────────────────────
 describe('DownloadFileTool.execute — mid-stream size exceeded', () => {
+  let fakeStream: ReturnType<typeof makeFakeWriteStream>;
+
   beforeEach(() => {
-    const fakeStream = makeFakeWriteStream();
+    fakeStream = makeFakeWriteStream();
+    mockCreateWriteStream.mockReset();
     mockCreateWriteStream.mockReturnValue(fakeStream);
+    mockRenameSync.mockReset();
+    mockRenameSync.mockReturnValue(undefined);
     mockExistsSync.mockImplementation((p: string) => p === path.join(HOME, 'Downloads'));
     mockStatSync.mockReturnValue({ isDirectory: () => true });
+    mockUnlinkSync.mockReset();
     mockUnlinkSync.mockReturnValue(undefined);
   });
 
-  it('deletes partial file and returns error when downloaded bytes exceed maxSizeBytes', async () => {
+  it('deletes partial file and tears down the stream when downloaded bytes exceed maxSizeBytes', async () => {
     const bigChunk = Buffer.alloc(200);
     mockFetch.mockResolvedValue({
       ...makeStreamResponse([]),
@@ -477,7 +537,88 @@ describe('DownloadFileTool.execute — mid-stream size exceeded', () => {
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain('too large');
-    expect(mockUnlinkSync).toHaveBeenCalled();
+    expect(fakeStream.destroy).toHaveBeenCalled();
+    const finalPath = path.join(HOME, 'Downloads', 'huge.bin');
+    const tempPath = mockCreateWriteStream.mock.calls[0][0];
+    expect(tempPath).not.toBe(finalPath);
+    expect(mockUnlinkSync).toHaveBeenCalledWith(tempPath);
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(finalPath);
+  });
+
+  it('removes the partial file when the stream errors mid-transfer', async () => {
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse([]),
+      ok: true,
+      headers: { get: () => null },
+      body: (async function* () {
+        yield Buffer.alloc(10);
+        throw new Error('socket hang up');
+      })(),
+    });
+
+    const result = await DownloadFileTool.execute({
+      url: 'https://example.com/partial.bin',
+      filename: 'partial.bin',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('socket hang up');
+    expect(fakeStream.destroy).toHaveBeenCalled();
+    const finalPath = path.join(HOME, 'Downloads', 'partial.bin');
+    const tempPath = mockCreateWriteStream.mock.calls[0][0];
+    expect(tempPath).not.toBe(finalPath);
+    expect(mockUnlinkSync).toHaveBeenCalledWith(tempPath);
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(finalPath);
+  });
+
+  it('does not delete the existing target when overwrite=true and the stream fails', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true });
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse([]),
+      ok: true,
+      headers: { get: () => null },
+      body: (async function* () {
+        yield Buffer.alloc(10);
+        throw new Error('connection reset');
+      })(),
+    });
+
+    const result = await DownloadFileTool.execute({
+      url: 'https://example.com/existing.bin',
+      filename: 'existing.bin',
+      overwrite: true,
+    });
+
+    const finalPath = path.join(HOME, 'Downloads', 'existing.bin');
+    const tempPath = mockCreateWriteStream.mock.calls[0][0];
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('connection reset');
+    expect(tempPath).not.toBe(finalPath);
+    expect(fakeStream.destroy).toHaveBeenCalled();
+    expect(mockUnlinkSync).toHaveBeenCalledWith(tempPath);
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(finalPath);
+    expect(mockRenameSync).not.toHaveBeenCalled();
+  });
+
+  it('still returns the original error when cleanup unlink fails', async () => {
+    mockUnlinkSync.mockImplementation(() => { throw new Error('EPERM'); });
+    mockFetch.mockResolvedValue({
+      ...makeStreamResponse([]),
+      ok: true,
+      headers: { get: () => null },
+      body: (async function* () {
+        yield Buffer.alloc(10);
+        throw new Error('connection reset');
+      })(),
+    });
+
+    const result = await DownloadFileTool.execute({
+      url: 'https://example.com/partial.bin',
+      filename: 'partial.bin',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('connection reset');
+    expect(fakeStream.destroy).toHaveBeenCalled();
   });
 });
 

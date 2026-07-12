@@ -20,14 +20,9 @@ import type {
 import { SUB_AGENT_LIMITS, DEFAULT_ADHOC_SYSTEM_PROMPT } from '../userDataADO/types/profile';
 import type { BackgroundSubAgentTask, SubAgentNotification } from '../userDataADO/types/profile';
 import { createConsoleLogger } from '../unifiedLogger';
-import * as path from 'path';
-import { app } from 'electron';
-import { SubAgentFileManager } from "./subAgentFileManager";
 import {
   resolveSubAgentModel,
   getParentAgentConfig,
-  resolveInheritedConfig,
-  validateToolAvailability,
   deriveDeliverablesPath,
   sanitizeSubAgentResult,
 } from './subAgentConfigResolver';
@@ -39,6 +34,7 @@ import { AgentChatManager } from "../chat/agentChatManager";
 import { EventEmitter } from 'events';
 import { getDefaultModel } from "../llm/ghcModelsManager";
 import { INHERIT_MODEL_VALUE } from "@shared/constants/subAgent";
+import { BUILTIN_SERVER_NAME } from '../mcpRuntime/builtinMcpClient';
 import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
 import { TokenCounter } from '../token/TokenCounter';
 
@@ -92,7 +88,6 @@ export class SubAgentManager extends EventEmitter {
         spawnCountMap: this.spawnCountMap,
       },
       {
-        spawnSubAgent: (params) => this.spawnSubAgent(params),
         spawnAdhocSubAgent: (params) => this.spawnAdhocSubAgent(params),
       },
       (event, data) => this.emit(event, data),
@@ -100,9 +95,7 @@ export class SubAgentManager extends EventEmitter {
   }
 
   public static getInstance(): SubAgentManager {
-    if (!SubAgentManager.instance) {
-      SubAgentManager.instance = new SubAgentManager();
-    }
+    SubAgentManager.instance ??= new SubAgentManager();
     return SubAgentManager.instance;
   }
 
@@ -111,300 +104,26 @@ export class SubAgentManager extends EventEmitter {
    * Returns the taskId if found in active runtime states, or null.
    */
   public resolveTaskIdByCorrelationId(correlationId: string): string | null {
-    for (const [, state] of this.runtimeStates) {
-      if (state.correlationId === correlationId) {
-        return state.taskId;
-      }
-    }
-    return null;
+    const match = [...this.runtimeStates.values()].find(
+      (state) => state.correlationId === correlationId,
+    );
+    return match?.taskId ?? null;
   }
 
   /**
    * Reset singleton instance (for testing only)
    */
   public static resetInstance(): void {
-    if (SubAgentManager.instance) {
-      SubAgentManager.instance.cleanup();
-      SubAgentManager.instance = undefined as any;
-    }
+    SubAgentManager.instance?.cleanup();
+    SubAgentManager.instance = undefined as any;
   }
 
   /**
-   * Spawn a sub-agent to execute a task.
-   * The effective model comes from the sub-agent override when configured,
-   * otherwise it falls back to the parent AgentChat model.
-   */
-  public async spawnSubAgent(params: {
-    parentSessionId: string;
-    parentChatId: string;
-    userAlias: string;
-    subAgentName: string;
-    task: string;
-    cancellationToken: CancellationToken;
-    onProgress?: (state: SubAgentRuntimeState) => void;
-    eventSender?: Electron.WebContents;
-    correlationId?: string;
-    /** If true, skip auto-background promotion after 120s */
-    noAutoPromote?: boolean;
-    /** Pre-assigned taskId (used by spawnSubAgentAsync to reuse the same ID) */
-    externalTaskId?: string;
-  }): Promise<SubAgentTaskResult> {
-    const startTime = Date.now();
-    const taskId = params.externalTaskId || `sa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const skipTaskStoreCreate = !!params.externalTaskId; // Caller already created the TaskStore entry
-
-    getLogger().info?.('[SubAgentManager] Spawning sub-agent', 'spawnSubAgent', {
-      subAgentName: params.subAgentName,
-      taskId,
-      parentSessionId: params.parentSessionId,
-      parentChatId: params.parentChatId,
-    });
-
-    // ── 1. Resource limit check ──
-    const currentParallel = this.parentChildMap.get(params.parentSessionId)?.size || 0;
-    if (currentParallel >= SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS) {
-      return {
-        subAgentName: params.subAgentName, taskId, success: false,
-        error: `Max parallel sub-agents (${SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS}) reached`,
-        turnCount: 0, durationMs: 0,
-      };
-    }
-
-    const totalSpawns = this.spawnCountMap.get(params.parentSessionId) || 0;
-    if (totalSpawns >= SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION) {
-      return {
-        subAgentName: params.subAgentName, taskId, success: false,
-        error: `Max sub-agent spawns per session (${SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION}) reached`,
-        turnCount: 0, durationMs: 0,
-      };
-    }
-
-    try {
-      // ── 2. Get sub-agent config (read from file system) ──
-      const fileManager = SubAgentFileManager.getInstance();
-
-      // Get profileDir to locate agents/{name}/AGENT.md
-      const appPath = app.getPath('userData');
-      const profileDir = path.join(appPath, 'profiles', params.userAlias);
-
-      const subAgentConfig = await fileManager.readAgentConfig(profileDir, params.subAgentName);
-
-      if (!subAgentConfig) {
-        return {
-          subAgentName: params.subAgentName, taskId, success: false,
-          error: `Sub-agent "${params.subAgentName}" not found in file system`,
-          turnCount: 0, durationMs: Date.now() - startTime,
-        };
-      }
-
-      // ── 3. Resolve model config from sub-agent override or parent AgentChat ──
-      const agentChatManager = AgentChatManager.getInstance();
-      const parentChat = agentChatManager.getInstanceByChatSessionId(params.parentSessionId);
-      const parentModel = parentChat?.getCurrentModelId?.() || getDefaultModel();
-      const resolvedModel = resolveSubAgentModel(
-        subAgentConfig,
-        parentModel,
-        params.subAgentName,
-      );
-
-      // ── 3.5 Config inheritance resolution (v1.1.0) ──
-      const parentChatConfig = getParentAgentConfig(params.parentChatId, params.userAlias);
-      const resolved = resolveInheritedConfig(subAgentConfig, parentChatConfig);
-
-      // ── 3.6 Validate tool availability — detect missing MCP servers / skills ──
-      const availabilityWarnings = validateToolAvailability(resolved, params.userAlias);
-
-      // ── 4. Build SubAgent runtime entity ──
-      const subAgent: SubAgent = {
-        config: subAgentConfig,
-        inheritedModel: resolvedModel,
-        parentChatId: params.parentChatId,
-        parentSessionId: params.parentSessionId,
-        userAlias: params.userAlias,
-        resolvedMcpServers: resolved.resolvedMcpServers,
-        resolvedSkills: resolved.resolvedSkills,
-        resolvedKnowledgeBase: resolved.resolvedKnowledgeBase,
-        taskId,
-      };
-
-      // ── 4.5 Derive deliverables path (isolated per sub-agent) ──
-      const deliverablesPath = deriveDeliverablesPath(params.parentSessionId, params.parentChatId, params.userAlias, params.subAgentName, taskId);
-
-      // ── 5. Create SubAgentChat instance ──
-      const chat = new SubAgentChat({
-        subAgent,
-        task: params.task,
-        deliverablesPath,
-        cancellationToken: params.cancellationToken,
-        currentUserAlias: params.userAlias,
-        taskId,
-
-        // Streaming chunk callback — only emits when frontend is watching
-        onStreamingChunk: (chunk) => {
-          const watcher = SubAgentTaskWatcherRegistry.getInstance().getWatcher(taskId);
-          if (watcher) {
-            watcher.send('subAgentTask:streamingChunk', chunk);
-          }
-        },
-
-        // Original callback — preserved
-        onTurnComplete: (turn, lastMessage) => {
-          const state = this.runtimeStates.get(taskId);
-          if (state) {
-            state.currentTurn = turn;
-            state.status = 'running';
-          }
-          params.onProgress?.(this.runtimeStates.get(taskId)!);
-        },
-
-        // 🆕 Step-level callback — assemble enriched state + send IPC
-        onStepUpdate: (update: SubAgentStepUpdate) => {
-          try {
-            const state = this.runtimeStates.get(taskId);
-            if (!state) return;
-            applyStepUpdate(state, update, MAX_STEPS_IN_STATE);
-            this.lifecycle.sendStateUpdate(params.eventSender, state);
-          } catch (err) {
-            getLogger().warn?.(
-              `[SubAgentManager] onStepUpdate callback error: ${err instanceof Error ? err.message : String(err)}`,
-              'onStepUpdate'
-            );
-          }
-        },
-      });
-
-      // ── 6. Register in tracking tables ──
-      this.activeInstances.set(taskId, chat);
-      this.runtimeStates.set(taskId, {
-        taskId,
-        subAgentName: params.subAgentName,
-        status: 'running',
-        startTime,
-        currentTurn: 0,
-        correlationId: params.correlationId,
-        steps: [],
-      });
-
-      if (!this.parentChildMap.has(params.parentSessionId)) {
-        this.parentChildMap.set(params.parentSessionId, new Set());
-      }
-      this.parentChildMap.get(params.parentSessionId)!.add(taskId);
-      this.spawnCountMap.set(params.parentSessionId, totalSpawns + 1);
-
-      // ── 6.1 Persist task record to disk (skip if caller already created it) ──
-      if (!skipTaskStoreCreate) {
-        SubAgentTaskStore.getInstance().createTask(params.userAlias, {
-          taskId,
-          subAgentName: params.subAgentName,
-          parentSessionId: params.parentSessionId,
-          parentChatId: params.parentChatId,
-          startTime,
-          model: subAgent.inheritedModel,
-          isAdhoc: false,
-          taskDescription: params.task,
-        });
-      }
-
-      // ── 7. Execute sub-agent conversation loop ──
-      // Auto-background promotion: if sync execution exceeds 120s, promote to background
-      const autoPromoteMs = SUB_AGENT_LIMITS.AUTO_BACKGROUND_TIMEOUT_MS;
-      const AUTO_PROMOTE_SENTINEL = Symbol('AUTO_PROMOTE');
-      const autoPromotePromise = params.noAutoPromote
-        ? new Promise<never>(() => {}) // never resolves — effectively disabled
-        : new Promise<typeof AUTO_PROMOTE_SENTINEL>((resolve) =>
-            setTimeout(() => resolve(AUTO_PROMOTE_SENTINEL), autoPromoteMs)
-          );
-
-      const chatPromise = chat.run();
-      const raceResult = await Promise.race([
-        chatPromise,
-        autoPromotePromise,
-      ]);
-
-      // ── Auto-promote path: detach and return immediately ──
-      if (raceResult === AUTO_PROMOTE_SENTINEL) {
-        return this.lifecycle.promoteToBackground(taskId, chatPromise, chat, params, startTime, availabilityWarnings);
-      }
-
-      const resultText = raceResult as string;
-
-      // ── 8. Success — update state and return ──
-      const runtimeState = this.runtimeStates.get(taskId);
-      if (runtimeState) {
-        runtimeState.status = 'completed';
-        runtimeState.endTime = Date.now();
-        this.lifecycle.sendStateUpdate(params.eventSender, runtimeState, true);
-      }
-
-      getLogger().info?.('[SubAgentManager] Sub-agent completed successfully', 'spawnSubAgent', {
-        subAgentName: params.subAgentName,
-        taskId,
-        turnCount: chat.getTurnCount(),
-        durationMs: Date.now() - startTime,
-      });
-
-      // Persist completion
-      SubAgentTaskStore.getInstance().completeTask(taskId, 'completed', sanitizeSubAgentResult(resultText));
-
-      return {
-        subAgentName: params.subAgentName,
-        taskId,
-        success: true,
-        result: sanitizeSubAgentResult(resultText),
-        turnCount: chat.getTurnCount(),
-        durationMs: Date.now() - startTime,
-        availabilityWarnings: availabilityWarnings.length > 0 ? availabilityWarnings : undefined,
-      };
-
-    } catch (error) {
-      // ── Error handling — non-fatal strategy ──
-      const runtimeState = this.runtimeStates.get(taskId);
-      if (runtimeState) {
-        runtimeState.status = params.cancellationToken.isCancellationRequested
-          ? 'cancelled' : 'failed';
-        runtimeState.endTime = Date.now();
-        this.lifecycle.sendStateUpdate(params.eventSender, runtimeState, true);
-      }
-
-      // Extract partial result before dispose() clears context
-      const chatInstance = this.activeInstances.get(taskId);
-      const partialResult = chatInstance?.extractPartialResult();
-
-      getLogger().error?.(`[SubAgentManager] Sub-agent failed: ${error instanceof Error ? error.message : String(error)}`, 'spawnSubAgent', {
-        subAgentName: params.subAgentName,
-        taskId,
-      });
-
-      // Persist failure
-      const failStatus = params.cancellationToken.isCancellationRequested ? 'cancelled' : 'failed';
-      SubAgentTaskStore.getInstance().completeTask(taskId, failStatus, undefined, error instanceof Error ? error.message : String(error));
-
-      return {
-        subAgentName: params.subAgentName,
-        taskId,
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-        turnCount: this.activeInstances.get(taskId)?.getTurnCount() || 0,
-        durationMs: Date.now() - startTime,
-        partialResult,
-      };
-
-    } finally {
-      // ── Clean up instance ──
-      const chat = this.activeInstances.get(taskId);
-      if (chat) {
-        chat.dispose();
-        this.activeInstances.delete(taskId);
-      }
-    }
-  }
-
-  /**
-   * Spawn an ad-hoc (one-off) sub-agent without a pre-defined AGENT.md.
+   * Spawn an ad-hoc (one-off) sub-agent from an in-memory config built at spawn time.
    *
-   * The ad-hoc agent's tool set is restricted to a subset of the parent agent's
-   * available tools. It does NOT inherit MCP servers, skills, or knowledge base —
-   * it only gets what the caller explicitly requests via `tools`.
+   * Ad-hoc agents inherit the parent Agent's external MCP tools by default. A
+   * non-empty `tools` list narrows that inherited set to the requested tool names.
+   * Skills and knowledge base are not inherited.
    */
   public async spawnAdhocSubAgent(params: {
     parentSessionId: string;
@@ -432,24 +151,22 @@ export class SubAgentManager extends EventEmitter {
       taskId,
       parentSessionId: params.parentSessionId,
       hasCustomPrompt: !!params.systemPrompt,
-      requestedTools: params.tools?.length ?? 'all',
+      requestedTools: params.tools && params.tools.length > 0 ? params.tools.length : 'inherit-parent',
     });
 
     // ── 1. Resource limit check (shared with pre-defined agents) ──
     const currentParallel = this.parentChildMap.get(params.parentSessionId)?.size || 0;
-    if (currentParallel >= SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS) {
-      return {
-        subAgentName: adhocName, taskId, success: false,
-        error: `Max parallel sub-agents (${SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS}) reached`,
-        turnCount: 0, durationMs: 0,
-      };
-    }
-
     const totalSpawns = this.spawnCountMap.get(params.parentSessionId) || 0;
-    if (totalSpawns >= SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION) {
+    const limitError =
+      currentParallel >= SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS
+        ? `Max parallel sub-agents (${SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS}) reached`
+        : totalSpawns >= SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION
+          ? `Max sub-agent spawns per session (${SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION}) reached`
+          : null;
+    if (limitError) {
       return {
         subAgentName: adhocName, taskId, success: false,
-        error: `Max sub-agent spawns per session (${SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION}) reached`,
+        error: limitError,
         turnCount: 0, durationMs: 0,
       };
     }
@@ -461,13 +178,9 @@ export class SubAgentManager extends EventEmitter {
         description: params.task.slice(0, 200),
         system_prompt: params.systemPrompt || DEFAULT_ADHOC_SYSTEM_PROMPT,
         model: params.model || INHERIT_MODEL_VALUE,
-        mcpServers: [],
-        skills: [],
-        tools: [],
+        mcp_servers: [],
         builtin_tools: [],
         disallow_builtin_tools: [],
-        inherit_mcp_servers: false,
-        inherit_skills: false,
       };
 
       // ── 3. Resolve model ──
@@ -476,35 +189,69 @@ export class SubAgentManager extends EventEmitter {
       const parentModel = parentChat?.getCurrentModelId?.() || getDefaultModel();
       const resolvedModel = resolveSubAgentModel(syntheticConfig, parentModel, adhocName);
 
-      // ── 4. Validate requested tools subset ──
-      // For ad-hoc agents, get ALL parent tools, then validate the requested subset
+      // ── 4. Resolve inherited MCP tools and optional requested tool subset ──
+      const requestedTools = params.tools && params.tools.length > 0 ? params.tools : undefined;
       let allowedToolNames: Set<string> | undefined;
-      if (params.tools && params.tools.length > 0) {
-        // Get parent's full tool list to validate against
-        const parentAgentConfig = getParentAgentConfig(params.parentChatId, params.userAlias);
-        const parentMcpServers = parentAgentConfig?.mcp_servers?.map(s => ({ name: s.name, tools: s.tools || [] })) || [];
-        const parentTools = await mcpClientManager.getToolsForSubAgent(parentMcpServers);
-        const parentToolNames = new Set(parentTools.map(t => t.name));
+      let resolvedMcpServers: SubAgent['resolvedMcpServers'] = [];
+      const parentAgentConfig = getParentAgentConfig(params.parentChatId, params.userAlias);
+      if (parentAgentConfig) {
+        const parentMcpServers = parentAgentConfig.mcp_servers?.map((s: AgentMcpServer) => ({ name: s.name, tools: s.tools || [] })) || [];
+        // Match the main-agent contract: an empty mcp_servers array means no per-agent MCP filter,
+        // so ad-hoc sub-agents inherit all currently available external tools.
+        const effectiveParentMcpServers = parentMcpServers.length > 0
+          ? parentMcpServers
+          : Array.from(new Set(
+            (await mcpClientManager.getAllTools())
+              .filter(tool => tool.serverName !== BUILTIN_SERVER_NAME)
+              .map(tool => tool.serverName)
+          )).map(name => ({ name, tools: [] }));
+        const parentTools = await mcpClientManager.getToolsForSubAgent(effectiveParentMcpServers);
+        const requestedToolNames = requestedTools ? new Set(requestedTools) : undefined;
 
-        const invalidTools = params.tools.filter(t => !parentToolNames.has(t));
-        if (invalidTools.length > 0) {
-          return {
-            subAgentName: adhocName, taskId, success: false,
-            error: `Requested tools not available in parent agent: ${invalidTools.join(', ')}`,
-            turnCount: 0, durationMs: Date.now() - startTime,
-          };
+        if (requestedTools && requestedToolNames) {
+          allowedToolNames = requestedToolNames;
+          const parentToolNames = new Set(parentTools.map(t => t.name));
+          const invalidTools = requestedTools.filter(t => !parentToolNames.has(t));
+          if (invalidTools.length > 0) {
+            return {
+              subAgentName: adhocName, taskId, success: false,
+              error: `Requested tools not available in parent agent: ${invalidTools.join(', ')}`,
+              turnCount: 0, durationMs: Date.now() - startTime,
+            };
+          }
         }
-        allowedToolNames = new Set(params.tools);
+
+        resolvedMcpServers = effectiveParentMcpServers.flatMap(parentMcpServer => {
+          const toolsForServer = Array.from(new Set(
+            parentTools
+              .filter(tool => tool.serverName === parentMcpServer.name && (!requestedToolNames || requestedToolNames.has(tool.name)))
+              .map(tool => tool.name)
+          ));
+          return toolsForServer.length > 0
+            ? [{
+              name: parentMcpServer.name,
+              connected: true,
+              tools: toolsForServer,
+              inherited: true,
+            }]
+            : [];
+        });
+      } else {
+        return {
+          subAgentName: adhocName, taskId, success: false,
+          error: `Parent agent config not found for chat: ${params.parentChatId}`,
+          turnCount: 0, durationMs: Date.now() - startTime,
+        };
       }
 
-      // ── 5. Build SubAgent runtime entity (no inheritance) ──
+      // ── 5. Build SubAgent runtime entity ──
       const subAgent: SubAgent = {
         config: syntheticConfig,
         inheritedModel: resolvedModel,
         parentChatId: params.parentChatId,
         parentSessionId: params.parentSessionId,
         userAlias: params.userAlias,
-        resolvedMcpServers: [],
+        resolvedMcpServers,
         resolvedSkills: [],
         resolvedKnowledgeBase: undefined,
         taskId,
@@ -527,18 +274,16 @@ export class SubAgentManager extends EventEmitter {
 
         // Streaming chunk callback — only emits when frontend is watching
         onStreamingChunk: (chunk) => {
-          const watcher = SubAgentTaskWatcherRegistry.getInstance().getWatcher(taskId);
-          if (watcher) {
-            watcher.send('subAgentTask:streamingChunk', chunk);
-          }
+          SubAgentTaskWatcherRegistry.getInstance()
+            .getWatcher(taskId)
+            ?.send('subAgentTask:streamingChunk', chunk);
         },
 
         onTurnComplete: (turn, lastMessage) => {
-          const state = this.runtimeStates.get(taskId);
-          if (state) {
+          this.withRuntimeState(taskId, (state) => {
             state.currentTurn = turn;
             state.status = 'running';
-          }
+          });
           params.onProgress?.(this.runtimeStates.get(taskId)!);
         },
 
@@ -569,10 +314,9 @@ export class SubAgentManager extends EventEmitter {
         steps: [],
       });
 
-      if (!this.parentChildMap.has(params.parentSessionId)) {
-        this.parentChildMap.set(params.parentSessionId, new Set());
-      }
-      this.parentChildMap.get(params.parentSessionId)!.add(taskId);
+      const childSet = this.parentChildMap.get(params.parentSessionId) ?? new Set<string>();
+      childSet.add(taskId);
+      this.parentChildMap.set(params.parentSessionId, childSet);
       this.spawnCountMap.set(params.parentSessionId, totalSpawns + 1);
 
       // ── 8.1 Persist task record to disk (skip if caller already created it) ──
@@ -613,12 +357,7 @@ export class SubAgentManager extends EventEmitter {
       const resultText = raceResult as string;
 
       // ── 10. Success ──
-      const runtimeState = this.runtimeStates.get(taskId);
-      if (runtimeState) {
-        runtimeState.status = 'completed';
-        runtimeState.endTime = Date.now();
-        this.lifecycle.sendStateUpdate(params.eventSender, runtimeState, true);
-      }
+      this.finalizeRuntimeState(taskId, 'completed', params.eventSender);
 
       getLogger().info?.('[SubAgentManager] Ad-hoc sub-agent completed', 'spawnAdhocSubAgent', {
         taskId,
@@ -639,13 +378,11 @@ export class SubAgentManager extends EventEmitter {
       };
 
     } catch (error) {
-      const runtimeState = this.runtimeStates.get(taskId);
-      if (runtimeState) {
-        runtimeState.status = params.cancellationToken.isCancellationRequested
-          ? 'cancelled' : 'failed';
-        runtimeState.endTime = Date.now();
-        this.lifecycle.sendStateUpdate(params.eventSender, runtimeState, true);
-      }
+      this.finalizeRuntimeState(
+        taskId,
+        params.cancellationToken.isCancellationRequested ? 'cancelled' : 'failed',
+        params.eventSender,
+      );
 
       // Extract partial result before dispose() clears context
       const chatInstance = this.activeInstances.get(taskId);
@@ -671,11 +408,8 @@ export class SubAgentManager extends EventEmitter {
       };
 
     } finally {
-      const chat = this.activeInstances.get(taskId);
-      if (chat) {
-        chat.dispose();
-        this.activeInstances.delete(taskId);
-      }
+      this.activeInstances.get(taskId)?.dispose();
+      this.activeInstances.delete(taskId);
     }
   }
 
@@ -687,12 +421,10 @@ export class SubAgentManager extends EventEmitter {
     parentSessionId: string;
     parentChatId: string;
     userAlias: string;
-    subAgentName: string;
     task: string;
     cancellationToken?: CancellationToken;
     eventSender?: Electron.WebContents;
     correlationId?: string;
-    adhoc?: boolean;
     systemPrompt?: string;
     tools?: string[];
     model?: string;
@@ -740,60 +472,6 @@ export class SubAgentManager extends EventEmitter {
   /** @internal Exposed for testing — delegates to SubAgentLifecycle.enqueueResult */
   protected enqueueResult(parentSessionId: string, result: SubAgentTaskResult): void {
     (this.lifecycle as any).enqueueResult(parentSessionId, result);
-  }
-
-  /**
-   * Spawn multiple sub-agents in parallel
-   *
-   * Uses Promise.allSettled to ensure a single failure does not affect others
-   */
-  public async spawnMultipleSubAgents(params: {
-    parentSessionId: string;
-    parentChatId: string;
-    userAlias: string;
-    tasks: Array<{ subAgentName: string; task: string }>;
-    cancellationToken: CancellationToken;
-    onProgress?: (states: SubAgentRuntimeState[]) => void;
-    eventSender?: Electron.WebContents;
-    correlationId?: string;
-  }): Promise<SubAgentTaskResult[]> {
-    const { tasks, cancellationToken, onProgress, ...common } = params;
-
-    const limitedTasks = tasks.slice(0, SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS);
-
-    if (tasks.length > SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS) {
-      getLogger().warn?.(
-        `[SubAgentManager] Requested ${tasks.length} parallel tasks, limiting to ${SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS}`,
-        'spawnMultipleSubAgents'
-      );
-    }
-
-    const promises = limitedTasks.map((task, index) =>
-      this.spawnSubAgent({
-        ...common,
-        subAgentName: task.subAgentName,
-        task: task.task,
-        cancellationToken,
-        eventSender: params.eventSender,
-        correlationId: params.correlationId ? `${params.correlationId}_${index}` : undefined,
-      })
-    );
-
-    const settled = await Promise.allSettled(promises);
-
-    return settled.map((result, index) => {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      }
-      return {
-        subAgentName: limitedTasks[index].subAgentName,
-        taskId: `failed_${index}`,
-        success: false,
-        error: result.reason?.message || 'Unknown error',
-        turnCount: 0,
-        durationMs: 0,
-      };
-    });
   }
 
   public async cancelByParentSession(parentSessionId: string): Promise<number> {
@@ -850,6 +528,34 @@ ${truncated}
   }
 
   /**
+   * Run a mutation against a task's runtime state when it still exists.
+   * Centralizes the get-and-guard pattern shared across the ad-hoc lifecycle.
+   */
+  private withRuntimeState(
+    taskId: string,
+    mutate: (state: SubAgentRuntimeState) => void,
+  ): void {
+    const state = this.runtimeStates.get(taskId);
+    if (state) mutate(state);
+  }
+
+  /**
+   * Mark a task's runtime state terminal and emit a final state update.
+   * No-op when the runtime state has already been cleared.
+   */
+  private finalizeRuntimeState(
+    taskId: string,
+    status: SubAgentRuntimeState['status'],
+    eventSender: Electron.WebContents | undefined,
+  ): void {
+    this.withRuntimeState(taskId, (state) => {
+      state.status = status;
+      state.endTime = Date.now();
+      this.lifecycle.sendStateUpdate(eventSender, state, true);
+    });
+  }
+
+  /**
    * Build parent context string for a sub-agent.
    * Returns undefined on any error.
    */
@@ -874,8 +580,7 @@ ${truncated}
           if (tokenCount > TOKEN_LIMIT) {
             // Fall back to summary
             const summary = await chatInstance.getContextSummary?.();
-            if (summary) return `<parent_context>\n${summary}\n</parent_context>`;
-            return undefined;
+            return summary ? `<parent_context>\n${summary}\n</parent_context>` : undefined;
           }
 
           return `<parent_context>\n${historyText}\n</parent_context>`;

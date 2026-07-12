@@ -1,5 +1,8 @@
-import { ChatSession } from '../../lib/userData/types';
-import { isInterruptedScheduledSessionError } from '@shared/constants/scheduler';
+import type { ChatSession } from '../../lib/userData/types';
+import {
+  getSchedulerExecutionInterruptionReason,
+  isInterruptedScheduledSessionError,
+} from '@shared/constants/scheduler';
 
 export type ScheduledSessionDisplayState =
   | 'running'
@@ -21,4 +24,10 @@ export function getScheduledSessionDisplayState(
   }
 
   return 'completed';
+}
+
+export function getScheduledSessionInterruptionReason(
+  session: Pick<ChatSession, 'schedulerError'>,
+): string | undefined {
+  return getSchedulerExecutionInterruptionReason(session.schedulerError);
 }

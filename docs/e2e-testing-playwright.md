@@ -109,7 +109,6 @@ The app may have multiple windows open simultaneously:
 | Window | HTML Entry | Purpose |
 |------|----------|------|
 | Main | `index.html` | Main application |
-| Toolbar | `toolbar.html` | Floating toolbar |
 | Screenshot | `screenshot.html` | Screenshot overlay |
 
 **Solution**: Use `electronApp.windows()` to get window list, filter by URL or title to find target window.
@@ -126,13 +125,19 @@ app.setPath('userData', path.join(app.getPath('appData'), userDataName));
 
 #### F. Feature Flag Control
 
-Some pages are behind Feature Flags (e.g., Memory only available in dev mode):
+Some pages are behind Feature Flags (e.g., Voice Input only available in dev mode):
 
 | Feature Flag | Default Condition |
 |-------------|---------|
-| `browserControl` | dev + win32 |
+| `openkosmosFeatureVoiceInput` | dev mode |
 
 **Solution**: Set `NODE_ENV=development` on E2E startup or use `--enable-features` CLI argument.
+
+> **Note:** Memex Memory is **not** a feature flag. It is gated by the app.json
+> `memex.enabled` master switch (default off), toggled in Settings → Memex Memory.
+> To exercise it in E2E, seed `memex: { enabled: true }` into the isolated
+> `app.json` under `OPENKOSMOS_E2E_USER_DATA` (or toggle it through the Settings UI),
+> not via `--enable-features`.
 
 ### 2.3 Feasibility Conclusion
 
@@ -414,12 +419,13 @@ export const test = base.extend<ElectronFixtures>({
         '--disable-gpu-sandbox',
         '--no-sandbox',
         // Optional: enable specific Feature Flags
+        // '--enable-features=openkosmosFeatureVoiceInput',
       ],
       env: {
         ...process.env,
         NODE_ENV: 'test',
         // Use isolated userData directory
-        OpenKosmos_E2E_USER_DATA: testUserDataDir,
+        OPENKOSMOS_E2E_USER_DATA: testUserDataDir,
       },
     });
 
@@ -900,15 +906,6 @@ test.describe('MCP Server Management', () => {
       mainWindow.locator('input, select, [role="combobox"]').first()
     ).toBeVisible({ timeout: 10_000 });
   });
-
-  test('MCP library page loads server list', async ({ mainWindow }) => {
-    await navigateTo(mainWindow, '/settings/mcp/mcp-library');
-
-    // Verify library page loads
-    await expect(
-      mainWindow.locator('text=/library|marketplace/i').first()
-    ).toBeVisible({ timeout: 15_000 });
-  });
 });
 ```
 
@@ -924,7 +921,6 @@ test.describe('MCP Server Management', () => {
 | MCP management | 5-8 | — | Mock | P1 |
 | Skills management | 3-5 | — | Mock | P2 |
 | Agent create/edit | 4-6 | — | Mock | P2 |
-| Multi-window (Toolbar) | 2-3 | — | Mock | P3 |
 | Keyboard shortcuts | 2-4 | — | Mock | P3 |
 | **Total** | **39-63** | **33** | — | — |
 
@@ -1174,7 +1170,6 @@ vitest.mock('electron', () => ({
 ├── Implement Token pre-seeding strategy
 ├── Full chat send/receive flow tests
 ├── Skills management tests
-├── Multi-window tests (Toolbar)
 ├── Keyboard shortcut tests
 └── Performance benchmark tests
 ```
@@ -1251,7 +1246,7 @@ await expect(page).toHaveURL(/#\/settings\/mcp/);
 |--------|------|--------|
 | `E2E_GITHUB_TOKEN` | GitHub Token for CI auth | — |
 | `E2E_COPILOT_TOKEN` | Copilot Token for CI auth | — |
-| `OpenKosmos_E2E_USER_DATA` | Test userData path | `os.tmpdir()` |
+| `OPENKOSMOS_E2E_USER_DATA` | Test userData path | `os.tmpdir()` |
 | `CI` | Whether CI environment | `false` |
 
 ### E. Common Troubleshooting

@@ -1,0 +1,17 @@
+{
+  "description": "Frozen design-system drift baselines for the check:design ratchet gate. These numbers may only RATCHET DOWN. The gate fails when any current count exceeds its baseline, and once this file exists on the base branch CI compares PR baseline files against that base baseline to reject raised ceilings. When a refactor lowers a count, re-freeze the lower number (npm run check:design -- --update-baseline) in the same PR so the ceiling tightens. Never raise a value to make the gate pass.",
+  "scope": "src/renderer (excluding __tests__ directories and *.test/*.spec files for hex literals)",
+  "frozenAt": "2026-07-05",
+  "metrics": {
+    "hardcodedHexLiterals": 0,
+    "rendererCssFiles": 67,
+    "uiDirectoryCssFiles": 0,
+    "rawStatusPaletteClasses": 0,
+    "rawBrandColorClasses": 0,
+    "rawBrandRgbColors": 0,
+    "cssHexLiterals": 0,
+    "sanctionedTsxHexLiterals": 92,
+    "cssBorderRadiusLiterals": 0,
+    "undefinedCssVariableRefs": 0
+  }
+}

@@ -63,11 +63,11 @@ class OpenKosmosAdapter(BasePlatformAdapter):
         super().__init__(config, Platform.OpenKosmos)
 
         # Parse config
-        self._url: str = config.extra.get("url") or os.getenv("OpenKosmos_URL", "")
-        self._token: str = config.extra.get("token") or os.getenv("OpenKosmos_TOKEN", "")
+        self._url: str = config.extra.get("url") or os.getenv("OPENKOSMOS_URL", "")
+        self._token: str = config.extra.get("token") or os.getenv("OPENKOSMOS_TOKEN", "")
 
         # Allow all users by default (OpenKosmos is a local desktop app)
-        allow_all_default = os.getenv("OpenKosmos_ALLOW_ALL_USERS", "true")
+        allow_all_default = os.getenv("OPENKOSMOS_ALLOW_ALL_USERS", "true")
         self._allow_all: bool = allow_all_default.lower() in ("true", "1", "yes")
 
         # WebSocket connection state
@@ -85,12 +85,12 @@ class OpenKosmosAdapter(BasePlatformAdapter):
     async def connect(self) -> bool:
         """Connect to OpenKosmos WS server and authenticate."""
         if not self._url:
-            logger.error("[openkosmos] No URL configured. Set OpenKosmos_URL or config.extra.url")
+            logger.error("[openkosmos] No URL configured. Set OPENKOSMOS_URL or config.extra.url")
             self._set_fatal_error("no_url", "No OpenKosmos URL configured", retryable=False)
             return False
 
         if not self._token:
-            logger.error("[openkosmos] No token configured. Set OpenKosmos_TOKEN or config.extra.token")
+            logger.error("[openkosmos] No token configured. Set OPENKOSMOS_TOKEN or config.extra.token")
             self._set_fatal_error("no_token", "No OpenKosmos token configured", retryable=False)
             return False
 

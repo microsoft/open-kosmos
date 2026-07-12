@@ -4,6 +4,7 @@ import { PresetModel } from '../../../model';
 import { Numbers, Emojis, Item } from './list';
 import { A11yDiv } from '../../../../common/a11y-element';
 import { getString } from '../../../../common/localString';
+import { useI18n } from '../../../../../../lib/i18n/useI18n';
 
 const GridSize = 32;
 
@@ -52,10 +53,12 @@ export function Pannel(props: {
   onChoose: (config: PresetModel['content']) => void;
 }) {
   const { current, onChoose } = props;
+  const { t } = useI18n();
 
   const renderList = (list: Item[]) => {
-    return list.map(({ key, config, view, title }) => {
+    return list.map(({ key, config, view, title, titleKey }) => {
       let  active = current === config;
+      const resolvedTitle = titleKey ? t(titleKey) : title;
       if (config.type === 'order') {
         active = current.type === config.type && current.style === config.style;
       }
@@ -67,8 +70,8 @@ export function Pannel(props: {
         <div role='listitem' key={key}>
           <A11yDiv
                 role='button'
-                aria-label={title}
-                title={title}
+                aria-label={resolvedTitle}
+                title={resolvedTitle}
                 className={SItem + (active ? ' active' : '')}
                 onClick={handle}>
             {view}
@@ -95,4 +98,3 @@ export function Pannel(props: {
     </div>
   );
 }
-

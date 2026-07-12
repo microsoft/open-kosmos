@@ -44,7 +44,7 @@ test.describe('Login page UI tests', () => {
   test('Welcome title contains the brand name', async ({ mainWindow }) => {
     await waitForLoginPage(mainWindow);
 
-    // New user scenario shows "Welcome to OpenKosmos"
+    // New user scenario shows "Welcome to OpenKosmos".
     const titleLocator = mainWindow.locator(Selectors.SIGN_IN_CARD_TITLE);
     await expect(titleLocator).toBeVisible({ timeout: 10_000 });
 

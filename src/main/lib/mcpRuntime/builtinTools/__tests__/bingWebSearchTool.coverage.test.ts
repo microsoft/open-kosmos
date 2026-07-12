@@ -214,8 +214,8 @@ describe('BingWebSearchTool.execute — with browser mock', () => {
     expect(result.success).toBe(true);
   });
 
-  it('passes timeout parameter', async () => {
-    const result = await BingWebSearchTool.execute({ ...baseArgs, timeout: 5000 });
+  it('ignores a stray timeout argument (no longer agent-configurable)', async () => {
+    const result = await BingWebSearchTool.execute({ ...baseArgs, timeout: 5000 } as any);
     expect(result.success).toBe(true);
   });
 
@@ -456,9 +456,6 @@ describe('BingWebSearchTool private helpers', () => {
     });
     it('returns invalid when locale invalid', () => {
       expect(tool.validateArgs({ description: 't', queries: ['q'], lang: 'en', locale: 'uk' }).isValid).toBe(false);
-    });
-    it('returns invalid when timeout too small', () => {
-      expect(tool.validateArgs({ description: 't', queries: ['q'], lang: 'en', locale: 'us', timeout: 500 }).isValid).toBe(false);
     });
     it('returns valid for correct args', () => {
       expect(tool.validateArgs({ description: 't', queries: ['q'], lang: 'en', locale: 'us' }).isValid).toBe(true);

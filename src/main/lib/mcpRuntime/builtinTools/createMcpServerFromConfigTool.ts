@@ -32,10 +32,6 @@ interface AddMcpByConfigArgs {
     url?: string;
     /** MCP server version (optional, defaults to 1.0.0) */
     version?: string;
-    /** MCP server source (optional, defaults to ON-DEVICE) */
-    source?: 'IN-LIBRARY' | 'ON-DEVICE';
-    /** 🆕 Remote CDN version (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
-    remoteVersion?: string;
   };
 }
 
@@ -60,7 +56,7 @@ export class CreateMcpServerFromConfigTool {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'create_mcp_server_from_config',
-      description: 'Add an MCP server by providing a complete configuration object. This tool allows you to add any MCP server with custom configuration, not limited to the MCP Library.',
+      description: 'Add a user-configured MCP server by providing a complete local configuration object.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -103,15 +99,6 @@ export class CreateMcpServerFromConfigTool {
                 type: 'string',
                 description: 'MCP server version (optional, defaults to 1.0.0)'
               },
-              source: {
-                type: 'string',
-                enum: ['IN-LIBRARY', 'ON-DEVICE'],
-                description: 'MCP server source (optional, defaults to ON-DEVICE)'
-              },
-              remoteVersion: {
-                type: 'string',
-                description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
-              }
             },
             required: ['name', 'transport']
           }
@@ -181,7 +168,6 @@ export class CreateMcpServerFromConfigTool {
 
       // Build the complete McpServerConfig
       const finalVersion = config.version || '1.0.0';
-      const finalSource = config.source || 'ON-DEVICE';
       const mcpConfig: McpServerConfig = {
         name: config.name.trim(),
         transport: config.transport,
@@ -190,13 +176,8 @@ export class CreateMcpServerFromConfigTool {
         args: Array.isArray(config.args) ? config.args : [],
         env: (config.env && typeof config.env === 'object') ? config.env : {},
         url: config.url?.trim() || '',
-        // 🆕 Added: version and source fields; use config values if specified, otherwise use defaults
         version: finalVersion,
-        source: finalSource,
-        // 🆕 Added: remoteVersion field
-        // For IN-LIBRARY sources, remoteVersion equals version (both are the CDN library version)
-        // For ON-DEVICE sources, remoteVersion should be an empty string
-        remoteVersion: finalSource === 'IN-LIBRARY' ? finalVersion : ''
+        source: 'ON-DEVICE',
       };
 
       // 🆕 Refactored: call mcpClientManager to add MCP server (mcpClientManager internally updates ProfileCacheManager)

@@ -1,6 +1,7 @@
 import { VscodeMcpClient, VscodeMcpServerConfig } from "./vscodeMcpClient";
 import { McpServerConfig } from "../userDataADO/types";
 import { createConsoleLogger } from "../unifiedLogger";
+import { EventEmitter } from "events";
 
 // Initialize logger for MCP client synchronously
 const advancedLogger = createConsoleLogger();
@@ -32,7 +33,7 @@ function mapMcpTool(tool: any): Tool {
  * VSCode MCP Client Adapter
  * Provides the same interface as the original MCPClient, but uses the new zero-dependency vscodeMcpClient implementation
  */
-export class VscMcpClient {
+export class VscMcpClient extends EventEmitter {
   private server: McpServerConfig;
   private mcp: VscodeMcpClient;
   private tools: Tool[] = [];
@@ -41,6 +42,7 @@ export class VscMcpClient {
   private serverId: string | null = null;
 
   constructor(mcpServer: McpServerConfig) {
+    super();
     this.server = mcpServer;
 
     // Commands and environment variables are managed uniformly by TerminalInstance.
@@ -59,7 +61,6 @@ export class VscMcpClient {
       url: mcpServer.url,
       headers: mcpServer.headers,
       env: mcpServer.env as Record<string, string> | undefined,
-      timeout: 3600000,
       // Forward original cfg so the HTTP transport can construct a
       // OpenKosmosOAuthProvider that knows the server's oauth.* options.
       mcpServerConfig: mcpServer,
@@ -67,6 +68,19 @@ export class VscMcpClient {
 
     this.mcp = new VscodeMcpClient(vscodeMcpConfig);
     this.lastError = null;
+
+    this.mcp.on('stateChange', (state) => {
+      if (state.state === 'error') {
+        const errorMsg = state.message || 'Unknown connection error';
+        this.lastError = new Error(errorMsg);
+        this.isConnected = false;
+      } else if (state.state === 'running') {
+        this.isConnected = true;
+      } else if (state.state === 'stopped') {
+        this.isConnected = false;
+      }
+      this.emit('stateChange', state);
+    });
 
 
     // Log complete MCP server configuration details
@@ -91,18 +105,6 @@ export class VscMcpClient {
 
   async connectToServer(): Promise<string | Error> {
     try {
-
-      // Set up event listeners
-      this.mcp.on('stateChange', (state) => {
-
-        if (state.state === 'error') {
-          const errorMsg = state.message || 'Unknown connection error';
-          this.lastError = new Error(errorMsg);
-          this.isConnected = false;
-        } else if (state.state === 'running') {
-          this.isConnected = true;
-        }
-      });
 
       // Connect to server
       await this.mcp.connect();
@@ -191,12 +193,9 @@ export class VscMcpClient {
 
 
     try {
-      // Disconnect from server if connected
-      if (this.isConnected) {
-        try {
-          await this.mcp.disconnect();
-        } catch (error) {
-        }
+      try {
+        await this.mcp.disconnect();
+      } catch (error) {
       }
 
     } finally {

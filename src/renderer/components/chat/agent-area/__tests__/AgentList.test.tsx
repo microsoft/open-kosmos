@@ -143,21 +143,92 @@ describe('AgentList — basic rendering', () => {
     expect(screen.getByLabelText('Search conversations')).toBeInTheDocument();
   });
 
-  it('calls onSelectChat when agent clicked', () => {
+  it('does not start a new chat when an agent row is clicked (toggles expansion instead)', () => {
     const onSelectChat = vi.fn();
     render(<AgentList chats={[makeChat()]} onSelectChat={onSelectChat} excludeBuiltinAgents={false} />);
     const btn = screen.getAllByRole('button')[0];
     fireEvent.click(btn);
+    expect(onSelectChat).not.toHaveBeenCalled();
+  });
+
+  it('starts a new chat when the new-chat button is clicked', () => {
+    const onSelectChat = vi.fn();
+    render(<AgentList chats={[makeChat()]} onSelectChat={onSelectChat} excludeBuiltinAgents={false} />);
+    fireEvent.click(screen.getByLabelText('Start new conversation'));
     expect(onSelectChat).toHaveBeenCalledWith('chat-1');
   });
 
-  it('sorts primaryAgent to top', () => {
+  it('sorts primaryChat to top', () => {
     const chats = [
       makeChat({ chat_id: 'ca', agent: { name: 'Agent A' } }),
       makeChat({ chat_id: 'cb', agent: { name: 'Primary' } }),
     ];
-    render(<AgentList chats={chats} primaryAgent="Primary" excludeBuiltinAgents={false} />);
+    render(<AgentList chats={chats} primaryChat="cb" excludeBuiltinAgents={false} />);
     expect(screen.getAllByRole('button')[0]).toHaveTextContent('Primary');
+  });
+});
+
+describe('AgentList - independent agent expansion', () => {
+  const agentA = () => makeChat({ chat_id: 'a', agent: { name: 'Agent A' } });
+  const agentB = () => makeChat({ chat_id: 'b', agent: { name: 'Agent B' } });
+
+  beforeEach(() => {
+    mockGetChatSessions.mockImplementation((_alias: string, chatId: string) =>
+      Promise.resolve({
+        success: true,
+        data: {
+          sessions: [{
+            chatSession_id: `${chatId}-s1`,
+            title: `Session-${chatId}`,
+            last_updated: '2024-01-01T00:00:00Z',
+            readStatus: 'read',
+          }],
+          hasMore: false,
+          nextMonthIndex: 0,
+        },
+      }));
+  });
+
+  it('expands multiple agents independently and toggles one without collapsing the other', async () => {
+    render(<AgentList chats={[agentA(), agentB()]} activeView="chat" onSelectChat={vi.fn()} excludeBuiltinAgents={false} />);
+
+    fireEvent.click(screen.getByTestId('nav-label-Agent A'));
+    await waitFor(() => expect(screen.getByText('Session-a')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('nav-label-Agent B'));
+    await waitFor(() => expect(screen.getByText('Session-b')).toBeInTheDocument());
+    // Agent A remains expanded - expansion state is independent per agent.
+    expect(screen.getByText('Session-a')).toBeInTheDocument();
+
+    // Collapsing Agent A leaves Agent B expanded.
+    fireEvent.click(screen.getByTestId('nav-label-Agent A'));
+    await waitFor(() => expect(screen.queryByText('Session-a')).not.toBeInTheDocument());
+    expect(screen.getByText('Session-b')).toBeInTheDocument();
+  });
+
+  it('collapses all expanded agents when leaving the chat view', async () => {
+    const { rerender } = render(
+      <AgentList chats={[agentA()]} currentChatId="a" activeView="chat" excludeBuiltinAgents={false} />,
+    );
+    await waitFor(() => expect(screen.getByText('Session-a')).toBeInTheDocument());
+
+    rerender(<AgentList chats={[agentA()]} currentChatId="a" activeView="settings" excludeBuiltinAgents={false} />);
+    await waitFor(() => expect(screen.queryByText('Session-a')).not.toBeInTheDocument());
+  });
+
+  it('keeps an already-expanded agent expanded when its new-chat button is clicked', async () => {
+    const onSelectChat = vi.fn();
+    render(<AgentList chats={[agentA()]} currentChatId="a" activeView="chat" onSelectChat={onSelectChat} excludeBuiltinAgents={false} />);
+    await waitFor(() => expect(screen.getByText('Session-a')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Start new conversation'));
+    expect(onSelectChat).toHaveBeenCalledWith('a');
+    expect(screen.getByText('Session-a')).toBeInTheDocument();
+  });
+
+  it('does not throw when the new-chat button is clicked without an onSelectChat handler', () => {
+    render(<AgentList chats={[agentA()]} excludeBuiltinAgents={false} />);
+    expect(() => fireEvent.click(screen.getByLabelText('Start new conversation'))).not.toThrow();
   });
 });
 
@@ -216,18 +287,6 @@ describe('AgentList — session loading and display', () => {
     await waitFor(() => expect(document.querySelectorAll('svg').length).toBeGreaterThan(0));
   });
 
-  it('shows remote Globe icon for remote session source', async () => {
-    mockGetChatSessions.mockResolvedValueOnce({
-      success: true,
-      data: { sessions: [{ chatSession_id: 'r1', title: 'Remote Session', last_updated: '2024-01-01T00:00:00Z', readStatus: 'read', source: { type: 'remote' } }], hasMore: false, nextMonthIndex: 0 },
-    });
-    render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    await waitFor(() => expect(screen.getByText('Remote Session')).toBeInTheDocument());
-    // Globe SVG class is present from lucide-react
-    const globeEl = document.querySelector('.w-3.h-3') || document.querySelector('[class*="globe"]') || document.querySelector('[class*="Globe"]');
-    // Just check the session rendered; Globe may or may not have a testid based on mock state
-    expect(screen.getByText('Remote Session')).toBeInTheDocument();
-  });
 });
 
 describe('AgentList — session CRUD events', () => {
@@ -274,26 +333,43 @@ describe('AgentList — session CRUD events', () => {
   });
 });
 
-describe('AgentList — pagination', () => {
-  it('shows "All conversations loaded" when scrolled to bottom with no more', async () => {
-    mockGetChatSessions.mockResolvedValueOnce({
-      success: true,
-      data: { sessions: [{ chatSession_id: 'ah1', title: 'Only Session', last_updated: '2024-01-01T00:00:00Z', readStatus: 'read' }], hasMore: false, nextMonthIndex: 0 },
-    });
+describe('AgentList - show more / show less', () => {
+  it('shows all sessions without a toggle when there are 8 or fewer', async () => {
+    const sessions = Array.from({ length: 8 }, (_, i) => ({
+      chatSession_id: `s${i}`, title: `Session ${i}`, last_updated: `2024-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`, readStatus: 'read',
+    }));
+    mockGetChatSessions.mockResolvedValueOnce({ success: true, data: { sessions, hasMore: false, nextMonthIndex: 0 } });
     render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    await waitFor(() => expect(screen.getByText('Only Session')).toBeInTheDocument());
-    const list = document.querySelector('.chat-sessions-list')!;
-    Object.defineProperty(list, 'scrollHeight', { value: 300, configurable: true });
-    Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 200, configurable: true });
-    fireEvent.scroll(list);
-    await waitFor(() => expect(screen.getByText('All conversations loaded')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Session 0')).toBeInTheDocument());
+    expect(screen.getByText('Session 7')).toBeInTheDocument();
+    expect(screen.queryByText('Show more')).not.toBeInTheDocument();
+    expect(screen.queryByText('Show less')).not.toBeInTheDocument();
   });
 
-  it('shows error when loadMore fails', async () => {
-    // Need 100 sessions to fill PAGE_SIZE so initial load doesn't call getMoreChatSessions
+  it('shows first 8 + Show more when more than 8, reveals +10, then Show less collapses back', async () => {
+    const sessions = Array.from({ length: 12 }, (_, i) => ({
+      chatSession_id: `s${i}`, title: `Session ${i}`, last_updated: `2024-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`, readStatus: 'read',
+    }));
+    mockGetChatSessions.mockResolvedValueOnce({ success: true, data: { sessions, hasMore: false, nextMonthIndex: 0 } });
+    render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
+    // Sessions sorted newest-first: Session 11 (index 0) .. Session 0 (index 11). Only 8 shown.
+    await waitFor(() => expect(screen.getByText('Session 11')).toBeInTheDocument());
+    expect(screen.queryByText('Session 0')).not.toBeInTheDocument();
+    expect(screen.getByText('Show more')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Show more'));
+    await waitFor(() => expect(screen.getByText('Session 0')).toBeInTheDocument());
+    expect(screen.getByText('Show less')).toBeInTheDocument();
+    expect(screen.queryByText('Show more')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Show less'));
+    await waitFor(() => expect(screen.queryByText('Session 0')).not.toBeInTheDocument());
+    expect(screen.getByText('Show more')).toBeInTheDocument();
+  });
+
+  it('fetches the next backend page when Show more passes the loaded count', async () => {
     const initialSessions = Array.from({ length: 100 }, (_, i) => ({
-      chatSession_id: `lm${i}`, title: i === 0 ? 'LM Session' : `Session ${i}`, last_updated: `2024-01-01T00:00:00Z`, readStatus: 'read',
+      chatSession_id: `lm${i}`, title: `LM ${i}`, last_updated: '2024-01-01T00:00:00Z', readStatus: 'read',
     }));
     mockGetChatSessions.mockResolvedValueOnce({
       success: true,
@@ -301,13 +377,18 @@ describe('AgentList — pagination', () => {
     });
     mockGetMoreChatSessions.mockResolvedValueOnce({ success: false, error: 'More load failed' });
     render(<AgentList chats={[makeChat()]} currentChatId="chat-1" activeView="chat" excludeBuiltinAgents={false} />);
-    await waitFor(() => expect(screen.getByText('LM Session')).toBeInTheDocument());
-    const list = document.querySelector('.chat-sessions-list')!;
-    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true });
-    Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
-    Object.defineProperty(list, 'scrollTop', { value: 300, configurable: true });
-    fireEvent.scroll(list);
+    await waitFor(() => expect(screen.getByText('LM 0')).toBeInTheDocument());
+
+    // Reveal in +10 steps until the visible window exceeds the 100 loaded, forcing a fetch.
+    for (let i = 0; i < 12 && !screen.queryByText('More load failed'); i++) {
+      const btn = screen.queryByText('Show more');
+      if (btn) {
+        fireEvent.click(btn);
+      }
+      await Promise.resolve();
+    }
     await waitFor(() => expect(screen.getByText('More load failed')).toBeInTheDocument(), { timeout: 5000 });
+    expect(mockGetMoreChatSessions).toHaveBeenCalled();
   });
 });
 
@@ -359,13 +440,6 @@ describe('AgentList — search mode', () => {
     await waitFor(() => expect(screen.getByText(/Filter conversations for this agent/i)).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Filter conversations for this agent/i));
     await waitFor(() => expect(screen.getByText(/Filtering by agent/i)).toBeInTheDocument());
-  });
-
-  it('shows remote badge in search results', async () => {
-    const session = { chatSession_id: 'rr', title: 'Remote item here', last_updated: '2024-01-01T00:00:00Z', readStatus: 'read', source: { type: 'remote' } };
-    render(<AgentList chats={[makeChat({ chatSessions: [session] })]} showSearch excludeBuiltinAgents={false} />);
-    fireEvent.change(screen.getByLabelText('Search conversations'), { target: { value: 'Remote item here' } });
-    await waitFor(() => expect(screen.getByText('Remote')).toBeInTheDocument());
   });
 
   it('shows Indexing... while loading search sessions', async () => {

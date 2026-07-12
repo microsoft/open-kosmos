@@ -7,8 +7,10 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const getAppConfigMock = vi.fn();
+const getInitialAppConfigMock = vi.fn();
 const updateAppConfigMock = vi.fn();
-let onConfigUpdatedCallback: ((data: { config: any; timestamp: number }) => void) | null = null;
+const refreshMcpCacheMock = vi.hoisted(() => vi.fn());
+let onConfigUpdatedCallback: ((data: { config: any; timestamp: number; revision?: number }) => void) | null = null;
 
 const onConfigUpdatedMock = vi.fn((cb: any) => {
   onConfigUpdatedCallback = cb;
@@ -17,6 +19,7 @@ const onConfigUpdatedMock = vi.fn((cb: any) => {
 Object.defineProperty(window, 'electronAPI', {
   value: {
     appConfig: {
+      getInitialAppConfig: getInitialAppConfigMock,
       getAppConfig: getAppConfigMock,
       updateAppConfig: updateAppConfigMock,
       onConfigUpdated: onConfigUpdatedMock,
@@ -25,6 +28,12 @@ Object.defineProperty(window, 'electronAPI', {
   writable: true,
   configurable: true,
 });
+
+vi.mock('../../mcp/mcpClientCacheManager', () => ({
+  mcpClientCacheManager: {
+    refresh: refreshMcpCacheMock,
+  },
+}));
 
 import { AppDataManager } from '../appDataManager';
 
@@ -40,6 +49,10 @@ function freshInstance(): AppDataManager {
 describe('AppDataManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getInitialAppConfigMock.mockReset();
+    getAppConfigMock.mockReset();
+    updateAppConfigMock.mockReset();
+    refreshMcpCacheMock.mockResolvedValue(undefined);
     onConfigUpdatedCallback = null;
     (AppDataManager as any).instance = null;
   });
@@ -75,6 +88,16 @@ describe('AppDataManager', () => {
     it('getRuntimeEnvironment() returns undefined before initialization', () => {
       const mgr = freshInstance();
       expect(mgr.getRuntimeEnvironment()).toBeUndefined();
+    });
+
+    it('uses the startup config seed before the first backend push', () => {
+      getInitialAppConfigMock.mockReturnValueOnce({ appearance: { themeSource: 'dark' } });
+
+      const mgr = freshInstance();
+
+      expect(mgr.isReady()).toBe(false);
+      expect(mgr.getConfig()).toEqual({ appearance: { themeSource: 'dark' } });
+      expect(getAppConfigMock).not.toHaveBeenCalled();
     });
   });
 
@@ -113,6 +136,31 @@ describe('AppDataManager', () => {
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({ zoomLevel: 2 }));
     });
 
+    it('debounces repeated config updates before notifying subscribers', async () => {
+      vi.useFakeTimers();
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+
+      onConfigUpdatedCallback!({ config: { zoomLevel: 2 }, timestamp: Date.now() });
+      onConfigUpdatedCallback!({ config: { zoomLevel: 3 }, timestamp: Date.now() });
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ zoomLevel: 3 }));
+    });
+
+    it('can notify listeners immediately without scheduling', () => {
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+      onConfigUpdatedCallback!({ config: { zoomLevel: 4 }, timestamp: Date.now() });
+
+      (mgr as any).notifyListeners(true);
+
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ zoomLevel: 4 }));
+    });
+
     it('does not notify removed subscribers', async () => {
       vi.useFakeTimers();
       const mgr = freshInstance();
@@ -124,6 +172,45 @@ describe('AppDataManager', () => {
       await vi.advanceTimersByTimeAsync(200);
       expect(listener).not.toHaveBeenCalled();
     });
+
+    it('retries IPC registration and fetches config when the preload bridge appears after construction', async () => {
+      const original = (window as any).electronAPI;
+      (window as any).electronAPI = undefined;
+      getAppConfigMock.mockResolvedValueOnce({
+        success: true,
+        data: { appearance: { themeSource: 'dark' } },
+      });
+
+      const mgr = freshInstance();
+      expect(onConfigUpdatedMock).not.toHaveBeenCalled();
+
+      (window as any).electronAPI = original;
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onConfigUpdatedMock).toHaveBeenCalledTimes(1);
+      expect(getAppConfigMock).toHaveBeenCalledTimes(1);
+      expect(mgr.isReady()).toBe(true);
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ appearance: { themeSource: 'dark' } }),
+      );
+    });
+
+    it('refreshes listeners when zoomLevel changes', async () => {
+      vi.useFakeTimers();
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+
+      onConfigUpdatedCallback!({ config: { zoomLevel: 5 }, timestamp: Date.now() });
+      await vi.runAllTimersAsync();
+
+      expect(mgr.getConfig().zoomLevel).toBe(5);
+    });
+
   });
 
   // ── getRuntimeEnvironment ──────────────────────────────────────────────────
@@ -161,6 +248,26 @@ describe('AppDataManager', () => {
       (cfg as any).zoomLevel = 99;
       expect(mgr.getConfig().zoomLevel).toBe(1);
     });
+
+    it('tracks the latest IPC config revision without exposing it in config copies', () => {
+      vi.useFakeTimers();
+      const mgr = freshInstance();
+      onConfigUpdatedCallback!({ config: { zoomLevel: 1 }, timestamp: Date.now(), revision: 12 });
+
+      expect(mgr.getConfigRevision()).toBe(12);
+      expect((mgr.getConfig() as any).revision).toBeUndefined();
+    });
+
+    it('ignores stale IPC config payloads with an older revision', () => {
+      vi.useFakeTimers();
+      const mgr = freshInstance();
+
+      onConfigUpdatedCallback!({ config: { uiLanguage: 'zh-CN' }, timestamp: Date.now(), revision: 12 });
+      onConfigUpdatedCallback!({ config: { uiLanguage: 'en' }, timestamp: Date.now(), revision: 11 });
+
+      expect(mgr.getConfigRevision()).toBe(12);
+      expect(mgr.getConfig().uiLanguage).toBe('zh-CN');
+    });
   });
 
   // ── updateConfig ───────────────────────────────────────────────────────────
@@ -173,6 +280,16 @@ describe('AppDataManager', () => {
       const result = await mgr.updateConfig({ zoomLevel: 2 });
       expect(updateAppConfigMock).toHaveBeenCalledWith({ zoomLevel: 2 });
       expect(result).toEqual({ success: true });
+    });
+
+    it('tracks config revision returned by updateAppConfig', async () => {
+      const mgr = freshInstance();
+      updateAppConfigMock.mockResolvedValue({ success: true, revision: 8 });
+
+      const result = await mgr.updateConfig({ zoomLevel: 2 });
+
+      expect(result).toEqual({ success: true, revision: 8 });
+      expect(mgr.getConfigRevision()).toBe(8);
     });
 
     it('returns error when electronAPI.appConfig is not available', async () => {
@@ -189,11 +306,19 @@ describe('AppDataManager', () => {
 
     it('catches errors thrown by updateAppConfig', async () => {
       const mgr = freshInstance();
-      updateAppConfigMock.mockRejectedValue(new Error('network error'));
+      updateAppConfigMock.mockRejectedValueOnce(new Error('network error'));
 
       const result = await mgr.updateConfig({ zoomLevel: 2 });
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/network error/);
+    });
+
+    it('stringifies non-Error values thrown by updateAppConfig', async () => {
+      const mgr = freshInstance();
+      updateAppConfigMock.mockRejectedValueOnce('string failure');
+
+      const result = await mgr.updateConfig({ zoomLevel: 2 });
+      expect(result).toEqual({ success: false, error: 'string failure' });
     });
   });
 
@@ -231,6 +356,15 @@ describe('AppDataManager', () => {
       expect(l2).not.toHaveBeenCalled();
     });
 
+    it('ignores duplicate unsubscribe calls', () => {
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      const unsub = mgr.subscribe(listener);
+
+      unsub();
+      expect(() => unsub()).not.toThrow();
+    });
+
     it('handles listener errors without throwing', async () => {
       vi.useFakeTimers();
       const mgr = freshInstance();
@@ -247,6 +381,51 @@ describe('AppDataManager', () => {
   // ── fallback fetch ─────────────────────────────────────────────────────────
 
   describe('fallback fetch', () => {
+    it('fetchLatestConfig updates the cache and notifies subscribers', async () => {
+      vi.useFakeTimers();
+      getAppConfigMock.mockResolvedValue({ success: true, data: { uiLanguage: 'zh-CN' } });
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+
+      const result = await mgr.fetchLatestConfig();
+
+      expect(result).toEqual({ uiLanguage: 'zh-CN' });
+      expect(mgr.getConfig()).toEqual({ uiLanguage: 'zh-CN' });
+      expect(mgr.isReady()).toBe(true);
+      expect(listener).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(listener).toHaveBeenCalledWith({ uiLanguage: 'zh-CN' });
+    });
+
+    it('tracks revision from cached fetchLatestConfig results', async () => {
+      vi.useFakeTimers();
+      getAppConfigMock.mockResolvedValue({ success: true, data: { uiLanguage: 'zh-CN' }, revision: 15 });
+      const mgr = freshInstance();
+
+      await mgr.fetchLatestConfig();
+
+      expect(mgr.getConfigRevision()).toBe(15);
+    });
+
+    it('fetchLatestConfig can return a read-only snapshot without updating cache or notifying subscribers', async () => {
+      vi.useFakeTimers();
+      getAppConfigMock.mockResolvedValue({ success: true, data: { uiLanguage: 'zh-CN' } });
+      const mgr = freshInstance();
+      const listener = vi.fn();
+      mgr.subscribe(listener);
+
+      const result = await mgr.fetchLatestConfig({ cache: false });
+
+      expect(result).toEqual({ uiLanguage: 'zh-CN' });
+      expect(mgr.getConfig()).toEqual({});
+      expect(mgr.isReady()).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
     it('calls getAppConfig after timeout when not initialized', async () => {
       vi.useFakeTimers();
       getAppConfigMock.mockResolvedValue({ success: true, data: { zoomLevel: 7 } });
@@ -308,6 +487,20 @@ describe('AppDataManager', () => {
 
       expect(() => freshInstance()).not.toThrow();
 
+      (window as any).electronAPI = original;
+    });
+
+    it('does not fallback fetch when appConfig is absent', async () => {
+      vi.useFakeTimers();
+      const original = (window as any).electronAPI;
+      (window as any).electronAPI = {};
+
+      const mgr = freshInstance();
+      await vi.advanceTimersByTimeAsync(3100);
+      await vi.runAllTimersAsync();
+
+      expect(mgr.isReady()).toBe(false);
+      expect(getAppConfigMock).not.toHaveBeenCalled();
       (window as any).electronAPI = original;
     });
   });

@@ -14,6 +14,7 @@ const logger = createLogger('[FeatureFlagCacheManager]');
 
 type FeatureFlagName = string;
 type FeatureFlagsValues = Record<FeatureFlagName, boolean>;
+type FeatureFlagListener = () => void;
 
 const STORAGE_KEY = `${BRAND_NAME}_feature_flags_cache`;
 const CACHE_VERSION_KEY = `${BRAND_NAME}_feature_flags_cache_version`;
@@ -24,6 +25,7 @@ class FeatureFlagCacheManager {
   private flags: FeatureFlagsValues = {};
   private initialized: boolean = false;
   private initPromise: Promise<void> | null = null;
+  private listeners = new Set<FeatureFlagListener>();
 
   private constructor() {}
 
@@ -76,12 +78,14 @@ class FeatureFlagCacheManager {
       localStorage.setItem(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION);
 
       this.initialized = true;
+      this.notifyListeners();
       logger.debug('[FeatureFlagsCache] Initialization complete');
     } catch (error) {
       logger.error('[FeatureFlagsCache] Initialization failed:', error);
       // If sync fails, attempt to load old cache from localStorage
       this.loadFromLocalStorage();
       this.initialized = true;
+      this.notifyListeners();
     }
   }
 
@@ -168,6 +172,19 @@ class FeatureFlagCacheManager {
    */
   public get isInitialized(): boolean {
     return this.initialized;
+  }
+
+  public subscribe(listener: FeatureFlagListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 }
 

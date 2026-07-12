@@ -74,6 +74,7 @@ vi.mock('../../chat/agentChatManager', async () => ({
 import { ExternalAgentService } from '../externalAgentService';
 import { profileCacheManager } from '../../userDataADO/profileCacheManager';
 import { chatSessionStore } from '../../chat/chatSessionStore';
+import { mainToRender } from '@shared/ipc/externalAgent';
 const { __handlers } = await import('../wsServer') as any as { __handlers: Record<string, Function> };
 import { agentChatManager } from '../../chat/agentChatManager';
 
@@ -117,6 +118,30 @@ describe('ExternalAgentService', () => {
 
     const validator = (service as any).wsServer.setTokenValidator.mock.calls[0][0];
     expect(validator('tok-1')).toBe(false);
+  });
+
+  it('token validator accepts a matching external agent token', async () => {
+    (profileCacheManager.getCachedProfile as any).mockReturnValue({
+      chats: [{ chat_id: 'chat-1', agent: { source: 'EXTERNAL', authToken: 'tok-1' } }],
+    });
+    await service.start('test-alias', 9527);
+
+    const validator = (service as any).wsServer.setTokenValidator.mock.calls[0][0];
+    expect(validator('tok-1')).toBe(true);
+    expect((service as any).tokenToChatId.get('tok-1')).toBe('chat-1');
+  });
+
+  it('stop() is safe before the service has started', async () => {
+    await service.stop();
+    expect(service.isConnected).toBe(false);
+  });
+
+  it('token validator rejects when the cached profile is missing', async () => {
+    await service.start('test-alias', 9527);
+    const validator = (service as any).wsServer.setTokenValidator.mock.calls[0][0];
+    (profileCacheManager.getCachedProfile as any).mockReturnValue(null);
+
+    expect(validator('tok-missing-profile')).toBe(false);
   });
 
   it('stops cleanly', async () => {
@@ -284,6 +309,58 @@ describe('ExternalAgentService push routing', () => {
     expect(mockAgentChat.handlePushChunk).not.toHaveBeenCalled();
   });
 
+  it('ignores push when the alias has been cleared', async () => {
+    await startWithToken('tok-1', 'chat-1');
+    (service as any).alias = null;
+
+    handlers.push('text', 'conv-1', 'tok-1');
+    await flush();
+
+    expect(mockAgentChat.handlePushChunk).not.toHaveBeenCalled();
+  });
+
+  it('reuses the existing stream accumulator for later chunks', async () => {
+    await startWithToken('tok-1', 'chat-1');
+
+    handlers.push('first', 'conv-1', 'tok-1');
+    await flush();
+    handlers.push(' second', 'conv-1', 'tok-1');
+    await flush();
+
+    expect((service as any).pushStreams.get('conv-1').text).toBe('first second');
+  });
+
+  it('attaches a window sender before routing a push chunk when needed', async () => {
+    await startWithToken('tok-1', 'chat-1');
+    const webContents = {};
+    const { BrowserWindow } = await import('electron');
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents } as any,
+    ]);
+    vi.mocked(agentChatManager.getInstanceByChatSessionId).mockReturnValue(mockAgentChat as any);
+    mockAgentChat.hasEventSender.mockReturnValue(false);
+
+    handlers.push('hello', 'conv-1', 'tok-1');
+    await flush();
+
+    expect(mockAgentChat.setEventSender).toHaveBeenCalledWith(webContents);
+    expect(mockAgentChat.handlePushChunk).toHaveBeenCalledWith('hello', expect.stringMatching(/^msg_push_/));
+  });
+
+  it('continues routing a push chunk when no window is available to attach', async () => {
+    await startWithToken('tok-1', 'chat-1');
+    const { BrowserWindow } = await import('electron');
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    vi.mocked(agentChatManager.getInstanceByChatSessionId).mockReturnValue(mockAgentChat as any);
+    mockAgentChat.hasEventSender.mockReturnValue(false);
+
+    handlers.push('hello', 'conv-1', 'tok-1');
+    await flush();
+
+    expect(mockAgentChat.setEventSender).not.toHaveBeenCalled();
+    expect(mockAgentChat.handlePushChunk).toHaveBeenCalledWith('hello', expect.stringMatching(/^msg_push_/));
+  });
+
   it('persists full text when AgentChat appears mid-stream (rejoin)', async () => {
     await startWithToken('tok-1', 'chat-1');
 
@@ -350,6 +427,19 @@ describe('ExternalAgentService push routing', () => {
     expect(mockAgentChat.handlePushComplete).toHaveBeenCalledWith(true);
     // But no message to persist
     expect(mockAgentChat.addMessageToSession).not.toHaveBeenCalled();
+  });
+
+  it('does not persist or mark unread when push_end has no text and no AgentChat instance', async () => {
+    await startWithToken('tok-1', 'chat-1');
+    vi.mocked(chatSessionStore.setReadStatus).mockClear();
+
+    handlers.pushEnd('conv-1', 'tok-1');
+    await flush();
+    await flush();
+
+    expect(chatSessionStore.ensureLoaded).not.toHaveBeenCalled();
+    expect(chatSessionStore.patchFile).not.toHaveBeenCalled();
+    expect(chatSessionStore.setReadStatus).not.toHaveBeenCalled();
   });
 
   it('uses same message ID for streaming and persistence', async () => {
@@ -422,6 +512,35 @@ describe('ExternalAgentService push routing', () => {
     expect(chatSessionStore.patchFile).not.toHaveBeenCalled();
   });
 
+  it('ignores pushEnd when the alias has been cleared', async () => {
+    await startWithToken('tok-1', 'chat-1');
+    (service as any).alias = null;
+
+    handlers.pushEnd('conv-1', 'tok-1');
+    await flush();
+
+    expect(mockAgentChat.handlePushComplete).not.toHaveBeenCalled();
+    expect(chatSessionStore.patchFile).not.toHaveBeenCalled();
+  });
+
+  it('broadcasts status only to live windows', async () => {
+    await service.start('test-alias', 9527);
+    const aliveSender = { send: vi.fn() };
+    const deadSender = { send: vi.fn() };
+    const { BrowserWindow } = await import('electron');
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => true, webContents: deadSender } as any,
+      { isDestroyed: () => false, webContents: aliveSender } as any,
+    ]);
+
+    handlers.connected();
+    handlers.disconnected();
+
+    expect(mainToRender.bindWebContents).toHaveBeenCalledTimes(2);
+    expect(mainToRender.bindWebContents).toHaveBeenCalledWith(aliveSender);
+    expect(mainToRender.bindWebContents).not.toHaveBeenCalledWith(deadSender);
+  });
+
   it('swallows markChatSessionAsUnreadIfNeeded errors (AgentChat path)', async () => {
     await startWithToken('tok-1', 'chat-1');
     vi.mocked(agentChatManager.getInstanceByChatSessionId).mockReturnValue(mockAgentChat as any);
@@ -479,6 +598,40 @@ describe('ExternalAgentService push routing', () => {
 
     expect(mockAgentChat.setEventSender).not.toHaveBeenCalled();
     expect(mockAgentChat.handlePushChunk).toHaveBeenCalled();
+  });
+
+  it('covers direct awaited push branches for stable coverage', async () => {
+    (service as any).alias = 'test-alias';
+    (service as any).tokenToChatId.set('tok-1', 'chat-1');
+    vi.mocked(agentChatManager.getInstanceByChatSessionId).mockReturnValue(mockAgentChat as any);
+    mockAgentChat.hasEventSender.mockReturnValue(true);
+
+    await (service as any).handlePushMessage('A', 'conv-direct', 'tok-1');
+    await (service as any).handlePushMessage('B', 'conv-direct', 'tok-1');
+    expect((service as any).pushStreams.get('conv-direct').text).toBe('AB');
+    expect(mockAgentChat.handlePushChunk).toHaveBeenCalledWith('B', expect.stringMatching(/^msg_push_/));
+
+    await (service as any).handlePushEnd('conv-direct', 'tok-1');
+    expect(mockAgentChat.addMessageToSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        content: expect.arrayContaining([expect.objectContaining({ text: 'AB' })]),
+      }),
+    );
+
+    mockAgentChat.addMessageToSession.mockClear();
+    await (service as any).handlePushEnd('empty-agent-chat', 'tok-1');
+    expect(mockAgentChat.handlePushComplete).toHaveBeenCalledWith(true);
+    expect(mockAgentChat.addMessageToSession).not.toHaveBeenCalled();
+
+    vi.mocked(agentChatManager.getInstanceByChatSessionId).mockReturnValue(null);
+    vi.mocked(chatSessionStore.setReadStatus).mockClear();
+    await (service as any).handlePushEnd('empty-offline', 'tok-1');
+    expect(chatSessionStore.setReadStatus).not.toHaveBeenCalled();
+
+    (service as any).alias = null;
+    await (service as any).handlePushMessage('ignored', 'conv-direct', 'tok-1');
+    await (service as any).handlePushEnd('conv-direct', 'tok-1');
   });
 });
 

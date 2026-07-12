@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm';
 import MermaidDiagram from '../chat/MermaidDiagram';
 import CodeBlockCopyButton from '../chat/CodeBlockCopyButton';
 import { CodeBlockContent } from '../chat/CodeBlockContent';
+import { MarkdownLink } from './MarkdownLink';
 
 interface RenderedBlock {
   id: string;
@@ -290,7 +291,7 @@ const markdownComponents = {
     return <td {...props} />;
   },
   a(props: any) {
-    return <a {...props} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" />;
+    return <MarkdownLink {...props} />;
   },
   strong(props: any) {
     return <strong {...props} className="font-bold" />;

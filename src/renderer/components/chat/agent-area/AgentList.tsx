@@ -1,21 +1,35 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MoreHorizontal, Globe, Search, Star, X } from 'lucide-react';
+import { MoreHorizontal, Star } from 'lucide-react';
 import { ChatConfigRuntime, ChatSession, StarredChatSessionIndexItem } from '../../../lib/userData/types';
 import type { ChatUnreadSummary } from '@shared/types/chatSessionTypes';
 import NavItem from '../../ui/navigation/NavItem';
 import { AgentAvatar } from '../../common/AgentAvatar';
 import { isBuiltinAgent } from '../../../lib/userData/types';
 import { BRAND_NAME } from '@shared/constants/branding';
+import { resolveChatAgent } from '@/lib/agent';
 import { useProfileData } from '../../userData/userDataProvider';
 import { useChatUnreadSummaryMap } from '../../../lib/chat/useChatUnreadSummary';
 import { AgentMenuAtom } from '../../menu/AgentDropdownMenu';
 import { ChatSessionMenuAtom } from '../../menu/ChatSessionDropdownMenu';
+import { AgentListSearchHeader } from './AgentListSearchHeader';
+import { useOverlayScrollbar } from './useOverlayScrollbar';
 import '../../../styles/DropdownMenu.css';
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[AgentList]');
 
 const PAGE_SIZE = 100;
+// Built-in agents (pinned below the divider) keep the original fixed-height,
+// scroll-to-load list; this is the near-bottom threshold that triggers the next page.
 const SCROLL_THRESHOLD_PX = 80;
+// Regular agents use a Show more / Show less window: the initial expand shows up to
+// 8 sessions; each "Show more" reveals SHOW_MORE_STEP additional sessions.
+const INITIAL_VISIBLE_COUNT = 8;
+const SHOW_MORE_STEP = 10;
+// Reserved key used to drive the regular (searchable) agent list's own hover overlay
+// scrollbar through the same scrollbar machinery as the built-in session lists. It is a
+// sentinel that never collides with a real chat_id.
+const AGENT_LIST_SCROLLBAR_KEY = '__agent_list__';
 interface PaginatedChatSessionsState {
   sessions: ChatSession[];
   hasLoaded: boolean;
@@ -23,6 +37,7 @@ interface PaginatedChatSessionsState {
   nextMonthIndex: number;
   isLoading: boolean;
   error: string | null;
+  visibleCount: number;
 }
 
 interface SearchResultItem {
@@ -36,10 +51,9 @@ interface SearchResultItem {
   agentVersion?: string;
   lastUpdated: string;
   readStatus?: ChatSession['readStatus'];
-  source?: ChatSession['source'];
 }
 
-interface SearchAgentOption {
+export interface SearchAgentOption {
   chatId: string;
   agentName: string;
   agentEmoji?: string;
@@ -95,6 +109,7 @@ const getDefaultPaginatedState = (): PaginatedChatSessionsState => ({
   nextMonthIndex: 0,
   isLoading: false,
   error: null,
+  visibleCount: INITIAL_VISIBLE_COUNT,
 });
 
 const getSessionItemRefKey = (chatId: string, sessionId: string): string => {
@@ -130,7 +145,7 @@ const mergeUnreadSummaryByRecency = (
 // 🔥 Added: Start New Conversation icon component
 const StartNewConversationIcon = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10.5 4.00002C10.7761 4.00002 11 4.22388 11 4.50002C10.9999 4.77612 10.7761 5.00002 10.5 5.00002L6 5.00002C4.89543 5.00002 4 5.89544 4 7.00001L4 14C4.00004 15.1045 4.89545 16 6 16L13 16C14.1045 16 14.9999 15.1045 15 14V9.5C15 9.22386 15.2238 9 15.5 9C15.7761 9 16 9.22386 16 9.5V14C15.9999 15.6568 14.6568 17 13 17H6C4.34317 17 3.00004 15.6568 3 14L3 7.00001C3 5.34316 4.34314 4.00002 6 4.00002L10.5 4.00002ZM16.1465 3.14651C16.3417 2.95125 16.6582 2.95125 16.8535 3.14651C17.0487 3.34177 17.0487 3.6583 16.8535 3.85353L9.06054 11.6455L7.99999 12L8.35351 10.9395L16.1465 3.14651Z" fill="#242424"/>
+    <path d="M10.5 4.00002C10.7761 4.00002 11 4.22388 11 4.50002C10.9999 4.77612 10.7761 5.00002 10.5 5.00002L6 5.00002C4.89543 5.00002 4 5.89544 4 7.00001L4 14C4.00004 15.1045 4.89545 16 6 16L13 16C14.1045 16 14.9999 15.1045 15 14V9.5C15 9.22386 15.2238 9 15.5 9C15.7761 9 16 9.22386 16 9.5V14C15.9999 15.6568 14.6568 17 13 17H6C4.34317 17 3.00004 15.6568 3 14L3 7.00001C3 5.34316 4.34314 4.00002 6 4.00002L10.5 4.00002ZM16.1465 3.14651C16.3417 2.95125 16.6582 2.95125 16.8535 3.14651C17.0487 3.34177 17.0487 3.6583 16.8535 3.85353L9.06054 11.6455L7.99999 12L8.35351 10.9395L16.1465 3.14651Z" fill="currentColor"/>
   </svg>
 );
 
@@ -148,7 +163,7 @@ const LoadingIcon = () => (
   >
     <g clipPath="url(#clip0_390_2677)">
       <circle cx="10" cy="10" r="9" stroke="black" strokeOpacity="0.15" strokeWidth="2"/>
-      <path d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19" stroke="#272320" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19" stroke="var(--color-warm-900)" strokeWidth="2" strokeLinecap="round"/>
     </g>
     <defs>
       <clipPath id="clip0_390_2677">
@@ -161,7 +176,7 @@ const LoadingIcon = () => (
 interface AgentListProps {
   chats?: ChatConfigRuntime[];
   searchSourceChats?: ChatConfigRuntime[];
-  primaryAgent?: string; // 🔥 Added: primary agent name, used for priority display
+  primaryChat?: string; // 🔥 primary chat id, used for priority display
   excludeBuiltinAgents?: boolean; // 🔥 Modified: whether to exclude built-in agents (used for the main list)
   showSearch?: boolean;
   currentChatId?: string | null;
@@ -259,7 +274,7 @@ const renderHighlightedTitle = (title: string, query: string): React.ReactNode =
   return (
     <>
       {before}
-      <span style={{ backgroundColor: '#F9E7A8', borderRadius: '4px', padding: '0 2px' }}>
+      <span style={{ backgroundColor: 'var(--color-warning-100)', borderRadius: '4px', padding: '0 2px' }}>
         {matched}
       </span>
       {after}
@@ -275,7 +290,7 @@ const getMentionDraft = (value: string): string | null => {
 const AgentList: React.FC<AgentListProps> = ({
   chats = [],
   searchSourceChats,
-            primaryAgent, // 🔥 Fix: no default value set, allowing undefined
+  primaryChat, // 🔥 primary chat id; no default so it can be undefined
   excludeBuiltinAgents = true, // 🔥 Modified: default excludes built-in agents (used in main list)
   showSearch = false,
   currentChatId,
@@ -287,6 +302,7 @@ const AgentList: React.FC<AgentListProps> = ({
   onForkChatSession,
   onSearchActiveChange,
 }) => {
+  const { t } = useI18n();
   const [{ isOpen: agentMenuIsOpen, chatId: agentMenuChatId }, agentMenuActions] = AgentMenuAtom.use();
   const [
     { isOpen: chatSessionMenuIsOpen, sessionId: chatSessionMenuSessionId },
@@ -308,8 +324,38 @@ const AgentList: React.FC<AgentListProps> = ({
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blurHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🔥 Added: expanded Agent ID
-  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
+  // Independently expanded Agent IDs: each agent's ChatSession list toggles on its own
+  const [expandedAgentIds, setExpandedAgentIds] = useState<Set<string>>(() => new Set());
+
+  // Additively expand an agent's ChatSession list (idempotent; preserves other agents' state)
+  const expandAgent = useCallback((chatId: string) => {
+    setExpandedAgentIds((prev) => {
+      if (prev.has(chatId)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(chatId);
+      return next;
+    });
+  }, []);
+
+  // Toggle a single agent's ChatSession list independently of the others
+  const toggleAgentExpanded = useCallback((chatId: string) => {
+    setExpandedAgentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Collapse every agent's ChatSession list (used when leaving the chat view)
+  const collapseAllAgents = useCallback(() => {
+    setExpandedAgentIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, []);
 
   // 🔥 Added: track the status of each ChatSession
   const [chatSessionStatuses, setChatSessionStatuses] = useState<Map<string, string>>(new Map());
@@ -317,17 +363,19 @@ const AgentList: React.FC<AgentListProps> = ({
   // 🔥 Paginated loading: each chat maintains locally loaded non-scheduled sessions
   const [paginatedChatSessions, setPaginatedChatSessions] = useState<Map<string, PaginatedChatSessionsState>>(new Map());
 
-  // 🔥 Added: state for temporarily showing "all loaded" hint (chatId -> whether to show)
+  // Built-in agents keep the fixed-height scroll-load list: transient "all loaded" hint per chat.
   const [showAllLoadedHint, setShowAllLoadedHint] = useState<Map<string, boolean>>(new Map());
 
-  // 🔥 Custom overlay scrollbar state
-  const [scrollbarState, setScrollbarState] = useState<Map<string, {
-    thumbHeight: number;
-    thumbTop: number;
-    visible: boolean;
-    hovered: boolean;
-  }>>(new Map());
-  const scrollbarHideTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Custom overlay scrollbar state + the tracked scroll containers (built-in
+  // scroll-load list and the regular agent list) live in a dedicated hook.
+  const {
+    scrollbarState,
+    scrollContainerRefs,
+    updateScrollbar,
+    handleSessionListMouseEnter,
+    handleSessionListMouseLeave,
+  } = useOverlayScrollbar();
+
   const [pendingSessionScrollTarget, setPendingSessionScrollTarget] = useState<{
     chatId: string;
     sessionId: string;
@@ -339,98 +387,16 @@ const AgentList: React.FC<AgentListProps> = ({
     data?.profile?.alias || null,
   );
 
-  // Calculate scrollbar position
-  const updateScrollbar = useCallback((chatId: string, show?: boolean) => {
-    const container = scrollContainerRefs.current.get(chatId);
-    if (!container) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    if (scrollHeight <= clientHeight) return; // No scrollbar needed
-
-    const thumbH = Math.max(20, (clientHeight / scrollHeight) * clientHeight);
-    const maxTop = clientHeight - thumbH;
-    const thumbT = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-
-    setScrollbarState(prev => {
-      const next = new Map(prev);
-      const cur = next.get(chatId) || { thumbHeight: 0, thumbTop: 0, visible: false, hovered: false };
-      next.set(chatId, {
-        ...cur,
-        thumbHeight: thumbH,
-        thumbTop: thumbT,
-        visible: show !== undefined ? show : cur.visible,
-      });
-      return next;
-    });
-
-    // Auto-hide timer
-    const prevTimer = scrollbarHideTimers.current.get(chatId);
-    if (prevTimer) clearTimeout(prevTimer);
-
-    const timer = setTimeout(() => {
-      setScrollbarState(prev => {
-        const next = new Map(prev);
-        const cur = next.get(chatId);
-        if (cur && !cur.hovered) {
-          next.set(chatId, { ...cur, visible: false });
-        }
-        return next;
-      });
-    }, 1200);
-    scrollbarHideTimers.current.set(chatId, timer);
-  }, []);
-
-  const handleSessionListMouseEnter = useCallback((chatId: string) => {
-    setScrollbarState(prev => {
-      const next = new Map(prev);
-      const cur = next.get(chatId) || { thumbHeight: 0, thumbTop: 0, visible: false, hovered: false };
-      next.set(chatId, { ...cur, hovered: true, visible: true });
-      return next;
-    });
-    // Need to calculate position in next frame (ensure DOM is ready)
-    requestAnimationFrame(() => updateScrollbar(chatId, true));
-  }, [updateScrollbar]);
-
-  const handleSessionListMouseLeave = useCallback((chatId: string) => {
-    setScrollbarState(prev => {
-      const next = new Map(prev);
-      const cur = next.get(chatId);
-      if (cur) next.set(chatId, { ...cur, hovered: false });
-      return next;
-    });
-    const timer = setTimeout(() => {
-      setScrollbarState(prev => {
-        const next = new Map(prev);
-        const cur = next.get(chatId);
-        if (cur && !cur.hovered) {
-          next.set(chatId, { ...cur, visible: false });
-        }
-        return next;
-      });
-    }, 800);
-    scrollbarHideTimers.current.set(chatId, timer);
-  }, []);
-
-  // 🔥 Critical fix: ensure that when an Agent is selected the ChatSession sub-menu is always expanded (chat view only)
+  // Auto-expand the current Agent on navigation (chat view only); additive so other agents stay as-is.
+  // Leaving the chat view collapses every list (session lists are not shown outside chat).
   useEffect(() => {
     if (currentChatId && activeView === 'chat') {
-      // When an Agent is selected and in chat view, auto-expand its ChatSession list
-      setExpandedAgentId(currentChatId);
-    } else if (activeView !== 'chat' && activeView !== 'settings') {
-      // When switching to other views (not chat or settings), collapse all ChatSession lists
-      setExpandedAgentId(null);
-    } else if (activeView === 'settings') {
-      // 🔥 In settings view, collapse the ChatSession list but keep the Agent selected
-      setExpandedAgentId(null);
+      expandAgent(currentChatId);
+    } else if (activeView !== 'chat') {
+      collapseAllAgents();
     }
-  }, [currentChatId, activeView]);
-
-  // 🔥 Extra guard: on init if an Agent is already selected and in chat view, ensure it is expanded
-  useEffect(() => {
-    if (currentChatId && activeView === 'chat' && !expandedAgentId) {
-      setExpandedAgentId(currentChatId);
-    }
-  }, [currentChatId, activeView, expandedAgentId]);
+  }, [currentChatId, activeView, expandAgent, collapseAllAgents]);
 
   useEffect(() => {
     const nextUnreadSummaries = new Map<string, ChatUnreadSummary>();
@@ -448,13 +414,13 @@ const AgentList: React.FC<AgentListProps> = ({
       const next = new Set(prev);
       next.forEach((chatId) => {
         const summary = nextUnreadSummaries.get(chatId);
-        if (!summary || expandedAgentId === chatId || getUnreadCount(summary) <= 0) {
+        if (!summary || expandedAgentIds.has(chatId) || getUnreadCount(summary) <= 0) {
           next.delete(chatId);
         }
       });
       return next;
     });
-  }, [chats, expandedAgentId, unreadSummaryMap]);
+  }, [chats, expandedAgentIds, unreadSummaryMap]);
 
   useEffect(() => {
     const profileAlias = data?.profile?.alias;
@@ -481,7 +447,7 @@ const AgentList: React.FC<AgentListProps> = ({
       const nextUnreadCount = getUnreadCount(payload.summary);
       latestUnreadSummariesRef.current.set(payload.summary.chatId, payload.summary);
 
-      if (expandedAgentId === payload.summary.chatId || nextUnreadCount <= 0 || (previousUnreadCount !== undefined && nextUnreadCount <= previousUnreadCount)) {
+      if (expandedAgentIds.has(payload.summary.chatId) || nextUnreadCount <= 0 || (previousUnreadCount !== undefined && nextUnreadCount <= previousUnreadCount)) {
         setUnreadHighlightChatIds((prev) => {
           if (!prev.has(payload.summary.chatId)) {
             return prev;
@@ -504,7 +470,7 @@ const AgentList: React.FC<AgentListProps> = ({
         });
       }
     });
-  }, [chats, data?.profile?.alias, expandedAgentId]);
+  }, [chats, data?.profile?.alias, expandedAgentIds]);
 
   // 🔥 Added: listen for chat status change events
   useEffect(() => {
@@ -557,15 +523,16 @@ const AgentList: React.FC<AgentListProps> = ({
     const deduped = new Map<string, SearchAgentOption>();
 
     allSearchableChats.forEach((chat) => {
-      const agentName = chat.agent?.name || 'Unnamed Agent';
+      const agent = resolveChatAgent(chat);
+      const agentName = agent?.name || 'Unnamed Agent';
       if (!deduped.has(agentName)) {
         deduped.set(agentName, {
           chatId: chat.chat_id,
           agentName,
-          agentEmoji: chat.agent?.emoji,
-          agentAvatar: chat.agent?.avatar,
-          agentSource: chat.agent?.source,
-          agentVersion: chat.agent?.version,
+          agentEmoji: agent?.emoji,
+          agentAvatar: agent?.avatar,
+          agentSource: agent?.source,
+          agentVersion: agent?.version,
         });
       }
     });
@@ -611,7 +578,7 @@ const AgentList: React.FC<AgentListProps> = ({
     }
 
     const targetChats = allSearchableChats.filter((chat) => {
-      if (selectedAgentFilter && chat.chat_id !== selectedAgentFilter.chatId && chat.agent?.name !== selectedAgentFilter.agentName) {
+      if (selectedAgentFilter && chat.chat_id !== selectedAgentFilter.chatId && resolveChatAgent(chat)?.name !== selectedAgentFilter.agentName) {
         return false;
       }
 
@@ -695,7 +662,8 @@ const AgentList: React.FC<AgentListProps> = ({
     }
 
     const flattened = allSearchableChats.flatMap((chat) => {
-      const agentName = chat.agent?.name || 'Unnamed Agent';
+      const agent = resolveChatAgent(chat);
+      const agentName = agent?.name || 'Unnamed Agent';
       if (selectedAgentFilter && agentName !== selectedAgentFilter.agentName) {
         return [];
       }
@@ -706,13 +674,12 @@ const AgentList: React.FC<AgentListProps> = ({
           sessionId: session.chatSession_id,
           title: session.title,
           agentName,
-          agentEmoji: chat.agent?.emoji,
-          agentAvatar: chat.agent?.avatar,
-          agentSource: chat.agent?.source,
-          agentVersion: chat.agent?.version,
+          agentEmoji: agent?.emoji,
+          agentAvatar: agent?.avatar,
+          agentSource: agent?.source,
+          agentVersion: agent?.version,
           lastUpdated: session.last_updated,
           readStatus: session.readStatus,
-          source: session.source,
         } satisfies SearchResultItem));
     });
 
@@ -850,15 +817,18 @@ const AgentList: React.FC<AgentListProps> = ({
   }, []);
 
   const ensureSessionVisible = useCallback((chatId: string, sessionId: string): boolean => {
-    const container = scrollContainerRefs.current.get(chatId);
     const item = sessionItemRefs.current.get(getSessionItemRefKey(chatId, sessionId));
 
-    if (!container || !item) {
+    if (!item) {
       return false;
     }
 
     item.scrollIntoView({ block: 'nearest' });
-    updateScrollbar(chatId, true);
+
+    // Built-in agents render a custom overlay scrollbar; refresh it after scrolling.
+    if (scrollContainerRefs.current.get(chatId)) {
+      updateScrollbar(chatId, true);
+    }
     return true;
   }, [updateScrollbar]);
 
@@ -890,13 +860,13 @@ const AgentList: React.FC<AgentListProps> = ({
       chatId: result.chatId,
       sessionId: result.sessionId,
     });
-    setExpandedAgentId(result.chatId);
+    expandAgent(result.chatId);
     onSelectChat?.(result.chatId);
     setSearchQuery('');
     setTimeout(() => {
       onSelectChatSession?.(result.chatId, result.sessionId);
     }, 0);
-  }, [onSelectChat, onSelectChatSession]);
+  }, [expandAgent, onSelectChat, onSelectChatSession]);
 
   const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (isMentionPickerOpen) {
@@ -958,12 +928,15 @@ const AgentList: React.FC<AgentListProps> = ({
     }
   }, [activeMentionIndex, activeSearchIndex, applyMentionSuggestion, isMentionPickerOpen, isSearchMode, mentionSuggestions, openSearchResult, searchQuery.length, searchResults]);
 
-  // 🔥 Fix: handle Agent click - start a new AgentChat and expand the Chat Session list
-  const handleAgentClick = (chatId: string) => {
-    // Always expand the current Agent's Chat Session list
-    setExpandedAgentId(chatId);
+  // Handle Agent click: toggle this Agent's ChatSession list. Does NOT start a new chat -
+  // the dedicated new-chat button owns that. Expansion is independent per agent.
+  const handleToggleAgentExpand = (chatId: string) => {
+    toggleAgentExpanded(chatId);
+  };
 
-    // Select this Agent (this starts a new AgentChat)
+  // Handle the dedicated new-chat button: start a new AgentChat and reveal its session list.
+  const handleStartNewChat = (chatId: string) => {
+    expandAgent(chatId);
     onSelectChat?.(chatId);
   };
 
@@ -979,9 +952,7 @@ const AgentList: React.FC<AgentListProps> = ({
     });
 
     // Ensure Agent is expanded
-    if (expandedAgentId !== chatId) {
-      setExpandedAgentId(chatId);
-    }
+    expandAgent(chatId);
 
     // Ensure Agent is selected
     if (currentChatId !== chatId) {
@@ -1012,7 +983,7 @@ const AgentList: React.FC<AgentListProps> = ({
     onForkChatSession?.(chatId, sessionId);
   };
 
-  // 🔥 Added: sort chats by primaryAgent — the chat matching primaryAgent appears first
+  // 🔥 Sort chats by the primary chat id — the chat matching primaryChat appears first
   // When excludeBuiltinAgents is true, all built-in agents are excluded from the list (they will be shown separately below the divider)
   const sortedChats = React.useMemo(() => {
     if (!chats.length) return [];
@@ -1022,17 +993,17 @@ const AgentList: React.FC<AgentListProps> = ({
     // 🔥 If excludeBuiltinAgents is true, exclude all built-in agents from the main list
     // Built-in agents are shown separately below the divider, so exclude them here
     if (excludeBuiltinAgents) {
-      filteredChats = chats.filter(chat => !isBuiltinAgent(chat.agent?.name, BRAND_NAME));
+      filteredChats = chats.filter(chat => !isBuiltinAgent(resolveChatAgent(chat)?.name, BRAND_NAME));
     }
 
     const chatsWithoutScheduledSessions = filteredChats;
 
-    const primaryChat = chatsWithoutScheduledSessions.find(chat => chat.agent?.name === primaryAgent);
-    const otherChats = chatsWithoutScheduledSessions.filter(chat => chat.agent?.name !== primaryAgent);
+    const primaryChatConfig = chatsWithoutScheduledSessions.find(chat => chat.chat_id === primaryChat);
+    const otherChats = chatsWithoutScheduledSessions.filter(chat => chat.chat_id !== primaryChat);
 
-    // The chat matching primaryAgent goes first; other chats maintain their original order
-    return primaryChat ? [primaryChat, ...otherChats] : chatsWithoutScheduledSessions;
-  }, [chats, primaryAgent, excludeBuiltinAgents]);
+    // The chat matching primaryChat goes first; other chats maintain their original order
+    return primaryChatConfig ? [primaryChatConfig, ...otherChats] : chatsWithoutScheduledSessions;
+  }, [chats, primaryChat, excludeBuiltinAgents]);
 
   const starredSessions = React.useMemo(() => {
     if (!excludeBuiltinAgents) {
@@ -1046,14 +1017,13 @@ const AgentList: React.FC<AgentListProps> = ({
       .sort((a: StarredChatSessionIndexItem, b: StarredChatSessionIndexItem) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime());
   }, [data?.profile, excludeBuiltinAgents]);
 
-  // 🔥 Added: scroll container refs (one scroll container per chat)
-  const scrollContainerRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const sessionItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const exhaustedBottomLatchRef = useRef<Map<string, boolean>>(new Map());
 
-  // 🔥 Added: function to show "all loaded" hint (debounced to avoid frequent triggers)
+  // Built-in scroll-load list: pagination latches (scroll container refs live in useOverlayScrollbar)
+  const exhaustedBottomLatchRef = useRef<Map<string, boolean>>(new Map());
   const showAllLoadedHintTimerRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
+  // Show the "all loaded" hint (debounced to avoid frequent triggers)
   const triggerAllLoadedHint = useCallback((chatId: string) => {
     // If the hint is already showing, do not trigger again
     if (showAllLoadedHint.get(chatId)) {
@@ -1271,6 +1241,8 @@ const AgentList: React.FC<AgentListProps> = ({
     }
   }, [data?.profile?.alias, paginatedChatSessions, triggerAllLoadedHint]);
 
+  // Built-in scroll-load list: load the next page when the user scrolls near the
+  // bottom; latch the "all loaded" hint when there is nothing more to fetch.
   const handleScroll = useCallback((chatId: string, event: React.UIEvent<HTMLDivElement>) => {
     const state = paginatedChatSessions.get(chatId);
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -1302,11 +1274,52 @@ const AgentList: React.FC<AgentListProps> = ({
     void loadMoreChatSessions(chatId);
   }, [loadMoreChatSessions, paginatedChatSessions, triggerAllLoadedHint]);
 
-  useEffect(() => {
-    if (expandedAgentId) {
-      void loadInitialChatSessions(expandedAgentId);
+  // Reveal SHOW_MORE_STEP additional sessions. If the new window exceeds the
+  // sessions already loaded and the backend has more, fetch the next page first.
+  const handleShowMore = useCallback(async (chatId: string) => {
+    const state = paginatedChatSessions.get(chatId);
+    if (!state || state.isLoading) {
+      return;
     }
-  }, [expandedAgentId, loadInitialChatSessions]);
+
+    const loadedCount = getNonScheduledSessions(state.sessions).length;
+    const targetVisible = state.visibleCount + SHOW_MORE_STEP;
+
+    if (targetVisible > loadedCount && state.hasMore) {
+      await loadMoreChatSessions(chatId);
+    }
+
+    setPaginatedChatSessions((prev) => {
+      const newMap = new Map(prev);
+      const existing = newMap.get(chatId);
+      if (existing) {
+        newMap.set(chatId, {
+          ...existing,
+          visibleCount: existing.visibleCount + SHOW_MORE_STEP,
+        });
+      }
+      return newMap;
+    });
+  }, [loadMoreChatSessions, paginatedChatSessions]);
+
+  // Collapse the list back to the initial window (8 + "Show more").
+  const handleShowLess = useCallback((chatId: string) => {
+    setPaginatedChatSessions((prev) => {
+      const existing = prev.get(chatId);
+      if (!existing || existing.visibleCount === INITIAL_VISIBLE_COUNT) {
+        return prev;
+      }
+      const newMap = new Map(prev);
+      newMap.set(chatId, { ...existing, visibleCount: INITIAL_VISIBLE_COUNT });
+      return newMap;
+    });
+  }, []);
+
+  useEffect(() => {
+    expandedAgentIds.forEach((chatId) => {
+      void loadInitialChatSessions(chatId);
+    });
+  }, [expandedAgentIds, loadInitialChatSessions]);
 
   useEffect(() => {
     if (!currentChatId || !currentChatSessionId || activeView !== 'chat') {
@@ -1327,9 +1340,7 @@ const AgentList: React.FC<AgentListProps> = ({
       };
     });
 
-    if (expandedAgentId !== currentChatId) {
-      setExpandedAgentId(currentChatId);
-    }
+    expandAgent(currentChatId);
 
     const resolvedSession = resolveSessionForChat(currentChatId, currentChatSessionId);
     if (resolvedSession) {
@@ -1340,15 +1351,41 @@ const AgentList: React.FC<AgentListProps> = ({
     currentChatId,
     currentChatSessionId,
     ensureSessionPresentInPaginatedState,
-    expandedAgentId,
+    expandAgent,
     resolveSessionForChat,
   ]);
 
   useEffect(() => {
     const pendingTarget = pendingSessionScrollTarget;
 
-    if (!pendingTarget || expandedAgentId !== pendingTarget.chatId) {
+    if (!pendingTarget || !expandedAgentIds.has(pendingTarget.chatId)) {
       return;
+    }
+
+    // Make sure the target session falls inside the visible window; otherwise it
+    // is sliced out and never rendered, so scrollIntoView can never resolve it.
+    const targetState = paginatedChatSessions.get(pendingTarget.chatId);
+    if (targetState?.hasLoaded) {
+      const orderedSessions = sortSessionsByTimeDesc(getNonScheduledSessions(targetState.sessions));
+      const targetIndex = orderedSessions.findIndex(
+        (session) => session.chatSession_id === pendingTarget.sessionId,
+      );
+
+      if (targetIndex >= 0 && targetIndex >= targetState.visibleCount) {
+        setPaginatedChatSessions((prev) => {
+          const existing = prev.get(pendingTarget.chatId);
+          if (!existing || targetIndex < existing.visibleCount) {
+            return prev;
+          }
+          const newMap = new Map(prev);
+          newMap.set(pendingTarget.chatId, {
+            ...existing,
+            visibleCount: targetIndex + 1,
+          });
+          return newMap;
+        });
+        return;
+      }
     }
 
     let frame1 = 0;
@@ -1380,7 +1417,7 @@ const AgentList: React.FC<AgentListProps> = ({
       window.cancelAnimationFrame(frame1);
       window.cancelAnimationFrame(frame2);
     };
-  }, [ensureSessionVisible, expandedAgentId, paginatedChatSessions, pendingSessionScrollTarget]);
+  }, [ensureSessionVisible, expandedAgentIds, paginatedChatSessions, pendingSessionScrollTarget]);
 
   useEffect(() => {
     const validChatIds = new Set(chats.map((chat) => chat.chat_id));
@@ -1433,6 +1470,7 @@ const AgentList: React.FC<AgentListProps> = ({
         return newMap;
       });
 
+      // Built-in scroll-load list: keep the newest session in view at the top.
       const scrollContainer = scrollContainerRefs.current.get(eventData.chatId);
       if (scrollContainer) {
         scrollContainer.scrollTop = 0;
@@ -1493,207 +1531,96 @@ const AgentList: React.FC<AgentListProps> = ({
   }, [data?.profile?.alias, removeSearchCacheSession, upsertSearchCacheSession]);
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'flex-start',
-      padding: '0px',
-      gap: '8px',
-      width: '100%'
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        padding: '0px',
+        gap: '8px',
+        width: '100%',
+        position: 'relative',
+        ...(showSearch ? { height: '100%' } : {}),
+      }}
+    >
       {showSearch && (
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#FFFBF8', paddingBottom: '8px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 12px',
-              borderRadius: '14px',
-              backgroundColor: '#F3F1ED',
-              border: isSearchMode ? '1px solid #272320' : '1px solid transparent',
-            }}
-          >
-            <Search size={16} color="#6C6C70" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={handleSearchInputKeyDown}
-              onFocus={handleSearchFocus}
-              onBlur={handleSearchBlur}
-              placeholder="Search conversations"
-              aria-label="Search conversations"
-              style={{
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
+        <AgentListSearchHeader
+          isSearchMode={isSearchMode}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          searchInputRef={searchInputRef}
+          handleSearchInputKeyDown={handleSearchInputKeyDown}
+          handleSearchFocus={handleSearchFocus}
+          handleSearchBlur={handleSearchBlur}
+          selectedAgentFilter={selectedAgentFilter}
+          clearSelectedAgentFilter={clearSelectedAgentFilter}
+          showAgentSearchHint={showAgentSearchHint}
+          isMentionPickerOpen={isMentionPickerOpen}
+          mentionPickerRef={mentionPickerRef}
+          mentionSuggestions={mentionSuggestions}
+          activeMentionIndex={activeMentionIndex}
+          setActiveMentionIndex={setActiveMentionIndex}
+          applyMentionSuggestion={applyMentionSuggestion}
+          mentionOptionRefs={mentionOptionRefs}
+        />
+      )}
+
+      <div
+        style={
+          showSearch
+            ? {
+                position: 'relative',
                 flex: 1,
-                fontSize: '14px',
-                color: '#272320',
-              }}
-            />
-            {searchQuery.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear conversation search"
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: '#6C6C70',
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-
-          {selectedAgentFilter && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '0 4px',
-              }}
-            >
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  maxWidth: '100%',
-                  borderRadius: '999px',
-                  backgroundColor: '#F4E7D3',
-                  color: '#272320',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                }}
-              >
-                <AgentAvatar
-                  emoji={selectedAgentFilter.agentEmoji}
-                  avatar={selectedAgentFilter.agentAvatar}
-                  source={selectedAgentFilter.agentSource}
-                  name={selectedAgentFilter.agentName}
-                  size="sm"
-                  version={selectedAgentFilter.agentVersion}
-                />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {selectedAgentFilter.agentName}
-                </span>
-                <button
-                  type="button"
-                  onClick={clearSelectedAgentFilter}
-                  aria-label="Clear agent filter"
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    color: '#6C6C70',
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <span style={{ fontSize: '12px', color: '#6C6C70' }}>Filtering by agent</span>
-            </div>
-          )}
-
-          {showAgentSearchHint && (
-            <div
-              style={{
-                padding: '0 4px',
-                fontSize: '12px',
-                color: '#6C6C70',
-              }}
-            >
-              Tip: type @ to narrow results to an agent.
-            </div>
-          )}
-
-          {isMentionPickerOpen && (
-            <div
-              ref={mentionPickerRef}
-              style={{
-                position: 'absolute',
-                top: selectedAgentFilter ? '92px' : showAgentSearchHint ? '82px' : '58px',
-                left: 0,
-                right: 0,
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E4DED4',
-                borderRadius: '16px',
-                boxShadow: '0 12px 32px rgba(39, 35, 32, 0.12)',
-                padding: '8px',
+                minHeight: 0,
+                width: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '4px',
-                zIndex: 20,
-                maxHeight: '280px',
+              }
+            : { display: 'contents' }
+        }
+        onMouseEnter={showSearch ? () => handleSessionListMouseEnter(AGENT_LIST_SCROLLBAR_KEY) : undefined}
+        onMouseLeave={showSearch ? () => handleSessionListMouseLeave(AGENT_LIST_SCROLLBAR_KEY) : undefined}
+      >
+      <div
+        ref={
+          showSearch
+            ? (el) => {
+                if (el) {
+                  scrollContainerRefs.current.set(AGENT_LIST_SCROLLBAR_KEY, el);
+                } else {
+                  scrollContainerRefs.current.delete(AGENT_LIST_SCROLLBAR_KEY);
+                }
+              }
+            : undefined
+        }
+        onScroll={showSearch ? () => updateScrollbar(AGENT_LIST_SCROLLBAR_KEY, true) : undefined}
+        className={showSearch ? 'agent-list-scroll-viewport' : undefined}
+        style={
+          showSearch
+            ? {
+                flex: 1,
+                minHeight: 0,
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '8px',
+                // Small right gutter so the overlay scrollbar thumb sits flush
+                // against the navigation boundary instead of over the content.
+                paddingRight: '6px',
                 overflowY: 'auto',
-                overscrollBehavior: 'contain',
-                scrollbarWidth: 'thin',
-              }}
-            >
-              {mentionSuggestions.map((option, index) => {
-                const isActiveOption = index === activeMentionIndex;
-                return (
-                  <button
-                    key={`${option.chatId}-${option.agentName}`}
-                    ref={(element) => {
-                      mentionOptionRefs.current[index] = element;
-                    }}
-                    type="button"
-                    onMouseEnter={() => setActiveMentionIndex(index)}
-                    onClick={() => applyMentionSuggestion(option)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      width: '100%',
-                      border: 'none',
-                      background: isActiveOption ? '#F6F0E7' : 'transparent',
-                      borderRadius: '12px',
-                      padding: '10px 12px',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <AgentAvatar
-                      emoji={option.agentEmoji}
-                      avatar={option.agentAvatar}
-                      source={option.agentSource}
-                      name={option.agentName}
-                      size="sm"
-                      version={option.agentVersion}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#272320' }}>{option.agentName}</span>
-                      <span style={{ fontSize: '12px', color: '#6C6C70' }}>Filter conversations for this agent</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                overflowX: 'hidden',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              }
+            : { display: 'contents' }
+        }
+      >
 
       {chats.length === 0 ? (
         <div>
-          <p>No chats available</p>
-          <p>Create your first chat to get started</p>
+          <p>{t('agent.list.noChats')}</p>
+          <p>{t('agent.list.createFirstChat')}</p>
         </div>
       ) : isSearchMode ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
@@ -1702,19 +1629,19 @@ const AgentList: React.FC<AgentListProps> = ({
               style={{
                 padding: '16px 12px',
                 borderRadius: '16px',
-                backgroundColor: '#F8F6F2',
-                color: '#6C6C70',
+                backgroundColor: 'var(--color-warm-100)',
+                color: 'var(--color-neutral-500)',
                 fontSize: '13px',
                 lineHeight: 1.5,
               }}
             >
-              <div style={{ color: '#272320', fontWeight: 600, marginBottom: '4px' }}>
-                {searchLoadingChatIds.size > 0 ? 'Indexing conversations...' : 'No conversations found'}
+              <div style={{ color: 'var(--color-warm-900)', fontWeight: 600, marginBottom: '4px' }}>
+                {searchLoadingChatIds.size > 0 ? t('agent.list.indexing') : t('agent.list.noConversationsFound')}
               </div>
               <div>
                 {searchLoadingChatIds.size > 0
-                  ? 'Loading session metadata for search.'
-                  : 'Try another keyword or type @ to filter by agent.'}
+                  ? t('agent.list.loadingMetadata')
+                  : t('agent.list.trySearchHint')}
               </div>
             </div>
           ) : (
@@ -1731,8 +1658,8 @@ const AgentList: React.FC<AgentListProps> = ({
                     onMouseEnter={() => setActiveSearchIndex(index)}
                     onClick={() => openSearchResult(result)}
                     style={{
-                      border: isActiveResult ? '1px solid #272320' : '1px solid transparent',
-                      background: isCurrentSession ? '#ECE8E0' : isActiveResult ? '#F6F0E7' : '#F8F6F2',
+                      border: isActiveResult ? '1px solid var(--color-warm-900)' : '1px solid transparent',
+                      background: isCurrentSession ? 'var(--color-warm-200)' : isActiveResult ? 'var(--color-warm-100)' : 'var(--color-warm-100)',
                       borderRadius: '16px',
                       padding: '12px',
                       textAlign: 'left',
@@ -1748,7 +1675,7 @@ const AgentList: React.FC<AgentListProps> = ({
                         style={{
                           fontSize: '14px',
                           fontWeight: isUnread ? 700 : 600,
-                          color: '#272320',
+                          color: 'var(--color-warm-900)',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -1764,7 +1691,7 @@ const AgentList: React.FC<AgentListProps> = ({
                             width: '8px',
                             height: '8px',
                             borderRadius: '999px',
-                            backgroundColor: '#B42318',
+                            backgroundColor: 'var(--color-danger-700)',
                             flexShrink: 0,
                           }}
                         />
@@ -1780,34 +1707,19 @@ const AgentList: React.FC<AgentListProps> = ({
                         size="sm"
                         version={result.agentVersion}
                       />
-                      <span style={{ fontSize: '12px', color: '#6C6C70', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--color-neutral-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {result.agentName}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#B0B0B5' }}>•</span>
-                      <span style={{ fontSize: '12px', color: '#6C6C70' }}>{getRelativeTimeLabel(result.lastUpdated)}</span>
-                      {result.source?.type === 'remote' && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            lineHeight: 1,
-                            borderRadius: '999px',
-                            padding: '4px 6px',
-                            backgroundColor: '#D8EEF9',
-                            color: '#0B6FA4',
-                            marginLeft: 'auto',
-                          }}
-                        >
-                          Remote
-                        </span>
-                      )}
+                      <span style={{ fontSize: '12px', color: 'var(--color-neutral-400)' }}>•</span>
+                      <span style={{ fontSize: '12px', color: 'var(--color-neutral-500)' }}>{getRelativeTimeLabel(result.lastUpdated)}</span>
                     </div>
                   </button>
                 );
               })}
 
               {searchResults.length >= 50 && (
-                <div style={{ fontSize: '12px', color: '#6C6C70', padding: '0 4px' }}>
-                  Showing top 50 results
+                <div style={{ fontSize: '12px', color: 'var(--color-neutral-500)', padding: '0 4px' }}>
+                  {t('agent.list.showingTopResults')}
                 </div>
               )}
             </div>
@@ -1829,18 +1741,18 @@ const AgentList: React.FC<AgentListProps> = ({
                   padding: '0 4px',
                   fontSize: '12px',
                   fontWeight: 700,
-                  color: '#6C6C70',
+                  color: 'var(--color-neutral-500)',
                   letterSpacing: '0.02em',
                   textTransform: 'uppercase',
                 }}
               >
-                <span>Starred</span>
+                <span>{t('agent.list.starred')}</span>
               </div>
 
               {starredSessions.map((session: StarredChatSessionIndexItem) => {
                 const isActiveSession = currentChatSessionId === session.chatSessionId;
                 const isUnreadSession = session.readStatus !== 'read' && !isActiveSession;
-                const sessionTitleColor = isUnreadSession ? '#272320' : '#6C6C70';
+                const sessionTitleColor = isUnreadSession ? 'var(--color-warm-900)' : 'var(--color-neutral-500)';
                 const sessionTitleFontWeight = isUnreadSession ? 600 : 410;
 
                 return (
@@ -1932,7 +1844,7 @@ const AgentList: React.FC<AgentListProps> = ({
                           opacity: openMenuChatSessionId === session.chatSessionId ? '1' : '0',
                           marginLeft: 'auto',
                         }}
-                        title="More options"
+                        title={t('agent.list.moreOptions')}
                       >
                         <MoreHorizontal size={20} strokeWidth={1.5} />
                       </div>
@@ -1952,27 +1864,39 @@ const AgentList: React.FC<AgentListProps> = ({
                 padding: '0 4px',
                 fontSize: '12px',
                 fontWeight: 700,
-                color: '#6C6C70',
+                color: 'var(--color-neutral-500)',
                 letterSpacing: '0.02em',
                 textTransform: 'uppercase',
               }}
             >
-              <span>Agents</span>
+              <span>{t('agent.list.agentsSection')}</span>
             </div>
           )}
 
           {sortedChats.map((chat) => {
-            // 🔥 Determine if this is a Built-in Agent (built-in agent; list differs by branding)
-            const isBuiltinAgentFlag = isBuiltinAgent(chat.agent?.name, BRAND_NAME);
-            // 🔥 Determine if this is an Example Agent (demo/sample)
-            const isExampleAgent = false;
-            const agentName = chat.agent?.name || 'Unnamed Agent';
+            const agent = resolveChatAgent(chat);
+            // Determine if this is a built-in agent.
+            const isBuiltinAgentFlag = isBuiltinAgent(agent?.name, BRAND_NAME);
+            const agentName = agent?.name || 'Unnamed Agent';
             const paginatedState = paginatedChatSessions.get(chat.chat_id) || getDefaultPaginatedState();
             const inlineChatSessions = getNonScheduledSessions(chat.chatSessions || []);
-            const visibleChatSessions = paginatedState.hasLoaded
-              ? getNonScheduledSessions(paginatedState.sessions)
-              : inlineChatSessions;
-            const isExpandedAgent = expandedAgentId === chat.chat_id;
+            const loadedChatSessions = sortSessionsByTimeDesc(
+              paginatedState.hasLoaded
+                ? getNonScheduledSessions(paginatedState.sessions)
+                : inlineChatSessions,
+            );
+            // Only the first `visibleCount` sessions are rendered; the rest are
+            // revealed via the "Show more" button (no inner scroll / max-height).
+            const shownChatSessions = loadedChatSessions.slice(0, paginatedState.visibleCount);
+            const totalLoadedCount = loadedChatSessions.length;
+            const allSessionsShown =
+              !paginatedState.hasMore && paginatedState.visibleCount >= totalLoadedCount;
+            const showMoreButton = totalLoadedCount > 0 && !allSessionsShown;
+            const showLessButton = allSessionsShown && totalLoadedCount > INITIAL_VISIBLE_COUNT;
+            // Built-in agents keep the original fixed-height scroll-load list and render
+            // every loaded session; regular agents render only the Show more/less window.
+            const sessionsToRender = isBuiltinAgentFlag ? loadedChatSessions : shownChatSessions;
+            const isExpandedAgent = expandedAgentIds.has(chat.chat_id);
             const shouldBoldAgentName = unreadHighlightChatIds.has(chat.chat_id) && !isExpandedAgent;
 
             return (
@@ -1980,22 +1904,19 @@ const AgentList: React.FC<AgentListProps> = ({
               <NavItem
                 icon={
                   <AgentAvatar
-                    emoji={chat.agent?.emoji}
-                    avatar={chat.agent?.avatar}
-                    source={chat.agent?.source}
-                    name={chat.agent?.name}
+                    emoji={agent?.emoji}
+                    avatar={agent?.avatar}
+                    source={agent?.source}
+                    name={agent?.name}
                     size="sm"
-                    version={chat.agent?.version}
+                    version={agent?.version}
                   />
                 }
                 label={
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: shouldBoldAgentName ? 700 : 400 }}>
                     {agentName}
                     {isBuiltinAgentFlag && (
-                      <span className="kobi-builtin-badge">Built-in</span>
-                    )}
-                    {isExampleAgent && (
-                      <span className="example-agent-badge">Example</span>
+                      <span className="kobi-builtin-badge">{t('agent.list.builtinBadge')}</span>
                     )}
                   </span>
                 }
@@ -2003,11 +1924,11 @@ const AgentList: React.FC<AgentListProps> = ({
                 isActive={
                   (activeView === 'chat' || activeView === 'settings') &&
                   chat.chat_id === currentChatId &&
-                  (activeView === 'settings' || !currentChatSessionId || !visibleChatSessions.some(s => s.chatSession_id === currentChatSessionId))
+                  (activeView === 'settings' || !currentChatSessionId || !loadedChatSessions.some(s => s.chatSession_id === currentChatSessionId))
                 } // 🔥 Agent selected condition: (in chat or settings view) AND is current Agent AND (in settings view OR no session selected OR selected session not in list)
-                onClick={() => handleAgentClick(chat.chat_id)}
+                onClick={() => handleToggleAgentExpand(chat.chat_id)}
                 rightContent={
-                  chat.agent ? (
+                  agent ? (
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -2017,7 +1938,7 @@ const AgentList: React.FC<AgentListProps> = ({
                       <div
                         className="dropdown-menu-container"
                         style={{
-                          opacity: currentChatSessionId && visibleChatSessions.some(s => s.chatSession_id === currentChatSessionId) ? 1 : 0,
+                          opacity: currentChatSessionId && loadedChatSessions.some(s => s.chatSession_id === currentChatSessionId) ? 1 : 0,
                           transition: 'opacity 0.2s ease-in-out'
                         }}
                       >
@@ -2025,17 +1946,17 @@ const AgentList: React.FC<AgentListProps> = ({
                           className="dropdown-menu-trigger"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAgentClick(chat.chat_id);
+                            handleStartNewChat(chat.chat_id);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               e.stopPropagation();
-                              handleAgentClick(chat.chat_id);
+                              handleStartNewChat(chat.chat_id);
                             }
                           }}
-                          title="Start new conversation"
-                          aria-label="Start new conversation"
+                          title={t('agent.list.startNewConversation')}
+                          aria-label={t('agent.list.startNewConversation')}
                           role="button"
                           tabIndex={0}
                           style={{ cursor: 'pointer' }}
@@ -2046,7 +1967,7 @@ const AgentList: React.FC<AgentListProps> = ({
 
                       {/* More options button */}
                       <div className="dropdown-menu-container" style={{
-                        opacity: currentChatSessionId && visibleChatSessions.some(s => s.chatSession_id === currentChatSessionId) ? 1 : 0,
+                        opacity: currentChatSessionId && loadedChatSessions.some(s => s.chatSession_id === currentChatSessionId) ? 1 : 0,
                         transition: 'opacity 0.2s ease-in-out'
                       }}>
                         <div
@@ -2059,8 +1980,8 @@ const AgentList: React.FC<AgentListProps> = ({
                               agentMenuActions.toggle(chat.chat_id, e.currentTarget);
                             }
                           }}
-                          title="More options"
-                          aria-label="More options"
+                          title={t('agent.list.moreOptions')}
+                          aria-label={t('agent.list.moreOptions')}
                           aria-expanded={openMenuChatId === chat.chat_id}
                           aria-haspopup="menu"
                           role="button"
@@ -2076,11 +1997,11 @@ const AgentList: React.FC<AgentListProps> = ({
               />
 
               {/* 🔥 Added: ChatSession secondary list */}
-              {expandedAgentId === chat.chat_id && (
+              {expandedAgentIds.has(chat.chat_id) && (
                 <div
                   style={{ position: 'relative' }}
-                  onMouseEnter={() => handleSessionListMouseEnter(chat.chat_id)}
-                  onMouseLeave={() => handleSessionListMouseLeave(chat.chat_id)}
+                  onMouseEnter={() => { if (isBuiltinAgentFlag) handleSessionListMouseEnter(chat.chat_id); }}
+                  onMouseLeave={() => { if (isBuiltinAgentFlag) handleSessionListMouseLeave(chat.chat_id); }}
                 >
                 <div
                   style={{
@@ -2090,25 +2011,37 @@ const AgentList: React.FC<AgentListProps> = ({
                     paddingLeft: '0px',
                     paddingTop: '4px',
                     paddingBottom: '4px',
-                    maxHeight: 'calc(5 * (40px + 4px))', // Height for 5 items: item height 40px + gap 4px
-                    overflowY: 'auto',
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none' as React.CSSProperties['msOverflowStyle'],
+                    ...(isBuiltinAgentFlag ? {
+                      maxHeight: 'calc(5 * (40px + 4px))', // Height for 5 items: item height 40px + gap 4px
+                      overflowY: 'auto' as const,
+                      scrollbarWidth: 'none' as const,
+                      msOverflowStyle: 'none' as React.CSSProperties['msOverflowStyle'],
+                    } : {}),
                   }}
                   className="chat-sessions-list"
-                  onScroll={(e) => { handleScroll(chat.chat_id, e); updateScrollbar(chat.chat_id, true); }}
+                  onScroll={(e) => {
+                    if (!isBuiltinAgentFlag) {
+                      return;
+                    }
+                    handleScroll(chat.chat_id, e);
+                    updateScrollbar(chat.chat_id, true);
+                  }}
                   ref={(el) => {
+                    if (!isBuiltinAgentFlag) {
+                      return;
+                    }
                     if (el) {
                       scrollContainerRefs.current.set(chat.chat_id, el);
+                    } else {
+                      scrollContainerRefs.current.delete(chat.chat_id);
                     }
                   }}
                 >
-                  {visibleChatSessions
-                    .sort((a, b) => new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+                  {sessionsToRender
                     .map((session) => {
                       const isActiveSession = currentChatSessionId === session.chatSession_id;
                       const isUnreadSession = session.readStatus !== 'read' && !isActiveSession;
-                      const sessionTitleColor = isUnreadSession ? '#272320' : '#6C6C70';
+                      const sessionTitleColor = isUnreadSession ? 'var(--color-warm-900)' : 'var(--color-neutral-500)';
                       const sessionTitleFontWeight = isUnreadSession ? 600 : 410;
                       const sessionRefKey = getSessionItemRefKey(chat.chat_id, session.chatSession_id);
 
@@ -2183,9 +2116,6 @@ const AgentList: React.FC<AgentListProps> = ({
                           })()}
                         </div>
 
-                        {session.source?.type === 'remote' && (
-                          <Globe className="w-3 h-3 text-blue-400 shrink-0 mr-1" />
-                        )}
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -2218,7 +2148,7 @@ const AgentList: React.FC<AgentListProps> = ({
                               opacity: openMenuChatSessionId === session.chatSession_id ? '1' : '0',
                               marginLeft: 'auto'
                             }}
-                            title="More options"
+                            title={t('agent.list.moreOptions')}
                           >
                             <MoreHorizontal size={20} strokeWidth={1.5} />
                           </div>
@@ -2233,7 +2163,7 @@ const AgentList: React.FC<AgentListProps> = ({
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '8px',
-                      color: '#B42318',
+                      color: 'var(--color-danger-700)',
                       fontSize: '12px',
                       textAlign: 'center'
                     }}>
@@ -2241,50 +2171,107 @@ const AgentList: React.FC<AgentListProps> = ({
                     </div>
                   )}
 
-                  {!paginatedState.isLoading && paginatedState.hasLoaded && visibleChatSessions.length === 0 && !paginatedState.error && (
+                  {!paginatedState.isLoading && paginatedState.hasLoaded && totalLoadedCount === 0 && !paginatedState.error && (
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '8px',
-                      color: '#9E9E9E',
+                      color: 'var(--color-neutral-400)',
                       fontSize: '12px'
                     }}>
-                      No conversations yet
+                      {t('agent.list.noConversationsYet')}
                     </div>
                   )}
 
-                  {/* 🔥 Added: scroll-to-load-more loading indicator */}
+                  {/* Added: loading indicator while fetching the next page */}
                   {paginatedState.isLoading && (
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '8px',
-                      color: '#6C6C70',
+                      color: 'var(--color-neutral-500)',
                       fontSize: '13px'
                     }}>
                       <LoadingIcon />
-                      <span style={{ marginLeft: '8px' }}>Loading...</span>
+                      <span style={{ marginLeft: '8px' }}>{t('agent.list.loading')}</span>
                     </div>
                   )}
 
-                  {/* 🔥 Added: temporary "no more data" hint (auto-dismisses after showing) */}
-                  {showAllLoadedHint.get(chat.chat_id) && (
+                  {/* Built-in scroll-load list: transient "all conversations loaded" hint */}
+                  {isBuiltinAgentFlag && showAllLoadedHint.get(chat.chat_id) && (
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '8px',
-                      color: '#9E9E9E',
+                      color: 'var(--color-neutral-400)',
                       fontSize: '12px'
                     }}>
-                      All conversations loaded
+                      {t('agent.list.allConversationsLoaded')}
+                    </div>
+                  )}
+
+                  {/* Regular agents: Show more / Show less toggle (replaces scroll-to-load) */}
+                  {!isBuiltinAgentFlag && !paginatedState.isLoading && !paginatedState.error && showMoreButton && (
+                    <div
+                      className="chat-sessions-show-more"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('agent.list.showMoreConversations')}
+                      onClick={() => { void handleShowMore(chat.chat_id); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          void handleShowMore(chat.chat_id);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '8px',
+                        color: 'var(--color-neutral-500)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {t('agent.list.showMore')}
+                    </div>
+                  )}
+
+                  {!isBuiltinAgentFlag && !paginatedState.isLoading && !paginatedState.error && showLessButton && (
+                    <div
+                      className="chat-sessions-show-less"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('agent.list.showFewerConversations')}
+                      onClick={() => handleShowLess(chat.chat_id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleShowLess(chat.chat_id);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '8px',
+                        color: 'var(--color-neutral-500)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {t('agent.list.showLess')}
                     </div>
                   )}
                 </div>
-                {/* Custom overlay scrollbar */}
-                {(() => {
+                {/* Built-in scroll-load list: custom overlay scrollbar */}
+                {isBuiltinAgentFlag && (() => {
                   const sb = scrollbarState.get(chat.chat_id);
                   const container = scrollContainerRefs.current.get(chat.chat_id);
                   const needsScroll = container ? container.scrollHeight > container.clientHeight : false;
@@ -2314,6 +2301,31 @@ const AgentList: React.FC<AgentListProps> = ({
           })}
         </div>
       )}
+      </div>
+      {showSearch && (() => {
+        const sb = scrollbarState.get(AGENT_LIST_SCROLLBAR_KEY);
+        const container = scrollContainerRefs.current.get(AGENT_LIST_SCROLLBAR_KEY);
+        const needsScroll = container ? container.scrollHeight > container.clientHeight : false;
+        if (!sb || !needsScroll) return null;
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              right: 2,
+              top: sb.thumbTop,
+              width: 3,
+              height: sb.thumbHeight,
+              borderRadius: 3,
+              background: 'rgba(0, 0, 0, 0.22)',
+              opacity: sb.visible ? 1 : 0,
+              transition: 'opacity 0.25s ease',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+          />
+        );
+      })()}
+      </div>
     </div>
   );
 };

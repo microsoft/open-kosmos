@@ -232,6 +232,28 @@ describe('ContextMenu', () => {
     expect(screen.getByText('📒')).toBeInTheDocument();
   });
 
+  it('renders remaining file extension icons and default file icon', () => {
+    mockContextMenuState.options = [
+      fileOption({ fileName: 'data.json', value: 'data.json' }),
+      fileOption({ fileName: 'style.css', value: 'style.css' }),
+      fileOption({ fileName: 'index.html', value: 'index.html' }),
+      fileOption({ fileName: 'photo.png', value: 'photo.png' }),
+      fileOption({ fileName: 'notes.txt', value: 'notes.txt' }),
+    ];
+    render(<ContextMenu />);
+    expect(screen.getByText('📋')).toBeInTheDocument();
+    expect(screen.getByText('🎨')).toBeInTheDocument();
+    expect(screen.getByText('🌐')).toBeInTheDocument();
+    expect(screen.getByText('🖼️')).toBeInTheDocument();
+    expect(screen.getByText('📄')).toBeInTheDocument();
+  });
+
+  it('renders fallback text for unknown option types', () => {
+    mockContextMenuState.options = [{ type: 'Other', fileName: 'Fallback item' }];
+    render(<ContextMenu />);
+    expect(screen.getByText('Fallback item')).toBeInTheDocument();
+  });
+
   it('renders path with @workspace: prefix stripped', () => {
     const opt = fileOption({ fileName: 'file.md', value: '@workspace:/docs/file.md' });
     mockContextMenuState.options = [opt];

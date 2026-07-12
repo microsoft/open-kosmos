@@ -92,7 +92,7 @@ describe('BingWebSearchTool - Timeout Fix Verification', () => {
     it('should have graceful handling when page is not stable', () => {
       // The fix should not throw error when page is not stable
       // Instead, it should log warning and continue
-      expect(toolSourceCode).toContain('Page did not fully stabilize, but continuing to parse results');
+      expect(toolSourceCode).toContain('Page is still navigating, waiting longer');
     });
 
     it('should NOT throw error on page instability', () => {

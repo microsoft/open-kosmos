@@ -41,7 +41,6 @@ vi.mock('../../ui/ToastProvider', async () => ({
   useToast: () => ({ showToast: vi.fn(), showError: vi.fn() }),
 }));
 
-
 vi.mock('../../../lib/featureFlags', async () => ({
   useFeatureFlag: () => false,
 }));
@@ -65,6 +64,8 @@ vi.mock('../message/SayHiActionItems', async () => ({
     actionItemGroups: [],
   })),
 }));
+
+
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

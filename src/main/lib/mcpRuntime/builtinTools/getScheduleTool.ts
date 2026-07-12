@@ -19,7 +19,7 @@ export class GetScheduleTool {
   ): Promise<GetScheduleToolResult> {
     try {
 
-      const jobs = await schedulerManager.listJobs(args.agent_id);
+      const jobs = await schedulerManager.listJobs(args.chat_id);
 
       const schedules = jobs.map(job => ({
         job_id: job.id,
@@ -29,7 +29,7 @@ export class GetScheduleTool {
         cron_expression: job.cronExpression,
         run_at: job.runAt,
         message: job.message,
-        agent_id: job.agentId,
+        chat_id: job.chat_id,
         enabled: job.enabled,
         status: job.status,
         last_run_at: job.lastRunAt,
@@ -57,7 +57,7 @@ export class GetScheduleTool {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'get_schedule',
-      description: 'List existing scheduled tasks. Returns all schedules or those belonging to a specific agent. Each schedule includes its ID, name, description, schedule type, cron expression or one-time run_at timestamp, message, agent ID, enabled status, and execution status.',
+      description: 'List existing scheduled tasks. Returns all schedules or those belonging to a specific chat. Each schedule includes its ID, name, description, schedule type, cron expression or one-time run_at timestamp, message, chat ID, enabled status, and execution status.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -65,9 +65,9 @@ export class GetScheduleTool {
             type: 'string',
             description: 'A brief one-sentence description of what this query is for (for UI display). E.g., "Listing all scheduled tasks"',
           },
-          agent_id: {
+          chat_id: {
             type: 'string',
-            description: 'Optional agent chat_id to filter schedules. If not provided, returns all schedules.',
+            description: 'Optional chat_id to filter schedules. If not provided, returns all schedules.',
           },
         },
         required: ['description'],

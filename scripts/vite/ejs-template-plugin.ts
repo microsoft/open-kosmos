@@ -26,12 +26,6 @@ export function ejsTemplatePlugin({ appConfig, isDev }: EjsTemplatePluginConfig)
       connectSrcExtra: isDev ? ' ws: wss:' : '',
       entryScript: '<script type="module" src="./index.tsx"></script>',
     },
-    'toolbar.html': {
-      title: `${appConfig.productName} - ToolBar`,
-      productName: appConfig.productName,
-      connectSrcExtra: isDev ? ' ws: wss:' : '',
-      entryScript: '<script type="module" src="./toolbar.tsx"></script>',
-    },
     'screenshot.html': {
       title: `${appConfig.productName} - Screenshot`,
       productName: appConfig.productName,

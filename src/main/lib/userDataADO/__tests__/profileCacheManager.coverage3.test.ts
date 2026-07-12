@@ -20,6 +20,9 @@ const mockFsExistsSync = vi.hoisted(() => vi.fn(() => false));
 const mockFsMkdirSync = vi.hoisted(() => vi.fn());
 const mockFsWriteFile = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockFsReadFile = vi.hoisted(() => vi.fn().mockResolvedValue('{}'));
+const mockFsRename = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockFsUnlink = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockFsCopyFile = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('electron', async () => ({
   BrowserWindow: {
@@ -40,17 +43,14 @@ vi.mock('fs', async () => {
       ...actual.promises,
       writeFile: mockFsWriteFile,
       readFile: mockFsReadFile,
+      rename: mockFsRename,
+      unlink: mockFsUnlink,
+      copyFile: mockFsCopyFile,
     },
   };
 });
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
-
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({ cacheQuickStartImages: vi.fn() })),
-  },
-}));
 
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
@@ -104,10 +104,6 @@ vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
   },
 }));
 
-vi.mock('../../plugin/pluginManager', async () => ({
-  pluginManager: { initialize: vi.fn().mockResolvedValue({ errors: [] }) },
-}));
-
 
 vi.mock('../../chat/agentChatManager', async () => ({
   agentChatManager: { initialize: vi.fn().mockResolvedValue(undefined) },
@@ -118,17 +114,10 @@ vi.mock('../../featureFlags/featureFlagManager', async () => ({
   featureFlagManager: { isEnabled: mockFeatureFlagIsEnabled },
 }));
 
-vi.mock('../../remoteChannel/credentialStore', async () => ({
-  credentialStore: { hasCredential: vi.fn().mockResolvedValue(false) },
-}));
-
 vi.mock('../../startup/lazy', async () => ({
   getExternalAgentService: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: { getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })) },
-}));
 
 vi.mock('../profileSanitizer', async () => {
   const actual = await vi.importActual('../profileSanitizer');
@@ -140,9 +129,131 @@ vi.mock('../profileMigration', async () => {
   return actual;
 });
 
+const mockBackupProfileDirectoryBeforeMutation = vi.hoisted(() => vi.fn().mockResolvedValue({ success: true }));
+vi.mock('../profileBackupManager', () => ({
+  backupProfileDirectoryBeforeMutation: mockBackupProfileDirectoryBeforeMutation,
+}));
+
 // ── imports ───────────────────────────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+const mcpManagerStore = vi.hoisted(() => ({ servers: new Map<string, any[]>() }));
+const mcpManagerMock = vi.hoisted(() => ({
+  getServers: vi.fn((alias: string) => mcpManagerStore.servers.get(alias) ?? []),
+  getServerInfo: vi.fn((alias: string, name: string) =>
+    (mcpManagerStore.servers.get(alias) ?? []).find((s: any) => s.name === name) ?? null),
+  hasServersLoaded: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  hasPersistedServers: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    mcpManagerStore.servers.set(alias, legacySlice ?? mcpManagerStore.servers.get(alias) ?? []);
+  }),
+  commitResolvedServers: vi.fn(async (alias: string, servers: any[]) => {
+    mcpManagerStore.servers.set(alias, servers ?? []);
+  }),
+  addServer: vi.fn(async (alias: string, cfg: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    if (cur.some((s: any) => s.name === cfg.name)) return false;
+    mcpManagerStore.servers.set(alias, [...cur, cfg]);
+    return true;
+  }),
+  updateServer: vi.fn(async (alias: string, name: string, updates: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], ...updates };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  deleteServer: vi.fn(async (alias: string, name: string) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    mcpManagerStore.servers.set(alias, cur.filter((_: any, j: number) => j !== i));
+    return true;
+  }),
+  setServerInUse: vi.fn(async (alias: string, name: string, inUse: boolean) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], in_use: inUse };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  clearCache: vi.fn((alias?: string) => {
+    if (alias === undefined) mcpManagerStore.servers.clear();
+    else mcpManagerStore.servers.delete(alias);
+  }),
+}));
+vi.mock('../mcpConfigManager', () => ({
+  mcpConfigManager: mcpManagerMock,
+  McpConfigManager: class {},
+}));
+
+const skillsManagerStore = vi.hoisted(() => ({ skills: new Map<string, any[]>() }));
+const skillsManagerMock = vi.hoisted(() => ({
+  loadForAlias: vi.fn(async (alias: string, rawProfile: { skills?: unknown }) => {
+    const skills = Array.isArray(rawProfile?.skills) ? (rawProfile.skills as any[]) : [];
+    skillsManagerStore.skills.set(alias, skills);
+    return { skills, needsProfileRewrite: false };
+  }),
+  getSkills: vi.fn((alias: string) => skillsManagerStore.skills.get(alias) ?? []),
+  getSkill: vi.fn((alias: string, name: string) =>
+    (skillsManagerStore.skills.get(alias) ?? []).find((s: any) => s.name === name)),
+  hasSkill: vi.fn((alias: string, name: string) =>
+    (skillsManagerStore.skills.get(alias) ?? []).some((s: any) => s.name === name)),
+  hasSkillsLoaded: vi.fn((alias: string) => skillsManagerStore.skills.has(alias)),
+  hasPersistedSkills: vi.fn((alias: string) => skillsManagerStore.skills.has(alias)),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    skillsManagerStore.skills.set(alias, legacySlice ?? skillsManagerStore.skills.get(alias) ?? []);
+  }),
+  commitResolvedSkills: vi.fn(async (alias: string, skills: any[]) => {
+    skillsManagerStore.skills.set(alias, skills ?? []);
+  }),
+  clearForAlias: vi.fn((alias: string) => {
+    skillsManagerStore.skills.delete(alias);
+  }),
+  clearAll: vi.fn(() => {
+    skillsManagerStore.skills.clear();
+  }),
+}));
+vi.mock('../skillsConfigManager', () => ({
+  skillsConfigManager: skillsManagerMock,
+  SkillsConfigManager: class {},
+}));
+
+const hooksManagerStore = vi.hoisted(() => ({ hooks: new Map<string, any[]>() }));
+const hooksManagerMock = vi.hoisted(() => ({
+  loadForAlias: vi.fn(async (alias: string, rawProfile: { hooks?: unknown }) => {
+    const hooks = Array.isArray(rawProfile?.hooks) ? (rawProfile.hooks as any[]) : [];
+    hooksManagerStore.hooks.set(alias, hooks);
+    return { hooks, needsProfileRewrite: false };
+  }),
+  getHooks: vi.fn((alias: string) => hooksManagerStore.hooks.get(alias) ?? []),
+  getHook: vi.fn((alias: string, id: string) =>
+    (hooksManagerStore.hooks.get(alias) ?? []).find((h: any) => h.id === id)),
+  hasHook: vi.fn((alias: string, id: string) =>
+    (hooksManagerStore.hooks.get(alias) ?? []).some((h: any) => h.id === id)),
+  hasHooksLoaded: vi.fn((alias: string) => hooksManagerStore.hooks.has(alias)),
+  hasPersistedHooks: vi.fn(() => true),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    hooksManagerStore.hooks.set(alias, legacySlice ?? hooksManagerStore.hooks.get(alias) ?? []);
+  }),
+  commitResolvedHooks: vi.fn(async () => {}),
+  addHook: vi.fn(async () => true),
+  updateHook: vi.fn(async () => true),
+  deleteHook: vi.fn(async () => true),
+  clearForAlias: vi.fn((alias: string) => {
+    hooksManagerStore.hooks.delete(alias);
+  }),
+  clearAll: vi.fn(() => {
+    hooksManagerStore.hooks.clear();
+  }),
+}));
+vi.mock('../hooksConfigManager', () => ({
+  hooksConfigManager: hooksManagerMock,
+  HooksConfigManager: class {},
+}));
+
 import { ProfileCacheManager } from '../profileCacheManager';
 import type { ProfileV2 } from '../types/profile';
 
@@ -192,10 +303,15 @@ function makeProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
   mockFsExistsSync.mockReturnValue(false);
   mockFsMkdirSync.mockImplementation(() => undefined);
   mockFsWriteFile.mockResolvedValue(undefined);
   mockFsReadFile.mockResolvedValue('{}');
+  mockFsRename.mockResolvedValue(undefined);
+  mockFsUnlink.mockResolvedValue(undefined);
+  mockFsCopyFile.mockResolvedValue(undefined);
+  mockBackupProfileDirectoryBeforeMutation.mockResolvedValue({ success: true });
 });
 
 // ── getElectronApp: global.electron.app path ─────────────────────────────────
@@ -262,9 +378,128 @@ describe('ProfileCacheManager — writeProfileToFile (real)', () => {
     const result = await (mgr as any).writeProfileToFile('testUser', makeProfile());
     expect(result).toBe(false);
   });
+
+  it('atomic write: stages each file to a temp file then renames over the target', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    const mgr = freshManager();
+
+    const result = await (mgr as any).writeProfileToFile('testUser', makeProfile());
+
+    expect(result).toBe(true);
+    // The bundle writer stages each file to a temp path, then renames it onto the
+    // final target. Locate the rename that targets profile.json.
+    const profileRename = mockFsRename.mock.calls.find(
+      ([, to]: [string, string]) => typeof to === 'string' && to.endsWith('profile.json'),
+    ) as [string, string];
+    expect(profileRename).toBeDefined();
+    const [profileTemp, profileTarget] = profileRename;
+    expect(profileTemp).toContain('.tmp');
+    expect(profileTarget.endsWith('profile.json')).toBe(true);
+    // The same temp path must have been written before the rename.
+    const writtenPaths = mockFsWriteFile.mock.calls.map((c) => c[0]);
+    expect(writtenPaths).toContain(profileTemp);
+  });
+
+  it('returns false and cleans up the temp file when rename throws', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    // Fail the profile.json rename.
+    mockFsRename.mockImplementation((_from: string, to: string) =>
+      typeof to === 'string' && to.endsWith('profile.json')
+        ? Promise.reject(new Error('rename failed'))
+        : Promise.resolve(undefined),
+    );
+    const mgr = freshManager();
+
+    const result = await (mgr as any).writeProfileToFile('testUser', makeProfile());
+
+    expect(result).toBe(false);
+    expect(mockFsUnlink).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false even when temp-file cleanup also fails', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    // Reject with a non-Error so the String(error) branch of the logger is hit too.
+    mockFsWriteFile.mockRejectedValueOnce('disk full');
+    mockFsUnlink.mockRejectedValueOnce(new Error('unlink failed'));
+    const mgr = freshManager();
+
+    const result = await (mgr as any).writeProfileToFile('testUser', makeProfile());
+
+    expect(result).toBe(false);
+  });
 });
 
-// ── readProfileFromFile ───────────────────────────────────────────────────────
+// ── handleProfile / backupUnreadableProfile — corrupt-file safety net ─────────
+
+describe('ProfileCacheManager — unreadable profile safety net', () => {
+  it('does not create or seed a default profile when the startup backup failed', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    mockBackupProfileDirectoryBeforeMutation.mockResolvedValueOnce({ success: false, error: 'backup failed' });
+    const mgr = freshManager();
+    const backupUnreadableSpy = vi.spyOn(mgr as any, 'backupUnreadableProfile');
+
+    const result = await (mgr as any).handleProfile('testUser', { notifyRenderer: false });
+
+    expect(result).toBeNull();
+    expect(backupUnreadableSpy).not.toHaveBeenCalled();
+    expect(mockFsCopyFile).not.toHaveBeenCalled();
+    expect(mockFsWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('backs up an existing-but-unreadable profile before writing a default', async () => {
+    const mgr = freshManager();
+    (mgr as any).readProfileFromFile = vi.fn().mockResolvedValue(null);
+    (mgr as any).notifyProfileDataManager = vi.fn().mockResolvedValue(undefined);
+    (mgr as any).initializeBackgroundServices = vi.fn();
+    // File exists on disk but could not be parsed → must be preserved.
+    mockFsExistsSync.mockReturnValue(true);
+
+    const result = await (mgr as any).handleProfile('testUser', { notifyRenderer: false });
+
+    expect(mockFsCopyFile).toHaveBeenCalledWith(
+      expect.stringContaining('profile.json'),
+      expect.stringContaining('profile.json.corrupt-'),
+    );
+    // A fresh default is still produced so the app can proceed.
+    expect(result?.alias).toBe('testUser');
+  });
+
+  it('does not back up anything for a genuine new user (no file)', async () => {
+    const mgr = freshManager();
+    (mgr as any).readProfileFromFile = vi.fn().mockResolvedValue(null);
+    (mgr as any).notifyProfileDataManager = vi.fn().mockResolvedValue(undefined);
+    (mgr as any).initializeBackgroundServices = vi.fn();
+    mockFsExistsSync.mockReturnValue(false);
+
+    const result = await (mgr as any).handleProfile('newUser', { notifyRenderer: false });
+
+    expect(mockFsCopyFile).not.toHaveBeenCalledWith(
+      expect.stringContaining('profile.json'),
+      expect.stringContaining('profile.json.corrupt-'),
+    );
+    expect(result?.alias).toBe('newUser');
+  });
+
+  it('backupUnreadableProfile raw-copies unreadable profile bytes', async () => {
+    const mgr = freshManager();
+
+    await (mgr as any).backupUnreadableProfile('testUser', '/p/profile.json');
+
+    expect(mockFsCopyFile).toHaveBeenCalledWith(
+      '/p/profile.json',
+      expect.stringContaining('/p/profile.json.corrupt-'),
+    );
+  });
+
+  it('backupUnreadableProfile swallows raw-copy backup failures', async () => {
+    const mgr = freshManager();
+    mockFsCopyFile.mockRejectedValueOnce(new Error('copy failed'));
+
+    await expect(
+      (mgr as any).backupUnreadableProfile('testUser', '/p/profile.json'),
+    ).resolves.toBeUndefined();
+  });
+});
 
 describe('ProfileCacheManager — readProfileFromFile (real)', () => {
   it('returns null when profile file does not exist (line 232)', async () => {
@@ -284,6 +519,19 @@ describe('ProfileCacheManager — readProfileFromFile (real)', () => {
 
     const result = await (mgr as any).readProfileFromFile('testUser');
     expect(result).toBeNull();
+  });
+
+  it('returns null and blocks later writes when the startup backup fails', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    mockBackupProfileDirectoryBeforeMutation.mockResolvedValueOnce({ success: false, error: 'backup failed' });
+    const mgr = freshManager();
+
+    const result = await (mgr as any).readProfileFromFile('testUser');
+    const writeResult = await (mgr as any).writeProfileToFile('testUser', makeProfile());
+
+    expect(result).toBeNull();
+    expect(writeResult).toBe(false);
+    expect(mockFsReadFile).not.toHaveBeenCalled();
   });
 
   it('returns null when profile is not V2 format (line 247)', async () => {
@@ -307,6 +555,15 @@ describe('ProfileCacheManager — readProfileFromFile (real)', () => {
     const result = await (mgr as any).readProfileFromFile('testUser');
     expect(result).toBeDefined();
     expect(result?.alias).toBe('testUser');
+  });
+
+  it('returns null and logs when reading throws a non-Error value', async () => {
+    mockFsExistsSync.mockReturnValue(true);
+    mockFsReadFile.mockRejectedValueOnce('boom');
+    const mgr = freshManager();
+
+    const result = await (mgr as any).readProfileFromFile('testUser');
+    expect(result).toBeNull();
   });
 });
 

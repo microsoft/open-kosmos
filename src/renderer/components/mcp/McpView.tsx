@@ -63,22 +63,12 @@ const McpView: React.FC = () => {
       }));
 
       try {
-        let result: { success: boolean; error?: string };
-
-        // Call appropriate McpOps method based on action
-        switch (action) {
-          case 'connect':
-            result = await McpOps.connect(serverName);
-            break;
-          case 'disconnect':
-            result = await McpOps.disconnect(serverName);
-            break;
-          case 'reconnect':
-            result = await McpOps.reconnect(serverName);
-            break;
-          default:
-            throw new Error(`Unknown action: ${action}`);
-        }
+        const operationMap = {
+          connect: McpOps.connect,
+          disconnect: McpOps.disconnect,
+          reconnect: McpOps.reconnect,
+        } as const;
+        const result = await operationMap[action](serverName);
 
         if (!result.success) {
           throw new Error(result.error || `Failed to ${action} server`);
@@ -111,11 +101,6 @@ const McpView: React.FC = () => {
   // Server operation handlers - use externally passed handlers if available; otherwise use local ones
   const handleConnectServer = useCallback(
     async (serverName: string) => {
-      if (onMcpServerConnect) {
-        onMcpServerConnect(serverName);
-        return;
-      }
-
       try {
         await performServerOperation(serverName, 'connect');
       } catch (error) {
@@ -126,16 +111,11 @@ const McpView: React.FC = () => {
         );
       }
     },
-    [performServerOperation, showError, servers, onMcpServerConnect],
+    [performServerOperation, showError],
   );
 
   const handleDisconnectServer = useCallback(
     async (serverName: string) => {
-      if (onMcpServerDisconnect) {
-        onMcpServerDisconnect(serverName);
-        return;
-      }
-
       try {
         await performServerOperation(serverName, 'disconnect');
       } catch (error) {
@@ -146,16 +126,11 @@ const McpView: React.FC = () => {
         );
       }
     },
-    [performServerOperation, showError, servers, onMcpServerDisconnect],
+    [performServerOperation, showError],
   );
 
   const handleReconnectServer = useCallback(
     async (serverName: string) => {
-      if (onMcpServerReconnect) {
-        onMcpServerReconnect(serverName);
-        return;
-      }
-
       try {
         await performServerOperation(serverName, 'reconnect');
       } catch (error) {
@@ -166,17 +141,11 @@ const McpView: React.FC = () => {
         );
       }
     },
-    [performServerOperation, showError, servers, onMcpServerReconnect],
+    [performServerOperation, showError],
   );
 
   const handleDeleteServer = useCallback(
     (serverName: string) => {
-    // If an external handler is provided, use it (shows a confirmation dialog)
-      if (onMcpServerDelete) {
-        onMcpServerDelete(serverName);
-        return;
-      }
-
       // Local handling (no longer uses window.confirm, deletes directly)
       // Note: when used in SettingsPage, the confirmation dialog is shown via the onMcpServerDelete callback
       // This local handler is a fallback and in practice will not be called
@@ -200,35 +169,16 @@ const McpView: React.FC = () => {
         }
       })();
     },
-    [showError, servers, onMcpServerDelete],
+    [showError],
   );
 
   const handleEditServer = useCallback(
     async (serverName: string) => {
-      if (onMcpServerEdit) {
-        onMcpServerEdit(serverName);
-        return;
-      }
-
       // Navigate to edit page
       navigate(`/settings/mcp/edit/${encodeURIComponent(serverName)}`);
     },
-    [navigate, onMcpServerEdit],
+    [navigate],
   );
-
-  // Handle server added callback
-  const handleServerAdded = useCallback(() => {
-    // Refresh global state to reflect newly added/updated server
-    setTimeout(async () => {
-      try {
-        await refreshRuntimeInfo();
-      } catch (error) {}
-    }, 500); // Slightly extend wait time to ensure server initialization is complete
-  }, [refreshRuntimeInfo]);
-
-
-  // Note: MCP Library is now handled by routing to /settings/mcp/mcp-library
-  // The handleLibraryServerAdded callback has been removed since we use navigation instead
 
   return (
     <div className="mcp-view">

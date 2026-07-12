@@ -9,14 +9,17 @@
   overflow: hidden;
   flex: 1;
   min-height: 0;
-  gap: 24px;
+  gap: 16px;
 }
 
-/* Left Server list panel - adaptive content width */
+/* Left Server list panel - fixed width so an empty search result does not
+   collapse the column toward its min-content width (kept within the original
+   250-400px range; min/max remain for the library-view override that relies
+   on flex-basis + these bounds). */
 .server-list-panel {
   flex-shrink: 0;
   overflow: hidden;
-  width: auto;
+  width: 320px;
   min-width: 250px;
   max-width: 400px;
 }

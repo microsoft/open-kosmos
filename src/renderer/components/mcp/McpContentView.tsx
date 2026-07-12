@@ -130,10 +130,11 @@ const McpContentView: React.FC<McpContentViewProps> = ({
 
   const selectedServerTools = useMemo(() => {
     // If it's the built-in tools server, use the tool list fetched via IPC
-    if (selectedServer?.name === 'builtin-tools') {
-      return builtinTools
-    }
-    return selectedServer?.tools || []
+    const rawTools = selectedServer?.name === 'builtin-tools'
+      ? builtinTools
+      : selectedServer?.tools || []
+    // Sort a copy alphabetically by name for stable display order
+    return [...rawTools].sort((a, b) => a.name.localeCompare(b.name))
   }, [selectedServer, builtinTools])
 
   // When the selected server changes, auto-select the first tool

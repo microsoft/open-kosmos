@@ -4,9 +4,10 @@ const NOOP = () => {};
 const EMPTY = Symbol('EMPTY');
 
 /**
- * useSyncExternalStore 的 getSnapshot 要求: 绝对不能每次都返回新对象，external 方法是为了打破这个限制而设计的
- * @calc 函数可以返回任意对象，external 会缓存这个对象，并且只有当 sub 触发更新时才会重新计算这个对象
- * @equal 函数可以用来比较新旧对象，如果返回 true，则使用旧对象，否则使用新对象
+ * useSyncExternalStore requires getSnapshot not to return a fresh object every time.
+ * external breaks that constraint by caching the value returned by calc and
+ * recomputing it only when sub emits an update.
+ * @equal compares old and new values; returning true keeps the old cached value.
  */
 export function external(sub: (update: VoidFunction) => VoidFunction) {
   return function <T>(

@@ -7,6 +7,10 @@ import { agentChatManager } from "../../lib/chat/agentChatManager";
 import { importChatSessionFromFile } from "../../lib/userDataADO/index";
 import { interactiveRequestManager } from "../../lib/chat/interactiveRequestManager";
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export default function(ctx: Context) {
   // Initialize AgentChatManager
   ipcMain.handle('agentChat:initialize', async (event, alias: string) => {
@@ -16,7 +20,7 @@ export default function(ctx: Context) {
       await agentChatManager.initialize(alias);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -32,7 +36,7 @@ export default function(ctx: Context) {
         return { success: true, data: null };
       }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -42,7 +46,7 @@ export default function(ctx: Context) {
       const messages = agentChatManager.getChatHistory();
       return { success: true, data: messages };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -56,7 +60,7 @@ export default function(ctx: Context) {
       const messages = instance.getDisplayMessages();
       return { success: true, data: messages };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -66,7 +70,7 @@ export default function(ctx: Context) {
       const instance = await agentChatManager.startNewChatFor(chatId);
       return instance ? { success: true, chatSessionId: instance.getChatSessionId() } : { success: false };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -98,30 +102,6 @@ export default function(ctx: Context) {
       // 🔥 New:Set eventSender so AgentChat can send events to renderer process
       instance.setEventSender(event.sender);
 
-      // Helper function: safely send message to renderer process
-      const safeSend = (channel: string, data: any) => {
-        try {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send(channel, data);
-          }
-        } catch (error) {
-          // Ignore send failure errors (window may have been closed)
-        }
-      };
-
-      // Set streaming callback
-      const callbacks = {
-        onAssistantMessage: (msg: any) => {
-          safeSend('agentChat:streamingMessage', msg);
-        },
-        onToolUse: (toolName: string) => {
-          safeSend('agentChat:toolUse', toolName);
-        },
-        onToolResult: (result: any) => {
-          safeSend('agentChat:toolResult', result);
-        }
-      };
-
       const result = await agentChatManager.streamMessage(effectiveChatSessionId, message);
 
       // 🔥 New:Clear eventSender after processing is complete
@@ -129,7 +109,7 @@ export default function(ctx: Context) {
 
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       const statusCode = (error as any)?.statusCode;
       return { success: false, error: statusCode ? `[HTTP ${statusCode}] ${errorMessage}` : errorMessage };
     }
@@ -160,7 +140,7 @@ export default function(ctx: Context) {
 
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -182,7 +162,7 @@ export default function(ctx: Context) {
       const result = await agentChatManager.editUserMessage(targetChatSessionId, messageId, updatedMessage);
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     } finally {
       instance?.setEventSender?.(null);
     }
@@ -198,7 +178,7 @@ export default function(ctx: Context) {
 
       return agentChatManager.canEditUserMessage(targetChatSessionId, messageId);
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -212,7 +192,7 @@ export default function(ctx: Context) {
       const result = await agentChatManager.cancelChatSession(currentChatSessionId);
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -222,7 +202,7 @@ export default function(ctx: Context) {
       agentChatManager.syncChatHistory(messages);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -233,7 +213,7 @@ export default function(ctx: Context) {
       const chatId = currentInstance ? currentInstance.getChatId() : null;
       return { success: true, data: chatId };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -249,7 +229,7 @@ export default function(ctx: Context) {
         return { success: false, error: 'Failed to refresh instance' };
       }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
   // 🔥 New:Switch to specified ChatSessionId (new architecture)
@@ -264,7 +244,7 @@ export default function(ctx: Context) {
         return { success: false, error: 'Failed to switch to chat session' };
       }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -280,7 +260,7 @@ export default function(ctx: Context) {
       const statusInfo = instance.getChatStatusInfo();
       return { success: true, data: statusInfo };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -295,7 +275,7 @@ export default function(ctx: Context) {
 
       return { success: true, data: tokenUsage };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -305,7 +285,7 @@ export default function(ctx: Context) {
       const result = await agentChatManager.cancelChatSession(chatSessionId);
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -313,7 +293,7 @@ export default function(ctx: Context) {
     try {
       return await agentChatManager.cancelActiveToolExecution(chatSessionId);
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -323,7 +303,7 @@ export default function(ctx: Context) {
       agentChatManager.removeInstanceByChatSession(chatSessionId);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -333,7 +313,7 @@ export default function(ctx: Context) {
       const result = await agentChatManager.forkChatSession(chatId, sourceChatSessionId);
       return result;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -385,7 +365,7 @@ export default function(ctx: Context) {
 
       return importResult;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -400,7 +380,7 @@ export default function(ctx: Context) {
       const result = await currentInstance.replaceFilePathInSession(oldPath, newPath);
       return result;
     } catch (error) {
-      return { success: false, replacedCount: 0, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, replacedCount: 0, error: getErrorMessage(error) };
     }
   });
 
@@ -415,7 +395,7 @@ export default function(ctx: Context) {
       const currentSession = currentInstance.getCurrentChatSession();
       return { success: true, data: currentSession };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -453,4 +433,3 @@ export default function(ctx: Context) {
     }
   });
 }
-

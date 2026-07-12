@@ -43,8 +43,10 @@ Object.defineProperty(window, 'electronAPI', {
 });
 
 // Mock chatOps before importing workspaceOps
+const mockUpdateChat = vi.fn();
 const mockUpdateChatAgent = vi.fn();
 vi.mock('../chatOps', () => ({
+  updateChat: (...args: unknown[]) => mockUpdateChat(...args),
   updateChatAgent: (...args: unknown[]) => mockUpdateChatAgent(...args),
 }));
 
@@ -207,22 +209,24 @@ describe('clearFileTreeCache', () => {
 describe('updateChatWorkspace', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns success when updateChatAgent succeeds', async () => {
-    mockUpdateChatAgent.mockResolvedValue({ success: true });
+  it('returns success when updateChat succeeds', async () => {
+    mockUpdateChat.mockResolvedValue({ success: true });
     const result = await updateChatWorkspace('chat-123', '/my/workspace');
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ chatId: 'chat-123', workspacePath: '/my/workspace' });
+    expect(mockUpdateChat).toHaveBeenCalledWith('chat-123', { workspace: '/my/workspace' });
+    expect(mockUpdateChatAgent).not.toHaveBeenCalled();
   });
 
-  it('returns error when updateChatAgent fails', async () => {
-    mockUpdateChatAgent.mockResolvedValue({ success: false, error: 'not found' });
+  it('returns error when updateChat fails', async () => {
+    mockUpdateChat.mockResolvedValue({ success: false, error: 'not found' });
     const result = await updateChatWorkspace('chat-123', '/my/workspace');
     expect(result.success).toBe(false);
     expect(result.error).toBe('not found');
   });
 
   it('handles thrown exceptions', async () => {
-    mockUpdateChatAgent.mockRejectedValue(new Error('crash'));
+    mockUpdateChat.mockRejectedValue(new Error('crash'));
     const result = await updateChatWorkspace('chat-123', '/my/workspace');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/crash/);

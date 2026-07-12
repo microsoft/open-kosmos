@@ -40,24 +40,8 @@ vi.mock('../../unifiedLogger', async () => ({
 
 vi.mock('../../userDataADO/profileCacheManager', async () => ({
   profileCacheManager: {
-    getSubAgents: vi.fn(() => []),
     getChatConfig: vi.fn(),
     getAllChatConfigs: vi.fn(() => []),
-  },
-}));
-
-// Mock SubAgentFileManager for file-based config lookup in spawnSubAgent
-const { mockFileManager } = vi.hoisted(() => ({
-  mockFileManager: {
-    readAgentConfig: vi.fn().mockResolvedValue(null),
-    writeAgentConfig: vi.fn().mockResolvedValue(undefined),
-    getCachedConfig: vi.fn().mockReturnValue(undefined),
-    getCachedConfigs: vi.fn().mockReturnValue([]),
-  },
-}));
-vi.mock('../subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => mockFileManager),
   },
 }));
 
@@ -69,38 +53,34 @@ vi.mock('../../chat/agentChatManager', async () => ({
   },
 }));
 
-// Mock mcpClientManager for validateToolAvailability()
-const { mockGetAllMcpServerRuntimeStates } = vi.hoisted(() => ({
-  mockGetAllMcpServerRuntimeStates: vi.fn((): Array<{ serverName: string; status: string; tools: any[]; lastError: null }> => []),
-}));
 vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
   mcpClientManager: {
-    getAllMcpServerRuntimeStates: mockGetAllMcpServerRuntimeStates,
     getToolsForSubAgent: vi.fn().mockResolvedValue([]),
+    getAllTools: vi.fn().mockResolvedValue([]),
   },
 }));
 
-// Mock fs.existsSync for skill directory checks
-const { mockExistsSync } = vi.hoisted(() => ({
-  mockExistsSync: vi.fn(() => true),
+const { mockSubAgentRun } = vi.hoisted(() => ({
+  mockSubAgentRun: vi.fn().mockResolvedValue('mock result'),
 }));
-vi.mock('fs', async (importOriginal) => {
-  const original = await importOriginal<typeof import('fs')>();
-  return {
-    ...original,
-    existsSync: mockExistsSync,
-  };
-});
 
 vi.mock('../subAgentChat', async () => ({
   SubAgentChat: vi.fn().mockImplementation(function () {
     return {
-      run: vi.fn().mockResolvedValue('mock result'),
+      run: mockSubAgentRun,
       getTurnCount: vi.fn().mockReturnValue(1),
       extractPartialResult: vi.fn().mockReturnValue(undefined),
       dispose: vi.fn(),
     };
   }),
+}));
+
+// Isolate the durable delivery ledger so drain/enqueue tests never touch the
+// real on-disk ledger file (peek stays empty; record/ack are no-ops).
+vi.mock('../subAgentDeliveryLedger', async () => ({
+  recordPendingDelivery: vi.fn(),
+  peekPendingDeliveries: vi.fn(() => []),
+  ackPendingDeliveries: vi.fn(),
 }));
 
 vi.mock('../../auth/ghcConfig', async () => ({
@@ -128,8 +108,6 @@ import {
   sanitizeSubAgentResult,
   deriveDeliverablesPath,
   getParentAgentConfig,
-  resolveInheritedConfig,
-  validateToolAvailability,
   resolveSubAgentModel,
 } from '../subAgentConfigResolver';
 import type { SubAgentConfig, SubAgentRuntimeState } from '../../userDataADO/types/profile';
@@ -150,7 +128,7 @@ function createMockSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubA
     name: 'test-agent',
     description: 'A test sub-agent',
     system_prompt: 'You are a test agent',
-    mcpServers: [],
+    mcp_servers: [],
     ...overrides,
   };
 }
@@ -163,13 +141,17 @@ describe('SubAgentManager', () => {
   beforeEach(async () => {
     SubAgentManager.resetInstance();
     manager = SubAgentManager.getInstance();
-
-    // Default return a discoverable SubAgentConfig (via file system mock)
-    const mockConfig = createMockSubAgentConfig();
-    mockFileManager.readAgentConfig.mockResolvedValue(mockConfig);
-
     const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
-    vi.mocked(profileCacheManager.getSubAgents).mockReturnValue([mockConfig] as any);
+    const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+    vi.mocked(profileCacheManager.getAllChatConfigs).mockReset();
+    vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValue({
+      find: () => ({ agent: { mcp_servers: [] } }),
+    } as any);
+    vi.mocked(mcpClientManager.getAllTools).mockReset();
+    vi.mocked(mcpClientManager.getAllTools).mockResolvedValue([]);
+    vi.mocked(mcpClientManager.getToolsForSubAgent).mockReset();
+    vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValue([]);
+
   });
 
   afterEach(() => {
@@ -189,166 +171,6 @@ describe('SubAgentManager', () => {
       SubAgentManager.resetInstance();
       const b = SubAgentManager.getInstance();
       expect(a).not.toBe(b);
-    });
-  });
-
-  // ─── spawnSubAgent ───
-  describe('spawnSubAgent', () => {
-    it('should spawn and return a successful result', async () => {
-      const token = createMockCancellationToken();
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_1',
-        parentChatId: 'chat_1',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Do something',
-        cancellationToken: token,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.subAgentName).toBe('test-agent');
-      expect(result.result).toContain('mock result');
-      expect(result.result).toContain('<sub_agent_result>');
-      expect(result.turnCount).toBeGreaterThanOrEqual(0);
-      expect(result.durationMs).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should return error when sub-agent not found in profile', async () => {
-      // Mock file manager to return null (agent not found on disk)
-      mockFileManager.readAgentConfig.mockResolvedValue(null);
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_1',
-        parentChatId: 'chat_1',
-        userAlias: 'testUser',
-        subAgentName: 'non-existent',
-        task: 'Do something',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('not found');
-    });
-
-    // MAX_PARALLEL_TASKS limit test removed — limits are now Infinity (aligned with Claude Code)
-
-    it('should respect MAX_SPAWNS_PER_SESSION limit', async () => {
-      const sessionId = 'sess_spawns';
-      (manager as any).spawnCountMap.set(sessionId, SUB_AGENT_LIMITS.MAX_SPAWNS_PER_SESSION);
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: sessionId,
-        parentChatId: 'chat_1',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Overflow',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Max sub-agent spawns');
-    });
-
-    // 30-minute timeout tests removed — hard timeout was removed (aligned with Claude Code)
-
-    it('should use sub-agent model override when configured', async () => {
-      const { SubAgentChat: MockSubAgentChat } = await import('../subAgentChat');
-      let capturedOptions: any;
-      vi.mocked(MockSubAgentChat).mockImplementationOnce(function (opts: any) {
-        capturedOptions = opts;
-        return {
-          run: vi.fn().mockResolvedValue('model override result'),
-          getTurnCount: vi.fn().mockReturnValue(1),
-          dispose: vi.fn(),
-        };
-      });
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({ model: 'claude-sonnet-4.5' }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_model_override',
-        parentChatId: 'chat_model_override',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Use another model',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(capturedOptions.subAgent.inheritedModel).toBe('claude-sonnet-4.5');
-    });
-
-    it('should inherit parent model when sub-agent model is inherit', async () => {
-      const { AgentChatManager } = await import('../../chat/agentChatManager');
-      const { SubAgentChat: MockSubAgentChat } = await import('../subAgentChat');
-      let capturedOptions: any;
-      vi.mocked(MockSubAgentChat).mockImplementationOnce(function (opts: any) {
-        capturedOptions = opts;
-        return {
-          run: vi.fn().mockResolvedValue('parent model result'),
-          getTurnCount: vi.fn().mockReturnValue(1),
-          dispose: vi.fn(),
-        };
-      });
-      vi.mocked(AgentChatManager.getInstance).mockReturnValueOnce({
-        getInstanceByChatSessionId: vi.fn().mockReturnValue({
-          getCurrentModelId: vi.fn().mockReturnValue('gpt-4.1'),
-        }),
-      } as any);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({ model: 'inherit' }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_model_inherit',
-        parentChatId: 'chat_model_inherit',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Inherit parent model',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(capturedOptions.subAgent.inheritedModel).toBe('gpt-4.1');
-    });
-
-    it('should fall back to parent model when configured model id is unknown', async () => {
-      const { AgentChatManager } = await import('../../chat/agentChatManager');
-      const { SubAgentChat: MockSubAgentChat } = await import('../subAgentChat');
-      let capturedOptions: any;
-      vi.mocked(MockSubAgentChat).mockImplementationOnce(function (opts: any) {
-        capturedOptions = opts;
-        return {
-          run: vi.fn().mockResolvedValue('fallback result'),
-          getTurnCount: vi.fn().mockReturnValue(1),
-          dispose: vi.fn(),
-        };
-      });
-      vi.mocked(AgentChatManager.getInstance).mockReturnValueOnce({
-        getInstanceByChatSessionId: vi.fn().mockReturnValue({
-          getCurrentModelId: vi.fn().mockReturnValue('gpt-4.1'),
-        }),
-      } as any);
-      mockGetModelById.mockReturnValueOnce(undefined as any);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({ model: 'retired-model-xyz' }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_model_unknown',
-        parentChatId: 'chat_model_unknown',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Unknown model id should fall back',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(capturedOptions.subAgent.inheritedModel).toBe('gpt-4.1');
     });
   });
 
@@ -434,11 +256,6 @@ describe('SubAgentManager', () => {
       expect(stats.totalRuntimeStates).toBe(1);
       expect(stats.parentSessions).toBe(1);
     });
-  });
-
-  // ─── spawnMultipleSubAgents ───
-  describe('spawnMultipleSubAgents', () => {
-    it.todo('MAX_PARALLEL_TASKS limit test removed — limits are now Infinity (aligned with Claude Code)');
   });
 
   // ─── Phase 3: sanitizeContextForSubAgent ───
@@ -615,287 +432,6 @@ describe('SubAgentManager', () => {
     });
   });
 
-  // ─── resolveInheritedConfig ───
-  describe('resolveInheritedConfig', () => {
-    // ── MCP Servers merge ──
-    describe('MCP Servers merge', () => {
-      it('should return only child MCP servers when no parent config', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [{ name: 'child-server', tools: ['t1'] }],
-        });
-
-        const result = resolveInheritedConfig(config, undefined);
-
-        expect(result.resolvedMcpServers).toHaveLength(1);
-        expect(result.resolvedMcpServers[0]).toMatchObject({
-          name: 'child-server',
-          tools: ['t1'],
-          inherited: false,
-        });
-      });
-
-      it('should merge parent MCP servers when inherit_mcp_servers is true', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [{ name: 'child-server', tools: ['t1'] }],
-          inherit_mcp_servers: true,
-        });
-        const parentConfig = {
-          mcpServers: [
-            { name: 'parent-server', tools: ['t2'] },
-            { name: 'shared-server', tools: ['t3'] },
-          ],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedMcpServers).toHaveLength(3);
-        // Parent servers (non-overlapping) come first, marked inherited
-        expect(result.resolvedMcpServers[0]).toMatchObject({
-          name: 'parent-server', tools: ['t2'], inherited: true,
-        });
-        expect(result.resolvedMcpServers[1]).toMatchObject({
-          name: 'shared-server', tools: ['t3'], inherited: true,
-        });
-        // Child server last, marked not inherited
-        expect(result.resolvedMcpServers[2]).toMatchObject({
-          name: 'child-server', tools: ['t1'], inherited: false,
-        });
-      });
-
-      it('should give child priority over same-name parent MCP server', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [{ name: 'shared-server', tools: ['child-tool'] }],
-          inherit_mcp_servers: true,
-        });
-        const parentConfig = {
-          mcpServers: [{ name: 'shared-server', tools: ['parent-tool'] }],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedMcpServers).toHaveLength(1);
-        expect(result.resolvedMcpServers[0]).toMatchObject({
-          name: 'shared-server',
-          tools: ['child-tool'],
-          inherited: false,
-        });
-      });
-
-      it('should NOT merge parent MCP servers when inherit_mcp_servers is false', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [{ name: 'child-only', tools: [] }],
-          inherit_mcp_servers: false,
-        });
-        const parentConfig = {
-          mcpServers: [{ name: 'parent-server', tools: ['t1'] }],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedMcpServers).toHaveLength(1);
-        expect(result.resolvedMcpServers[0].name).toBe('child-only');
-        expect(result.resolvedMcpServers[0].inherited).toBe(false);
-      });
-
-      it('should treat undefined inherit_mcp_servers as true (default inherit)', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [],
-          // inherit_mcp_servers is undefined
-        });
-        const parentConfig = {
-          mcpServers: [{ name: 'parent-server', tools: ['t1'] }],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedMcpServers).toHaveLength(1);
-        expect(result.resolvedMcpServers[0]).toMatchObject({
-          name: 'parent-server', inherited: true,
-        });
-      });
-    });
-
-    // ── Skills merge ──
-    describe('Skills merge', () => {
-      it('should return only child skills when no parent config', () => {
-        const config = createMockSubAgentConfig({
-          skills: ['child-skill'],
-        });
-
-        const result = resolveInheritedConfig(config, undefined);
-
-        expect(result.resolvedSkills).toHaveLength(1);
-        expect(result.resolvedSkills[0]).toMatchObject({
-          name: 'child-skill', inherited: false,
-        });
-      });
-
-      it('should merge parent skills as union (deduplicated)', () => {
-        const config = createMockSubAgentConfig({
-          skills: ['shared-skill', 'child-skill'],
-          inherit_skills: true,
-        });
-        const parentConfig = {
-          mcpServers: [],
-          skills: ['parent-skill', 'shared-skill'],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedSkills).toHaveLength(3);
-        // Parent-only skills first, marked inherited
-        expect(result.resolvedSkills[0]).toMatchObject({
-          name: 'parent-skill', inherited: true,
-        });
-        // Child skills next, not inherited
-        expect(result.resolvedSkills[1]).toMatchObject({
-          name: 'shared-skill', inherited: false,
-        });
-        expect(result.resolvedSkills[2]).toMatchObject({
-          name: 'child-skill', inherited: false,
-        });
-      });
-
-      it('should NOT merge parent skills when inherit_skills is false', () => {
-        const config = createMockSubAgentConfig({
-          skills: ['child-only'],
-          inherit_skills: false,
-        });
-        const parentConfig = {
-          mcpServers: [],
-          skills: ['parent-skill'],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedSkills).toHaveLength(1);
-        expect(result.resolvedSkills[0].name).toBe('child-only');
-      });
-
-      it('should treat undefined inherit_skills as true (default inherit)', () => {
-        const config = createMockSubAgentConfig({ skills: [] });
-        const parentConfig = {
-          mcpServers: [],
-          skills: ['parent-skill'],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedSkills).toHaveLength(1);
-        expect(result.resolvedSkills[0]).toMatchObject({
-          name: 'parent-skill', inherited: true,
-        });
-      });
-    });
-
-    // ── Knowledge Base merge ──
-    describe('Knowledge Base merge', () => {
-      it('should inherit parent knowledgeBase when available', () => {
-        const config = createMockSubAgentConfig({});
-        const parentConfig = {
-          mcpServers: [],
-          knowledgeBase: '/parent/kb',
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-        expect(result.resolvedKnowledgeBase).toBe('/parent/kb');
-      });
-
-      it('should return undefined when parent has no knowledgeBase', () => {
-        const config = createMockSubAgentConfig({});
-        const parentConfig = {
-          mcpServers: [],
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-        expect(result.resolvedKnowledgeBase).toBeUndefined();
-      });
-
-      it('should return undefined when no parent config', () => {
-        const config = createMockSubAgentConfig({});
-
-        const result = resolveInheritedConfig(config, undefined);
-        expect(result.resolvedKnowledgeBase).toBeUndefined();
-      });
-    });
-
-    // ── Combined scenarios ──
-    describe('Combined scenarios', () => {
-      it('should resolve all three fields correctly in a full merge', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [{ name: 'child-mcp', tools: [] }],
-          skills: ['child-skill'],
-          inherit_mcp_servers: true,
-          inherit_skills: true,
-        });
-        const parentConfig = {
-          mcpServers: [
-            { name: 'parent-mcp', tools: ['pt1'] },
-            { name: 'child-mcp', tools: ['pt2'] },
-          ],
-          skills: ['parent-skill', 'child-skill'],
-          knowledgeBase: '/parent/kb',
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        // MCP: parent-mcp inherited, child-mcp override
-        expect(result.resolvedMcpServers).toHaveLength(2);
-        expect(result.resolvedMcpServers[0]).toMatchObject({
-          name: 'parent-mcp', inherited: true,
-        });
-        expect(result.resolvedMcpServers[1]).toMatchObject({
-          name: 'child-mcp', inherited: false, tools: [],
-        });
-
-        // Skills: parent-skill inherited, child-skill own
-        expect(result.resolvedSkills).toHaveLength(2);
-        expect(result.resolvedSkills[0]).toMatchObject({
-          name: 'parent-skill', inherited: true,
-        });
-        expect(result.resolvedSkills[1]).toMatchObject({
-          name: 'child-skill', inherited: false,
-        });
-
-        // Knowledge: child empty → inherit parent
-        expect(result.resolvedKnowledgeBase).toBe('/parent/kb');
-      });
-
-      it('should handle empty child config with all inherited from parent', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [],
-          skills: [],
-        });
-        const parentConfig = {
-          mcpServers: [{ name: 'p-server', tools: ['t1'] }],
-          skills: ['p-skill'],
-          knowledgeBase: '/parent/data',
-        };
-
-        const result = resolveInheritedConfig(config, parentConfig);
-
-        expect(result.resolvedMcpServers).toHaveLength(1);
-        expect(result.resolvedMcpServers[0].inherited).toBe(true);
-        expect(result.resolvedSkills).toHaveLength(1);
-        expect(result.resolvedSkills[0].inherited).toBe(true);
-        expect(result.resolvedKnowledgeBase).toBe('/parent/data');
-      });
-
-      it('should return all empty when both child and parent have no config', () => {
-        const config = createMockSubAgentConfig({
-          mcpServers: [],
-          skills: [],
-        });
-
-        const result = resolveInheritedConfig(config, undefined);
-
-        expect(result.resolvedMcpServers).toEqual([]);
-        expect(result.resolvedSkills).toEqual([]);
-        expect(result.resolvedKnowledgeBase).toBeUndefined();
-      });
-    });
-  });
-
   // ─── Phase 2: sendStateUpdate ───
   describe('sendStateUpdate', () => {
     function createMockEventSender(destroyed = false) {
@@ -1003,15 +539,14 @@ describe('SubAgentManager', () => {
     });
   });
 
-  // ─── Phase 2: spawnSubAgent with eventSender / correlationId ───
-  describe('spawnSubAgent with eventSender', () => {
+  // ─── Phase 2: spawnAdhocSubAgent with eventSender / correlationId ───
+  describe('spawnAdhocSubAgent with eventSender', () => {
     it('should store correlationId in runtimeState', async () => {
       const token = createMockCancellationToken();
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_corr',
         parentChatId: 'chat_corr',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Test correlation',
         cancellationToken: token,
         correlationId: 'tc_parent_001',
@@ -1032,11 +567,10 @@ describe('SubAgentManager', () => {
       } as unknown as Electron.WebContents;
 
       const token = createMockCancellationToken();
-      await manager.spawnSubAgent({
+      await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_sender',
         parentChatId: 'chat_sender',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Test eventSender',
         cancellationToken: token,
         eventSender: sender,
@@ -1067,11 +601,10 @@ describe('SubAgentManager', () => {
       } as unknown as Electron.WebContents;
 
       const token = createMockCancellationToken();
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_err_sender',
         parentChatId: 'chat_err_sender',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Test error path',
         cancellationToken: token,
         eventSender: sender,
@@ -1086,78 +619,7 @@ describe('SubAgentManager', () => {
     });
   });
 
-  // ─── Phase 2: spawnMultipleSubAgents with eventSender / correlationId ───
-  describe('spawnMultipleSubAgents with eventSender / correlationId', () => {
-    it('should generate per-task correlationId as "{parentId}_{index}"', async () => {
-      // We spy on spawnSubAgent to capture the correlationId passed to each call
-      const spawnSpy = vi.spyOn(manager, 'spawnSubAgent');
-
-      await manager.spawnMultipleSubAgents({
-        parentSessionId: 'sess_multi_corr',
-        parentChatId: 'chat_multi_corr',
-        userAlias: 'testUser',
-        tasks: [
-          { subAgentName: 'test-agent', task: 'Task 0' },
-          { subAgentName: 'test-agent', task: 'Task 1' },
-        ],
-        cancellationToken: createMockCancellationToken(),
-        correlationId: 'tc_parent_multi',
-      });
-
-      expect(spawnSpy).toHaveBeenCalledTimes(2);
-      expect(spawnSpy.mock.calls[0][0].correlationId).toBe('tc_parent_multi_0');
-      expect(spawnSpy.mock.calls[1][0].correlationId).toBe('tc_parent_multi_1');
-
-      spawnSpy.mockRestore();
-    });
-
-    it('should pass eventSender through to each spawnSubAgent call', async () => {
-      const sender = {
-        isDestroyed: vi.fn().mockReturnValue(false),
-        send: vi.fn(),
-      } as unknown as Electron.WebContents;
-
-      const spawnSpy = vi.spyOn(manager, 'spawnSubAgent');
-
-      await manager.spawnMultipleSubAgents({
-        parentSessionId: 'sess_multi_es',
-        parentChatId: 'chat_multi_es',
-        userAlias: 'testUser',
-        tasks: [
-          { subAgentName: 'test-agent', task: 'Task A' },
-        ],
-        cancellationToken: createMockCancellationToken(),
-        eventSender: sender,
-      });
-
-      expect(spawnSpy).toHaveBeenCalledTimes(1);
-      expect(spawnSpy.mock.calls[0][0].eventSender).toBe(sender);
-
-      spawnSpy.mockRestore();
-    });
-
-    it('should set correlationId to undefined when parent correlationId is not provided', async () => {
-      const spawnSpy = vi.spyOn(manager, 'spawnSubAgent');
-
-      await manager.spawnMultipleSubAgents({
-        parentSessionId: 'sess_multi_no_corr',
-        parentChatId: 'chat_multi_no_corr',
-        userAlias: 'testUser',
-        tasks: [
-          { subAgentName: 'test-agent', task: 'Task X' },
-        ],
-        cancellationToken: createMockCancellationToken(),
-        // correlationId not provided
-      });
-
-      expect(spawnSpy).toHaveBeenCalledTimes(1);
-      expect(spawnSpy.mock.calls[0][0].correlationId).toBeUndefined();
-
-      spawnSpy.mockRestore();
-    });
-  });
-
-  // ─── Phase 2: onStepUpdate callback orchestration in spawnSubAgent ───
+  // ─── Phase 2: onStepUpdate callback orchestration in spawnAdhocSubAgent ───
   describe('onStepUpdate callback orchestration', () => {
     it('should register onStepUpdate callback on SubAgentChat', async () => {
       const { SubAgentChat: MockSubAgentChat } = await import('../subAgentChat');
@@ -1172,11 +634,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      await manager.spawnSubAgent({
+      await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_cb',
         parentChatId: 'chat_cb',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Test callback',
         cancellationToken: createMockCancellationToken(),
         eventSender: {
@@ -1214,11 +675,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_fifo',
         parentChatId: 'chat_fifo',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'FIFO test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1261,11 +721,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_replace',
         parentChatId: 'chat_replace',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Replace test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1298,11 +757,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_text',
         parentChatId: 'chat_text',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Text test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1338,11 +796,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_text_clear',
         parentChatId: 'chat_text_clear',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Text clear streamingText test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1378,11 +835,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_turn',
         parentChatId: 'chat_turn',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Turn start test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1416,11 +872,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_streaming',
         parentChatId: 'chat_streaming',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Streaming test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1458,11 +913,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_tool_clear',
         parentChatId: 'chat_tool_clear',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'Tool start clear test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1498,11 +952,10 @@ describe('SubAgentManager', () => {
         };
       });
 
-      const result = await manager.spawnSubAgent({
+      const result = await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess_no_steps',
         parentChatId: 'chat_no_steps',
         userAlias: 'testUser',
-        subAgentName: 'test-agent',
         task: 'No step entries test',
         cancellationToken: createMockCancellationToken(),
       });
@@ -1511,123 +964,6 @@ describe('SubAgentManager', () => {
       // Only tool_start should be in steps — turn_start and llm_streaming should NOT be added
       expect(state.steps).toHaveLength(1);
       expect(state.steps[0].type).toBe('tool_start');
-    });
-  });
-
-  // ─── validateToolAvailability ───
-  describe('validateToolAvailability', () => {
-    it('should return no warnings when all MCP servers are connected and skills exist', async () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([
-        { serverName: 'server-a', status: 'connected', tools: [], lastError: null },
-      ]);
-      mockExistsSync.mockReturnValue(true);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          mcpServers: [{ name: 'server-a', tools: [] }] as any,
-          skills: ['my-skill'],
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_validate',
-        parentChatId: 'chat_validate',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Validate test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.availabilityWarnings).toBeUndefined();
-    });
-
-    it('should return warning when MCP server is not connected', async () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([
-        { serverName: 'server-a', status: 'disconnected', tools: [], lastError: null },
-      ]);
-      mockExistsSync.mockReturnValue(true);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          mcpServers: [{ name: 'server-a', tools: [] }] as any,
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_mcp_warn',
-        parentChatId: 'chat_mcp_warn',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'MCP warning test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.availabilityWarnings).toBeDefined();
-      expect(result.availabilityWarnings!.length).toBe(1);
-      expect(result.availabilityWarnings![0]).toContain('server-a');
-      expect(result.availabilityWarnings![0]).toContain('not connected');
-    });
-
-    it('should return warning when skill directory does not exist', async () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([]);
-      mockExistsSync.mockReturnValue(false);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          skills: ['missing-skill'],
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_skill_warn',
-        parentChatId: 'chat_skill_warn',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Skill warning test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.availabilityWarnings).toBeDefined();
-      expect(result.availabilityWarnings!.some(w => w.includes('missing-skill'))).toBe(true);
-      expect(result.availabilityWarnings!.some(w => w.includes('not installed'))).toBe(true);
-    });
-
-    it('should return multiple warnings for multiple missing resources', async () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([
-        { serverName: 'server-a', status: 'error', tools: [], lastError: null },
-      ]);
-      mockExistsSync.mockReturnValue(false);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          mcpServers: [{ name: 'server-a', tools: [] }] as any,
-          skills: ['skill-x'],
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_multi_warn',
-        parentChatId: 'chat_multi_warn',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'Multiple warnings test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.availabilityWarnings).toBeDefined();
-      expect(result.availabilityWarnings!.length).toBe(2);
     });
   });
 
@@ -1697,9 +1033,170 @@ describe('SubAgentManager', () => {
 
       const chatCalls = vi.mocked(SubAgentChat).mock.calls;
       const lastCall = chatCalls[chatCalls.length - 1];
-      const config = lastCall[0].subAgent.config;
-      expect(config.inherit_mcp_servers).toBe(false);
-      expect(config.inherit_skills).toBe(false);
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([]);
+      expect(lastCall[0].subAgent.resolvedSkills).toEqual([]);
+    });
+
+    it('should inherit parent MCP tools when tools are omitted', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_inherit_tools',
+          agent: {
+            mcp_servers: [
+              { name: 'bing', tools: ['web_search', 'image_search'] },
+              { name: 'github', tools: [] },
+            ],
+          },
+        },
+      ] as any);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'web_search', serverName: 'bing' } as any,
+        { name: 'image_search', serverName: 'bing' } as any,
+        { name: 'search_code', serverName: 'github' } as any,
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+      ]);
+
+      await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_no_default_tools',
+        parentChatId: 'chat_inherit_tools',
+        userAlias: 'testUser',
+        task: 'Use inherited tools by default',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(mcpClientManager.getToolsForSubAgent).toHaveBeenCalledWith([
+        { name: 'bing', tools: ['web_search', 'image_search'] },
+        { name: 'github', tools: [] },
+      ]);
+      const chatCalls = vi.mocked(SubAgentChat).mock.calls;
+      const lastCall = chatCalls[chatCalls.length - 1];
+      expect(lastCall[0].allowedToolNames).toBeUndefined();
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'bing', connected: true, tools: ['web_search', 'image_search'], inherited: true },
+        { name: 'github', connected: true, tools: ['search_code'], inherited: true },
+      ]);
+    });
+
+    it('should inherit all connected external MCP servers when parent mcp_servers is empty', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_default_all_tools',
+          agent: { mcp_servers: [] },
+        },
+      ] as any);
+      vi.mocked(mcpClientManager.getAllTools).mockResolvedValueOnce([
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+        { name: 'web_search', serverName: 'bing' } as any,
+        { name: 'image_search', serverName: 'bing' } as any,
+        { name: 'search_code', serverName: 'github' } as any,
+      ]);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+        { name: 'web_search', serverName: 'bing' } as any,
+        { name: 'image_search', serverName: 'bing' } as any,
+        { name: 'search_code', serverName: 'github' } as any,
+      ]);
+
+      await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_default_no_tools',
+        parentChatId: 'chat_default_all_tools',
+        userAlias: 'testUser',
+        task: 'Use default all-tools config',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(mcpClientManager.getAllTools).toHaveBeenCalled();
+      expect(mcpClientManager.getToolsForSubAgent).toHaveBeenCalledWith([
+        { name: 'bing', tools: [] },
+        { name: 'github', tools: [] },
+      ]);
+      const chatCalls = vi.mocked(SubAgentChat).mock.calls;
+      const lastCall = chatCalls[chatCalls.length - 1];
+      expect(lastCall[0].allowedToolNames).toBeUndefined();
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'bing', connected: true, tools: ['web_search', 'image_search'], inherited: true },
+        { name: 'github', connected: true, tools: ['search_code'], inherited: true },
+      ]);
+    });
+
+    it('should treat an empty tools list as inherited parent MCP tools', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_empty_tools',
+          agent: {
+            mcp_servers: [{ name: 'browser', tools: ['open_page'] }],
+          },
+        },
+      ] as any);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'open_page', serverName: 'browser' } as any,
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+      ]);
+
+      await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_empty_tools',
+        parentChatId: 'chat_empty_tools',
+        userAlias: 'testUser',
+        task: 'Use inherited tools with an empty list',
+        tools: [],
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      const chatCalls = vi.mocked(SubAgentChat).mock.calls;
+      const lastCall = chatCalls[chatCalls.length - 1];
+      expect(lastCall[0].allowedToolNames).toBeUndefined();
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'browser', connected: true, tools: ['open_page'], inherited: true },
+      ]);
+    });
+
+    it('should allow explicit external tools when parent uses default all-tools config', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_default_external_subset',
+          agent: { mcp_servers: [] },
+        },
+      ] as any);
+      vi.mocked(mcpClientManager.getAllTools).mockResolvedValueOnce([
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+        { name: 'web_search', serverName: 'bing' } as any,
+      ]);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'web_search', serverName: 'bing' } as any,
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+      ]);
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_default_external_subset',
+        parentChatId: 'chat_default_external_subset',
+        userAlias: 'testUser',
+        task: 'Use narrowed external tools',
+        tools: ['web_search'],
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(mcpClientManager.getToolsForSubAgent)).toHaveBeenCalledWith([
+        { name: 'bing', tools: [] },
+      ]);
+      const chatCalls = vi.mocked(SubAgentChat).mock.calls;
+      const lastCall = chatCalls[chatCalls.length - 1];
+      expect(lastCall[0].allowedToolNames).toEqual(new Set(['web_search']));
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'bing', connected: true, tools: ['web_search'], inherited: true },
+      ]);
     });
 
     it('should use default max turns for ad-hoc agents', async () => {
@@ -1721,6 +1218,15 @@ describe('SubAgentManager', () => {
 
     it('should reject when requested tools are not in parent tool set', async () => {
       const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_bad_tools',
+          agent: {
+            mcp_servers: [{ name: 'builtin', tools: [] }],
+          },
+        },
+      ] as any);
       vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
         { name: 'read_file', serverName: 'builtin' } as any,
         { name: 'write_file', serverName: 'builtin' } as any,
@@ -1740,9 +1246,61 @@ describe('SubAgentManager', () => {
       expect(result.error).toContain('not available');
     });
 
+    it('should fail closed when requested tools cannot resolve the parent config', async () => {
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([]);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'web_search', serverName: 'bing' } as any,
+      ]);
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_missing_parent',
+        parentChatId: 'missing_chat',
+        userAlias: 'testUser',
+        task: 'Test missing parent config',
+        tools: ['web_search'],
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Parent agent config not found');
+      expect(mcpClientManager.getToolsForSubAgent).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed when default inheritance cannot resolve the parent config', async () => {
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([]);
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_missing_parent_default',
+        parentChatId: 'missing_chat',
+        userAlias: 'testUser',
+        task: 'Test missing parent config without requested tools',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Parent agent config not found');
+      expect(mcpClientManager.getToolsForSubAgent).not.toHaveBeenCalled();
+    });
+
     it('should pass allowedToolNames when tools are specified', async () => {
       const { SubAgentChat } = await import('../subAgentChat');
       const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_allowed_tools',
+          agent: {
+            mcp_servers: [
+              { name: 'bing', tools: ['web_search', 'image_search'] },
+              { name: 'github', tools: ['search_code'] },
+            ],
+          },
+        },
+      ] as any);
       vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
         { name: 'web_search', serverName: 'bing' } as any,
         { name: 'read_file', serverName: 'builtin' } as any,
@@ -1760,6 +1318,51 @@ describe('SubAgentManager', () => {
       const chatCalls = vi.mocked(SubAgentChat).mock.calls;
       const lastCall = chatCalls[chatCalls.length - 1];
       expect(lastCall[0].allowedToolNames).toEqual(new Set(['web_search']));
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'bing', connected: true, tools: ['web_search'], inherited: true },
+      ]);
+    });
+
+    it('should inherit parent MCP tools when no tool subset is specified', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+        {
+          chat_id: 'chat_inherit_tools',
+          agent: {
+            mcp_servers: [
+              { name: 'bing', tools: ['web_search'] },
+              { name: 'github', tools: ['search_code'] },
+            ],
+          },
+        },
+      ] as any);
+      vi.mocked(mcpClientManager.getToolsForSubAgent).mockResolvedValueOnce([
+        { name: 'web_search', serverName: 'bing' } as any,
+        { name: 'search_code', serverName: 'github' } as any,
+        { name: 'read_file', serverName: 'builtin-tools' } as any,
+      ]);
+
+      await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_inherit_tools',
+        parentChatId: 'chat_inherit_tools',
+        userAlias: 'testUser',
+        task: 'Test inherited tools',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(mcpClientManager.getToolsForSubAgent).toHaveBeenCalledWith([
+        { name: 'bing', tools: ['web_search'] },
+        { name: 'github', tools: ['search_code'] },
+      ]);
+      const chatCalls = vi.mocked(SubAgentChat).mock.calls;
+      const lastCall = chatCalls[chatCalls.length - 1];
+      expect(lastCall[0].allowedToolNames).toBeUndefined();
+      expect(lastCall[0].subAgent.resolvedMcpServers).toEqual([
+        { name: 'bing', connected: true, tools: ['web_search'], inherited: true },
+        { name: 'github', connected: true, tools: ['search_code'], inherited: true },
+      ]);
     });
 
     it('should handle SubAgentChat.run() failure gracefully', async () => {
@@ -1820,66 +1423,6 @@ describe('SubAgentManager', () => {
     });
   });
 
-  // ─── validateToolAvailability — catch blocks ───
-  describe('validateToolAvailability — error handling', () => {
-    it('should handle getAllMcpServerRuntimeStates throwing', async () => {
-      mockGetAllMcpServerRuntimeStates.mockImplementation(() => {
-        throw new Error('MCP runtime crashed');
-      });
-      mockExistsSync.mockReturnValue(true);
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          mcpServers: [{ name: 'server-a', tools: [] }] as any,
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      // Should still succeed — the error is caught and logged, not thrown
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_mcp_err',
-        parentChatId: 'chat_mcp_err',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'MCP error test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      // No warnings because the catch swallowed the error
-      expect(result.availabilityWarnings).toBeUndefined();
-    });
-
-    it('should handle existsSync throwing for skill check', async () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([]);
-      mockExistsSync.mockImplementation(() => {
-        throw new Error('Permission denied');
-      });
-
-      mockFileManager.readAgentConfig.mockResolvedValue(
-        createMockSubAgentConfig({
-          skills: ['some-skill'],
-          inherit_mcp_servers: false,
-          inherit_skills: false,
-        }),
-      );
-
-      const result = await manager.spawnSubAgent({
-        parentSessionId: 'sess_fs_err',
-        parentChatId: 'chat_fs_err',
-        userAlias: 'testUser',
-        subAgentName: 'test-agent',
-        task: 'FS error test',
-        cancellationToken: createMockCancellationToken(),
-      });
-
-      expect(result.success).toBe(true);
-      // No warnings because catch swallowed the error
-      expect(result.availabilityWarnings).toBeUndefined();
-    });
-  });
-
   // ─── getStatesForParentSession ───
   describe('getStatesForParentSession', () => {
     it('should return runtime states for a parent session', async () => {
@@ -1917,19 +1460,11 @@ describe('SubAgentManager', () => {
   describe('spawnSubAgentAsync', () => {
     it('should return taskId and launched status', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'test-agent',
-        description: 'test',
-        context_access: 'isolated',
-        mcpServers: [],
-        skills: [],
-      });
 
       const result = await manager.spawnSubAgentAsync({
         parentSessionId: 'session-bg-1',
         parentChatId: 'chat-bg-1',
         userAlias: 'testuser',
-        subAgentName: 'test-agent',
         task: 'background task',
       });
 
@@ -2000,20 +1535,12 @@ describe('SubAgentManager', () => {
   describe('getBackgroundTaskStatus', () => {
     it('should return status of background tasks for a session', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'bg-agent',
-        description: 'test',
-        context_access: 'isolated',
-        mcpServers: [],
-        skills: [],
-      });
 
       const sessionId = 'session-status-test';
       await manager.spawnSubAgentAsync({
         parentSessionId: sessionId,
         parentChatId: 'chat-1',
         userAlias: 'testuser',
-        subAgentName: 'bg-agent',
         task: 'status test task',
       });
 
@@ -2022,28 +1549,28 @@ describe('SubAgentManager', () => {
       expect(status.length).toBeGreaterThanOrEqual(1);
       expect(status[0]).toHaveProperty('taskId');
       expect(status[0]).toHaveProperty('status');
-      expect(status[0].subAgentName).toContain('bg-agent');
+      expect(status[0].subAgentName).toContain('adhoc-');
     });
   });
 
   // ─── sendMessageToSubAgent (Batch 3 — Parent→Child) ───
   describe('sendMessageToSubAgent', () => {
+    beforeEach(() => {
+      mockSubAgentRun.mockReturnValue(new Promise(() => {}));
+    });
+
+    afterEach(() => {
+      mockSubAgentRun.mockResolvedValue('mock result');
+    });
+
     it('should push message to pending queue of a running background task', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'msg-agent',
-        description: 'test',
-        context_access: 'isolated',
-        mcpServers: [],
-        skills: [],
-      });
 
       const sessionId = 'session-msg-test';
       const result = await manager.spawnSubAgentAsync({
         parentSessionId: sessionId,
         parentChatId: 'chat-1',
         userAlias: 'testuser',
-        subAgentName: 'msg-agent',
         task: 'msg test',
       });
 
@@ -2066,20 +1593,12 @@ describe('SubAgentManager', () => {
 
     it('should reject if message too long', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'msg-agent',
-        description: 'test',
-        context_access: 'isolated',
-        mcpServers: [],
-        skills: [],
-      });
 
       const sessionId = 'session-msg-long';
       const result = await manager.spawnSubAgentAsync({
         parentSessionId: sessionId,
         parentChatId: 'chat-1',
         userAlias: 'testuser',
-        subAgentName: 'msg-agent',
         task: 'msg test',
       });
 
@@ -2090,20 +1609,12 @@ describe('SubAgentManager', () => {
 
     it('should cap pending messages at 5', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'msg-agent',
-        description: 'test',
-        context_access: 'isolated',
-        mcpServers: [],
-        skills: [],
-      });
 
       const sessionId = 'session-msg-cap';
       const result = await manager.spawnSubAgentAsync({
         parentSessionId: sessionId,
         parentChatId: 'chat-1',
         userAlias: 'testuser',
-        subAgentName: 'msg-agent',
         task: 'msg test',
       });
 
@@ -2290,22 +1801,19 @@ describe('SubAgentManager', () => {
   describe('getBackgroundTaskStatus — multiple sessions', () => {
     it('should only return tasks for the requested session', async () => {
       const manager = SubAgentManager.getInstance();
-      mockFileManager.getCachedConfig.mockReturnValue({
-        name: 'bg-agent', description: 'bg',
-      });
 
       await manager.spawnSubAgentAsync({
-        parentSessionId: 'sess-A', parentChatId: 'c1', userAlias: 'u', subAgentName: 'bg-agent', task: 'taskA',
+        parentSessionId: 'sess-A', parentChatId: 'c1', userAlias: 'u', task: 'taskA',
       });
       await manager.spawnSubAgentAsync({
-        parentSessionId: 'sess-B', parentChatId: 'c2', userAlias: 'u', subAgentName: 'bg-agent', task: 'taskB',
+        parentSessionId: 'sess-B', parentChatId: 'c2', userAlias: 'u', task: 'taskB',
       });
 
       const statusA = manager.getBackgroundTaskStatus('sess-A');
       const statusB = manager.getBackgroundTaskStatus('sess-B');
       expect(statusA.length).toBe(1);
       expect(statusB.length).toBe(1);
-      expect(statusA[0].subAgentName).toBe('bg-agent');
+      expect(statusA[0].subAgentName).toContain('adhoc-');
     });
   });
 

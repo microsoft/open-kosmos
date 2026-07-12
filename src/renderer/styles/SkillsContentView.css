@@ -9,7 +9,7 @@
 /* Skills Content View styles - aligned with mcp-content-view */
 .skills-content-view {
   padding: 24px 24px;
-  background: #FFFFFF;
+  background: var(--color-white);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -18,11 +18,13 @@
   overflow: hidden;
 }
 
-/* Left Skill list panel - adaptive content width, aligned with server-list-panel */
+/* Left Skill list panel - fixed width so an empty search result does not
+   collapse the column toward its min-content width (kept within the original
+   250-400px range), aligned with server-list-panel */
 .skill-list-panel {
   flex-shrink: 0;
   overflow: hidden;
-  width: auto;
+  width: 320px;
   min-width: 250px;
   max-width: 400px;
 }
@@ -45,37 +47,57 @@
   max-height: 100%;
 }
 
-.skill-list-container > :first-child {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 0 3rem 0;
-  min-height: 0;
-}
-
-.skill-list-container > :first-child::-webkit-scrollbar {
-  width: 6px;
-}
-
-.skill-list-container > :first-child::-webkit-scrollbar-track {
-  background: rgba(203, 213, 225, 0.3);
-  border-radius: 3px;
-}
-
-.skill-list-container > :first-child::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.6);
-  border-radius: 3px;
-  transition: background 0.2s ease;
-}
-
-.skill-list-container > :first-child::-webkit-scrollbar-thumb:hover {
-  background: rgba(203, 213, 225, 0.8);
+/* The list search box stays fixed at the top of the panel; only the cards area
+   below it scrolls, so the scrollbar never runs alongside the search box. */
+.skill-list-container > .list-search-box {
+  flex-shrink: 0;
 }
 
 /* Skill list - aligned with server-cards */
 .skill-cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0 3rem 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.skill-cards::-webkit-scrollbar {
+  width: 6px;
+}
+
+/* Scrollbar auto-hides: track and thumb are transparent by default (6px width
+   stays reserved so revealing causes no layout shift) and appear on hover or
+   while the list is actively scrolling (the `is-scrolling` class is toggled by
+   useAutoHideScrollbar).
+   NOTE: globals.css declares `::-webkit-scrollbar-thumb` with a solid color and
+   `!important`, so every rule here must also use `!important` to win — otherwise
+   the thumb stays permanently visible. */
+.skill-cards::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+}
+
+.skill-cards::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+  transition: background 0.2s ease !important;
+}
+
+.skill-cards:hover::-webkit-scrollbar-track,
+.skill-cards.is-scrolling::-webkit-scrollbar-track {
+  background: rgba(203, 213, 225, 0.3) !important;
+}
+
+.skill-cards:hover::-webkit-scrollbar-thumb,
+.skill-cards.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.6) !important;
+}
+
+.skill-cards::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.8) !important;
 }
 
 /* Skill list loading state */
@@ -86,7 +108,7 @@
   justify-content: center;
   padding: 40px 20px;
   gap: 12px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   font-size: 14px;
 }
 
@@ -98,14 +120,14 @@
   justify-content: center;
   padding: 40px 20px;
   gap: 8px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   font-size: 14px;
   text-align: center;
 }
 
 .skill-list-empty-hint {
   font-size: 12px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
 }
 
 /* Skill card wrapper - aligned with server-card-wrapper */
@@ -113,11 +135,12 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: row;
-  width: 288px;
-  height: 88px;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  width: 100%;
+  min-height: 88px;
+  height: auto;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
   flex: none;
   align-self: stretch;
   flex-grow: 0;
@@ -128,14 +151,14 @@
 
 /* Hover state - hovering when not selected */
 .skill-card-wrapper:not(.selected):hover {
-  background: #F8F4F1;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--color-warm-100);
+  border: 1px solid var(--color-border-strong);
 }
 
 /* Selected state - maintain light brown when selected */
 .skill-card-wrapper.selected {
-  background: #F8F4F1;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--color-warm-100);
+  border: 1px solid var(--color-border-strong);
 }
 
 /* Skill card inner layer - aligned with server-card */
@@ -176,7 +199,7 @@
   font-weight: 650;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
   font-variation-settings: 'opsz' 10.5;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -197,12 +220,12 @@
   padding: 4px 8px;
   gap: 4px;
   background: rgba(224, 158, 102, 0.3);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
   line-height: 16px;
-  color: #6B3900;
+  color: var(--color-warning-900);
   font-variation-settings: 'opsz' 10.5;
   flex: none;
   align-self: flex-start;
@@ -235,7 +258,7 @@
   background: none;
   cursor: pointer;
   font-size: 16px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   transition: opacity 0.2s ease, transform 0.2s ease;
   width: 20px;
   height: 20px;
@@ -246,7 +269,7 @@
   opacity: 0.8;
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 /* Skill Loading Spinner */
@@ -271,7 +294,7 @@
   gap: 8px;
   padding: 20px 24px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  background-color: #ffffff;
+  background-color: var(--color-white);
 }
 
 .skill-detail-title {
@@ -285,21 +308,21 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-detail-version {
   font-size: 12px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   background-color: rgba(0, 0, 0, 0.06);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .skill-detail-description {
   margin: 0;
   font-size: 14px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   line-height: 1.5;
 }
 
@@ -318,7 +341,7 @@
   justify-content: center;
   padding: 60px 20px;
   gap: 16px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   font-size: 14px;
 }
 
@@ -329,7 +352,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   font-size: 14px;
 }
 
@@ -340,7 +363,7 @@
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #e53935;
+  color: var(--color-danger-500);
   font-size: 14px;
   text-align: center;
 }
@@ -352,7 +375,7 @@
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   font-size: 14px;
 }
 
@@ -360,7 +383,7 @@
 .skill-markdown-content {
   font-size: 14px;
   line-height: 1.6;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-markdown-content h1,
@@ -372,12 +395,12 @@
   margin-top: 24px;
   margin-bottom: 12px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-markdown-content h1 {
   font-size: 24px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border-strong);
   padding-bottom: 8px;
 }
 
@@ -406,15 +429,15 @@
 .skill-markdown-content code {
   background-color: rgba(0, 0, 0, 0.06);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 13px;
 }
 
 .skill-markdown-content pre {
-  background-color: #1e1e1e;
-  color: #d4d4d4;
+  background-color: var(--syntax-surface);
+  color: var(--color-neutral-300);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow-x: auto;
   margin: 16px 0;
 }
@@ -428,13 +451,13 @@
 .skill-markdown-content blockquote {
   margin: 16px 0;
   padding: 12px 16px;
-  border-left: 4px solid rgba(0, 0, 0, 0.2);
+  border-left: 4px solid var(--color-border-strongest);
   background-color: rgba(0, 0, 0, 0.03);
-  color: #6c6c70;
+  color: var(--color-neutral-500);
 }
 
 .skill-markdown-content a {
-  color: #0066cc;
+  color: var(--color-accent-strong);
   text-decoration: none;
 }
 
@@ -450,7 +473,7 @@
 
 .skill-markdown-content th,
 .skill-markdown-content td {
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-strong);
   padding: 8px 12px;
   text-align: left;
 }
@@ -463,7 +486,7 @@
 .skill-markdown-content hr {
   margin: 24px 0;
   border: none;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--color-border-strong);
 }
 
 /* Spin animation */
@@ -504,7 +527,7 @@
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
 }
 
 .skills-empty-actions {
@@ -522,7 +545,7 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
@@ -530,37 +553,37 @@
 }
 
 .skills-empty-btn-primary {
-  background: #272320;
-  color: #FFFFFF;
-  border-color: #272320;
+  background: var(--color-warm-900);
+  color: var(--color-white);
+  border-color: var(--color-warm-900);
   font-weight: 600;
   padding: 12px 24px;
 }
 
 .skills-empty-btn-primary:hover {
-  background: #3d3935;
-  border-color: #3d3935;
+  background: var(--color-warm-700);
+  border-color: var(--color-warm-700);
 }
 
 .skills-empty-btn-primary:active {
-  background: #1a1715;
-  border-color: #1a1715;
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-900);
 }
 
 .skills-empty-btn-secondary {
-  background: #FFFFFF;
-  color: #272320;
-  border-color: rgba(0, 0, 0, 0.12);
+  background: var(--color-white);
+  color: var(--color-warm-900);
+  border-color: var(--color-border-strong);
   font-weight: 600;
 }
 
 .skills-empty-btn-secondary:hover {
-  background: #F8F4F1;
-  border-color: rgba(0, 0, 0, 0.2);
+  background: var(--color-warm-100);
+  border-color: var(--color-border-strongest);
 }
 
 .skills-empty-btn-secondary:active {
-  background: #F0EAE5;
+  background: var(--color-warm-100);
   border-color: rgba(0, 0, 0, 0.24);
 }
 
@@ -573,8 +596,8 @@
   height: 100%;
   max-height: 100%;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
 }
 
 .skill-view-panel-empty {
@@ -586,8 +609,8 @@
   text-align: center;
   padding: 2rem;
   color: rgb(107, 114, 128);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
 }
 
 /* ========================================
@@ -644,29 +667,29 @@
 .skill-folder-breadcrumb-item {
   font-size: 14px;
   font-weight: 500;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   background: none;
   border: none;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: background 0.2s ease, color 0.2s ease;
   white-space: nowrap;
 }
 
 .skill-folder-breadcrumb-item:hover:not(.active):not(:disabled) {
   background: rgba(0, 0, 0, 0.04);
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-folder-breadcrumb-item.active {
-  color: #272320;
+  color: var(--color-warm-900);
   font-weight: 600;
   cursor: default;
 }
 
 .skill-folder-breadcrumb-separator {
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   font-size: 14px;
 }
 
@@ -685,12 +708,12 @@
 
 .skill-folder-explorer-content::-webkit-scrollbar-track {
   background: rgba(203, 213, 225, 0.3);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .skill-folder-explorer-content::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.6);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .skill-folder-explorer-content::-webkit-scrollbar-thumb:hover {
@@ -710,16 +733,16 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .skill-folder-item:hover {
-  background: #F8F4F1;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--color-warm-100);
+  border: 1px solid var(--color-border-strong);
   box-shadow: none;
 }
 
@@ -750,7 +773,7 @@
 
 .skill-folder-item-size {
   font-size: 12px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   flex-shrink: 0;
 }
 
@@ -764,9 +787,9 @@
   height: 28px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   opacity: 0;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
   margin-left: auto;
@@ -780,7 +803,7 @@
 .skill-folder-item-more-btn:hover {
   opacity: 1;
   background: rgba(0, 0, 0, 0.08);
-  color: #374151;
+  color: var(--color-neutral-700);
 }
 
 .skill-folder-item-more-btn:active {
@@ -804,7 +827,7 @@
   justify-content: center;
   padding: 60px 20px;
   gap: 16px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   font-size: 14px;
 }
 
@@ -815,7 +838,7 @@
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #e53935;
+  color: var(--color-danger-500);
   font-size: 14px;
   text-align: center;
 }
@@ -827,7 +850,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   font-size: 14px;
 }
 
@@ -895,7 +918,7 @@
 .skill-file-name {
   font-size: 16px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -903,10 +926,10 @@
 
 .skill-file-type {
   font-size: 12px;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
   background-color: rgba(0, 0, 0, 0.06);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -925,12 +948,12 @@
 
 .skill-file-viewer-content::-webkit-scrollbar-track {
   background: rgba(203, 213, 225, 0.3);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .skill-file-viewer-content::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.6);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .skill-file-viewer-content::-webkit-scrollbar-thumb:hover {
@@ -950,12 +973,12 @@
 .skill-file-unsupported-text {
   font-size: 16px;
   font-weight: 500;
-  color: #6c6c70;
+  color: var(--color-neutral-500);
 }
 
 .skill-file-unsupported-hint {
   font-size: 13px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
 }
 
 /* Empty file content */
@@ -964,7 +987,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   font-size: 14px;
 }
 
@@ -972,7 +995,7 @@
 .skill-file-markdown {
   font-size: 14px;
   line-height: 1.6;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-file-markdown h1,
@@ -984,12 +1007,12 @@
   margin-top: 24px;
   margin-bottom: 12px;
   font-weight: 600;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-file-markdown h1 {
   font-size: 24px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border-strong);
   padding-bottom: 8px;
 }
 
@@ -1018,15 +1041,15 @@
 .skill-file-markdown code {
   background-color: rgba(0, 0, 0, 0.06);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 13px;
 }
 
 .skill-file-markdown pre {
-  background-color: #1e1e1e;
-  color: #d4d4d4;
+  background-color: var(--syntax-surface);
+  color: var(--color-neutral-300);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow-x: auto;
   margin: 16px 0;
 }
@@ -1040,13 +1063,13 @@
 .skill-file-markdown blockquote {
   margin: 16px 0;
   padding: 12px 16px;
-  border-left: 4px solid rgba(0, 0, 0, 0.2);
+  border-left: 4px solid var(--color-border-strongest);
   background-color: rgba(0, 0, 0, 0.03);
-  color: #6c6c70;
+  color: var(--color-neutral-500);
 }
 
 .skill-file-markdown a {
-  color: #0066cc;
+  color: var(--color-accent-strong);
   text-decoration: none;
 }
 
@@ -1062,7 +1085,7 @@
 
 .skill-file-markdown th,
 .skill-file-markdown td {
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-strong);
   padding: 8px 12px;
   text-align: left;
 }
@@ -1075,28 +1098,28 @@
 .skill-file-markdown hr {
   margin: 24px 0;
   border: none;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--color-border-strong);
 }
 
 /* Code block */
 .skill-file-code-block {
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background-color: #1e1e1e;
+  background-color: var(--syntax-surface);
 }
 
 .skill-file-code-header {
   display: flex;
   align-items: center;
   padding: 8px 16px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #404040;
+  background-color: var(--color-neutral-800);
+  border-bottom: 1px solid var(--color-neutral-700);
 }
 
 .skill-file-code-language {
   font-size: 12px;
   font-weight: 500;
-  color: #9c9c9c;
+  color: var(--color-neutral-400);
   text-transform: uppercase;
 }
 
@@ -1106,7 +1129,7 @@
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.5;
-  color: #d4d4d4;
+  color: var(--color-neutral-300);
 }
 
 .skill-file-code-content code {
@@ -1119,7 +1142,7 @@
 .skill-file-text {
   font-size: 13px;
   line-height: 1.5;
-  color: #272320;
+  color: var(--color-warm-900);
 }
 
 .skill-file-text pre {
@@ -1132,14 +1155,14 @@
 .skill-file-frontmatter {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border-strong);
 }
 
 .skill-file-frontmatter-table {
   width: 100%;
   border-collapse: collapse;
   background-color: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -1147,7 +1170,7 @@
 .skill-file-frontmatter-table td {
   padding: 10px 16px;
   font-size: 14px;
-  color: #272320;
+  color: var(--color-warm-900);
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
 }
 
@@ -1157,7 +1180,7 @@
 
 .skill-file-frontmatter-key {
   font-weight: 600;
-  color: #0066cc;
+  color: var(--color-accent-strong);
   width: 120px;
   white-space: nowrap;
   background-color: rgba(0, 0, 0, 0.02);

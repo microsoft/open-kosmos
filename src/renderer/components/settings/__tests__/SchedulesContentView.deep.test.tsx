@@ -10,7 +10,6 @@
  *  - onEdit callback rendered and called
  *  - handleRunNow: debounce guard (rapid second click is ignored)
  *  - handleRunNow: disabled when job is disabled
- *  - notifyOnCompletion toggle calls onUpdate
  *  - ScheduleSessionList expansion: fetches sessions, shows loading, shows empty,
  *    shows session items, navigate on click
  *  - formatDateTime: invalid ISO date falls back to raw string
@@ -31,9 +30,10 @@ import type { SchedulerJob } from '@shared/ipc/scheduler';
 
 const mockGetJobSessions = vi.fn();
 
-vi.mock('../../ipc/scheduler', () => ({
+vi.mock('../../../ipc/scheduler', () => ({
   schedulerApi: {
     getJobSessions: (...args: any[]) => mockGetJobSessions(...args),
+    cleanupAllSessionHistory: vi.fn().mockResolvedValue({ success: true, data: { totalDeleted: 0, jobsProcessed: 0, orphansDeleted: 0, errors: 0 } }),
   },
 }));
 
@@ -42,7 +42,7 @@ vi.mock('../../lib/scheduler/cronDescriptions', () => ({
 }));
 
 vi.mock('../../styles/ContentView.css', () => ({}));
-vi.mock('../../styles/SettingsShared.css', () => ({}));
+vi.mock('../../styles/ToolbarSettingsView.css', () => ({}));
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -60,7 +60,7 @@ function makeJob(overrides: Partial<SchedulerJob> = {}): SchedulerJob {
     scheduleType: 'cron',
     cronExpression: '0 9 * * 1',
     enabled: true,
-    agentId: 'agent-1',
+    chat_id: 'agent-1',
     message: 'Run the report',
     status: 'pending',
     ...overrides,
@@ -78,6 +78,7 @@ function renderView(jobs: SchedulerJob[] = [], extra: Record<string, any> = {}) 
         onDelete={extra.onDelete ?? vi.fn()}
         onUpdate={extra.onUpdate ?? vi.fn()}
         onRunNow={extra.onRunNow ?? (async () => true)}
+        chatId="agent-1"
         {...extra}
       />
     </MemoryRouter>
@@ -169,40 +170,12 @@ describe('SchedulesContentView — handleRunNow', () => {
   });
 });
 
-// ── notifyOnCompletion toggle ─────────────────────────────────────────────────
-
-describe('SchedulesContentView — notifyOnCompletion toggle', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
-
-  it('calls onUpdate with notifyOnCompletion when notify toggle changes', async () => {
-    const onUpdate = vi.fn();
-    const job = makeJob({ notifyOnCompletion: true });
-    renderView([job], { onUpdate });
-
-    // Expand the card
-    fireEvent.click(screen.getByText('Test Job'));
-
-    await waitFor(() => {
-      // Two checkboxes: enable toggle + notifyOnCompletion toggle
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes.length).toBeGreaterThanOrEqual(2);
-    });
-
-    const checkboxes = screen.getAllByRole('checkbox');
-    // notifyOnCompletion is the second checkbox (first is the enable toggle)
-    const notifyCheckbox = checkboxes[1];
-    fireEvent.click(notifyCheckbox);
-
-    expect(onUpdate).toHaveBeenCalledWith('job-1', { notifyOnCompletion: expect.any(Boolean) });
-  });
-});
-
 // ── ScheduleSessionList ───────────────────────────────────────────────────────
 
 describe('SchedulesContentView — ScheduleSessionList expansion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } });
   });
 
   async function expandCard() {
@@ -220,18 +193,15 @@ describe('SchedulesContentView — ScheduleSessionList expansion', () => {
   }
 
   it('expands session list when Scheduled runs button is clicked', async () => {
-    // The "Scheduled runs" toggle is inside the expanded card; verify it appears after expansion.
-    // The session count badge (0) appears after fetching, confirming the API was called.
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } });
     renderView([makeJob()]);
     await expandCard();
     await clickScheduledRuns();
-    // After fetching (empty result), the count badge "0" or "No scheduled runs" should appear.
     expect(await screen.findByText('No scheduled runs found', {}, { timeout: 2000 })).toBeTruthy();
   });
 
   it('shows "No scheduled runs found" when sessions are empty', async () => {
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } });
     renderView([makeJob()]);
     await expandCard();
     await clickScheduledRuns();
@@ -239,23 +209,21 @@ describe('SchedulesContentView — ScheduleSessionList expansion', () => {
   });
 
   it('shows session count badge after fetching sessions', async () => {
-    // After loading non-empty sessions, the count badge shows the count.
-    // Using empty array to test "loaded" state, verified by "0" badge appearance.
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    const mockSessions = [
+      { chatSession_id: 's-1', title: 'Run 1', last_updated: '2025-06-01T10:00:00Z' },
+      { chatSession_id: 's-2', title: 'Run 2', last_updated: '2025-06-02T10:00:00Z' },
+    ];
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: mockSessions, total: 2, hasMore: false } });
     renderView([makeJob()]);
     await expandCard();
     await clickScheduledRuns();
-    // The count badge shows sessions.length ("0") once loading is complete
-    await waitFor(() => {
-      const countSpans = document.querySelectorAll('span');
-      const countBadge = Array.from(countSpans).find(s => s.textContent === '0');
-      expect(countBadge).toBeTruthy();
-    }, { timeout: 2000 });
+    expect(await screen.findByText('Run 1', {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
   });
 
   it('renders the session list button when the card is expanded', async () => {
     // Verifies the ScheduleSessionList component renders its toggle button
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } });
     renderView([makeJob()]);
     await expandCard();
     // "Scheduled runs" button must appear after card expansion
@@ -272,7 +240,7 @@ describe('SchedulesContentView — ScheduleSessionList expansion', () => {
   });
 
   it('collapses the session list on second click', async () => {
-    mockGetJobSessions.mockResolvedValue({ success: true, data: [] });
+    mockGetJobSessions.mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } });
     renderView([makeJob()]);
     await expandCard();
     await clickScheduledRuns();

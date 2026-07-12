@@ -18,6 +18,10 @@ export interface ExternalAgentChatContext {
   emitStatus: (status: 'sending' | 'idle') => void;
 }
 
+export interface ExternalAgentMessageOptions {
+  persistUserMessage?: boolean;
+}
+
 /**
  * Handle a user message for an External agent.
  * Fire-and-forget: persists user message, sends via WS, returns immediately.
@@ -26,11 +30,14 @@ export interface ExternalAgentChatContext {
 export async function handleExternalAgentMessage(
   ctx: ExternalAgentChatContext,
   userMessage: Message,
+  options: ExternalAgentMessageOptions = {},
 ): Promise<Message[]> {
-  await ctx.addMessageToSession(userMessage);
+  if (options.persistUserMessage !== false) {
+    await ctx.addMessageToSession(userMessage);
+  }
   ctx.emitStatus('sending');
 
-  const userText = userMessage.content?.map((c) => c.type === 'text' ? (c as TextContentPart).text : '').join('') || '';
+  const userText = userMessage.content.map((c) => c.type === 'text' ? (c as TextContentPart).text : '').join('');
   const { chatId, chatSessionId } = ctx;
 
   logger.info('[AgentChat] External agent: sending message via WS (fire-and-forget)', 'handleExternalAgentMessage', { chatId, chatSessionId, textLength: userText.length });
@@ -41,7 +48,7 @@ export async function handleExternalAgentMessage(
       '⚠️ External agent is not connected. Please check the connection.', 'system'
     );
     await ctx.addMessageToSession(errorMsg);
-    emitFullMessage(ctx, errorMsg, (errorMsg.content[0] as TextContentPart)?.text || '');
+    emitFullMessage(ctx, errorMsg, (errorMsg.content[0] as TextContentPart).text);
     ctx.emitStatus('idle');
     return [errorMsg];
   }
@@ -54,10 +61,9 @@ export async function handleExternalAgentMessage(
 
 /** Emit content + complete streaming chunks for a fully-received message */
 function emitFullMessage(ctx: ExternalAgentChatContext, msg: Message, text: string): void {
-  const msgId = msg.id || `msg_${Date.now()}`;
   ctx.emitStreamingChunk({
     chunkId: `chunk_${Date.now()}_content`,
-    messageId: msgId,
+    messageId: msg.id,
     chatId: ctx.chatId,
     chatSessionId: ctx.chatSessionId,
     timestamp: Date.now(),
@@ -66,11 +72,11 @@ function emitFullMessage(ctx: ExternalAgentChatContext, msg: Message, text: stri
   });
   ctx.emitStreamingChunk({
     chunkId: `chunk_${Date.now()}_complete`,
-    messageId: msgId,
+    messageId: msg.id,
     chatId: ctx.chatId,
     chatSessionId: ctx.chatSessionId,
     timestamp: Date.now(),
     type: 'complete',
-    complete: { messageId: msgId, hasToolCalls: false },
+    complete: { messageId: msg.id, hasToolCalls: false },
   });
 }

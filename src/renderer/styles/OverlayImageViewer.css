@@ -92,7 +92,7 @@
   height: auto;
   object-fit: contain;
   object-position: center;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   animation: imageZoomIn 0.3s ease-out;
 }
@@ -198,7 +198,7 @@
   padding: 12px 24px;
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: white;
   font-size: 14px;
   line-height: 1.5;
@@ -249,7 +249,7 @@
   padding: 12px;
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   backdrop-filter: blur(10px);
   overflow-x: auto;
   max-width: 100%;
@@ -267,7 +267,7 @@
 
 .thumbnails-container::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .thumbnails-container::-webkit-scrollbar-thumb:hover {
@@ -280,7 +280,7 @@
   height: 80px;
   flex-shrink: 0;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -312,7 +312,7 @@
   width: 24px;
   height: 3px;
   background: white;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
@@ -320,7 +320,7 @@
   padding: 6px 16px;
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   backdrop-filter: blur(10px);
   color: white;
   font-size: 13px;

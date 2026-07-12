@@ -595,7 +595,21 @@ describe('RuntimeManager.ensureVenvMatchesPinnedPython (private)', () => {
   it('returns early when venv python version matches pinned major.minor', async () => {
     const venvDir = manager.getVenvPath();
     fs.mkdirSync(venvDir, { recursive: true });
-    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), 'version_info = 3.12\n');
+    const homeDir = process.platform === 'win32'
+      ? path.join(venvDir, 'base-home')
+      : path.join(venvDir, 'base-home', 'bin');
+    fs.mkdirSync(homeDir, { recursive: true });
+    fs.writeFileSync(path.join(homeDir, process.platform === 'win32' ? 'python.exe' : 'python'), '');
+    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), `home = ${homeDir}\nversion_info = 3.12\n`);
+    // Healthy venv: base interpreter launcher must resolve, else treated as dangling.
+    const launcher = process.platform === 'win32'
+      ? path.join(venvDir, 'Scripts', 'python.exe')
+      : path.join(venvDir, 'bin', 'python');
+    fs.mkdirSync(path.dirname(launcher), { recursive: true });
+    fs.writeFileSync(launcher, '');
+    if (process.platform !== 'win32') {
+      fs.writeFileSync(path.join(path.dirname(launcher), 'python3'), '');
+    }
 
     const recreateSpy = vi.spyOn(manager as any, 'recreateVenv').mockResolvedValue(undefined);
 

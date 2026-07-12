@@ -20,19 +20,19 @@
 /* Input Area - Contains textarea and button area */
 .input-area {
   position: relative;
-  border: 1px solid rgba(0, 0, 0, 0.075);
-  border-radius: 8px;
+  border: 1px solid var(--color-border-panel);
+  border-radius: var(--radius-lg);
   box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.08);
   overflow: visible;
   transition: all 0.2s ease;
   min-height: auto;
-  min-width: 380px;
-  position: relative;
+  min-width: 240px;
+  container-type: inline-size;
 }
 
 .input-area:focus-within {
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1), 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgb(var(--color-accent-rgb) / 0.1), 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 /* Textarea - Top section */
@@ -50,7 +50,7 @@
   font-size: 15px;
   line-height: 1.6;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--color-text-default);
   outline: none;
   height: 72px; /* 3-line text height: 15px × 1.6 × 3 = 72px */
   font-family: inherit;
@@ -65,7 +65,7 @@
 }
 
 .chat-textarea::placeholder {
-  color: #a3a3a3;
+  color: var(--color-neutral-400);
 }
 
 .chat-textarea:disabled {
@@ -78,12 +78,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 12px 20px 16px 20px;
   /* Remove divider, achieve borderless merged design */
   border-top: none;
   /* Use the same transparent background as textarea, fully integrated */
   background: transparent;
-  gap: 12px;
+  gap: 8px 12px;
 }
 
 /* Left side buttons group */
@@ -115,11 +116,110 @@
   /* No margin-left needed, parent group handles positioning */
 }
 
+.queued-message-list {
+  position: relative;
+  z-index: 3;
+  margin: 0 16px 6px;
+  padding: 12px 18px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: var(--radius-3xl);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -8px 26px rgba(15, 23, 42, 0.08);
+}
+
+.queued-message-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 42px;
+  color: rgb(100, 116, 139);
+}
+
+.queued-message-list-row + .queued-message-list-row {
+  margin-top: 4px;
+}
+
+.queued-message-list-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.queued-message-list-icon {
+  flex: 0 0 auto;
+  color: rgb(148, 163, 184);
+  font-size: 17px;
+}
+
+.queued-message-list-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queued-message-list-status {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(226, 232, 240, 0.7);
+  color: rgb(100, 116, 139);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.queued-message-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+
+.queued-message-list-action,
+.queued-message-list-icon-button {
+  border: 0;
+  background: transparent;
+  color: rgb(100, 116, 139);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.queued-message-list-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.queued-message-list-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-full);
+}
+
+.queued-message-list-action:hover:not(:disabled),
+.queued-message-list-icon-button:hover:not(:disabled) {
+  color: var(--color-accent);
+}
+
+.queued-message-list-action:disabled,
+.queued-message-list-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Model Selector */
 .chat-input-container .model-selector {
   position: relative;
-  flex: 0 0 auto;
-  width: 180px !important;
+  flex: 0 1 auto;
+  max-width: 180px;
   min-width: 40px;
   /* Ensure dropdown menu is at the highest layer */
   z-index: 1000;
@@ -131,14 +231,14 @@
   gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-form);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 14px;
-  color: #374151;
+  color: var(--color-neutral-700);
   backdrop-filter: blur(4px);
-  width: 180px !important;
+  width: 100%;
   min-width: 40px;
   height: 40px;
   min-height: 40px;
@@ -146,10 +246,10 @@
 
 .model-button:hover:not(:disabled) {
   background: rgba(240, 249, 255, 0.95);
-  border-color: #0ea5e9;
-  color: #0ea5e9;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-rgb) / 0.15);
 }
 
 .model-button:disabled {
@@ -192,8 +292,8 @@
   right: 0;
   background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-form);
+  border-radius: var(--radius-xl);
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
   /* Raise z-index to ensure above all elements */
   z-index: 9999;
@@ -219,7 +319,7 @@
   padding: 16px 20px 12px 20px;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-neutral-700);
   border-bottom: 1px solid rgba(229, 229, 229, 0.6);
   background: rgba(248, 250, 252, 0.8);
 }
@@ -241,7 +341,7 @@
 
 .model-list::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.8);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 /* Model Option */
@@ -265,7 +365,7 @@
 
 .model-option.selected {
   background: rgba(240, 249, 255, 0.95);
-  color: #0ea5e9;
+  color: var(--color-accent);
 }
 
 .model-option:disabled {
@@ -317,31 +417,31 @@
 .badge {
   font-size: 11px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .badge.reasoning {
   background: rgba(251, 191, 36, 0.15);
-  color: #d97706;
+  color: var(--color-warning-600);
 }
 
 .badge.tools {
   background: rgba(34, 197, 94, 0.15);
-  color: #059669;
+  color: var(--color-success-600);
 }
 
 .badge.files {
-  background: rgba(59, 130, 246, 0.15);
-  color: #2563eb;
+  background: rgb(var(--color-accent-rgb) / 0.15);
+  color: var(--color-accent-strong);
 }
 
 .check-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: #0ea5e9;
+  color: var(--color-accent);
 }
 
 /* Attachment Button */
@@ -355,21 +455,21 @@
   min-height: 40px;
   padding: 0;
   background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-form);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(4px);
   flex-shrink: 0;
-  color: #6b7280;
+  color: var(--color-neutral-500);
 }
 
 .attachment-button:hover:not(:disabled) {
   background: rgba(240, 249, 255, 0.95);
-  border-color: #0ea5e9;
-  color: #0ea5e9;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-rgb) / 0.15);
 }
 
 .attachment-button:disabled {
@@ -383,16 +483,49 @@
   opacity: 0.4;
   background: rgba(248, 250, 252, 0.8);
   border-color: rgba(203, 213, 225, 0.5);
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   cursor: not-allowed;
 }
 
 .attachment-button.disabled-no-support:hover {
   background: rgba(248, 250, 252, 0.8);
   border-color: rgba(203, 213, 225, 0.5);
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   transform: none;
   box-shadow: none;
+}
+
+html[data-theme="dark"] .input-area {
+  background: var(--color-surface-default);
+  border-color: var(--color-border-strong);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .chat-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .attachment-button {
+  background: var(--button-secondary-bg);
+  border-color: var(--button-secondary-border);
+  color: var(--button-secondary-fg);
+}
+
+html[data-theme="dark"] .attachment-button:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+  border-color: var(--button-secondary-hover-border);
+  color: var(--button-secondary-hover-fg);
+  box-shadow: var(--shadow-glass-card);
+}
+
+html[data-theme="dark"] .attachment-button.disabled-no-support {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-subtle);
+}
+
+html[data-theme="dark"] .attachment-button .attachment-icon rect {
+  fill: currentColor;
 }
 
 /* Drag and Drop Styles */
@@ -407,9 +540,9 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(59, 130, 246, 0.1);
-  border: 2px dashed #3b82f6;
-  border-radius: 8px;
+  background-color: rgb(var(--color-accent-rgb) / 0.1);
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-lg);
   pointer-events: none;
   z-index: 10;
 }
@@ -420,10 +553,10 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background-color: rgba(59, 130, 246, 0.9);
+  background-color: rgb(var(--color-accent-rgb) / 0.9);
   color: white;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
   pointer-events: none;
@@ -457,9 +590,9 @@
   height: 48px;
   background: rgba(240, 249, 255, 0.9);
   border: 1px solid rgba(186, 230, 253, 0.8);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(4px);
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.1);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-rgb) / 0.1);
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -467,15 +600,15 @@
 
 .attachment-item.image:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.2);
-  border-color: rgba(14, 165, 233, 0.6);
+  box-shadow: 0 4px 16px rgb(var(--color-accent-rgb) / 0.2);
+  border-color: rgb(var(--color-accent-rgb) / 0.6);
 }
 
 .attachment-image-preview {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .attachment-image-overlay {
@@ -523,9 +656,9 @@
   height: 48px;
   background: rgba(240, 249, 255, 0.8);
   border: 1px solid rgba(186, 230, 253, 0.6);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(4px);
-  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.1);
+  box-shadow: 0 2px 6px rgb(var(--color-accent-rgb) / 0.1);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -533,15 +666,15 @@
 
 .attachment-item.file:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
-  border-color: rgba(14, 165, 233, 0.6);
+  box-shadow: 0 4px 12px rgb(var(--color-accent-rgb) / 0.2);
+  border-color: rgb(var(--color-accent-rgb) / 0.6);
   background: rgba(240, 249, 255, 0.95);
 }
 
 .attachment-file-icon {
   width: 16px;
   height: 16px;
-  color: #0ea5e9;
+  color: var(--color-accent);
   flex-shrink: 0;
   margin-bottom: 2px;
 }
@@ -558,7 +691,7 @@
 .attachment-name {
   font-size: 9px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-neutral-700);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -620,13 +753,13 @@
 /* Cancel Button - mirrors send-button styles but uses alert red */
 .send-button.cancel-button,
 .send-button:is(.cancel-button) {
-  background: #dc2626; /* prominent alert red */
+  background: var(--color-danger-600); /* prominent alert red */
   color: white;
 }
 
 .send-button.cancel-button:hover:not(:disabled),
 .send-button:is(.cancel-button):hover:not(:disabled) {
-  background: #b91c1c; /* deeper red for hover state */
+  background: var(--color-danger-700); /* deeper red for hover state */
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
 }
@@ -648,10 +781,10 @@
   min-width: 40px;
   height: 40px;
   min-height: 40px;
-  background: #272320;
+  background: var(--color-warm-900);
   color: white;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 14px;
@@ -662,7 +795,7 @@
 }
 
 .send-button:hover:not(:disabled) {
-  background: #1a1613;
+  background: var(--color-neutral-900);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
@@ -671,7 +804,7 @@
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-rgb) / 0.15);
 }
 
 .send-icon {
@@ -689,7 +822,7 @@
   min-width: 96px;
   height: 40px;
   min-height: 40px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   border: 1px solid transparent;
   font-size: 14px;
   font-weight: 600;
@@ -700,23 +833,23 @@
 }
 
 .inline-edit-action-button-secondary {
-  background: #ffffff;
-  color: #272320;
+  background: var(--color-white);
+  color: var(--color-warm-900);
   border-color: rgba(39, 35, 32, 0.22);
 }
 
 .inline-edit-action-button-secondary:hover:not(:disabled) {
-  background: #f5f3f1;
+  background: var(--color-warm-100);
   border-color: rgba(39, 35, 32, 0.35);
 }
 
 .inline-edit-action-button-primary {
-  background: #272320;
-  color: #ffffff;
+  background: var(--color-warm-900);
+  color: var(--color-white);
 }
 
 .inline-edit-action-button-primary:hover:not(:disabled) {
-  background: #1a1613;
+  background: var(--color-neutral-900);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
@@ -741,12 +874,12 @@
   gap: 6px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-form);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
-  color: #374151;
+  color: var(--color-neutral-700);
   height: 40px;
   max-width: 160px;
   white-space: nowrap;
@@ -762,8 +895,8 @@
 
 .reasoning-effort-button:hover:not(:disabled) {
   background: rgba(240, 249, 255, 0.95);
-  border-color: #0ea5e9;
-  color: #0ea5e9;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .reasoning-effort-button:disabled {
@@ -777,8 +910,8 @@
   right: 0;
   min-width: 120px;
   background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 10px;
+  border: 1px solid var(--color-border-form);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   padding: 4px;
   display: flex;
@@ -790,20 +923,20 @@
   padding: 8px 10px;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 13px;
-  color: #374151;
+  color: var(--color-neutral-700);
 }
 
 .reasoning-effort-option:hover {
-  background: rgba(14, 165, 233, 0.08);
-  color: #0ea5e9;
+  background: rgb(var(--color-accent-rgb) / 0.08);
+  color: var(--color-accent);
 }
 
 .reasoning-effort-option.selected {
-  background: rgba(14, 165, 233, 0.12);
-  color: #0ea5e9;
+  background: rgb(var(--color-accent-rgb) / 0.12);
+  color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -812,6 +945,73 @@
   /* Override the existing input-container height */
   height: auto;
   flex-shrink: 0;
+}
+
+/* ===== Container Query responsive adjustments ===== */
+/* Responds to the .input-area container width (not viewport),
+   so the action bar adapts when the chat panel narrows in a split layout. */
+
+@container (max-width: 520px) {
+  .button-area {
+    gap: 6px 8px;
+  }
+
+  .chat-input-container .model-selector {
+    max-width: 140px;
+  }
+
+  .reasoning-effort-button {
+    max-width: 120px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
+
+@container (max-width: 420px) {
+  .button-area {
+    justify-content: flex-start;
+    padding: 10px 12px 12px 12px;
+  }
+
+  .right-buttons-group {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .chat-input-container .model-selector {
+    flex: 1 1 0;
+    max-width: 180px;
+    min-width: 0;
+  }
+
+  .reasoning-effort-button {
+    padding: 8px 8px;
+    font-size: 12px;
+    min-width: 0;
+  }
+}
+
+@container (max-width: 340px) {
+  .reasoning-effort-button {
+    padding: 6px 6px;
+    font-size: 11px;
+  }
+
+  .attachment-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .send-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
 }
 
 /* Responsive adjustments */
@@ -866,15 +1066,15 @@
 /* High contrast mode adjustments */
 @media (prefers-contrast: high) {
   .input-area {
-    border-color: #000;
+    border-color: var(--color-black);
   }
 
   .model-button {
-    border-color: #000;
+    border-color: var(--color-black);
   }
 
   .model-dropdown {
-    border-color: #000;
+    border-color: var(--color-black);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   }
 }
@@ -943,7 +1143,7 @@
 /* Mention highlight mark */
 .mention-highlight {
   background-color: rgba(0, 122, 204, 0.15); /* light blue background */
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
   color: transparent; /* keep text transparent */
   /* Use box-shadow instead of ::before pseudo-element to avoid layout impact */
   box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.3);
@@ -953,7 +1153,7 @@
 /* 🆕 Skill mention highlight - use purple/magenta to distinguish from blue @workspace mention */
 .skill-mention {
   background-color: rgba(168, 85, 247, 0.15); /* purple background */
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
   color: transparent; /* keep text transparent */
   box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.3);
 }

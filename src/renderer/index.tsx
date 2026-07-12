@@ -7,6 +7,8 @@ import { logger } from './lib/utilities/logger';
 import { modelCacheManager } from './lib/models/modelCacheManager';
 import { featureFlagCacheManager } from './lib/featureFlags';
 import { WithStore } from './atom';
+import { DEFAULT_UI_LANGUAGE, translate } from './lib/i18n';
+import { appDataManager } from './lib/userData/appDataManager';
 
 function serializeUnknown(value: unknown): unknown {
   if (value instanceof Error) {
@@ -120,14 +122,18 @@ class RootErrorBoundary extends React.Component<React.PropsWithChildren, { hasEr
 
   render(): React.ReactNode {
     if (this.state.hasError) {
+      const uiLanguage = appDataManager.getConfig().uiLanguage ?? DEFAULT_UI_LANGUAGE;
+
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#888', background: '#1a1a1a' }}>
-          <p style={{ fontSize: '16px', marginBottom: '20px' }}>Something went wrong.</p>
+          <p style={{ fontSize: '16px', marginBottom: '20px' }}>
+            {translate(uiLanguage, 'app.rootError.title')}
+          </p>
           <button
             onClick={() => window.location.reload()}
             style={{ padding: '8px 20px', fontSize: '14px', borderRadius: '6px', border: '1px solid #444', background: '#2a2a2a', color: '#ccc', cursor: 'pointer' }}
           >
-            Reload
+            {translate(uiLanguage, 'app.rootError.reload')}
           </button>
         </div>
       );

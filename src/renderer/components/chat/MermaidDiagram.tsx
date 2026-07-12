@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Maximize2 } from 'lucide-react';
 import MermaidFullscreenView from './MermaidFullscreenView';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 let mermaidIdCounter = 0;
 let mermaidInitialized = false;
@@ -33,6 +34,7 @@ interface MermaidDiagramProps {
 }
 
 const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
+  const { t } = useI18n();
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -87,7 +89,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
   if (error) {
     return (
       <div className="mermaid-diagram-wrapper mermaid-diagram-error">
-        <div className="mermaid-error-label">Mermaid diagram error</div>
+        <div className="mermaid-error-label">{t('chat.preview.mermaidError')}</div>
         <pre className="mermaid-error-code">{definition}</pre>
       </div>
     );
@@ -111,7 +113,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ definition }) => {
         <button
           className="mermaid-fullscreen-btn"
           onClick={openFullscreen}
-          title="Fullscreen"
+          title={t('chat.preview.fullscreenSimple')}
         >
           <Maximize2 size={8} />
         </button>

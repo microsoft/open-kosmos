@@ -2,12 +2,12 @@
 // Strictly implemented according to design document lines 648-855
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../ui/ToastProvider';
-import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { StartupValidationResult } from '../../types/startupValidationTypes';
 import '../../styles/SignInPage.css';
 import { APP_NAME } from '@shared/constants/branding';
 import { AuthManagerProxy } from "../../lib/auth/authManagerProxy";
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface SignInPageProps {
   // SignInPage can optionally receive pre-scanned startup results
@@ -123,7 +123,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     }
   }, [deviceCode, showGhcDeviceFlow, timeLeft]);
 
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
+  const { t } = useI18n();
   // Auth functionality is now handled through main process
 
   // Use AuthData directly, without any mapping or rebuilding
@@ -211,7 +212,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       }, 100);
 
     } catch (error) {
-      showError('Sign-in failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showError(t('auth.signInFailed', { error: error instanceof Error ? error.message : t('common.unknownError') }));
       setIsLoading(false);
     }
   };
@@ -235,7 +236,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       await handleGhcSignIn();
 
     } catch (error) {
-      showError('Re-authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showError(t('auth.reauthFailed', { error: error instanceof Error ? error.message : t('common.unknownError') }));
       setIsLoading(false);
     }
   };
@@ -264,7 +265,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       });
     }
 
-    // Automatically open GitHub authorization page (via GitHub device flow)
+    // Automatically open the GitHub authorization page.
     if (deviceCodeData.verification_uri) {
       window.open(deviceCodeData.verification_uri, '_blank');
     }
@@ -275,6 +276,14 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       setShowGhcDeviceFlow(true);
     }, 800);
   }, []);
+
+  const clearSessionState = () => {
+    // Optimization: sessionStorage operations removed, keeping this function for backward compatibility
+    // sessionStorage.removeItem('signin-isLoading');
+    // sessionStorage.removeItem('signin-showGhcDeviceFlow');
+    // sessionStorage.removeItem('signin-deviceCode');
+    // sessionStorage.removeItem('signin-showGeneratingCode');
+  };
 
   const handleAuthSuccess = useCallback(async (event: Event) => {
     const customEvent = event as CustomEvent;
@@ -295,6 +304,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         setDeviceCode(null);
         setIsLoading(false);
         setShowGeneratingCode(false);
+        clearSessionState();
 
         // 🔥 Case 1: Existing user authentication (from handleProfileSelect with authData)
         if (eventSource.includes('profile') || authData) {
@@ -310,7 +320,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         }
 
         // 🔥 Case 3: Unexpected scenario - no valid auth data
-        showError('Authentication completed but no data received');
+        showError(t('auth.completedWithoutData'));
       }, 100);
 
     } catch (error) {
@@ -319,11 +329,12 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
       setDeviceCode(null);
       setIsLoading(false);
       setShowGeneratingCode(false);
+      clearSessionState();
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown authentication error';
-      showError(`Authentication failed: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('auth.authenticationFailed', { error: errorMessage }));
     }
-  }, [showSuccess, showError]);
+  }, [showError, t]);
 
   const handleAuthError = useCallback((event: CustomEvent) => {
     setShowGhcDeviceFlow(false);
@@ -332,8 +343,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     setTimeLeft(0);
     setIsLoading(false);
     setShowGeneratingCode(false);
-    showError('GitHub Copilot authentication failed: ' + (event.detail.message || 'Unknown error'));
-  }, [showError]);
+    clearSessionState();
+    showError(t('auth.ghcAuthenticationFailed', { error: event.detail.message || t('common.unknownError') }));
+  }, [showError, t]);
 
   // Listen to GitHub Copilot device code events
   useEffect(() => {
@@ -413,8 +425,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
 
     } catch (error) {
       setShowGeneratingCode(false);
-      showError('GitHub Copilot login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showError(t('auth.ghcLoginFailed', { error: error instanceof Error ? error.message : t('common.unknownError') }));
       setIsLoading(false);
+      clearSessionState();
 
       // Clean up event listeners
       (window as any).electronAPI.auth.removeDeviceFlowListeners();
@@ -428,6 +441,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
     setTimeLeft(0);
     setIsLoading(false);
     setShowGeneratingCode(false);
+    clearSessionState();
   };
 
   const handleCopyCode = async () => {
@@ -471,9 +485,9 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                   </svg>
                 </div>
               </div>
-              <CardTitle className="signin-card-title">Choose Your Profile</CardTitle>
+              <CardTitle className="signin-card-title">{t('auth.chooseProfileTitle')}</CardTitle>
               <CardDescription className="signin-card-description">
-                Select an existing GitHub Copilot profile or create a new one
+                {t('auth.chooseProfileDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -481,18 +495,18 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 {/* Valid Users Section */}
                 {profilesWithAuth.filter(profile => !profile.isExpired).length > 0 && (
                   <div className="space-y-3">
-                    <h5 className="text-sm font-medium text-green-700 flex items-center">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                      Available accounts ({profilesWithAuth.filter(profile => !profile.isExpired).length})
+                    <h5 className="text-sm font-medium text-success-700 flex items-center">
+                      <div className="w-2 h-2 bg-success-500 rounded-full mr-2"></div>
+                      {t('auth.availableAccounts', { count: profilesWithAuth.filter(profile => !profile.isExpired).length })}
                     </h5>
                     {profilesWithAuth.filter(profile => !profile.isExpired).map((profile, index) => (
                       <div
                         key={profile.alias}
-                        className="p-4 border border-green-200 bg-green-50 rounded-lg hover:border-green-300 hover:bg-green-100 cursor-pointer transition-colors"
+                        className="p-4 border border-success-200 bg-success-50 rounded-lg hover:border-success-300 hover:bg-success-100 cursor-pointer transition-colors"
                         onClick={() => !isLoading && handleProfileSelect(profile)}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <div className="w-10 h-10 bg-success-100 rounded-full flex items-center justify-center">
                             {profile.authData?.ghcAuth?.user?.avatarUrl ? (
                               <img
                                 src={profile.authData.ghcAuth.user.avatarUrl}
@@ -500,27 +514,27 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                                 className="w-10 h-10 rounded-full"
                               />
                             ) : (
-                              <span className="text-green-600 font-medium">
+                              <span className="text-success-600 font-medium">
                                 {profile.authData?.ghcAuth?.user?.name?.charAt(0)?.toUpperCase() || profile.alias.charAt(0).toUpperCase()}
                               </span>
                             )}
                           </div>
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">
+                            <h4 className="font-medium text-neutral-900">
                               {profile.authData?.ghcAuth?.user?.name || profile.alias}
                             </h4>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-neutral-500">
                               @{profile.authData?.ghcAuth?.user?.login || profile.alias}
                             </p>
                             {profile.authData?.ghcAuth?.user?.email && (
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs text-neutral-400">
                                 {profile.authData.ghcAuth.user.email}
                               </p>
                             )}
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-green-600 font-medium">✓ Verified</div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-success-600 font-medium">✓ {t('auth.verified')}</div>
+                            <div className="text-xs text-neutral-400">
                               {profile.authData?.ghcAuth?.user?.copilotPlan || 'individual'}
                             </div>
                           </div>
@@ -533,18 +547,18 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 {/* Expired Users Section */}
                 {profilesWithAuth.filter(profile => profile.isExpired).length > 0 && (
                   <div className="space-y-3">
-                    <h5 className="text-sm font-medium text-yellow-700 flex items-center">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></div>
-                      Token refresh needed ({profilesWithAuth.filter(profile => profile.isExpired).length})
+                    <h5 className="text-sm font-medium text-warning-700 flex items-center">
+                      <div className="w-2 h-2 bg-warning-500 rounded-full mr-2"></div>
+                      {t('auth.tokenRefreshNeeded', { count: profilesWithAuth.filter(profile => profile.isExpired).length })}
                     </h5>
                     {profilesWithAuth.filter(profile => profile.isExpired).map((profile, index) => (
                       <div
                         key={profile.alias}
-                        className="p-4 border border-yellow-200 bg-yellow-50 rounded-lg hover:border-yellow-300 hover:bg-yellow-100 cursor-pointer transition-colors"
+                        className="p-4 border border-warning-200 bg-warning-50 rounded-lg hover:border-warning-300 hover:bg-warning-100 cursor-pointer transition-colors"
                         onClick={() => !isLoading && handleProfileSelect(profile)}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                          <div className="w-10 h-10 bg-warning-100 rounded-full flex items-center justify-center">
                             {profile.authData?.ghcAuth?.user?.avatarUrl ? (
                               <img
                                 src={profile.authData.ghcAuth.user.avatarUrl}
@@ -552,24 +566,24 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                                 className="w-10 h-10 rounded-full opacity-75"
                               />
                             ) : (
-                              <span className="text-yellow-600 font-medium">
+                              <span className="text-warning-600 font-medium">
                                 {profile.authData?.ghcAuth?.user?.name?.charAt(0)?.toUpperCase() || profile.alias.charAt(0).toUpperCase()}
                               </span>
                             )}
                           </div>
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">
+                            <h4 className="font-medium text-neutral-900">
                               {profile.authData?.ghcAuth?.user?.name || profile.alias}
                             </h4>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-neutral-500">
                               @{profile.authData?.ghcAuth?.user?.login || profile.alias}
                             </p>
-                            <p className="text-xs text-yellow-600">Token expired, click to refresh</p>
+                            <p className="text-xs text-warning-600">{t('auth.tokenExpiredClickToRefresh')}</p>
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-yellow-600 font-medium">⚠ Expired</div>
-                            <div className="text-xs text-gray-400">
-                              Click to refresh token
+                            <div className="text-xs text-warning-600 font-medium">⚠ {t('auth.expired')}</div>
+                            <div className="text-xs text-neutral-400">
+                              {t('auth.clickToRefreshToken')}
                             </div>
                           </div>
                         </div>
@@ -581,25 +595,24 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 {/* Separator */}
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
+                    <div className="w-full border-t border-neutral-200" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">or</span>
+                    <span className="px-2 bg-white text-neutral-500">{t('auth.or')}</span>
                   </div>
                 </div>
 
                 {/* GitHub Auth Option */}
-                <Button
+                <button
                   onClick={handleUseGitHubAuth}
-                  variant="outline"
-                  className="w-full"
+                  className="btn-secondary w-full"
                   disabled={isLoading}
                 >
                   <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                   </svg>
-                  Sign In with New GitHub Account
-                </Button>
+                  {t('auth.signInWithNewGitHubAccount')}
+                </button>
               </div>
             </CardContent>
           </Card>
@@ -618,26 +631,26 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 </svg>
               </div>
             </div>
-            <CardTitle className="signin-card-title">Welcome to {APP_NAME}</CardTitle>
+            <CardTitle className="signin-card-title">{t('auth.welcomeToApp', { appName: APP_NAME })}</CardTitle>
           </CardHeader>
           <CardContent>
             {/* GitHub Copilot Authentication */}
             <div className="space-y-4">
-              <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="w-12 h-12 mx-auto mb-3 bg-blue-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+              <div className="text-center p-4 bg-primary-50 border border-primary-200 rounded-lg">
+                <div className="w-12 h-12 mx-auto mb-3 bg-primary-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-primary-600" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                   </svg>
                 </div>
-                <h4 className="font-medium text-blue-900 mb-2">GitHub Copilot Authentication</h4>
-                <p className="text-sm text-blue-700 mb-4">
-                  Sign in with your GitHub account to access GitHub Copilot AI models
+                <h4 className="font-medium text-primary-900 mb-2">{t('auth.ghcAuthenticationTitle')}</h4>
+                <p className="text-sm text-primary-700 mb-4">
+                  {t('auth.ghcAuthenticationDescription')}
                 </p>
               </div>
 
-              <Button
+              <button
                 onClick={handleGhcSignIn}
-                className="w-full bg-gray-900 hover:bg-gray-800"
+                className="btn-primary w-full"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -646,17 +659,17 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Connecting to GitHub...
+                    {t('auth.connectingToGitHub')}
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                     </svg>
-                    Sign In with GitHub Copilot
+                    {t('auth.signInWithGitHubCopilot')}
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -676,27 +689,27 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
                 </svg>
               </div>
             </div>
-            <CardTitle className="signin-card-title">Generating Device Code</CardTitle>
+            <CardTitle className="signin-card-title">{t('auth.generatingDeviceCodeTitle')}</CardTitle>
             <CardDescription className="signin-card-description">
-              Generating GitHub Copilot device authentication code for you, please wait...
+              {t('auth.generatingDeviceCodeDescription')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="w-12 h-12 mx-auto mb-3 bg-blue-100 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+              <div className="text-center p-4 bg-primary-50 border border-primary-200 rounded-lg">
+                <div className="w-12 h-12 mx-auto mb-3 bg-primary-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-primary-600 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                   </svg>
                 </div>
-                <h4 className="font-medium text-blue-900 mb-2">Connect to GitHub</h4>
-                <p className="text-sm text-blue-700 mb-4">
-                  Establishing connection with GitHub servers and generating authentication code
+                <h4 className="font-medium text-primary-900 mb-2">{t('auth.connectToGitHub')}</h4>
+                <p className="text-sm text-primary-700 mb-4">
+                  {t('auth.generatingAuthenticationCode')}
                 </p>
                 <div className="flex items-center justify-center space-x-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                  <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                  <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                 </div>
               </div>
             </div>
@@ -710,16 +723,16 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
         <div className="signin-card-container">
         <Card className="signin-card">
           <CardHeader className="text-center pb-4">
-            <div className="w-16 h-16 mx-auto mb-4 bg-linear-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-linear-to-r from-primary-500 to-primary-600 rounded-full flex items-center justify-center">
               <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
               </svg>
             </div>
-            <CardTitle className="text-xl font-bold text-gray-900">
-              GitHub Copilot Authorization
+            <CardTitle className="text-xl font-bold text-neutral-900">
+              {t('auth.ghcAuthorizationTitle')}
             </CardTitle>
-            <CardDescription className="text-gray-600">
-              Please complete authorization on GitHub to continue
+            <CardDescription className="text-neutral-600">
+              {t('auth.ghcAuthorizationDescription')}
             </CardDescription>
           </CardHeader>
 
@@ -727,104 +740,100 @@ export const SignInPage: React.FC<SignInPageProps> = ({ startupResult }) => {
             {/* Step instructions */}
             <div className="space-y-4">
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-success-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   ✓
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">GitHub authorization page opened automatically</p>
-                  <p className="text-sm text-gray-600 mt-1">If the page didn't open, please click the button below to open manually</p>
+                  <p className="font-medium text-neutral-900">{t('auth.githubPageOpened')}</p>
+                  <p className="text-sm text-neutral-600 mt-1">{t('auth.githubPageOpenFallback')}</p>
                 </div>
               </div>
 
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-primary-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   2
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-gray-900">Enter Device Code</p>
-                  <p className="text-sm text-gray-600 mt-1">Enter the following code on the opened page:</p>
+                  <p className="font-medium text-neutral-900">{t('auth.enterDeviceCode')}</p>
+                  <p className="text-sm text-neutral-600 mt-1">{t('auth.enterCodeOnOpenedPage')}</p>
                   <div className="mt-2 flex items-center space-x-2">
-                    <code className="bg-gray-100 px-3 py-2 rounded-md text-lg font-mono font-bold text-blue-600 border border-gray-200">
+                    <code className="bg-neutral-100 px-3 py-2 rounded-md text-lg font-mono font-bold text-primary-600 border border-neutral-200">
                       {deviceCode?.user_code || ''}
                     </code>
-                    <Button
+                    <button
                       onClick={handleCopyCode}
-                      variant="outline"
-                      size="sm"
-                      className="text-xs px-2 py-1"
+                      className="btn-secondary"
                     >
-                      {copied ? 'Copied' : 'Copy'}
-                    </Button>
+                      {copied ? t('auth.copied') : t('auth.copy')}
+                    </button>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-primary-500 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
                   3
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Authorize Application</p>
-                  <p className="text-sm text-gray-600 mt-1">Confirm authorization for {APP_NAME} to access GitHub Copilot</p>
+                  <p className="font-medium text-neutral-900">{t('auth.authorizeApplication')}</p>
+                  <p className="text-sm text-neutral-600 mt-1">{t('auth.confirmAppAuthorization', { appName: APP_NAME })}</p>
                 </div>
               </div>
             </div>
 
             {/* Time countdown */}
             <div className={`rounded-lg p-3 transition-colors duration-300 ${
-              timeLeft <= 60 ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'
+              timeLeft <= 60 ? 'bg-danger-50 border border-danger-200' : 'bg-warning-50 border border-warning-200'
             }`}>
               <div className="flex items-center space-x-2">
                 <svg className={`w-4 h-4 transition-colors duration-300 ${
-                  timeLeft <= 60 ? 'text-red-600' : 'text-yellow-600'
+                  timeLeft <= 60 ? 'text-danger-600' : 'text-warning-600'
                 }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span className={`text-sm font-medium transition-colors duration-300 ${
-                  timeLeft <= 60 ? 'text-red-800' : 'text-yellow-800'
+                  timeLeft <= 60 ? 'text-danger-800' : 'text-warning-800'
                 }`}>
-                  Code will expire in {formatTime(timeLeft)}
-                  {timeLeft <= 60 && ' - Expiring soon!'}
+                  {t('auth.codeWillExpireIn', { time: formatTime(timeLeft) })}
+                  {timeLeft <= 60 && t('auth.expiringSoon')}
                 </span>
               </div>
             </div>
 
             {/* Action buttons */}
             <div className="space-y-3">
-              <Button
+              <button
                 onClick={handleOpenGitHub}
-                variant="outline"
-                className="w-full py-3"
+                className="btn-secondary w-full"
               >
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                 </svg>
-                Manually open GitHub authorization page
-              </Button>
+                {t('auth.openGitHubAuthorizationPage')}
+              </button>
 
               <div className="text-center">
-                <p className="text-sm text-gray-500 mb-2">
-                  This page will automatically redirect after authorization is complete
+                <p className="text-sm text-neutral-500 mb-2">
+                  {t('auth.redirectAfterAuthorization')}
                 </p>
-                <Button
+                <button
                   onClick={handleDeviceCodeCancel}
-                  variant="outline"
-                  className="text-sm px-4 py-2"
+                  className="btn-secondary w-fit mx-auto"
                 >
-                  Cancel Authorization
-                </Button>
+                  {t('auth.cancelAuthorization')}
+                </button>
               </div>
             </div>
 
             {/* Bottom tips */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-3">
               <div className="flex items-start space-x-2">
-                <svg className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-primary-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">GitHub Copilot subscription required</p>
-                  <p>Ensure your GitHub account has subscribed to Copilot service to complete authorization.</p>
+                <div className="text-sm text-primary-800">
+                  <p className="font-medium mb-1">{t('auth.copilotSubscriptionRequired')}</p>
+                  <p>{t('auth.copilotSubscriptionDescription')}</p>
                 </div>
               </div>
             </div>

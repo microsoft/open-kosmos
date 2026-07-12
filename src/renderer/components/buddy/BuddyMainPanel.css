@@ -17,9 +17,9 @@
 }
 
 .buddy-main-panel {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 16px;
+  background: var(--color-neutral-900);
+  border: 1px solid var(--color-neutral-700);
+  border-radius: var(--radius-2xl);
   width: 600px;
   max-height: 700px;
   display: flex;
@@ -43,7 +43,7 @@
 
 .buddy-main-header h2 {
   font-size: 18px;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
   margin: 0;
   font-weight: 600;
 }
@@ -51,17 +51,17 @@
 .buddy-main-close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   font-size: 18px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .buddy-main-close:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--color-neutral-700);
+  color: var(--color-neutral-200);
 }
 
 .buddy-main-player {
@@ -69,7 +69,7 @@
   align-items: flex-start;
   gap: 16px;
   padding: 16px 20px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--color-neutral-800);
 }
 
 .buddy-main-player-sprite {
@@ -97,7 +97,7 @@
 .buddy-main-player-name {
   font-size: 16px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -107,20 +107,20 @@
   font-size: 11px;
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .buddy-main-player-level {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
   margin-bottom: 6px;
 }
 
 .buddy-main-player-personality {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-neutral-500);
   font-style: italic;
   margin-top: 4px;
 }
@@ -136,26 +136,26 @@
 }
 
 .buddy-main-action-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--color-neutral-800);
+  border: 1px solid var(--color-neutral-700);
+  color: var(--color-neutral-400);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .buddy-main-action-btn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--color-neutral-700);
+  color: var(--color-neutral-200);
 }
 
 .buddy-main-backpack {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--color-neutral-800);
 }
 
 .buddy-main-backpack-header {
@@ -168,12 +168,12 @@
 .buddy-main-backpack-title {
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
 }
 
 .buddy-main-backpack-count {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-neutral-500);
 }
 
 .buddy-main-backpack-actions {
@@ -183,18 +183,18 @@
 }
 
 .buddy-main-backpack-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
+  background: var(--color-neutral-800);
+  border: 1px solid var(--color-neutral-700);
+  color: var(--color-neutral-200);
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .buddy-main-backpack-btn:hover {
-  background: #334155;
+  background: var(--color-neutral-700);
 }
 
 .buddy-main-backpack-btn:disabled {
@@ -203,18 +203,18 @@
 }
 
 .buddy-main-backpack-btn-danger {
-  border-color: #7f1d1d;
-  color: #fca5a5;
+  border-color: var(--color-danger-900);
+  color: var(--color-danger-300);
 }
 
 .buddy-main-backpack-btn-danger:hover {
-  background: #7f1d1d;
+  background: var(--color-danger-900);
 }
 
 .buddy-main-backpack-tip {
   text-align: center;
   font-size: 11px;
-  color: #64748b;
+  color: var(--color-neutral-500);
   margin-top: 8px;
 }
 
@@ -231,19 +231,19 @@
 
 .buddy-main-stats-label {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-neutral-400);
 }
 
 .buddy-main-stats-value {
   font-size: 16px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--color-neutral-200);
 }
 
 .buddy-main-milestone-bar {
   height: 6px;
-  background: #1e293b;
-  border-radius: 3px;
+  background: var(--color-neutral-800);
+  border-radius: var(--radius-scrollbar);
   overflow: hidden;
   margin-top: 4px;
   margin-bottom: 4px;
@@ -251,7 +251,7 @@
 
 .buddy-main-milestone-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
   transition: width 0.3s ease;
 }
 
@@ -259,25 +259,25 @@
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #64748b;
+  color: var(--color-neutral-500);
 }
 
 .buddy-main-coming-soon {
-  border: 2px dashed #334155;
-  border-radius: 10px;
+  border: 2px dashed var(--color-neutral-700);
+  border-radius: var(--radius-lg);
   padding: 20px;
   text-align: center;
-  color: #475569;
+  color: var(--color-neutral-600);
   font-size: 13px;
   margin-top: 12px;
 }
 
 /* Inline rename input */
 .buddy-main-rename-input {
-  background: #1e293b;
-  border: 1px solid #3b82f6;
-  border-radius: 4px;
-  color: #e2e8f0;
+  background: var(--color-neutral-800);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  color: var(--color-neutral-200);
   font-size: 16px;
   font-weight: 700;
   padding: 2px 6px;

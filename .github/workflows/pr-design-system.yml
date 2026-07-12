@@ -1,0 +1,85 @@
+name: PR Design System Check
+
+# Enforce the design-system drift ratchet in pull requests:
+# repo-wide drift counts may only go DOWN, never up. The PR branch is checked against
+# its own baseline AND (once the baseline exists on the base branch) that baseline is
+# compared to the base commit's baseline, so a PR cannot bypass the gate by raising
+# scripts/design-system-baseline.json.
+# The report always lands in the job summary; sticky PR comments are same-repo only
+# because fork PR tokens may not have comment write permission.
+# See ai.prompt/design-system.md.
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+concurrency:
+  group: design-system-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-design-system:
+    name: Design System Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        # Harden against exposing the workflow token to PR-controlled code: this job
+        # runs scripts/check-design-tokens.js FROM the PR branch, so do not persist the
+        # GITHUB_TOKEN into the checkout's git config where that script could read it.
+        # The check needs only read access (no git auth — it reads files + a baseline
+        # JSON), and the sticky-comment step authenticates via the Actions context, not
+        # git config, so dropping persisted credentials breaks nothing.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run design-system check and generate report
+        id: check
+        run: |
+          REFERENCE_ARGS=()
+          if git show ${{ github.event.pull_request.base.sha }}:scripts/design-system-baseline.json > "$RUNNER_TEMP/design-system-baseline.base.json"; then
+            REFERENCE_ARGS=(--reference-baseline "$RUNNER_TEMP/design-system-baseline.base.json")
+          else
+            echo "No design-system baseline exists on the base commit; treating this PR as the initial gate installation."
+          fi
+          set +e
+          node scripts/check-design-tokens.js \
+            "${REFERENCE_ARGS[@]}" \
+            --output design-system-report.md
+          CHECK_EXIT=$?
+          echo "exit_code=$CHECK_EXIT" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Run dark-mode governance check and generate report
+        id: dark_mode
+        run: |
+          set +e
+          npm run check:dark-mode -- --base-ref ${{ github.event.pull_request.base.sha }} --output dark-mode-governance-report.md
+          CHECK_EXIT=$?
+          echo "exit_code=$CHECK_EXIT" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Append report to job summary
+        run: |
+          cat design-system-report.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\n\n' >> "$GITHUB_STEP_SUMMARY"
+          cat dark-mode-governance-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if policy violated
+        if: steps.check.outputs.exit_code != '0' || steps.dark_mode.outputs.exit_code != '0'
+        run: |
+          echo "::error::Design-system or dark-mode governance policy failed. See PR comment report for details."
+          exit 1

@@ -2,7 +2,6 @@
 /**
  * Additional coverage tests for src/main/main.ts — coverage6
  * Targets remaining uncovered paths:
- * - handleWebSearch: bing branch, google branch, autoHide=false, shell.openExternal throws
  * - notifyDebugInfoDownload: mainWindow null, mainWindow destroyed
  * - applyWindowZoomLevel: mainWindow destroyed returns 0
  * - normalizeWindowZoomLevel: min/max clamping, rounding
@@ -151,19 +150,6 @@ vi.mock('electron', () => ({
   globalShortcut: mocks.mockGlobalShortcut,
 }));
 
-vi.mock('selection-hook', () => ({
-  default: vi.fn(() => ({
-    on: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    getCurrentSelection: vi.fn(() => null),
-  })),
-}));
-
-vi.mock('../lib/selectionHookEncoding', () => ({
-  recoverSelectionText: vi.fn((t: string) => t),
-}));
-
 vi.mock('../lib/unifiedLogger', () => ({
   createLogger: vi.fn(() => ({
     info: vi.fn(),
@@ -266,7 +252,6 @@ vi.mock('../startup/lazy', () => ({
   getMainTokenMonitor: vi.fn(() => Promise.resolve({ setMainWindow: vi.fn() })),
   getProfileCacheManagerSync: vi.fn(() => mockProfileCacheManagerSync),
   getAdvancedLogger: vi.fn(() => mockAdvancedLogger),
-  useRemoteChannelManager: vi.fn(async (fn: any) => fn({ stopAll: vi.fn(() => Promise.resolve()) })),
   useAdvancedLogger: vi.fn((fn: any) => fn(mockAdvancedLogger)),
 }));
 
@@ -284,28 +269,6 @@ vi.mock('../lib/llm/ghcModelsManager', () => ({
   ghcModelsManager: {
     refreshFromRemote: vi.fn(() => Promise.resolve(true)),
   },
-}));
-
-const mockAssetsLibraryManager = {
-  checkAndUpdateLibraries: vi.fn(() =>
-    Promise.resolve({
-      fetchResults: [{ success: true }],
-      updateResult: { updatedAgents: 1, updatedMcpServers: 0, updatedSkills: 0 },
-    }),
-  ),
-};
-vi.mock('../lib/assetsFetcher/assetsLibraryManager', () => ({
-  assetsLibraryManager: mockAssetsLibraryManager,
-}));
-
-const mockAnalyticsManager = {
-  init: vi.fn(() => Promise.resolve()),
-  recordAppStart: vi.fn(() => Promise.resolve()),
-  recordAppClose: vi.fn(() => Promise.resolve()),
-  shutdown: vi.fn(() => Promise.resolve()),
-};
-vi.mock('../lib/analytics', () => ({
-  analyticsManager: mockAnalyticsManager,
 }));
 
 const mockSchedulerManager = {
@@ -334,13 +297,6 @@ vi.mock('../lib/chat/chatSessionStore', () => ({
 
 vi.mock('../lib/scheduler/scheduleStore', () => ({
   scheduleStore: { setMainWindow: vi.fn() },
-}));
-
-vi.mock('../lib/autoUpdate/updateManager', () => ({
-  UpdateManager: vi.fn().mockImplementation(() => ({
-    startPeriodicCheck: vi.fn(),
-    destroy: vi.fn(),
-  })),
 }));
 
 vi.mock('../lib/screenshot', () => ({
@@ -427,40 +383,6 @@ describe('main.ts – coverage6', () => {
     mocks.mockMainBrowserWindow.isMinimized.mockReturnValue(false);
     mockIsFeatureEnabled.mockReturnValue(false);
     mockFs.existsSync.mockReturnValue(false);
-  });
-
-  // ─── handleWebSearch ───────────────────────────────────────────────────────
-
-  describe('handleWebSearch via IPC injection', () => {
-    it('opens Bing URL for pseudo-agent-search-bing chatId', async () => {
-      const injection = await loadMainModule();
-      await triggerReady();
-      const ipc = mocks.capturedInjection;
-      if (!ipc || !ipc.handleWebSearch) {
-        // Access via webContents IPC handler — simulate through ipcMain
-        // The function is private, test through observable side effects
-        expect(true).toBe(true);
-        return;
-      }
-      await ipc.handleWebSearch('pseudo-agent-search-bing');
-      expect(mocks.mockShell.openExternal).toHaveBeenCalledWith(
-        expect.stringContaining('bing.com'),
-      );
-    });
-
-    it('opens Google URL for non-bing chatId', async () => {
-      await loadMainModule();
-      await triggerReady();
-      const ipc = mocks.capturedInjection;
-      if (!ipc || !ipc.handleWebSearch) {
-        expect(true).toBe(true);
-        return;
-      }
-      await ipc.handleWebSearch('some-other-agent');
-      expect(mocks.mockShell.openExternal).toHaveBeenCalledWith(
-        expect.stringContaining('google.com'),
-      );
-    });
   });
 
   // ─── notifyDebugInfoDownload ───────────────────────────────────────────────

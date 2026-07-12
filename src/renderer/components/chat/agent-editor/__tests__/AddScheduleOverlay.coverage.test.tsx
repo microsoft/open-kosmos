@@ -23,23 +23,21 @@ vi.mock('../../../../ipc/scheduler', () => ({
   },
 }))
 
+const mockBuildDailyMultiTimes = vi.fn((times: string) => ({ cronExpression: `MULTI:${times}`, error: null as string | null }))
+const mockParseDailyMultiTimes = vi.fn((_: string) => null as unknown)
 vi.mock('../../../../lib/scheduler/cronDescriptions', () => ({
-  buildDailyMultiTimesCronExpression: (times: string) => ({
-    cronExpression: `MULTI:${times}`,
-    error: null,
-  }),
+  buildDailyMultiTimesCronExpression: (times: string) => mockBuildDailyMultiTimes(times),
   describeCronExpression: (cron: string) => `described: ${cron}`,
-  parseDailyMultiTimesCronExpression: (_: string) => null,
+  parseDailyMultiTimesCronExpression: (cron: string) => mockParseDailyMultiTimes(cron),
 }))
 
-
 import AddScheduleOverlay from '../AddScheduleOverlay'
-import type { AddScheduleOverlayAgentOption } from '../AddScheduleOverlay'
+import type { AddScheduleOverlayChatOption } from '../AddScheduleOverlay'
 import type { SchedulerJob } from '@shared/ipc/scheduler'
 
 // ---- helpers ----
 
-const agents: AddScheduleOverlayAgentOption[] = [
+const chatOptions: AddScheduleOverlayChatOption[] = [
   { id: 'agent-1', name: 'Agent One' },
   { id: 'agent-2', name: 'Agent Two' },
 ]
@@ -48,8 +46,8 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
   return {
     open: true,
     onOpenChange: vi.fn(),
-    agents,
-    defaultAgentId: 'agent-1',
+    chatOptions,
+    defaultChatId: 'agent-1',
     ...overrides,
   }
 }
@@ -62,6 +60,8 @@ function fillRequiredFields(nameVal = 'Test Schedule', descVal = 'Test desc', ms
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockBuildDailyMultiTimes.mockImplementation((times: string) => ({ cronExpression: `MULTI:${times}`, error: null }))
+  mockParseDailyMultiTimes.mockReturnValue(null)
 })
 
 // ---- tests ----
@@ -84,11 +84,10 @@ describe('AddScheduleOverlay', () => {
       name: 'My job',
       description: 'Desc',
       message: 'Msg',
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       scheduleType: 'once' as const,
       status: 'pending' as const,
       enabled: true,
-      notifyOnCompletion: true,
     } as SchedulerJob
     render(<AddScheduleOverlay {...defaultProps({ editingJob })} />)
     expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
@@ -99,8 +98,8 @@ describe('AddScheduleOverlay', () => {
     expect(screen.getByText('Agent One')).toBeInTheDocument()
   })
 
-  it('shows locked agent note when lockAgent=true', () => {
-    render(<AddScheduleOverlay {...defaultProps({ lockAgent: true })} />)
+  it('shows locked agent note when lockChat=true', () => {
+    render(<AddScheduleOverlay {...defaultProps({ lockChat: true })} />)
     expect(screen.getByText(/agent is locked/i)).toBeInTheDocument()
   })
 
@@ -185,11 +184,10 @@ describe('AddScheduleOverlay', () => {
       name: 'Old name',
       description: 'Old desc',
       message: 'Old msg',
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       scheduleType: 'once' as const,
       status: 'pending' as const,
       enabled: true,
-      notifyOnCompletion: true,
     } as SchedulerJob
 
     render(<AddScheduleOverlay {...defaultProps({ editingJob, onUpdated, onOpenChange })} />)
@@ -306,13 +304,6 @@ describe('AddScheduleOverlay', () => {
     expect(screen.getByText(/already in the list/i)).toBeInTheDocument()
   })
 
-  it('shows toggle for notifyOnCompletion', () => {
-    render(<AddScheduleOverlay {...defaultProps()} />)
-    expect(screen.getByText('Notify on completion')).toBeInTheDocument()
-    const toggle = screen.getByRole('checkbox')
-    expect(toggle).toBeChecked()
-  })
-
   it('handles exception during submit gracefully', async () => {
     mockCreateJob.mockRejectedValue(new Error('network failure'))
     render(<AddScheduleOverlay {...defaultProps()} />)
@@ -331,5 +322,384 @@ describe('AddScheduleOverlay', () => {
     render(<AddScheduleOverlay {...defaultProps()} />)
     await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
     expect(screen.getByText(/summary:/i)).toBeInTheDocument()
+  })
+
+  // ---- buildCronExpression: every recurring preset ----
+
+  describe('recurring preset cron building', () => {
+    async function openRecurringAndPick(label: string) {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText(label)) })
+    }
+
+    it('builds a Daily cron preview', async () => {
+      await openRecurringAndPick('Daily')
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+      // Default time 09:00 → "0 9 * * *"
+      expect(screen.getByText('0 9 * * *')).toBeInTheDocument()
+    })
+
+    it('builds a Weekly cron and reflects the selected weekday', async () => {
+      await openRecurringAndPick('Weekly')
+      // The weekday <select> appears; change it to Wednesday (3).
+      const select = screen.getByRole('combobox') as HTMLSelectElement
+      await act(async () => { fireEvent.change(select, { target: { value: '3' } }) })
+      expect(screen.getByText('0 9 * * 3')).toBeInTheDocument()
+    })
+
+    it('builds a Monthly cron and reflects the day of month', async () => {
+      await openRecurringAndPick('Monthly')
+      const dayInput = screen.getByDisplayValue('1') as HTMLInputElement
+      await act(async () => { fireEvent.change(dayInput, { target: { value: '15' } }) })
+      expect(screen.getByText('0 9 15 * *')).toBeInTheDocument()
+    })
+
+    it('builds an Every N Days cron', async () => {
+      await openRecurringAndPick('Every N Days')
+      // every-N number input defaults to 2 → "0 9 */2 * *"
+      expect(screen.getByText('0 9 */2 * *')).toBeInTheDocument()
+    })
+
+    it('builds an Every N Weeks cron', async () => {
+      await openRecurringAndPick('Every N Weeks')
+      expect(screen.getAllByText(/0 9 \* \* 1\/2/).length).toBeGreaterThan(0)
+    })
+
+    it('builds an Every N Months cron', async () => {
+      await openRecurringAndPick('Every N Months')
+      expect(screen.getAllByText(/0 9 1 \*\/2 \*/).length).toBeGreaterThan(0)
+    })
+
+    it('updates the every-N value via its number input', async () => {
+      await openRecurringAndPick('Every N Days')
+      const everyInput = screen.getByDisplayValue('2') as HTMLInputElement
+      await act(async () => { fireEvent.change(everyInput, { target: { value: '5' } }) })
+      expect(screen.getByText('0 9 */5 * *')).toBeInTheDocument()
+    })
+
+    it('updates the recurring time', async () => {
+      await openRecurringAndPick('Daily')
+      const allInputs = screen.getAllByDisplayValue('09:00')
+      const timeEl = allInputs.find((el) => (el as HTMLInputElement).type === 'time')!
+      await act(async () => { fireEvent.change(timeEl, { target: { value: '14:30' } }) })
+      expect(screen.getByText('30 14 * * *')).toBeInTheDocument()
+    })
+  })
+
+  // ---- parseCronExpression: edit mode for each format ----
+
+  describe('edit mode parses existing cron expressions', () => {
+    function editingJobWithCron(cronExpression: string): SchedulerJob {
+      return {
+        id: 'job-x',
+        name: 'Recurring job',
+        description: 'Desc',
+        message: 'Msg',
+        agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'cron',
+        cronExpression,
+        status: 'pending',
+        enabled: true,
+      } as SchedulerJob
+    }
+
+    it('parses a daily cron into recurring mode', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 * * *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+      expect(screen.getByText('0 9 * * *')).toBeInTheDocument()
+    })
+
+    it('parses a weekly cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 * * 3') })} />)
+      expect(screen.getByText('0 9 * * 3')).toBeInTheDocument()
+    })
+
+    it('parses a monthly cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 15 * *') })} />)
+      expect(screen.getByText('0 9 15 * *')).toBeInTheDocument()
+    })
+
+    it('parses an every-N-days cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 */3 * *') })} />)
+      expect(screen.getByText('0 9 */3 * *')).toBeInTheDocument()
+    })
+
+    it('parses an every-N-weeks cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 * * 2/3') })} />)
+      expect(screen.getByText('0 9 * * 2/3')).toBeInTheDocument()
+    })
+
+    it('parses an every-N-months cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 9 10 */4 *') })} />)
+      expect(screen.getByText('0 9 10 */4 *')).toBeInTheDocument()
+    })
+
+    it('falls back to daily for an unparseable cron', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('not a cron') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('handles a 6-field cron expression', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: editingJobWithCron('0 0 9 * * *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+  })
+
+  // ---- UI handlers ----
+
+  describe('UI handlers', () => {
+    it('updates the one-time runAt datetime input', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      const dt = document.querySelector('input[type="datetime-local"]') as HTMLInputElement
+      expect(dt).toBeTruthy()
+      await act(async () => { fireEvent.change(dt, { target: { value: '2030-01-01T08:00' } }) })
+      expect(dt.value).toBe('2030-01-01T08:00')
+    })
+
+    it('switches from recurring back to one-time mode', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+      // Switch back to one-time.
+      await act(async () => { fireEvent.click(screen.getByText('One-Time Schedule')) })
+      expect(document.querySelector('input[type="datetime-local"]')).toBeTruthy()
+    })
+
+  })
+
+  // ---- cron helper fallbacks ----
+
+  describe('cron helper edge cases', () => {
+    it('handles a recurring time with missing minute/hour parts', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Daily')) })
+      const allInputs = screen.getAllByDisplayValue('09:00')
+      const timeEl = allInputs.find((el) => (el as HTMLInputElement).type === 'time')!
+      // Set an empty time so the split yields undefined parts → fallback branches.
+      await act(async () => { fireEvent.change(timeEl, { target: { value: '' } }) })
+      // Component still renders a cron preview (using fallbacks).
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+    })
+
+    it('parses a cron with an out-of-range weekday and clamps it', () => {
+      const job = {
+        id: 'job-y', name: 'n', description: 'd', message: 'm', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'cron', cronExpression: '0 9 * * 9', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('parses a cron with NaN minute/hour and falls back', () => {
+      const job = {
+        id: 'job-z', name: 'n', description: 'd', message: 'm', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'cron', cronExpression: 'xx yy * * *', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    function cronJob(cronExpression: string): SchedulerJob {
+      return {
+        id: 'job-e', name: 'n', description: 'd', message: 'm', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'cron', cronExpression, status: 'pending', enabled: true,
+      } as SchedulerJob
+    }
+
+    it('parses every-n-days with a zero interval and clamps to 1', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: cronJob('0 9 */0 * *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('parses every-n-weeks with zero values and clamps to 1', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: cronJob('0 9 * * 0/0') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('parses monthly with a zero day and clamps', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: cronJob('0 9 0 * *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('parses every-n-months with zero values and clamps', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: cronJob('0 9 0 */0 *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('parses a cron with too few fields and falls back', () => {
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: cronJob('0 9 *') })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('renders edit mode for a one-time job without a runAt', () => {
+      // Covers buildLocalDateTimeInputFromIso default-runAt fallback.
+      const job = {
+        id: 'job-o', name: 'n', description: 'd', message: 'm', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'once', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('renders edit mode for a one-time job with an invalid runAt', () => {
+      // Covers buildLocalDateTimeInputFromIso NaN-date fallback.
+      const job = {
+        id: 'job-i', name: 'n', description: 'd', message: 'm', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'once', runAt: 'not-a-date', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+  })
+
+  describe('submit and validation', () => {
+    it('shows an error message when createJob returns success: false', async () => {
+      mockCreateJob.mockResolvedValue({ success: false, error: 'server rejected' })
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fillRequiredFields() })
+      await act(async () => { fireEvent.click(screen.getByTitle('Create schedule')) })
+      expect(screen.getByText('server rejected')).toBeInTheDocument()
+    })
+
+    it('shows a default error message when createJob fails without an error field', async () => {
+      mockCreateJob.mockResolvedValue({ success: false })
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fillRequiredFields() })
+      await act(async () => { fireEvent.click(screen.getByTitle('Create schedule')) })
+      expect(screen.getByText(/Failed to create schedule/i)).toBeInTheDocument()
+    })
+
+    it('stringifies a non-Error thrown during submit', async () => {
+      mockCreateJob.mockRejectedValue('string failure')
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fillRequiredFields() })
+      await act(async () => { fireEvent.click(screen.getByTitle('Create schedule')) })
+      expect(screen.getByText('string failure')).toBeInTheDocument()
+    })
+
+    it('updates an existing job via updateJob in edit mode', async () => {
+      mockUpdateJob.mockResolvedValue({ success: true })
+      const job = {
+        id: 'job-u', name: 'Existing', description: 'D', message: 'M', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'once', runAt: '2030-01-01T09:00:00.000Z', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      await act(async () => { fireEvent.click(screen.getByTitle('Update schedule')) })
+      expect(mockUpdateJob).toHaveBeenCalled()
+    })
+
+    it('shows "Select Agent" when the agentId does not match any agent', () => {
+      render(<AddScheduleOverlay {...defaultProps({ defaultChatId: 'missing-agent' })} />)
+      expect(screen.getByText('Select Agent')).toBeInTheDocument()
+    })
+
+    it('shows the cron preview invalid placeholder when the cron is empty', async () => {
+      // Force the daily-multi-times builder to yield an empty cron so the
+      // "Invalid recurring schedule" placeholder renders.
+      mockBuildDailyMultiTimes.mockReturnValue({ cronExpression: '', error: 'no times' })
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Daily Multi-Time')) })
+      expect(screen.getByText('Invalid recurring schedule')).toBeInTheDocument()
+    })
+
+    it('clamps an out-of-range monthly day input', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Monthly')) })
+      const dayInput = screen.getByDisplayValue('1') as HTMLInputElement
+      // Empty value → onChange "|| 1" fallback.
+      await act(async () => { fireEvent.change(dayInput, { target: { value: '' } }) })
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+    })
+
+    it('handles an every-N value input cleared to empty', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Every N Days')) })
+      const everyInput = screen.getByDisplayValue('2') as HTMLInputElement
+      await act(async () => { fireEvent.change(everyInput, { target: { value: '' } }) })
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+    })
+
+    it('shows a draft message when Add Time is clicked with no time picked', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Daily Multi-Time')) })
+      // Clear the draft time input first, then click Add Time.
+      const allEmpty = screen.getAllByDisplayValue('')
+      const timeEl = allEmpty.find((el) => (el as HTMLInputElement).type === 'time')
+      if (timeEl) {
+        await act(async () => { fireEvent.change(timeEl, { target: { value: '' } }) })
+      }
+      await act(async () => { fireEvent.click(screen.getByText('Add Time')) })
+      // Either the "pick a time" message or no crash — assert the section still renders.
+      expect(screen.getByText('Add Time')).toBeInTheDocument()
+    })
+
+    it('removes a multi-daily time via its remove control', async () => {
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Daily Multi-Time')) })
+      // Default times are present; remove the first via its "×" button.
+      const removeButtons = screen.getAllByText('×')
+      expect(removeButtons.length).toBeGreaterThan(0)
+      await act(async () => { fireEvent.click(removeButtons[0]) })
+      expect(screen.getByText(/Cron preview:/i)).toBeInTheDocument()
+    })
+
+    it('clamps a Sunday (0) weekday selection in the weekly cron', async () => {
+      // weeklyDay === 0 is falsy → the `weeklyDay || 1` fallback in buildCronExpression.
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Weekly')) })
+      const select = screen.getByRole('combobox') as HTMLSelectElement
+      await act(async () => { fireEvent.change(select, { target: { value: '0' } }) })
+      // Falls back to weekday 1.
+      expect(screen.getByText('0 9 * * 1')).toBeInTheDocument()
+    })
+
+    it('clamps a zero every-N value to 1 in the cron', async () => {
+      // everyNValue 0 → `everyNValue || 1` fallback.
+      render(<AddScheduleOverlay {...defaultProps()} />)
+      await act(async () => { fireEvent.click(screen.getByText('Recurring Schedule')) })
+      await act(async () => { fireEvent.click(screen.getByText('Every N Days')) })
+      const everyInput = screen.getByDisplayValue('2') as HTMLInputElement
+      await act(async () => { fireEvent.change(everyInput, { target: { value: '0' } }) })
+      expect(screen.getByText('0 9 */1 * *')).toBeInTheDocument()
+    })
+
+    it('parses an editing job whose cron is a daily-multi-times expression', () => {
+      // Covers the parseDailyMultiTimesCronExpression truthy branch.
+      mockParseDailyMultiTimes.mockReturnValue(['04:00', '12:00'])
+      const job = {
+        id: 'job-m', name: 'Multi', description: 'D', message: 'M', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'cron', cronExpression: 'MULTI:04:00,12:00', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
+    it('handles an editing job with empty name/message fields', () => {
+      // Covers the `editingJob.name || ''` and `editingJob.message || ''` fallbacks.
+      const job = {
+        id: 'job-empty', name: '', description: '', message: '', agentId: 'agent-1',
+        chat_id: 'chat-1',
+        scheduleType: 'once', runAt: '2030-01-01T09:00:00.000Z', status: 'pending', enabled: true,
+      } as SchedulerJob
+      render(<AddScheduleOverlay {...defaultProps({ editingJob: job })} />)
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument()
+    })
+
   })
 })

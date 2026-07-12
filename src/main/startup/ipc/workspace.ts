@@ -71,6 +71,7 @@ export default function(ctx: Context) {
   ipcMain.handle('workspace:getFileTree', async (event, workspacePath: string, options?: {
     maxDepth?: number;
     ignorePatterns?: string[];
+    includeMetadata?: boolean;
   }) => {
     try {
       // 🔥 Fix: normalize path separators to prevent startsWith check failures caused by mixed slashes on Windows
@@ -94,7 +95,8 @@ export default function(ctx: Context) {
         maxDepth: options?.maxDepth, // Do not set default value, allow undefined to enable unlimited depth
         excludePattern,
         includeHidden: true,
-        useGitignore: true
+        useGitignore: true,
+        includeMetadata: options?.includeMetadata,
       });
 
       // Convert to frontend-expected format (with path safety validation and absolute path conversion)
@@ -126,13 +128,18 @@ export default function(ctx: Context) {
           type: node.isDirectory ? 'directory' : 'file'
         };
 
-        // Add size information for file nodes
+        // Add size and optional mtime for file nodes
         if (!node.isDirectory) {
           try {
             const stats = fs.statSync(safePath);
             converted.size = stats.size;
+            if (options?.includeMetadata) converted.mtime = stats.mtimeMs;
           } catch (err) {
             converted.size = 0;
+          }
+        } else {
+          if (options?.includeMetadata) {
+            try { converted.mtime = fs.statSync(safePath).mtimeMs; } catch { /* ignore */ }
           }
         }
 
@@ -189,6 +196,7 @@ export default function(ctx: Context) {
   // Get direct children of directory (lazy-loaded file tree) - returns single level only, no recursion
   ipcMain.handle('workspace:getDirectoryChildren', async (event, dirPath: string, options?: {
     ignorePatterns?: string[];
+    includeMetadata?: boolean;
   }) => {
     try {
       dirPath = path.normalize(dirPath);
@@ -221,7 +229,19 @@ export default function(ctx: Context) {
         };
 
         if (!isDirectory) {
-          try { item.size = fs.statSync(childPath).size; } catch { item.size = 0; }
+          try {
+            const stat = fs.statSync(childPath);
+            item.size = stat.size;
+            if (options?.includeMetadata) {
+              item.mtime = stat.mtimeMs;
+            }
+          } catch {
+            item.size = 0;
+          }
+        } else if (options?.includeMetadata) {
+          try {
+            item.mtime = fs.statSync(childPath).mtimeMs;
+          } catch { /* ignore */ }
         }
 
         children.push(item);
@@ -347,6 +367,9 @@ export default function(ctx: Context) {
       }
 
       const watcher = getWorkspaceWatcher();
+
+      // Normalize folder path to OS-native separators so callers can use '/' unconditionally
+      query.folder = path.normalize(query.folder);
 
       // Call search service
       const result = await watcher.searchFiles(query as any);

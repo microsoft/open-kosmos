@@ -4,6 +4,7 @@ import { ArrowModel, uuid } from '../model'
 import { Rect, Point} from '../../type';
 import { DragLimiter, type MEvent } from '../../common/drag-limiter';
 import { StrokeEvent, CapturedHooks } from '../../common/keyboard-painter';
+import { getString } from '../../common/localString';
 
 interface PaintState {
   fill: string;
@@ -99,7 +100,7 @@ class ArrowPainter extends PureComponent<PaintProps, PaintState> {
     if (!to) return null;
     const { line, arrow } = draw(from, to, size);
     return (
-      <g fill={fill} aria-live="assertive" aria-label='render arrow'>
+      <g fill={fill} aria-live="assertive" aria-label={getString('renderArrow')}>
         <path d={line} />
         <path d={arrow} />
       </g>

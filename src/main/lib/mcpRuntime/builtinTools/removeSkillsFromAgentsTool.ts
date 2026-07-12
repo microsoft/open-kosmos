@@ -1,5 +1,6 @@
 import { removeSkillsFromAgents } from '../../skill/removeSkillsFromAgents';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatPrimaryAgent } from '../../userDataADO/agentAccessor';
 import { BuiltinToolDefinition } from './types';
 import { BuiltinToolsManager } from './builtinToolsManager';
 
@@ -94,7 +95,8 @@ export class RemoveSkillsFromAgentsTool {
         };
       }
 
-      if (chatConfig.chat_type !== 'single_agent' || !chatConfig.agent?.name) {
+      const primaryAgent = getChatPrimaryAgent(chatConfig);
+      if (chatConfig.chat_type !== 'single_agent' || !primaryAgent?.name) {
         return {
           success: false,
           message: 'The current chat does not resolve to a single current agent. Specify agent_names to remove skills from a multi-agent chat.',
@@ -104,7 +106,7 @@ export class RemoveSkillsFromAgentsTool {
 
       const result = await removeSkillsFromAgents(currentUserAlias, {
         skillNames,
-        targets: [{ chatId: ctx.chatId, agentName: chatConfig.agent.name }],
+        targets: [{ chatId: ctx.chatId, agentName: primaryAgent.name }],
       });
 
       return formatResult(result);

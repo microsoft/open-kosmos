@@ -42,7 +42,7 @@ export interface StreamingChunk {
     isPartial?: boolean;              // Whether this is an in-progress partial result
   };
 
-  // User message chunk - remote channel user message (transmitted in full)
+  // User message chunk (transmitted in full)
   userMessage?: {
     id?: string;
     role: 'user';

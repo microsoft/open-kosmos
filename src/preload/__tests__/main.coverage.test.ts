@@ -11,6 +11,11 @@
  *    try/catch around contextBridge.exposeInMainWorld.
  */
 
+import {
+  buildInitialThemeSourceArgument,
+  INITIAL_THEME_SOURCE_ARG,
+} from '@shared/constants/startupTheme';
+
 // ---------------------------------------------------------------------------
 // Hoist mock variable declarations so vi.mock factories can close over them
 // ---------------------------------------------------------------------------
@@ -25,12 +30,10 @@ const {
   mockGetPathForFile,
   mockInvokeScreenshot,
   mockInvokeScheduler,
-  mockInvokeBrowserControl,
-  mockInvokeRemoteChannel,
+  mockInvokeAgentHooks,
+  mockCreateMemexPreloadApi,
   mockInvokeExternalAgent,
   mockInvokeBuddy,
-  mockInvokePlugin,
-  mockInvokeDoctor,
 } = vi.hoisted(() => {
   // Set contextIsolated=true BEFORE main.ts is evaluated so it takes the
   // contextBridge path (window is undefined in the Node test environment).
@@ -46,12 +49,14 @@ const {
 
   const mockInvokeScreenshot = vi.fn();
   const mockInvokeScheduler = vi.fn();
-  const mockInvokeBrowserControl = vi.fn();
-  const mockInvokeRemoteChannel = vi.fn();
+  const mockInvokeAgentHooks = vi.fn();
+  const mockCreateMemexPreloadApi = vi.fn().mockReturnValue({
+    invoke: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+  });
   const mockInvokeExternalAgent = vi.fn();
   const mockInvokeBuddy = vi.fn();
-  const mockInvokePlugin = vi.fn();
-  const mockInvokeDoctor = vi.fn();
 
   return {
     mockInvoke,
@@ -64,12 +69,10 @@ const {
     mockGetPathForFile,
     mockInvokeScreenshot,
     mockInvokeScheduler,
-    mockInvokeBrowserControl,
-    mockInvokeRemoteChannel,
+    mockInvokeAgentHooks,
+    mockCreateMemexPreloadApi,
     mockInvokeExternalAgent,
     mockInvokeBuddy,
-    mockInvokePlugin,
-    mockInvokeDoctor,
   };
 });
 
@@ -98,12 +101,10 @@ vi.mock('electron', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('../screenshot/invoke', () => ({ default: mockInvokeScreenshot }));
 vi.mock('../scheduler/invoke', () => ({ default: mockInvokeScheduler }));
-vi.mock('../browserControl/invoke', () => ({ default: mockInvokeBrowserControl }));
-vi.mock('../remoteChannel/invoke', () => ({ default: mockInvokeRemoteChannel }));
+vi.mock('../agentHooks/invoke', () => ({ default: mockInvokeAgentHooks }));
+vi.mock('../memex/api', () => ({ createMemexPreloadApi: mockCreateMemexPreloadApi }));
 vi.mock('../externalAgent/invoke', () => ({ default: mockInvokeExternalAgent }));
 vi.mock('../buddy/invoke', () => ({ default: mockInvokeBuddy }));
-vi.mock('../plugin/invoke', () => ({ default: mockInvokePlugin }));
-vi.mock('../doctor/invoke', () => ({ default: mockInvokeDoctor }));
 
 // ---------------------------------------------------------------------------
 // Import the module under test
@@ -186,6 +187,26 @@ describe('electronAPI – top-level invoke wrappers', () => {
   });
 });
 
+describe('electronAPI.embeddedBrowser event bridge', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('allows only embedded browser events and strips the raw IPC event', () => {
+    const cb = vi.fn();
+    electronAPI.embeddedBrowser.on('embeddedBrowser:navStateChanged', cb);
+    fireIpcEvent('embeddedBrowser:navStateChanged', { sessionId: 's1', url: 'https://example.com' });
+    expect(cb).toHaveBeenCalledWith({}, { sessionId: 's1', url: 'https://example.com' });
+    expect(() => electronAPI.embeddedBrowser.on('profile:updated', cb)).toThrow('not allowed');
+  });
+
+  it('removes the wrapped embedded browser listener', () => {
+    const cb = vi.fn();
+    electronAPI.embeddedBrowser.on('embeddedBrowser:panelOpenRequested', cb);
+    electronAPI.embeddedBrowser.off('embeddedBrowser:panelOpenRequested', cb);
+    expect(mockOff).toHaveBeenCalledWith('embeddedBrowser:panelOpenRequested', mockOn.mock.calls[0][1]);
+    expect(() => electronAPI.embeddedBrowser.off('profile:updated', cb)).toThrow('not allowed');
+  });
+});
+
 describe('electronAPI.onAppReady – event subscription', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -201,7 +222,34 @@ describe('electronAPI.onAppReady – event subscription', () => {
 });
 
 describe('electronAPI.appConfig', () => {
-  beforeEach(() => vi.clearAllMocks());
+  const originalArgv = process.argv;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.argv = [...originalArgv];
+  });
+
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  it('getInitialAppConfig returns the seeded startup theme source', () => {
+    process.argv = [...originalArgv, buildInitialThemeSourceArgument('dark')];
+
+    expect(electronAPI.appConfig.getInitialAppConfig()).toEqual({
+      appearance: { themeSource: 'dark' },
+    });
+  });
+
+  it('getInitialAppConfig ignores missing, malformed, and invalid startup theme source args', () => {
+    expect(electronAPI.appConfig.getInitialAppConfig()).toBeUndefined();
+
+    process.argv = [...originalArgv, `${INITIAL_THEME_SOURCE_ARG}sepia`];
+    expect(electronAPI.appConfig.getInitialAppConfig()).toBeUndefined();
+
+    process.argv = [...originalArgv, `${INITIAL_THEME_SOURCE_ARG}%E0%A4%A`];
+    expect(electronAPI.appConfig.getInitialAppConfig()).toBeUndefined();
+  });
 
   it('getAppConfig', () => {
     electronAPI.appConfig.getAppConfig();
@@ -281,11 +329,64 @@ describe('electronAPI.profile', () => {
     expect(mockInvoke).toHaveBeenCalledWith('profile:updateConfirmationSettings', 'alice', {});
   });
 
+  it('updateBrowserSettings', () => {
+    electronAPI.profile.updateBrowserSettings('alice', { enabled: true });
+    expect(mockInvoke).toHaveBeenCalledWith('profile:updateBrowserSettings', 'alice', { enabled: true });
+  });
+
+  it('updateMemexSettings', () => {
+    electronAPI.profile.updateMemexSettings('alice', { enabled: false });
+    expect(mockInvoke).toHaveBeenCalledWith('profile:updateMemexSettings', 'alice', { enabled: false });
+  });
+
+  it('updateComputerUseSettings', () => {
+    electronAPI.profile.updateComputerUseSettings('alice', { enabled: true });
+    expect(mockInvoke).toHaveBeenCalledWith('profile:updateComputerUseSettings', 'alice', { enabled: true });
+  });
+
+  it('getComputerUseStatus', () => {
+    electronAPI.profile.getComputerUseStatus(true);
+    expect(mockInvoke).toHaveBeenCalledWith('computerUse:getPermissionStatus', true);
+  });
+
   it('onCacheUpdated event subscription', () => {
     const cb = vi.fn();
     const unsub = electronAPI.profile.onCacheUpdated(cb);
     fireIpcEvent('profile:cacheUpdated', { alias: 'alice', profile: {}, timestamp: 1 });
     expect(cb).toHaveBeenCalledWith({ alias: 'alice', profile: {}, timestamp: 1 });
+    unsub();
+  });
+
+  it('getRegisteredAgents / getSkillsForAlias / getHooksForAlias invoke the pulls', () => {
+    electronAPI.profile.getRegisteredAgents('alice');
+    expect(mockInvoke).toHaveBeenCalledWith('agents:getAll', 'alice');
+    electronAPI.profile.getSkillsForAlias('alice');
+    expect(mockInvoke).toHaveBeenCalledWith('skills:getAll', 'alice');
+    electronAPI.profile.getHooksForAlias('alice');
+    expect(mockInvoke).toHaveBeenCalledWith('hooks:getAll', 'alice');
+  });
+
+  it('onAgentsChanged event subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.profile.onAgentsChanged(cb);
+    fireIpcEvent('agents:changed', { alias: 'alice', agents: [{ id: 'a1' }], timestamp: 3 });
+    expect(cb).toHaveBeenCalledWith({ alias: 'alice', agents: [{ id: 'a1' }], timestamp: 3 });
+    unsub();
+  });
+
+  it('onSkillsChanged event subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.profile.onSkillsChanged(cb);
+    fireIpcEvent('skills:changed', { alias: 'alice', skills: [{ name: 's1' }], timestamp: 4 });
+    expect(cb).toHaveBeenCalledWith({ alias: 'alice', skills: [{ name: 's1' }], timestamp: 4 });
+    unsub();
+  });
+
+  it('onHooksChanged event subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.profile.onHooksChanged(cb);
+    fireIpcEvent('hooks:changed', { alias: 'alice', hooks: [{ id: 'h1' }], timestamp: 5 });
+    expect(cb).toHaveBeenCalledWith({ alias: 'alice', hooks: [{ id: 'h1' }], timestamp: 5 });
     unsub();
   });
 
@@ -457,6 +558,11 @@ describe('electronAPI.profile', () => {
     expect(mockInvoke).toHaveBeenCalledWith('profile:getMoreChatSessions', 'alice', 'chat1', 2);
   });
 
+  it('getAllScheduledSessions', () => {
+    electronAPI.profile.getAllScheduledSessions('alice', 'chat1', { limit: 20, offset: 0 });
+    expect(mockInvoke).toHaveBeenCalledWith('profile:getAllScheduledSessions', 'alice', 'chat1', { limit: 20, offset: 0 });
+  });
+
   it('getChatSession', () => {
     electronAPI.profile.getChatSession('chat1', 'sess1');
     expect(mockInvoke).toHaveBeenCalledWith('profile:getChatSession', 'chat1', 'sess1');
@@ -472,9 +578,9 @@ describe('electronAPI.profile', () => {
     expect(mockInvoke).toHaveBeenCalledWith('profile:createChatSession', 'chat1', 'My Chat');
   });
 
-  it('setPrimaryAgent', () => {
-    electronAPI.profile.setPrimaryAgent('agentX');
-    expect(mockInvoke).toHaveBeenCalledWith('profile:setPrimaryAgent', 'agentX');
+  it('setPrimaryChat', () => {
+    electronAPI.profile.setPrimaryChat('chat_x');
+    expect(mockInvoke).toHaveBeenCalledWith('profile:setPrimaryChat', 'chat_x');
   });
 
   it('updateFreDone', () => {
@@ -558,6 +664,44 @@ describe('electronAPI.auth', () => {
     unsub();
   });
 
+  it('getLocalActiveSessions (legacy)', () => {
+    electronAPI.auth.getLocalActiveSessions();
+    expect(mockInvoke).toHaveBeenCalledWith('auth:getLocalActiveSessions');
+  });
+
+  it('setCurrentSession (legacy)', () => {
+    electronAPI.auth.setCurrentSession({ user: 'alice' });
+    expect(mockInvoke).toHaveBeenCalledWith('auth:setCurrentSession', { user: 'alice' });
+  });
+
+  it('getCurrentSession (legacy)', () => {
+    electronAPI.auth.getCurrentSession();
+    expect(mockInvoke).toHaveBeenCalledWith('auth:getCurrentSession');
+  });
+
+  it('destroyCurrentSession (legacy)', () => {
+    electronAPI.auth.destroyCurrentSession();
+    expect(mockInvoke).toHaveBeenCalledWith('auth:destroyCurrentSession');
+  });
+
+  it('getAccessToken (legacy)', () => {
+    electronAPI.auth.getAccessToken();
+    expect(mockInvoke).toHaveBeenCalledWith('auth:getAccessToken');
+  });
+
+  it('refreshCurrentSessionToken (legacy)', () => {
+    electronAPI.auth.refreshCurrentSessionToken();
+    expect(mockInvoke).toHaveBeenCalledWith('auth:refreshCurrentSessionToken');
+  });
+
+  it('onSessionChanged subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.auth.onSessionChanged(cb);
+    fireIpcEvent('auth:sessionChanged', { session: 'x' });
+    expect(cb).toHaveBeenCalledWith({ session: 'x' });
+    unsub();
+  });
+
   it('stopTokenMonitoring', () => {
     electronAPI.auth.stopTokenMonitoring();
     expect(mockInvoke).toHaveBeenCalledWith('auth:stopTokenMonitoring');
@@ -631,8 +775,8 @@ describe('electronAPI.llm', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('improveSystemPrompt', () => {
-    electronAPI.llm.improveSystemPrompt('prompt text');
-    expect(mockInvoke).toHaveBeenCalledWith('llm:improveSystemPrompt', 'prompt text');
+    electronAPI.llm.improveSystemPrompt('prompt text', { promptFile: 'AGENTS.md' });
+    expect(mockInvoke).toHaveBeenCalledWith('llm:improveSystemPrompt', 'prompt text', { promptFile: 'AGENTS.md' });
   });
 
   it('formatMcpConfig', () => {
@@ -669,6 +813,7 @@ describe('electronAPI.llm', () => {
     electronAPI.llm.embedBatch(['a', 'b']);
     expect(mockInvoke).toHaveBeenCalledWith('llm:embedBatch', ['a', 'b']);
   });
+
 });
 
 describe('electronAPI.models', () => {
@@ -832,20 +977,6 @@ describe('electronAPI.mcp', () => {
   });
 });
 
-describe('electronAPI.mcpLibrary', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('getLibraryData', () => {
-    electronAPI.mcpLibrary.getLibraryData();
-    expect(mockInvoke).toHaveBeenCalledWith('mcpLibrary:getLibraryData');
-  });
-
-  it('fetchAndUpdate', () => {
-    electronAPI.mcpLibrary.fetchAndUpdate();
-    expect(mockInvoke).toHaveBeenCalledWith('mcpLibrary:fetchAndUpdate');
-  });
-});
-
 describe('electronAPI.runtime', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -862,6 +993,11 @@ describe('electronAPI.runtime', () => {
   it('checkStatus', () => {
     electronAPI.runtime.checkStatus();
     expect(mockInvoke).toHaveBeenCalledWith('runtime:check-status');
+  });
+
+  it('checkCore', () => {
+    electronAPI.runtime.checkCore();
+    expect(mockInvoke).toHaveBeenCalledWith('runtime:check-core');
   });
 
   it('checkGitVersion', () => {
@@ -904,7 +1040,112 @@ describe('electronAPI.runtime', () => {
     expect(mockInvoke).toHaveBeenCalledWith('runtime:clean-uv-cache');
   });
 
+  it('listPythonPackages', () => {
+    electronAPI.runtime.listPythonPackages();
+    expect(mockInvoke).toHaveBeenCalledWith('runtime:list-python-packages');
+  });
 
+  it('addPythonPackages', () => {
+    electronAPI.runtime.addPythonPackages(['mcp']);
+    expect(mockInvoke).toHaveBeenCalledWith('runtime:add-python-packages', ['mcp']);
+  });
+
+  it('uninstallPythonPackage', () => {
+    electronAPI.runtime.uninstallPythonPackage('mcp');
+    expect(mockInvoke).toHaveBeenCalledWith('runtime:uninstall-python-package', 'mcp');
+  });
+
+});
+
+describe('electronAPI.subAgentTask', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('listForSession', () => {
+    electronAPI.subAgentTask.listForSession('parent1');
+    expect(mockInvoke).toHaveBeenCalledWith('subAgentTask:listForSession', 'parent1');
+  });
+
+  it('open', () => {
+    electronAPI.subAgentTask.open('task1');
+    expect(mockInvoke).toHaveBeenCalledWith('subAgentTask:open', 'task1');
+  });
+
+  it('close', () => {
+    electronAPI.subAgentTask.close('task1');
+    expect(mockInvoke).toHaveBeenCalledWith('subAgentTask:close', 'task1');
+  });
+
+  it('resolveByCorrelationId', () => {
+    electronAPI.subAgentTask.resolveByCorrelationId('corr1');
+    expect(mockInvoke).toHaveBeenCalledWith('subAgentTask:resolveByCorrelationId', 'corr1');
+  });
+
+  it('onStreamingChunk subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.subAgentTask.onStreamingChunk(cb);
+    fireIpcEvent('subAgentTask:streamingChunk', { chunk: 'x' });
+    expect(cb).toHaveBeenCalledWith({ chunk: 'x' });
+    unsub();
+    expect(mockRemoveListener).toHaveBeenCalled();
+  });
+
+  it('onTaskCreated subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.subAgentTask.onTaskCreated(cb);
+    fireIpcEvent('subAgentTaskStore:taskCreated', { id: 't1' });
+    expect(cb).toHaveBeenCalledWith({ id: 't1' });
+    unsub();
+    expect(mockRemoveListener).toHaveBeenCalled();
+  });
+
+  it('onTaskUpdated subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.subAgentTask.onTaskUpdated(cb);
+    fireIpcEvent('subAgentTaskStore:taskUpdated', { id: 't1' });
+    expect(cb).toHaveBeenCalledWith({ id: 't1' });
+    unsub();
+    expect(mockRemoveListener).toHaveBeenCalled();
+  });
+});
+
+describe('electronAPI.agentChat – additional delegations', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getCurrentInstance', () => {
+    electronAPI.agentChat.getCurrentInstance();
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:getCurrentInstance');
+  });
+
+  it('getChatHistory', () => {
+    electronAPI.agentChat.getChatHistory();
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:getChatHistory');
+  });
+
+  it('getDisplayMessages', () => {
+    electronAPI.agentChat.getDisplayMessages();
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:getDisplayMessages');
+  });
+
+  it('startNewChatFor passes only chatId through', () => {
+    electronAPI.agentChat.startNewChatFor('chat1', { sayHiMessageConfig: { markdownContent: 'hi' } });
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:startNewChatFor', 'chat1');
+  });
+
+  it('syncChatHistory', () => {
+    const messages = [{ id: 'm1' }];
+    electronAPI.agentChat.syncChatHistory(messages);
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:syncChatHistory', messages);
+  });
+
+  it('getCurrentChatId', () => {
+    electronAPI.agentChat.getCurrentChatId();
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:getCurrentChatId');
+  });
+
+  it('refreshCurrentInstance', () => {
+    electronAPI.agentChat.refreshCurrentInstance();
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:refreshCurrentInstance');
+  });
 });
 
 describe('electronAPI.openkosmos', () => {
@@ -1059,6 +1300,7 @@ describe('electronAPI.logger', () => {
   });
 });
 
+
 describe('electronAPI.folder', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -1141,71 +1383,6 @@ describe('electronAPI.fs', () => {
     const result = electronAPI.fs.getPathForFile(fakeFile);
     expect(mockGetPathForFile).toHaveBeenCalledWith(fakeFile);
     expect(result).toBe('/some/path');
-  });
-});
-
-describe('electronAPI.update', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('checkForUpdates', () => {
-    electronAPI.update.checkForUpdates(true);
-    expect(mockInvoke).toHaveBeenCalledWith('update:checkForUpdates', true);
-  });
-
-  it('downloadUpdate', () => {
-    electronAPI.update.downloadUpdate('http://x.com/update.dmg');
-    expect(mockInvoke).toHaveBeenCalledWith('update:downloadUpdate', 'http://x.com/update.dmg');
-  });
-
-  it('quitAndInstall', () => {
-    electronAPI.update.quitAndInstall('/tmp/update.dmg');
-    expect(mockInvoke).toHaveBeenCalledWith('update:quitAndInstall', '/tmp/update.dmg');
-  });
-
-  it('getVersion', () => {
-    electronAPI.update.getVersion();
-    expect(mockInvoke).toHaveBeenCalledWith('update:getVersion');
-  });
-
-  it('skipVersion', () => {
-    electronAPI.update.skipVersion('1.2.3');
-    expect(mockInvoke).toHaveBeenCalledWith('update:skipVersion', '1.2.3');
-  });
-
-  it('getPreferences', () => {
-    electronAPI.update.getPreferences();
-    expect(mockInvoke).toHaveBeenCalledWith('update:getPreferences');
-  });
-
-  it('updatePreferences', () => {
-    electronAPI.update.updatePreferences({ autoUpdate: true });
-    expect(mockInvoke).toHaveBeenCalledWith('update:updatePreferences', { autoUpdate: true });
-  });
-
-  it('onUpdateEvent subscribes and fires callback', () => {
-    const cb = vi.fn();
-    const unsub = electronAPI.update.onUpdateEvent('available', cb);
-    fireIpcEvent('update:available', { version: '2.0.0' });
-    expect(cb).toHaveBeenCalledWith({ version: '2.0.0' });
-    unsub();
-    expect(mockRemoveListener).toHaveBeenCalled();
-  });
-});
-
-describe('electronAPI.startupUpdate', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('checkAndInstallUpdates', () => {
-    electronAPI.startupUpdate.checkAndInstallUpdates();
-    expect(mockInvoke).toHaveBeenCalledWith('startup:checkAndInstallUpdates');
-  });
-
-  it('onProgress subscribes and fires callback', () => {
-    const cb = vi.fn();
-    const unsub = electronAPI.startupUpdate.onProgress(cb);
-    fireIpcEvent('startup:updateProgress', { percent: 50 });
-    expect(cb).toHaveBeenCalledWith({ percent: 50 });
-    unsub();
   });
 });
 
@@ -1324,37 +1501,9 @@ describe('electronAPI.workspace', () => {
   });
 });
 
-
-describe('electronAPI.quickStartImageCache', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('getOrCache', () => {
-    electronAPI.quickStartImageCache.getOrCache('agentX', 'http://img.url');
-    expect(mockInvoke).toHaveBeenCalledWith('quickStartImageCache:getOrCache', 'agentX', 'http://img.url');
-  });
-
-  it('clearAgent', () => {
-    electronAPI.quickStartImageCache.clearAgent('agentX');
-    expect(mockInvoke).toHaveBeenCalledWith('quickStartImageCache:clearAgent', 'agentX');
-  });
-
-  it('clearAll', () => {
-    electronAPI.quickStartImageCache.clearAll();
-    expect(mockInvoke).toHaveBeenCalledWith('quickStartImageCache:clearAll');
-  });
-});
-
-describe('electronAPI.screenshot / remoteChannel / externalAgent', () => {
+describe('electronAPI.screenshot / externalAgent', () => {
   it('screenshot.invoke is the imported mock', () => {
     expect(electronAPI.screenshot.invoke).toBe(mockInvokeScreenshot);
-  });
-
-  it('remoteChannel.invoke is the imported mock', () => {
-    expect(electronAPI.remoteChannel.invoke).toBe(mockInvokeRemoteChannel);
-  });
-
-  it('remoteChannel.on is ipcRenderer.on', () => {
-    expect(electronAPI.remoteChannel.on).toBeInstanceOf(Function);
   });
 
   it('externalAgent.invoke is the imported mock', () => {
@@ -1362,68 +1511,198 @@ describe('electronAPI.screenshot / remoteChannel / externalAgent', () => {
   });
 });
 
-
-
-describe('electronAPI.browserControl', () => {
+describe('electronAPI.whisper', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('invoke is the imported mock', () => {
-    expect(electronAPI.browserControl!.invoke).toBe(mockInvokeBrowserControl);
+  it('getAllModelStatus', () => {
+    electronAPI.whisper.getAllModelStatus();
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:getAllModelStatus');
   });
 
-  it('onPhaseChange subscription', () => {
+  it('getModelStatus', () => {
+    electronAPI.whisper.getModelStatus('large');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:getModelStatus', 'large');
+  });
+
+  it('getAllModelInfo', () => {
+    electronAPI.whisper.getAllModelInfo();
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:getAllModelInfo');
+  });
+
+  it('downloadModel', () => {
+    electronAPI.whisper.downloadModel('base');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:downloadModel', 'base');
+  });
+
+  it('cancelDownload', () => {
+    electronAPI.whisper.cancelDownload('base');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:cancelDownload', 'base');
+  });
+
+  it('deleteModel', () => {
+    electronAPI.whisper.deleteModel('base');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:deleteModel', 'base');
+  });
+
+  it('getModelPath', () => {
+    electronAPI.whisper.getModelPath('base');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:getModelPath', 'base');
+  });
+
+  it('isDownloading', () => {
+    electronAPI.whisper.isDownloading();
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:isDownloading');
+  });
+
+  it('transcribe converts Float32Array and calls invoke', () => {
+    const pcm = new Float32Array([0.1, 0.2]);
+    electronAPI.whisper.transcribe(pcm, 'base', { language: 'en' });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'whisper:transcribe',
+      expect.objectContaining({
+        modelSize: 'base',
+        options: { language: 'en' },
+        pcmData: expect.arrayContaining([expect.any(Number)]),
+      }),
+    );
+    // Verify it is an ordinary Array (not Float32Array)
+    const callArg = mockInvoke.mock.calls[0][1];
+    expect(Array.isArray(callArg.pcmData)).toBe(true);
+    expect(callArg.pcmData).toHaveLength(2);
+  });
+
+  it('isAvailable', () => {
+    electronAPI.whisper.isAvailable();
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:isAvailable');
+  });
+
+  it('onDownloadProgress subscription', () => {
     const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onPhaseChange(cb);
-    fireIpcEvent('browserControl:phaseChange', 'downloading', 'msg');
-    expect(cb).toHaveBeenCalledWith('downloading', 'msg');
+    const unsub = electronAPI.whisper.onDownloadProgress(cb);
+    fireIpcEvent('whisper:downloadProgress', { percent: 10 });
+    expect(cb).toHaveBeenCalledWith({ percent: 10 });
+    unsub();
+  });
+
+  it('onDownloadComplete subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.whisper.onDownloadComplete(cb);
+    fireIpcEvent('whisper:downloadComplete', { modelId: 'base' });
+    expect(cb).toHaveBeenCalled();
+    unsub();
+  });
+
+  it('onDownloadError subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.whisper.onDownloadError(cb);
+    fireIpcEvent('whisper:downloadError', { error: 'fail' });
+    expect(cb).toHaveBeenCalled();
+    unsub();
+  });
+
+  it('onDownloadCancelled subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.whisper.onDownloadCancelled(cb);
+    fireIpcEvent('whisper:downloadCancelled', {});
+    expect(cb).toHaveBeenCalled();
+    unsub();
+  });
+
+  it('startStreaming', () => {
+    electronAPI.whisper.startStreaming('base', { language: 'en' });
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:startStreaming', { modelSize: 'base', options: { language: 'en' } });
+  });
+
+  it('processChunk converts Float32Array', () => {
+    const pcm = new Float32Array([0.5]);
+    electronAPI.whisper.processChunk('sess1', pcm);
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:processChunk', { sessionId: 'sess1', pcmData: [0.5] });
+  });
+
+  it('stopStreaming', () => {
+    electronAPI.whisper.stopStreaming('sess1');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:stopStreaming', 'sess1');
+  });
+
+  it('cancelStreaming', () => {
+    electronAPI.whisper.cancelStreaming('sess1');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:cancelStreaming', 'sess1');
+  });
+
+  it('isStreamingActive', () => {
+    electronAPI.whisper.isStreamingActive('sess1');
+    expect(mockInvoke).toHaveBeenCalledWith('whisper:isStreamingActive', 'sess1');
+  });
+
+  it('onStreamingUpdate subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.whisper.onStreamingUpdate(cb);
+    fireIpcEvent('whisper:streamingUpdate', { sessionId: 's', type: 'final', text: 'hello' });
+    expect(cb).toHaveBeenCalledWith({ sessionId: 's', type: 'final', text: 'hello' });
+    unsub();
+  });
+});
+
+describe('electronAPI.nativeModule', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getStatus', () => {
+    electronAPI.nativeModule!.getStatus('whisper');
+    expect(mockInvoke).toHaveBeenCalledWith('native-module:getStatus', 'whisper');
+  });
+
+  it('ensureDownloaded', () => {
+    electronAPI.nativeModule!.ensureDownloaded('whisper');
+    expect(mockInvoke).toHaveBeenCalledWith('native-module:ensureDownloaded', 'whisper');
+  });
+
+  it('cancelDownload', () => {
+    electronAPI.nativeModule!.cancelDownload('whisper');
+    expect(mockInvoke).toHaveBeenCalledWith('native-module:cancelDownload', 'whisper');
+  });
+
+  it('deleteModule', () => {
+    electronAPI.nativeModule!.deleteModule('whisper');
+    expect(mockInvoke).toHaveBeenCalledWith('native-module:delete', 'whisper');
+  });
+
+  it('onDownloadStarted subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.nativeModule!.onDownloadStarted(cb);
+    fireIpcEvent('native-module:downloadStarted', { packageName: 'pkg', url: 'http://x.com' });
+    expect(cb).toHaveBeenCalledWith({ packageName: 'pkg', url: 'http://x.com' });
     unsub();
   });
 
   it('onDownloadProgress subscription', () => {
     const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onDownloadProgress(cb);
-    fireIpcEvent('browserControl:downloadProgress', { percent: 50, transferred: '50MB', total: '100MB' });
+    const unsub = electronAPI.nativeModule!.onDownloadProgress(cb);
+    fireIpcEvent('native-module:downloadProgress', { packageName: 'pkg', bytesDownloaded: 100, bytesTotal: 1000, percent: 10 });
     expect(cb).toHaveBeenCalled();
     unsub();
   });
 
-  it('onUpdatePhaseChange subscription', () => {
+  it('onDownloadComplete subscription', () => {
     const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onUpdatePhaseChange(cb);
-    fireIpcEvent('browserControl:updatePhaseChange', 'updating', 'msg');
-    expect(cb).toHaveBeenCalledWith('updating', 'msg');
-    unsub();
-  });
-
-  it('onUpdateDownloadProgress subscription', () => {
-    const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onUpdateDownloadProgress(cb);
-    fireIpcEvent('browserControl:updateDownloadProgress', { percent: 75, transferred: '75MB', total: '100MB' });
+    const unsub = electronAPI.nativeModule!.onDownloadComplete(cb);
+    fireIpcEvent('native-module:downloadComplete', { packageName: 'pkg', localPath: '/local' });
     expect(cb).toHaveBeenCalled();
     unsub();
   });
 
-  it('onShowBrowserInstallConfirm subscription', () => {
+  it('onDownloadCancelled subscription', () => {
     const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onShowBrowserInstallConfirm(cb);
-    fireIpcEvent('browserControl:showBrowserInstallConfirm', { requestId: 'r1', browserName: 'chrome' });
-    expect(cb).toHaveBeenCalledWith({ requestId: 'r1', browserName: 'chrome' });
+    const unsub = electronAPI.nativeModule!.onDownloadCancelled(cb);
+    fireIpcEvent('native-module:downloadCancelled', { packageName: 'pkg' });
+    expect(cb).toHaveBeenCalled();
     unsub();
   });
 
-  it('onShowNativeServerDownloadConfirm subscription', () => {
+  it('onDownloadError subscription', () => {
     const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onShowNativeServerDownloadConfirm(cb);
-    fireIpcEvent('browserControl:showNativeServerDownloadConfirm', { requestId: 'r2' });
-    expect(cb).toHaveBeenCalledWith({ requestId: 'r2' });
-    unsub();
-  });
-
-  it('onShowBrowserRestartConfirm subscription', () => {
-    const cb = vi.fn();
-    const unsub = electronAPI.browserControl!.onShowBrowserRestartConfirm(cb);
-    fireIpcEvent('browserControl:showBrowserRestartConfirm', { requestId: 'r3', browserName: 'edge' });
-    expect(cb).toHaveBeenCalledWith({ requestId: 'r3', browserName: 'edge' });
+    const unsub = electronAPI.nativeModule!.onDownloadError(cb);
+    fireIpcEvent('native-module:downloadError', { packageName: 'pkg', error: 'fail' });
+    expect(cb).toHaveBeenCalled();
     unsub();
   });
 });
@@ -1457,7 +1736,6 @@ describe('electronAPI.devToolsMcp', () => {
   });
 });
 
-
 describe('electronAPI.mcpAuth', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -1485,6 +1763,75 @@ describe('electronAPI.mcpAuth', () => {
   it('respondClientId', () => {
     electronAPI.mcpAuth.respondClientId('r2', { clientId: 'abc' });
     expect(mockInvoke).toHaveBeenCalledWith('mcpAuth:respondClientId', 'r2', { clientId: 'abc' });
+  });
+});
+
+describe('electronAPI.sync', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getSettings', () => {
+    electronAPI.sync!.getSettings();
+    expect(mockInvoke).toHaveBeenCalledWith('sync:getSettings');
+  });
+
+  it('setEnabled', () => {
+    electronAPI.sync!.setEnabled(true);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:setEnabled', true);
+  });
+
+  it('setRepoUrl', () => {
+    electronAPI.sync!.setRepoUrl('http://repo.url');
+    expect(mockInvoke).toHaveBeenCalledWith('sync:setRepoUrl', 'http://repo.url');
+  });
+
+  it('validateRepoUrl', () => {
+    electronAPI.sync!.validateRepoUrl('http://repo.url');
+    expect(mockInvoke).toHaveBeenCalledWith('sync:validateRepoUrl', 'http://repo.url');
+  });
+
+  it('getStatus with default checkChanges', () => {
+    electronAPI.sync!.getStatus();
+    expect(mockInvoke).toHaveBeenCalledWith('sync:getStatus', true);
+  });
+
+  it('getStatus with explicit checkChanges=false', () => {
+    electronAPI.sync!.getStatus(false);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:getStatus', false);
+  });
+
+  it('initialize', () => {
+    electronAPI.sync!.initialize();
+    expect(mockInvoke).toHaveBeenCalledWith('sync:initialize');
+  });
+
+  it('pull', () => {
+    electronAPI.sync!.pull(true);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:pull', true);
+  });
+
+  it('push with default needCommit', () => {
+    electronAPI.sync!.push(false);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:push', false, true);
+  });
+
+  it('push with explicit needCommit=false', () => {
+    electronAPI.sync!.push(false, false);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:push', false, false);
+  });
+
+  it('merge', () => {
+    electronAPI.sync!.merge();
+    expect(mockInvoke).toHaveBeenCalledWith('sync:merge');
+  });
+
+  it('checkExternalKnowledgeBases', () => {
+    electronAPI.sync!.checkExternalKnowledgeBases();
+    expect(mockInvoke).toHaveBeenCalledWith('sync:checkExternalKnowledgeBases');
+  });
+
+  it('copyKnowledgeBasesToProfile', () => {
+    electronAPI.sync!.copyKnowledgeBasesToProfile([{ chatId: 'c1', agentId: 'a1', knowledgeBase: 'kb' }]);
+    expect(mockInvoke).toHaveBeenCalledWith('sync:copyKnowledgeBasesToProfile', [{ chatId: 'c1', agentId: 'a1', knowledgeBase: 'kb' }]);
   });
 });
 
@@ -1548,6 +1895,30 @@ describe('electronAPI.agentChat', () => {
     expect(mockInvoke).toHaveBeenCalledWith('agentChat:cancelChat', 'chat1');
   });
 
+  it('queued steering message operations', () => {
+    const msg = { id: 'queued1', role: 'user', content: [] } as any;
+    electronAPI.agentChat.enqueueQueuedSteeringMessage('sess1', msg);
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:enqueueQueuedSteeringMessage', 'sess1', msg);
+
+    electronAPI.agentChat.updateQueuedSteeringMessage('sess1', msg);
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:updateQueuedSteeringMessage', 'sess1', msg);
+
+    electronAPI.agentChat.removeQueuedSteeringMessage('sess1', 'queued1');
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:removeQueuedSteeringMessage', 'sess1', 'queued1');
+
+    electronAPI.agentChat.setQueuedSteeringMessageEditing('sess1', 'queued1', true);
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:setQueuedSteeringMessageEditing', 'sess1', 'queued1', true);
+
+    electronAPI.agentChat.setQueuedSteeringMessageEditing('sess1', 'queued1', false);
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:setQueuedSteeringMessageEditing', 'sess1', 'queued1', false);
+
+    electronAPI.agentChat.steerQueuedSteeringMessage('sess1', 'queued1');
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:steerQueuedSteeringMessage', 'sess1', 'queued1');
+
+    electronAPI.agentChat.clearQueuedSteeringMessages('sess1');
+    expect(mockInvoke).toHaveBeenCalledWith('agentChat:clearQueuedSteeringMessages', 'sess1');
+  });
+
   it('onStreamingMessage subscription', () => {
     const cb = vi.fn();
     const unsub = electronAPI.agentChat.onStreamingMessage(cb);
@@ -1564,12 +1935,19 @@ describe('electronAPI.agentChat', () => {
     unsub();
   });
 
+  it('onQueuedSteeringMessageConsumed subscription', () => {
+    const cb = vi.fn();
+    const unsub = electronAPI.agentChat.onQueuedSteeringMessageConsumed(cb);
+    fireIpcEvent('agentChat:queuedSteeringMessageConsumed', { chatId: 'c', chatSessionId: 's', messageId: 'queued1' });
+    expect(cb).toHaveBeenCalledWith({ chatId: 'c', chatSessionId: 's', messageId: 'queued1' });
+    unsub();
+  });
+
   it('forkChatSession', () => {
     electronAPI.agentChat.forkChatSession('chat1', 'sess1');
     expect(mockInvoke).toHaveBeenCalledWith('agentChat:forkChatSession', 'chat1', 'sess1');
   });
 });
-
 
 describe('electronAPI.debug', () => {
   it('openWindow', () => {
@@ -1578,6 +1956,19 @@ describe('electronAPI.debug', () => {
   });
 });
 
+describe('electronAPI.voiceInput', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getSettings', () => {
+    electronAPI.voiceInput.getSettings();
+    expect(mockInvoke).toHaveBeenCalledWith('voiceInput:getSettings');
+  });
+
+  it('updateSettings', () => {
+    electronAPI.voiceInput.updateSettings({ micId: 'default' });
+    expect(mockInvoke).toHaveBeenCalledWith('voiceInput:updateSettings', { micId: 'default' });
+  });
+});
 
 describe('contextBridge / window fallback (contextIsolated branch)', () => {
   it('exposes electronAPI via contextBridge when contextIsolated=true', async () => {
@@ -1606,21 +1997,23 @@ describe('contextBridge / window fallback (contextIsolated branch)', () => {
   });
 });
 
-describe('electronAPI.scheduler / buddy / plugin / doctor', () => {
-  it('scheduler.invoke is the imported mock', () => {
+describe('electronAPI.scheduler / buddy / agentHooks', () => {
+  it('scheduler.invoke and agentHooks.invoke are the imported mocks', () => {
     expect(electronAPI.scheduler.invoke).toBe(mockInvokeScheduler);
+    expect(electronAPI.agentHooks.invoke).toBe(mockInvokeAgentHooks);
   });
 
   it('buddy.invoke is the imported mock', () => {
     expect(electronAPI.buddy.invoke).toBe(mockInvokeBuddy);
   });
-
-  it('plugin.invoke is the imported mock', () => {
-    expect(electronAPI.plugin.invoke).toBe(mockInvokePlugin);
-  });
-
-  it('doctor.invoke is the imported mock', () => {
-    expect(electronAPI.doctor.invoke).toBe(mockInvokeDoctor);
-  });
 });
 
+describe('electronAPI.memex', () => {
+  it('memex API is defined', () => {
+    expect(electronAPI.memex).toBeDefined();
+  });
+
+  it('memex API has invoke function', () => {
+    expect(typeof electronAPI.memex!.invoke).toBe('function');
+  });
+});

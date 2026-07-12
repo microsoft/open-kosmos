@@ -3,22 +3,14 @@ import * as os from 'os';
 import * as path from 'path';
 
 const {
-  mockSubAgentFeatureEnabled,
-  mockRemoteChannelEnabled,
   mockSchedulerEnabled,
-  mockBrowserControlEnabled,
   profileCacheManagerMock,
   mcpClientManagerMock,
-  mcpLibraryFetcherInstance,
-  agentLibraryFetcherInstance,
   searchFilesMock,
   createMockTool,
 } = vi.hoisted(() => {
   const flags = {
-    mockSubAgentFeatureEnabled: { value: false },
-    mockRemoteChannelEnabled: { value: false },
     mockSchedulerEnabled: { value: false },
-    mockBrowserControlEnabled: { value: false },
   };
 
   const profileCacheManagerMock = {
@@ -32,14 +24,6 @@ const {
 
   const mcpClientManagerMock = {
     currentUserAlias: 'user-1',
-  };
-
-  const mcpLibraryFetcherInstance = {
-    getLibraryData: vi.fn(),
-  };
-
-  const agentLibraryFetcherInstance = {
-    getLibraryData: vi.fn(),
   };
 
   const searchFilesMock = vi.fn();
@@ -57,8 +41,6 @@ const {
     ...flags,
     profileCacheManagerMock,
     mcpClientManagerMock,
-    mcpLibraryFetcherInstance,
-    agentLibraryFetcherInstance,
     searchFilesMock,
     createMockTool,
   };
@@ -77,10 +59,7 @@ vi.mock('electron', async () => ({
 
 vi.mock('../../../featureFlags', async () => ({
   isFeatureEnabled: vi.fn((name: string) => {
-    if (name === 'openkosmosFeatureSubAgent') return mockSubAgentFeatureEnabled.value;
-    if (name === 'openkosmosFeatureRemoteChannel') return mockRemoteChannelEnabled.value;
     if (name === 'openkosmosFeatureScheduler') return mockSchedulerEnabled.value;
-    if (name === 'browserControl') return mockBrowserControlEnabled.value;
     return true;
   }),
 }));
@@ -95,18 +74,6 @@ vi.mock('../../../userDataADO/profileCacheManager', async () => ({
 
 vi.mock('../../mcpClientManager', async () => ({
   mcpClientManager: mcpClientManagerMock,
-}));
-
-vi.mock('../../../assetsFetcher/mcpLibraryFetcher', async () => ({
-  McpLibraryFetcher: {
-    getInstance: () => mcpLibraryFetcherInstance,
-  },
-}));
-
-vi.mock('../../../assetsFetcher/agentLibraryFetcher', async () => ({
-  AgentLibraryFetcher: {
-    getInstance: () => agentLibraryFetcherInstance,
-  },
 }));
 
 vi.mock('../../../workspace/WorkspaceWatcher', async () => ({
@@ -153,8 +120,6 @@ vi.mock('../createScheduleTool', async () => ({ CreateScheduleTool: createMockTo
 vi.mock('../getScheduleTool', async () => ({ GetScheduleTool: createMockTool('get_schedule') }));
 vi.mock('../updateScheduleTool', async () => ({ UpdateScheduleTool: createMockTool('update_schedule') }));
 vi.mock('../runScheduleTool', async () => ({ RunScheduleTool: createMockTool('run_schedule') }));
-vi.mock('../orgLookupTool', async () => ({ OrgLookupTool: createMockTool('org_lookup') }));
-
 import { BuiltinToolsManager } from '../builtinToolsManager';
 
 describe('BuiltinToolsManager — execute smoke coverage', () => {
@@ -172,8 +137,6 @@ describe('BuiltinToolsManager — execute smoke coverage', () => {
     profileCacheManagerMock.getChatConfig.mockReset();
 
     searchFilesMock.mockReset();
-    mcpLibraryFetcherInstance.getLibraryData.mockReset();
-    agentLibraryFetcherInstance.getLibraryData.mockReset();
     mcpClientManagerMock.currentUserAlias = 'user-1';
 
     BuiltinToolsManager.resetInstance();

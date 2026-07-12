@@ -1,20 +1,19 @@
-import {
+import type {
   ProfileCacheData,
   ProfileCacheDataV2,
   ProfileDataListener,
-  type Profile,
-  type ProfileV2,
-  type ChatConfigRuntime,
-  type ChatAgent,
-  type ChatSession,
-  type StarredChatSessionIndexItem,
-  type ContextEnhancement,
-  type SkillConfig,
-  type SubAgentConfig
+  Profile,
+  ProfileV2,
+  ChatConfigRuntime,
+  ChatAgent,
+  ChatSession,
+  StarredChatSessionIndexItem,
+  SkillConfig
 } from './types'
 import { agentChatSessionCacheManager } from '../chat/agentChatSessionCacheManager'
 import { createLogger } from '../utilities/logger';
 import { mcpClientCacheManager } from "../mcp/mcpClientCacheManager";
+import { resolveChatAgent } from '../agent/resolveChatAgent';
 const logger = createLogger('[ProfileDataManager]');
 
 const isScheduledSession = (session: Partial<ChatSession> | null | undefined): boolean => {
@@ -62,7 +61,6 @@ export class ProfileDataManager {
       profile: null,
       chats: [],
       skills: [],
-      subAgents: [],
       lastUpdated: 0,
       isInitialized: false
     }
@@ -154,7 +152,6 @@ export class ProfileDataManager {
       profile: null,
       chats: [],
       skills: [],
-      subAgents: [],
       lastUpdated: Date.now(),
       isInitialized: false  // 🔧 Keep false until first successful sync
     }
@@ -254,33 +251,43 @@ export class ProfileDataManager {
       // 🔧 FIX: Mark as initialized on first successful sync from ProfileCacheManager
       const wasNotInitialized = !this.cache.isInitialized
 
+      // Detect per-profile feature-switch changes (browser / memex / computer use). These gate
+      // which built-in tools the main process advertises (see shouldExposeTool),
+      // so a change must trigger an mcpClientCacheManager refresh; turning the
+      // embedded browser off must also tear down any open browser panel.
+      const prevBrowserEnabled = this.cache.profile?.browser?.enabled === true
+      const prevMemexEnabled = this.cache.profile?.memex?.enabled === true
+      const prevComputerUseEnabled = this.cache.profile?.computerUse?.enabled === true
+
       this.cache.profile = data.profile
       this.cache.lastUpdated = data.timestamp
+
+      const nextBrowserEnabled = data.profile?.browser?.enabled === true
+      const nextMemexEnabled = data.profile?.memex?.enabled === true
+      const nextComputerUseEnabled = data.profile?.computerUse?.enabled === true
+      if (prevBrowserEnabled !== nextBrowserEnabled) {
+        if (!nextBrowserEnabled) {
+          window.dispatchEvent(new CustomEvent('embedded-browser:disable'))
+        }
+        void mcpClientCacheManager.refresh()
+      }
+      if (prevMemexEnabled !== nextMemexEnabled) {
+        void mcpClientCacheManager.refresh()
+      }
+      if (prevComputerUseEnabled !== nextComputerUseEnabled) {
+        void mcpClientCacheManager.refresh()
+      }
 
       if (data.profile === null) {
         // Clear all cached data
         this.cache.chats = []
         this.cache.skills = []
-        this.cache.subAgents = []
       } else {
         // Update chat configurations
         this.cache.chats = data.profile.chats || []
 
         // Update skills configurations
         this.cache.skills = data.profile.skills || []
-
-        // 🆕 Update sub-agents configurations
-        // Profile push contains SubAgentIndex[] (lightweight: name, version, source only).
-        // We need to fetch full SubAgentConfig[] via IPC to get display_name, emoji, description, etc.
-        const subAgentIndex = data.profile.sub_agents || []
-        if (subAgentIndex.length > 0) {
-          // Set lightweight data first so the count is visible immediately
-          this.cache.subAgents = subAgentIndex as unknown as SubAgentConfig[]
-          // Then fetch full configs asynchronously
-          this.fetchFullSubAgentConfigs()
-        } else {
-          this.cache.subAgents = []
-        }
 
         // 🆕 Refactored: MCP server config sync to mcpClientCacheManager
         // profileDataManager is no longer responsible for MCP config
@@ -344,18 +351,18 @@ export class ProfileDataManager {
       return null
     }
 
+    const primaryAgent = resolveChatAgent(chat)
     return {
       chatId,
       chatSessionId: session.chatSession_id,
       title: session.title,
       lastUpdated: session.last_updated,
       readStatus: session.readStatus,
-      source: session.source,
-      agentName: chat.agent?.name || 'Unnamed Agent',
-      agentEmoji: chat.agent?.emoji,
-      agentAvatar: chat.agent?.avatar,
-      agentSource: chat.agent?.source,
-      agentVersion: chat.agent?.version,
+      agentName: primaryAgent?.name || 'Unnamed Agent',
+      agentEmoji: primaryAgent?.emoji,
+      agentAvatar: primaryAgent?.avatar,
+      agentSource: primaryAgent?.source,
+      agentVersion: primaryAgent?.version,
       starredAt: session.starredAt || fallbackStarredAt || new Date().toISOString(),
     }
   }
@@ -573,7 +580,7 @@ export class ProfileDataManager {
    */
   getCurrentAgent(): ChatAgent | null {
     const currentChat = this.getCurrentChat()
-    return currentChat?.agent || null
+    return resolveChatAgent(currentChat) || null
   }
 
   /**
@@ -594,7 +601,7 @@ export class ProfileDataManager {
    */
   getSelectedModel(chatId: string): string | null {
     const chat = this.cache.chats.find(c => c.chat_id === chatId)
-    return chat?.agent?.model || null
+    return resolveChatAgent(chat)?.model || null
   }
 
   /**
@@ -606,10 +613,10 @@ export class ProfileDataManager {
    */
   getReasoningEffort(chatId: string): string | undefined {
     const chat = this.cache.chats.find(c => c.chat_id === chatId)
-    const value = chat?.agent?.reasoningEffort
+    const value = resolveChatAgent(chat)?.reasoningEffort
     if (typeof value !== 'string' || value.length === 0) return undefined
-    // Defensive lowercase on read so any value written by other paths (sync,
-    // eval harness, CDN agents) still matches the canonical lowercase form
+    // Defensive lowercase on read so any value written by other paths still
+    // matches the canonical lowercase form
     // used by capability gating and the request layer.
     return value.toLowerCase()
   }
@@ -622,61 +629,6 @@ export class ProfileDataManager {
   getAssignedMcpServers(): Array<{ name: string; tools: string[] }> {
     const agent = this.getCurrentAgent()
     return agent?.mcp_servers || []
-  }
-
-  /**
-   * Get the Context Enhancement config for the current Chat's Agent
-   * Returns memory-related config, including search_memory and generate_memory settings
-   */
-  getCurrentAgentContextEnhancement(): ContextEnhancement | null {
-    const agent = this.getCurrentAgent()
-    return agent?.context_enhancement || null
-  }
-
-  /**
-   * Check if the current Agent has memory search enabled
-   */
-  isMemorySearchEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
-    return contextEnhancement?.search_memory?.enabled || false
-  }
-
-  /**
-   * Check if the current Agent has memory generation enabled
-   */
-  isMemoryGenerationEnabled(): boolean {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
-    return contextEnhancement?.generate_memory?.enabled || false
-  }
-
-  /**
-   * Get the current Agent's memory search config
-   */
-  getMemorySearchConfig(): {
-    enabled: boolean;
-    semantic_similarity_threshold: number;
-    semantic_top_n: number
-  } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
-    const searchMemory = contextEnhancement?.search_memory
-
-    return {
-      enabled: searchMemory?.enabled || false,
-      semantic_similarity_threshold: searchMemory?.semantic_similarity_threshold || 0.0,
-      semantic_top_n: searchMemory?.semantic_top_n || 5
-    }
-  }
-
-  /**
-   * Get the current Agent's memory generation config
-   */
-  getMemoryGenerationConfig(): { enabled: boolean } {
-    const contextEnhancement = this.getCurrentAgentContextEnhancement()
-    const generateMemory = contextEnhancement?.generate_memory
-
-    return {
-      enabled: generateMemory?.enabled || false
-    }
   }
 
   // ❌ V2: Completely removed original GHC-related methods, ensuring no more global selectedModel concept:
@@ -718,54 +670,6 @@ export class ProfileDataManager {
   getSkillsStats(): { totalSkills: number } {
     return {
       totalSkills: this.cache.skills.length
-    }
-  }
-
-  // ========== Sub-Agents Data Access Methods ==========
-
-  /**
-   * Fetch full SubAgentConfig[] via IPC (async).
-   * Called after profile push delivers lightweight SubAgentIndex[].
-   * Updates cache and notifies listeners so UI gets display_name, emoji, description, etc.
-   */
-  private fetchFullSubAgentConfigs(): void {
-    if (!window.electronAPI?.subAgent?.getAll) return
-    window.electronAPI.subAgent.getAll()
-      .then((result: { success: boolean; data?: SubAgentConfig[]; error?: string }) => {
-        if (result.success && Array.isArray(result.data)) {
-          this.cache.subAgents = result.data
-          this.notifyListeners(false) // Debounced notification to refresh UI
-        }
-      })
-      .catch((err: unknown) => {
-        logger.warn('[ProfileDataManager] Failed to fetch full sub-agent configs:', err)
-      })
-  }
-
-  /**
-   * Get all Sub-Agent configs
-   */
-  getSubAgents(): SubAgentConfig[] {
-    return [...(this.cache.subAgents || [])]
-  }
-
-  /**
-   * Get Sub-Agent config by name
-   * @param name - Sub-Agent name
-   */
-  getSubAgentByName(name: string): SubAgentConfig | undefined {
-    return (this.cache.subAgents || []).find(sa => sa.name === name)
-  }
-
-  /**
-   * Get Sub-Agents statistics
-   */
-  getSubAgentsStats(): { total: number; inLibrary: number; onDevice: number } {
-    const subAgents = this.cache.subAgents || []
-    return {
-      total: subAgents.length,
-      inLibrary: 0,
-      onDevice: subAgents.length,
     }
   }
 
@@ -834,7 +738,6 @@ export class ProfileDataManager {
       profile: null,
       chats: [],
       skills: [],
-      subAgents: [],
       lastUpdated: 0,
       isInitialized: false
     }

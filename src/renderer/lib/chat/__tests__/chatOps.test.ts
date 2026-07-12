@@ -129,6 +129,58 @@ describe('ChatOpsManager', () => {
     expect(result.success).toBe(false);
   });
 
+  it('returns default failure messages when IPC failures omit an error', async () => {
+    const cases: Array<[
+      string,
+      Record<string, any>,
+      (mgr: any) => Promise<{ success: boolean; error?: string }>,
+      string,
+    ]> = [
+      ['add', { addChatConfig: vi.fn(async () => ({ success: false })) }, mgr => mgr.addChatConfig({ chat_type: 'single_agent' }), 'Failed to add chat configuration'],
+      ['update', { updateChatConfig: vi.fn(async () => ({ success: false })) }, mgr => mgr.updateChatConfig('c1', {}), 'Failed to update chat configuration'],
+      ['delete', { deleteChatConfig: vi.fn(async () => ({ success: false })) }, mgr => mgr.deleteChatConfig('c1'), 'Failed to delete chat configuration'],
+      ['get', { getChatConfig: vi.fn(async () => ({ success: false })) }, mgr => mgr.getChatConfig('c1'), 'Failed to get chat configuration'],
+      ['getAll', { getAllChatConfigs: vi.fn(async () => ({ success: false })) }, mgr => mgr.getAllChatConfigs(), 'Failed to get chat configurations'],
+      ['agent', { updateChatAgent: vi.fn(async () => ({ success: false })) }, mgr => mgr.updateChatAgent('c1', {}), 'Failed to update chat agent'],
+      ['duplicate', { duplicateChatConfig: vi.fn(async () => ({ success: false })) }, mgr => mgr.duplicateChatConfig('c1'), 'Failed to duplicate agent'],
+    ];
+
+    for (const [, overrides, invoke, expectedError] of cases) {
+      setupWindow(overrides);
+      const { mod } = await getManager();
+      const mgr = mod.ChatOpsManager.getInstance();
+      mgr.initialize('alice');
+
+      await expect(invoke(mgr)).resolves.toEqual({ success: false, error: expectedError });
+      vi.resetModules();
+    }
+  });
+
+  it('returns Unknown error when IPC calls throw non-Error values', async () => {
+    const cases: Array<[
+      Record<string, any>,
+      (mgr: any) => Promise<{ success: boolean; error?: string }>,
+    ]> = [
+      [{ addChatConfig: vi.fn(async () => { throw 'plain add failure'; }) }, mgr => mgr.addChatConfig({ chat_type: 'single_agent' })],
+      [{ updateChatConfig: vi.fn(async () => { throw 'plain update failure'; }) }, mgr => mgr.updateChatConfig('c1', {})],
+      [{ deleteChatConfig: vi.fn(async () => { throw 'plain delete failure'; }) }, mgr => mgr.deleteChatConfig('c1')],
+      [{ getChatConfig: vi.fn(async () => { throw 'plain get failure'; }) }, mgr => mgr.getChatConfig('c1')],
+      [{ getAllChatConfigs: vi.fn(async () => { throw 'plain getAll failure'; }) }, mgr => mgr.getAllChatConfigs()],
+      [{ updateChatAgent: vi.fn(async () => { throw 'plain agent failure'; }) }, mgr => mgr.updateChatAgent('c1', {})],
+      [{ duplicateChatConfig: vi.fn(async () => { throw 'plain duplicate failure'; }) }, mgr => mgr.duplicateChatConfig('c1')],
+    ];
+
+    for (const [overrides, invoke] of cases) {
+      setupWindow(overrides);
+      const { mod } = await getManager();
+      const mgr = mod.ChatOpsManager.getInstance();
+      mgr.initialize('alice');
+
+      await expect(invoke(mgr)).resolves.toEqual({ success: false, error: 'Unknown error' });
+      vi.resetModules();
+    }
+  });
+
   it('deleteChatConfig() succeeds', async () => {
     const { mgr } = await getManager();
     const result = await mgr.deleteChatConfig('chat-1');
@@ -309,7 +361,7 @@ describe('ChatOpsManager', () => {
     expect(result.error).toContain('dup crash');
   });
 
-  it('addChatConfig() spreads agent.workspace when agent is provided', async () => {
+  it('addChatConfig() moves legacy agent.workspace to chat.workspace', async () => {
     setupWindow();
     const { mod } = await getManager();
     const mgr = mod.ChatOpsManager.getInstance();
@@ -320,7 +372,8 @@ describe('ChatOpsManager', () => {
     });
     expect(result.success).toBe(true);
     const call = (window as any).electronAPI.profile.addChatConfig.mock.calls[0][0];
-    expect(call.agent.workspace).toBe('/custom');
+    expect(call.workspace).toBe('/custom');
+    expect(call.agent.workspace).toBeUndefined();
   });
 
   it('createDefaultChat() creates a single_agent chat', async () => {
@@ -428,6 +481,15 @@ describe('ChatOpsManager', () => {
     const result = await mgr.getChatInfoList();
     expect(result.success).toBe(false);
     expect(result.error).toContain('info crash');
+  });
+
+  it('getChatInfoList() reports Unknown error for non-Error failures', async () => {
+    const { mgr } = await getManager();
+    vi.spyOn(mgr, 'getAllChatConfigs').mockRejectedValue('plain info failure');
+
+    const result = await mgr.getChatInfoList();
+
+    expect(result).toEqual({ success: false, error: 'Unknown error' });
   });
 
   it('updateChatConfig() returns error when API not available', async () => {

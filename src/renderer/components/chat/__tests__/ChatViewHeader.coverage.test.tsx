@@ -57,6 +57,7 @@ vi.mock('lucide-react', () => ({
   AlarmClock: () => <span data-testid="icon-alarmclock" />,
   Copy: () => <span data-testid="icon-copy" />,
   Check: () => <span data-testid="icon-check" />,
+  Globe: () => <span data-testid="icon-globe" />,
 }));
 
 vi.mock('../../ui/StatusBadges', () => ({ default: () => null }));
@@ -66,6 +67,7 @@ vi.mock('../../common/AgentAvatar', () => ({
 vi.mock('../../common/UnreadCountBadge', () => ({ default: () => null }));
 
 vi.mock('../../userData/userDataProvider', () => ({
+  useProfileData: () => ({ data: { profile: { browser: { enabled: false } } } }),
   useAgentConfig: () => ({ agent: mockAgentRef.agent }),
 }));
 
@@ -112,6 +114,10 @@ vi.mock('../chat-side.atom', () => ({
   SubAgentTasksSidepaneAtom: {
     use: () => [{ visible: false }, { toggle: vi.fn(), show: vi.fn(), hide: vi.fn() }],
   },
+}));
+
+vi.mock('../MemexMemorySidepane', () => ({
+  ToggleMemexMemory: () => null,
 }));
 
 // ── reset between tests ────────────────────────────────────────────────────────
@@ -221,104 +227,6 @@ describe('ChatViewHeader – minimal mode', () => {
     render(<ChatViewHeader />);
     fireEvent.click(screen.getByTitle('Enable always on top'));
     expect(mockLayoutRef.toggleAlwaysOnTop).toHaveBeenCalled();
-  });
-});
-
-describe('ChatViewHeader – update button', () => {
-  it('does not show update button when source=ON-DEVICE', () => {
-    mockAgentRef.agent.source = 'ON-DEVICE';
-    render(<ChatViewHeader />);
-    expect(screen.queryByText('Update')).toBeFalsy();
-  });
-
-  it('does not show update button when remoteVersion is empty', () => {
-    mockAgentRef.agent.remoteVersion = '';
-    render(<ChatViewHeader />);
-    expect(screen.queryByText('Update')).toBeFalsy();
-  });
-
-  it('does not show update button when version equals remoteVersion', () => {
-    mockAgentRef.agent.version = '2.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    render(<ChatViewHeader />);
-    expect(screen.queryByText('Update')).toBeFalsy();
-  });
-
-  it('shows update button when remoteVersion > version', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('shows update button when version is empty', () => {
-    mockAgentRef.agent.version = '';
-    mockAgentRef.agent.remoteVersion = '1.0.0';
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('clicking update navigates to agent library', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    render(<ChatViewHeader />);
-    fireEvent.click(screen.getByText('Update'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('Test%20Agent'),
-    );
-  });
-
-  it('does not show update button when any session is non-idle', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    mockGetAllCaches.mockReturnValue(
-      { s1: { chatId: 'c1', chatStatus: 'sending_response' } },
-    );
-    render(<ChatViewHeader />);
-    expect(screen.queryByText('Update')).toBeFalsy();
-  });
-
-  it('shows update button when all sessions are idle', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    mockGetAllCaches.mockReturnValue(
-      { s1: { chatId: 'c1', chatStatus: 'idle' } },
-    );
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('shows update when sessions belong to different chatId', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '2.0.0';
-    mockGetAllCaches.mockReturnValue(
-      { s2: { chatId: 'other-chat', chatStatus: 'sending_response' } },
-    );
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-});
-
-describe('ChatViewHeader – compareVersions edge cases', () => {
-  it('handles patch-level comparison (1.0.0 → 1.0.1)', () => {
-    mockAgentRef.agent.version = '1.0.0';
-    mockAgentRef.agent.remoteVersion = '1.0.1';
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('does not show update when local version is newer', () => {
-    mockAgentRef.agent.version = '2.0.0';
-    mockAgentRef.agent.remoteVersion = '1.9.9';
-    render(<ChatViewHeader />);
-    expect(screen.queryByText('Update')).toBeFalsy();
-  });
-
-  it('handles versions with differing part counts', () => {
-    mockAgentRef.agent.version = '1.0';
-    mockAgentRef.agent.remoteVersion = '1.0.1';
-    render(<ChatViewHeader />);
-    expect(screen.getByText('Update')).toBeTruthy();
   });
 });
 

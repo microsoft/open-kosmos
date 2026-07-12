@@ -30,7 +30,7 @@
   background: transparent; /* Remove background, keep transparent */
   backdrop-filter: blur(16px);
   border: none; /* border migrated to file-explorer-section */
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
 
   /* Font */
 
@@ -54,8 +54,8 @@
   height: 52px;
 
   /* Background_0 */
-  background: #FFFFFF;
-  border-radius: 12px;
+  background: var(--color-white);
+  border-radius: var(--radius-xl);
 
   /* Inside auto layout */
   flex: none;
@@ -87,7 +87,7 @@
 .sidepane-title-text {
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-neutral-700);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -109,22 +109,22 @@
   height: 32px;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 16px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
 }
 
 .sidepane-action-btn:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .sidepane-action-btn:active:not(:disabled) {
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .sidepane-action-btn:disabled {
@@ -146,7 +146,7 @@
   background: transparent;
   cursor: pointer;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 
   /* Inside auto layout */
   flex: none;
@@ -158,12 +158,12 @@
 
 .sidepane-close-btn:hover {
   background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .sidepane-close-btn:active {
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .sidepane-close-btn svg {
@@ -190,12 +190,12 @@
 
 .sidepane-body::-webkit-scrollbar-track {
   background: rgba(241, 245, 249, 0.5);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .sidepane-body::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.8);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .sidepane-body::-webkit-scrollbar-thumb:hover {
@@ -211,7 +211,7 @@
   justify-content: center;
   padding: 40px 20px;
   text-align: center;
-  color: #6b7280;
+  color: var(--color-neutral-500);
 }
 
 .empty-icon,
@@ -230,12 +230,123 @@
   margin: 0 0 8px 0;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-neutral-700);
 }
 
 .empty-state small {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
+}
+
+html[data-theme="dark"] .chat-sidepane .file-explorer-section {
+  background: var(--color-surface-default) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-section-header {
+  background: var(--color-surface-default) !important;
+  border-color: var(--color-border-subtle) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-section-header-title,
+html[data-theme="dark"] .chat-sidepane .sidepane-section-title-text {
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-section-header-title svg {
+  color: var(--color-text-muted) !important;
+  stroke: currentColor !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-close-btn,
+html[data-theme="dark"] .chat-sidepane .data-sources-configure-btn {
+  color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-close-btn:hover,
+html[data-theme="dark"] .chat-sidepane .data-sources-configure-btn:hover {
+  background: var(--color-surface-hover) !important;
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-body::-webkit-scrollbar-track {
+  background: var(--color-surface-subtle);
+}
+
+html[data-theme="dark"] .chat-sidepane .sidepane-body::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+}
+
+html[data-theme="dark"] .chat-sidepane .empty-state,
+html[data-theme="dark"] .chat-sidepane .loading-state {
+  color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .empty-state p,
+html[data-theme="dark"] .chat-sidepane .loading-state p {
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .chat-sidepane .empty-state small {
+  color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] .memex-search-box {
+  background: var(--form-control-bg) !important;
+  border-color: var(--form-control-border) !important;
+}
+
+html[data-theme="dark"] .memex-search-box svg {
+  color: var(--color-text-muted) !important;
+  stroke: currentColor !important;
+}
+
+html[data-theme="dark"] .memex-search-input {
+  color: var(--form-control-fg) !important;
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .memex-search-input::placeholder {
+  color: var(--form-control-placeholder) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card {
+  background: var(--color-surface-elevated) !important;
+  border: 1px solid var(--color-border-subtle) !important;
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card:hover {
+  background: var(--color-surface-hover) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card.menu-open,
+html[data-theme="dark"] .sidepane-list-card[data-read-status]:not([data-read-status="read"]) {
+  background: var(--color-surface-active) !important;
+  border-color: var(--form-control-focus-border) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card span {
+  color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card > span:first-child,
+html[data-theme="dark"] .sidepane-list-card div:first-child span:first-of-type {
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card .chat-session-more-btn {
+  color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card .chat-session-more-btn:hover {
+  background: var(--color-surface-active) !important;
+  color: var(--color-text-default) !important;
+}
+
+html[data-theme="dark"] .sidepane-list-card svg circle[stroke="black"] {
+  stroke: var(--color-border-strong) !important;
 }
 
 @keyframes spin {
@@ -250,7 +361,7 @@
 /* Responsive and accessibility */
 @media (prefers-contrast: high) {
   .chat-sidepane {
-    border-left-color: #000;
+    border-left-color: var(--color-black);
   }
 }
 

@@ -20,7 +20,7 @@ Connects WorkPilot to the OpenKosmos desktop app via WebSocket, allowing users t
 
 3. Register in `workpilot/runtime.py` — add in `run_web_server()` after web channel setup:
    ```python
-   if os.getenv("OpenKosmos_URL"):
+   if os.getenv("OPENKOSMOS_URL"):
        from workpilot.channels.openkosmos import OpenKosmosChannel
        openkosmos_ch = OpenKosmosChannel(self.bus)
        self.channel_manager.add(openkosmos_ch)
@@ -28,9 +28,9 @@ Connects WorkPilot to the OpenKosmos desktop app via WebSocket, allowing users t
 
 4. Set environment variables:
    ```bash
-   export OpenKosmos_URL="ws://<openkosmos-host>:9527"
-   export OpenKosmos_TOKEN="<your-token>"
-   export OpenKosmos_ALLOW_ALL_USERS=true
+   export OPENKOSMOS_URL="ws://<openkosmos-host>:9527"
+   export OPENKOSMOS_TOKEN="<your-token>"
+   export OPENKOSMOS_ALLOW_ALL_USERS=true
    ```
 
 5. Start WorkPilot — OpenKosmosChannel will auto-connect.

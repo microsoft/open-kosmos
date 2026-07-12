@@ -132,7 +132,7 @@ describe('InlineFilePreviewPanel — deep2 coverage', () => {
   it('classifies text/csv mimeType as text (monaco viewer)', async () => {
     const f: InlineFileDescriptor = { name: 'data', url: '/tmp/data', mimeType: 'text/csv' };
     render(<InlineFilePreviewPanel file={f} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull(), { timeout: 5000 });
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull(), { timeout: 5000 });
   });
 
   it('classifies office spreadsheet mimeType correctly', async () => {
@@ -273,7 +273,7 @@ describe('InlineFilePreviewPanel — deep2 coverage', () => {
     render(<InlineFilePreviewPanel file={LOCAL_MD} isOpen={true} onClose={onClose} />);
     await waitFor(() => expect(document.querySelector('[data-testid="markdown"]')).not.toBeNull(), { timeout: 5000 });
     // Empty object → no table
-    expect(document.querySelector('.inline-preview-frontmatter')).toBeNull();
+    expect(document.querySelector('.file-viewer-frontmatter')).toBeNull();
   });
 
   // ─── handleSave: not dirty → no write ────────────────────────────────────

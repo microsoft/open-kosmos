@@ -15,14 +15,18 @@ export interface PresentToolArgs {
   filePaths: string[];
 }
 
+export interface PresentToolResult {
+  missingFiles?: string[];
+}
+
 export class PresentTool {
   private static logger: UnifiedLogger = getUnifiedLogger();
 
   /**
    * Execute file presentation
-   * Validates file existence and returns empty object to save context tokens
+   * Validates file existence and returns missing files for LLM self-correction
    */
-  static async execute(args: PresentToolArgs): Promise<Record<string, never>> {
+  static async execute(args: PresentToolArgs): Promise<PresentToolResult> {
     const startTime = Date.now();
 
     this.logger.info(
@@ -34,12 +38,14 @@ export class PresentTool {
       }
     );
 
-    // Validate file existence (log warning only, don't block execution)
+    // Validate file existence and collect missing files
+    const missingFiles: string[] = [];
     for (const filePath of args.filePaths) {
       try {
         const normalizedPath = path.normalize(filePath);
         await fs.access(normalizedPath);
       } catch {
+        missingFiles.push(filePath);
         this.logger.warn(
           `File not found: ${filePath}`,
           'PresentTool'
@@ -50,10 +56,13 @@ export class PresentTool {
     this.logger.info(
       `PresentTool completed`,
       'PresentTool',
-      { durationMs: Date.now() - startTime }
+      { durationMs: Date.now() - startTime, missingFiles: missingFiles.length }
     );
 
-    // Return empty object to save context tokens
+    // Return missing files so LLM can self-correct path errors
+    if (missingFiles.length > 0) {
+      return { missingFiles };
+    }
     return {};
   }
 

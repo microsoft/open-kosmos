@@ -25,9 +25,6 @@ export function sharedDefines(mode: string, brandConfig: BrandConfig): Record<st
     'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
     'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
     'process.env.APP_NAME': JSON.stringify(appConfig.productName),
-    'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(process.env.DEVELOPMENT_BASE_CDN_URL || ''),
-    'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(process.env.PRODUCTION_BASE_CDN_URL || ''),
-    'process.env.RELEASE_CDN_URL': JSON.stringify(process.env.RELEASE_CDN_URL || ''),
     'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(process.env.HISTORY_PROMPT_QUEUE_SIZE || '20'),
   }
 }
@@ -37,15 +34,12 @@ export function mainOnlyDefines(brandConfig: BrandConfig): Record<string, string
   return {
     'process.env.APP_ID': JSON.stringify(appConfig.appId),
     'process.env.USER_DATA_NAME': JSON.stringify(appConfig.userDataName || appConfig.productName),
-    'process.env.DEVELOPMENT_RELAY_SERVICE_URL': JSON.stringify(process.env.DEVELOPMENT_RELAY_SERVICE_URL || ''),
-    'process.env.PRODUCTION_RELAY_SERVICE_URL': JSON.stringify(process.env.PRODUCTION_RELAY_SERVICE_URL || ''),
-    // Additional env
+    // OpenKosmos MCP credential placeholders
     'process.env.REDDIT_CLIENT_ID': JSON.stringify(process.env.REDDIT_CLIENT_ID || ''),
     'process.env.REDDIT_CLIENT_SECRET': JSON.stringify(process.env.REDDIT_CLIENT_SECRET || ''),
     'process.env.DATA_AI_API_KEY': JSON.stringify(process.env.DATA_AI_API_KEY || ''),
     'process.env.UNWRAP_ACCESS_TOKEN': JSON.stringify(process.env.UNWRAP_ACCESS_TOKEN || ''),
     'process.env.TAVILY_API_KEY': JSON.stringify(process.env.TAVILY_API_KEY || ''),
-
   }
 }
 

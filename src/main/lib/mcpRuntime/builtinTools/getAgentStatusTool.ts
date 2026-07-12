@@ -9,6 +9,7 @@
 
 import { BuiltinToolDefinition } from './types';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatAgents } from '../../userDataADO/agentAccessor';
 
 /**
  * Agent status type
@@ -112,9 +113,18 @@ export class GetAgentStatusTool {
       }
 
       // Search the chats list for an agent with the specified name
-      const foundChat = chats.find(chat => chat.agent && chat.agent.name === agentName);
+      let foundChat = undefined;
+      let foundAgent = undefined;
+      for (const chat of chats) {
+        const agent = getChatAgents(chat).find(candidate => candidate?.name === agentName);
+        if (agent) {
+          foundChat = chat;
+          foundAgent = agent;
+          break;
+        }
+      }
 
-      if (foundChat && foundChat.agent) {
+      if (foundChat && foundAgent) {
         // Agent is added
         return {
           success: true,
@@ -123,9 +133,9 @@ export class GetAgentStatusTool {
           message: `Agent "${agentName}" is added to the profile.`,
           details: {
             chat_id: foundChat.chat_id,
-            role: foundChat.agent.role,
-            emoji: foundChat.agent.emoji,
-            model: foundChat.agent.model
+            role: foundAgent.role,
+            emoji: foundAgent.emoji,
+            model: foundAgent.model
           }
         };
       } else {

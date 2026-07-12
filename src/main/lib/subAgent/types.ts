@@ -9,6 +9,8 @@
  */
 
 import type { CancellationToken } from '../cancellation/CancellationToken';
+import type { AgentChatInteractionPolicy } from '../chat/agentChatInteractionPolicy';
+import type { ChatSessionFile } from '../userDataADO/chatSessionFileOps';
 import type {
   SubAgentConfig,
   SubAgentRuntimeState,
@@ -17,15 +19,15 @@ import type {
 /**
  * Sub-Agent Runtime Entity
  *
- * Relationship with SubAgentConfig (persistence config):
- * - SubAgentConfig = static config stored in profile.json (similar to SkillConfig)
+ * Relationship with SubAgentConfig (in-memory ad-hoc config):
+ * - SubAgentConfig = synthetic config built in-memory when an ad-hoc sub-agent is spawned
  * - SubAgent       = fully resolved runtime entity, including runtime info inherited from the parent
  *
- * Usage: In SubAgentManager.spawnSubAgent(), SubAgentConfig + parent runtime info
+ * Usage: In SubAgentManager.spawnAdhocSubAgent(), SubAgentConfig + parent runtime info
  *        are merged into a SubAgent instance and passed to SubAgentChat
  */
 export interface SubAgent {
-  /** Sub-agent config (from ProfileV2.sub_agents) */
+  /** Ad-hoc sub-agent config (built in-memory at spawn time) */
   config: SubAgentConfig;
   /** Effective LLM model ID resolved at runtime: sub-agent override or parent Agent fallback */
   inheritedModel: string;
@@ -126,18 +128,38 @@ export interface ToolExecutionContext {
   chatId: string;
   /** Current user alias */
   userAlias: string;
+  /** Currently executing agent name, used to resolve active-agent scoped tool permissions */
+  agentName?: string;
   /** Cancellation token */
   cancellationToken: CancellationToken;
   /** Whether this is a sub-agent execution context (used for recursion prevention) */
   isSubAgent: boolean;
-  /** Get sub-agent config by name (looks up from the current Agent's referenced sub-agents) */
-  getSubAgentConfig(name: string): SubAgentConfig | undefined;
+  /** Current runtime interaction policy; local desktop control requires `allow-ui`. */
+  interactionPolicy?: AgentChatInteractionPolicy;
   /** Get parent conversation context summary (used for context sharing mode) */
   getParentContextSummary(): Promise<string>;
   /** Renderer WebContents reference for sending sub-agent progress IPC to the frontend (optional, only provided by main AgentChat) */
   eventSender?: Electron.WebContents;
   /** Currently executing toolCall ID (used for sub-agent correlationId association) */
   currentToolCallId?: string;
+  /** Snapshot of the active chat history for tools that validate chat-session provenance. */
+  chatHistory?: ChatSessionFile['chat_history'];
+  /** Persisted user message that initiated the current parent-chat turn, when unambiguous. */
+  currentUserMessageId?: string;
+  /** Save barrier for tools that require the current chat session to be durable before mutating. */
+  ensureChatSessionSaved?: () => Promise<{ success: boolean; error?: string } | void>;
+  /** True when the active chat session intentionally skips persistence. */
+  skipPersistence?: boolean;
   /** Register a cancellation handler for the current tool execution and return a disposer */
   registerCancellationHandler?(handler: () => Promise<void> | void): { dispose(): void };
+  /**
+   * Report genuine downstream activity (real tool output / progress) to reset the central
+   * no-response watchdog. Long-running builtin tools should call this on every real stdout/stderr
+   * chunk or progress event so a continuously-working tool is never force-terminated.
+   *
+   * IMPORTANT: do NOT call this from synthetic UI heartbeats (e.g. periodic "still working" pings).
+   * Resetting the watchdog on a heartbeat would prevent a genuinely hung tool from ever being
+   * terminated. Only real progress counts as activity.
+   */
+  reportActivity?(): void;
 }

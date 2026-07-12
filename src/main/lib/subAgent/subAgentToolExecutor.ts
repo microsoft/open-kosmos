@@ -10,7 +10,13 @@ import { MessageHelper } from '@shared/types/chatTypes';
 import type { SubAgentChatOptions } from './types';
 import { createConsoleLogger } from '../unifiedLogger';
 import { BuiltinToolsManager } from '../mcpRuntime/builtinTools/builtinToolsManager';
-import { mcpClientManager } from '../mcpRuntime/mcpClientManager';
+import { BUILTIN_SERVER_NAME, mcpClientManager, SUB_AGENT_BLOCKED_TOOLS } from '../mcpRuntime/mcpClientManager';
+import {
+  InactivityTimer,
+  SELF_MANAGED_IDLE_TOOLS,
+  TOOL_IDLE_TIMEOUT_MS,
+  ToolIdleTimeoutError,
+} from '../mcpRuntime/toolTimeoutPolicy';
 
 // Lazy-init logger
 let logger: any;
@@ -81,151 +87,250 @@ export class SubAgentToolExecutor {
    * Design reference: AgentChat.executeToolCall()
    * - Each tool call has independent try/catch (non-fatal strategy)
    * - Dispatched uniformly via mcpClientManager.executeTool()
-   * - Sets ToolExecutionContext (isSubAgent = true -> blocks recursive spawn_subagent)
+   * - Sets ToolExecutionContext (isSubAgent = true -> blocks recursive sub-agent delegation)
    */
   async executeToolCalls(toolCalls: any[], turnCount: number): Promise<Message[]> {
     const results: Message[] = [];
 
-    // Set sub-agent execution context (isSubAgent = true -> blocks recursive spawn_subagent calls)
+    for (const toolCall of toolCalls) {
+      // Check cancellation
+      if (this.options.cancellationToken.isCancellationRequested) {
+        results.push(MessageHelper.createToolMessage(
+          'Tool execution cancelled',
+          toolCall.id,
+          toolCall.function.name,
+        ));
+        continue;
+      }
+
+      getLogger().info?.(
+        `[SubAgentChat] Executing tool '${toolCall.function.name}' (id=${toolCall.id})`,
+        'executeToolCalls'
+      );
+
+      // Parse tool arguments (pre-parse for onStepUpdate summary)
+      let toolArgs: Record<string, unknown> = {};
+      const rawArgs = toolCall.function.arguments || '{}';
+      try {
+        toolArgs = JSON.parse(rawArgs);
+      } catch (parseErr) {
+        // Parsing still failed even after normalization — log detailed info
+        getLogger().warn?.(
+          `[SubAgentChat] Failed to parse tool arguments for '${toolCall.function.name}' ` +
+          `(id=${toolCall.id}). Using empty args. ` +
+          `Raw: "${String(rawArgs).substring(0, 300)}". ` +
+          `Error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+          'executeToolCalls'
+        );
+        toolArgs = {};
+      }
+
+      // Step update: tool execution started
+      const toolStartTime = Date.now();
+      this.options.onStepUpdate?.({
+        type: 'tool_start',
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        toolArgsSummary: summarizeToolArgs(toolCall.function.name, toolArgs),
+        turn: turnCount + 1,
+      });
+
+      try {
+        // Dispatch uniformly via MCPClientManager
+        // Pass sub-agent's resolved MCP server names for per-agent tool routing
+        const agentMcpServerNames = this.getAllowedAgentMcpServerNames(toolCall.function.name);
+        const toolResult = await this.executeToolWithIdleWatchdog({
+          toolName: toolCall.function.name,
+          toolArgs,
+          agentMcpServerNames,
+          toolCallId: toolCall.id,
+        });
+
+        // Build standard tool result message
+        let resultContent = typeof toolResult === 'string'
+          ? toolResult
+          : JSON.stringify(toolResult);
+
+        // Smart compression for oversized tool results
+        const originalLength = resultContent.length;
+        if (originalLength > SubAgentToolExecutor.SUMMARIZE_THRESHOLD) {
+          resultContent = await this.compressToolResult(
+            resultContent,
+            toolCall.function.name,
+            originalLength
+          );
+        }
+
+        getLogger().info?.(
+          `[SubAgentChat] Tool '${toolCall.function.name}' executed successfully ` +
+          `(resultLength=${originalLength}${originalLength !== resultContent.length ? `, compressedTo=${resultContent.length}` : ''})`,
+          'executeToolCalls'
+        );
+
+        // Step update: tool execution completed
+        this.options.onStepUpdate?.({
+          type: 'tool_done',
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          turn: turnCount + 1,
+          durationMs: Date.now() - toolStartTime,
+          toolResultLength: originalLength,
+        });
+
+        // Track file outputs (deliverables)
+        this.trackDeliverables(toolCall.function.name, toolArgs, toolResult);
+
+        results.push(MessageHelper.createToolMessage(
+          resultContent,
+          toolCall.id,
+          toolCall.function.name,
+        ));
+
+      } catch (error) {
+        // Non-fatal strategy: tool failure converted to error message
+        getLogger().error?.(
+          `[SubAgentChat] Tool '${toolCall.function.name}' execution failed: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+          'executeToolCalls'
+        );
+
+        // Step update: tool execution failed
+        this.options.onStepUpdate?.({
+          type: 'tool_error',
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          turn: turnCount + 1,
+          durationMs: Date.now() - toolStartTime,
+        });
+
+        results.push(MessageHelper.createToolMessage(
+          `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
+          toolCall.id,
+          toolCall.function.name,
+        ));
+      }
+    }
+
+    return results;
+  }
+
+  private async executeToolWithIdleWatchdog({
+    toolName,
+    toolArgs,
+    agentMcpServerNames,
+    toolCallId,
+  }: {
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+    agentMcpServerNames: string[];
+    toolCallId: string;
+  }): Promise<string> {
+    const abortController = new AbortController();
+    const isBuiltinTool = mcpClientManager.isBuiltinTool(toolName, agentMcpServerNames, true);
+    const applyIdleWatchdog = isBuiltinTool && !SELF_MANAGED_IDLE_TOOLS.has(toolName);
+    const cancellationHandlers = new Set<() => Promise<void> | void>();
+
+    let idleTimer: InactivityTimer | undefined;
+    let idleReject: ((reason: unknown) => void) | undefined;
+    const idlePromise: Promise<never> | undefined = applyIdleWatchdog
+      ? new Promise<never>((_resolve, reject) => { idleReject = reject; })
+      : undefined;
+
+    if (applyIdleWatchdog) {
+      idleTimer = new InactivityTimer(TOOL_IDLE_TIMEOUT_MS, () => {
+        const error = new ToolIdleTimeoutError(toolName, TOOL_IDLE_TIMEOUT_MS);
+        getLogger().warn?.(
+          `[SubAgentChat] Tool '${toolName}' produced no response within the no-response budget; terminating`,
+          'executeToolCalls',
+          { toolCallId, idleMs: TOOL_IDLE_TIMEOUT_MS }
+        );
+        abortController.abort(error);
+        idleReject?.(error);
+      });
+    }
+
+    const tokenListener = this.options.cancellationToken.onCancellationRequested(() => {
+      abortController.abort();
+      for (const handler of cancellationHandlers) {
+        void Promise.resolve(handler()).catch(() => undefined);
+      }
+    });
+
     BuiltinToolsManager.setExecutionContext({
       chatSessionId: this.options.subAgent.parentSessionId,
       chatId: this.options.subAgent.parentChatId,
       userAlias: this.options.subAgent.userAlias,
       cancellationToken: this.options.cancellationToken,
       isSubAgent: true, // Recursive spawn prevention flag
-      getSubAgentConfig: () => undefined, // Sub-agents cannot query other sub-agents
       getParentContextSummary: async () => '', // Sub-agents cannot access parent context
-      registerCancellationHandler: () => ({ dispose: () => {} }),
+      currentToolCallId: toolCallId,
+      registerCancellationHandler: (handler) => {
+        cancellationHandlers.add(handler);
+        return {
+          dispose: () => {
+            cancellationHandlers.delete(handler);
+          },
+        };
+      },
+      reportActivity: idleTimer ? () => idleTimer?.touch() : undefined,
     });
 
     try {
-      for (const toolCall of toolCalls) {
-        // Check cancellation
-        if (this.options.cancellationToken.isCancellationRequested) {
-          results.push(MessageHelper.createToolMessage(
-            'Tool execution cancelled',
-            toolCall.id,
-            toolCall.function.name,
-          ));
-          continue;
-        }
-
-        getLogger().info?.(
-          `[SubAgentChat] Executing tool '${toolCall.function.name}' (id=${toolCall.id})`,
-          'executeToolCalls'
-        );
-
-        // Parse tool arguments (pre-parse for onStepUpdate summary)
-        let toolArgs: Record<string, unknown> = {};
-        const rawArgs = toolCall.function.arguments || '{}';
-        try {
-          toolArgs = JSON.parse(rawArgs);
-        } catch (parseErr) {
-          // Parsing still failed even after normalization — log detailed info
-          getLogger().warn?.(
-            `[SubAgentChat] Failed to parse tool arguments for '${toolCall.function.name}' ` +
-            `(id=${toolCall.id}). Using empty args. ` +
-            `Raw: "${String(rawArgs).substring(0, 300)}". ` +
-            `Error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
-            'executeToolCalls'
-          );
-          toolArgs = {};
-        }
-
-        // Step update: tool execution started
-        const toolStartTime = Date.now();
-        this.options.onStepUpdate?.({
-          type: 'tool_start',
-          toolCallId: toolCall.id,
-          toolName: toolCall.function.name,
-          toolArgsSummary: summarizeToolArgs(toolCall.function.name, toolArgs),
-          turn: turnCount + 1,
-        });
-
-        try {
-          // Dispatch uniformly via MCPClientManager
-          // Pass sub-agent's resolved MCP server names for per-agent tool routing
-          const subAgent = this.options.subAgent;
-          const agentMcpServerNames = (subAgent.resolvedMcpServers.length > 0
-            ? subAgent.resolvedMcpServers
-            : subAgent.config.mcpServers || []
-          ).map((s: any) => s.name);
-          const toolResult = await mcpClientManager.executeTool({
-            toolName: toolCall.function.name,
-            toolArgs,
-            agentMcpServerNames,
-          });
-
-          // Build standard tool result message
-          let resultContent = typeof toolResult === 'string'
-            ? toolResult
-            : JSON.stringify(toolResult);
-
-          // Smart compression for oversized tool results
-          const originalLength = resultContent.length;
-          if (originalLength > SubAgentToolExecutor.SUMMARIZE_THRESHOLD) {
-            resultContent = await this.compressToolResult(
-              resultContent,
-              toolCall.function.name,
-              originalLength
-            );
-          }
-
-          getLogger().info?.(
-            `[SubAgentChat] Tool '${toolCall.function.name}' executed successfully ` +
-            `(resultLength=${originalLength}${originalLength !== resultContent.length ? `, compressedTo=${resultContent.length}` : ''})`,
-            'executeToolCalls'
-          );
-
-          // Step update: tool execution completed
-          this.options.onStepUpdate?.({
-            type: 'tool_done',
-            toolCallId: toolCall.id,
-            toolName: toolCall.function.name,
-            turn: turnCount + 1,
-            durationMs: Date.now() - toolStartTime,
-            toolResultLength: originalLength,
-          });
-
-          // Track file outputs (deliverables)
-          this.trackDeliverables(toolCall.function.name, toolArgs);
-
-          results.push(MessageHelper.createToolMessage(
-            resultContent,
-            toolCall.id,
-            toolCall.function.name,
-          ));
-
-        } catch (error) {
-          // Non-fatal strategy: tool failure converted to error message
-          getLogger().error?.(
-            `[SubAgentChat] Tool '${toolCall.function.name}' execution failed: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
-            'executeToolCalls'
-          );
-
-          // Step update: tool execution failed
-          this.options.onStepUpdate?.({
-            type: 'tool_error',
-            toolCallId: toolCall.id,
-            toolName: toolCall.function.name,
-            turn: turnCount + 1,
-            durationMs: Date.now() - toolStartTime,
-          });
-
-          results.push(MessageHelper.createToolMessage(
-            `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
-            toolCall.id,
-            toolCall.function.name,
-          ));
-        }
+      const execPromise = mcpClientManager.executeTool({
+        toolName,
+        toolArgs,
+        signal: abortController.signal,
+        agentMcpServerNames,
+        strictAgentMcpServerNames: true,
+      });
+      if (!idlePromise) {
+        return await execPromise;
       }
+      execPromise.catch(() => undefined);
+      return await Promise.race([execPromise, idlePromise]);
     } finally {
-      // Ensure execution context is cleaned up
+      idleTimer?.dispose();
+      tokenListener.dispose();
       BuiltinToolsManager.clearExecutionContext();
     }
+  }
 
-    return results;
+  private getAllowedAgentMcpServerNames(toolName: string): string[] {
+    if (SUB_AGENT_BLOCKED_TOOLS.has(toolName)) {
+      throw new Error(`Tool '${toolName}' is unavailable to sub-agents`);
+    }
+
+    const allowedToolNames = this.options.allowedToolNames;
+    if (allowedToolNames && allowedToolNames.size > 0 && !allowedToolNames.has(toolName)) {
+      throw new Error(`Tool '${toolName}' is not allowed for this sub-agent`);
+    }
+
+    const externalServerName = this.getAllowedExternalServerName(toolName);
+    if (externalServerName) {
+      return [externalServerName];
+    }
+
+    if (mcpClientManager.isBuiltinTool(toolName, [BUILTIN_SERVER_NAME], true)) {
+      return [BUILTIN_SERVER_NAME];
+    }
+
+    throw new Error(`Tool '${toolName}' is not available to this sub-agent`);
+  }
+
+  private getAllowedExternalServerName(toolName: string): string | undefined {
+    const subAgent = this.options.subAgent;
+    const mcpServers = subAgent.resolvedMcpServers.length > 0
+      ? subAgent.resolvedMcpServers
+      : subAgent.config.mcp_servers || [];
+
+    for (const server of mcpServers) {
+      const tools = server.tools || [];
+      if (tools.includes(toolName)) {
+        return server.name;
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -233,8 +338,9 @@ export class SubAgentToolExecutor {
    *
    * Called after successful tool execution, extracts file paths from tool arguments and records them.
    * Supports: write_file, create_file, append_to_file, download_file, present_deliverables
+   * For present_deliverables, excludes files reported as missing in the tool result.
    */
-  trackDeliverables(toolName: string, toolArgs: Record<string, unknown>): void {
+  trackDeliverables(toolName: string, toolArgs: Record<string, unknown>, toolResult?: unknown): void {
     try {
       if (FILE_OUTPUT_TOOLS.has(toolName)) {
         // write_file, create_file, append_to_file use filePath parameter
@@ -256,10 +362,26 @@ export class SubAgentToolExecutor {
         }
       } else if (toolName === 'present_deliverables') {
         // present_deliverables uses filePaths array
+        // Exclude files reported as missing in the tool result
+        const missingFiles: string[] = [];
+        if (toolResult != null) {
+          let resultObj: any = toolResult;
+          // toolResult may arrive as a JSON string (normal sub-agent execution path)
+          if (typeof toolResult === 'string') {
+            try {
+              resultObj = JSON.parse(toolResult);
+            } catch {
+              resultObj = null;
+            }
+          }
+          if (resultObj && typeof resultObj === 'object' && Array.isArray(resultObj.missingFiles)) {
+            missingFiles.push(...resultObj.missingFiles);
+          }
+        }
         const filePaths = toolArgs.filePaths;
         if (Array.isArray(filePaths)) {
           for (const fp of filePaths) {
-            if (typeof fp === 'string' && fp && !this.deliverables.includes(fp)) {
+            if (typeof fp === 'string' && fp && !this.deliverables.includes(fp) && !missingFiles.includes(fp)) {
               this.deliverables.push(fp);
             }
           }

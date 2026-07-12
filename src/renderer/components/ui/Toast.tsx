@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 export interface ToastMessage {
   id: string;
@@ -22,6 +23,7 @@ interface ToastItemProps {
 }
 
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
+  const { t } = useI18n();
   const [isVisible, setIsVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const closeRef = useRef<NodeJS.Timeout>();
@@ -68,49 +70,49 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
     switch (type) {
       case 'success':
         return {
-          bg: 'bg-green-50/95',
-          border: 'border-green-200/50',
-          text: 'text-green-800',
+          bg: 'bg-success-50/95',
+          border: 'border-success-200/50',
+          text: 'text-success-800',
           icon: CheckCircle,
-          iconColor: 'text-green-600',
-          progressBg: 'bg-green-500'
+          iconColor: 'text-success-600',
+          progressBg: 'bg-success-500'
         };
       case 'error':
         return {
-          bg: 'bg-red-50/95',
-          border: 'border-red-200/50',
-          text: 'text-red-800',
+          bg: 'bg-danger-50/95',
+          border: 'border-danger-200/50',
+          text: 'text-danger-800',
           icon: AlertCircle,
-          iconColor: 'text-red-600',
-          progressBg: 'bg-red-500'
+          iconColor: 'text-danger-600',
+          progressBg: 'bg-danger-500'
         };
       case 'warning':
         return {
-          bg: 'bg-amber-50/95',
-          border: 'border-amber-200/50',
-          text: 'text-amber-800',
+          bg: 'bg-warning-50/95',
+          border: 'border-warning-200/50',
+          text: 'text-warning-800',
           icon: AlertTriangle,
-          iconColor: 'text-amber-600',
-          progressBg: 'bg-amber-500'
+          iconColor: 'text-warning-600',
+          progressBg: 'bg-warning-500'
         };
       case 'update':
         return {
-          bg: 'bg-violet-50/95',
-          border: 'border-violet-200/50',
-          text: 'text-violet-800',
+          bg: 'bg-primary-50/95',
+          border: 'border-primary-200/50',
+          text: 'text-primary-800',
           icon: Info,
-          iconColor: 'text-violet-600',
-          progressBg: 'bg-violet-500'
+          iconColor: 'text-primary-600',
+          progressBg: 'bg-primary-500'
         };
       case 'info':
       default:
         return {
-          bg: 'bg-blue-50/95',
-          border: 'border-blue-200/50',
-          text: 'text-blue-800',
+          bg: 'bg-primary-50/95',
+          border: 'border-primary-200/50',
+          text: 'text-primary-800',
           icon: Info,
-          iconColor: 'text-blue-600',
-          progressBg: 'bg-blue-500'
+          iconColor: 'text-primary-600',
+          progressBg: 'bg-primary-500'
         };
     }
   };
@@ -161,7 +163,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
               p-1 rounded-md
               transition-opacity duration-150
             `}
-            aria-label="Close notification"
+            aria-label={t('common.closeNotification')}
           >
             <X size={14} />
           </button>
@@ -183,8 +185,8 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose, index }) => {
                 px-3 py-1.5 text-xs font-medium rounded-md
                 transition-colors duration-150
                 ${action.variant === 'primary'
-                  ? `text-white bg-blue-600 hover:bg-blue-700`
-                  : `${styles.text} hover:bg-current/5`
+                  ? `toast-action-primary text-white bg-primary-600 hover:bg-primary-700`
+                  : `toast-action-secondary ${styles.text} hover:bg-current/5`
                 }
               `}
             >

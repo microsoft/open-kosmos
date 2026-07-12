@@ -32,7 +32,7 @@ export {
 // 🔥 OpenKosmos placeholder variable management
 export {
   OpenKosmosPlaceholder,
-  OpenKosmos_PLACEHOLDER_REGEX,
+  OPENKOSMOS_PLACEHOLDER_REGEX,
   containsOpenKosmosPlaceholder,
   extractOpenKosmosPlaceholders,
   OpenKosmosPlaceholderManager,
@@ -67,6 +67,8 @@ export type {
 // Export functions and constants (runtime values)
 export {
   isProfileV2,
+  detectProfileVersion,
+  isProfile,
   isMcpServerConfig,
   DEFAULT_CHAT_AGENT,
   DEFAULT_PROFILE_V2,

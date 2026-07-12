@@ -21,6 +21,9 @@ const BUILTIN_SERVER_NAME = 'builtin-tools';
 
 export const TOOL_SEARCH_TOOL_NAME = 'tool_search';
 
+/** API hard limit on the number of tools per request */
+export const MAX_INLINE_TOOLS = 128;
+
 /** Estimated characters per token for rough token estimation */
 const CHARS_PER_TOKEN = 2.5;
 
@@ -160,6 +163,10 @@ export function shouldEnableToolSearch(
   const externalTools = allTools.filter(t => isDeferredTool(t));
   if (externalTools.length === 0) return false;
 
+  // Hard cap: if total tools exceed MAX_INLINE_TOOLS, force tool search on
+  // regardless of token threshold — otherwise tools are silently dropped.
+  if (allTools.length > MAX_INLINE_TOOLS) return true;
+
   // If context window is known, use token threshold (tst-auto behavior)
   if (contextWindowSize && contextWindowSize > 0) {
     const toolChars = externalTools.reduce((sum, t) => {
@@ -176,6 +183,27 @@ export function shouldEnableToolSearch(
 }
 
 /**
+ * Truncate a tool list to MAX_INLINE_TOOLS to prevent API 128-tool limit errors.
+ * Returns the original array unchanged when it is within the limit.
+ * Always preserves the `tool_search` meta-tool if present, so deferred tool
+ * discovery remains functional even when the list is truncated.
+ */
+function enforceHardCap(tools: McpTool[]): McpTool[] {
+  if (tools.length <= MAX_INLINE_TOOLS) return tools;
+
+  const toolSearchIndex = tools.findIndex(t => t.name === TOOL_SEARCH_TOOL_NAME);
+  if (toolSearchIndex < 0 || toolSearchIndex < MAX_INLINE_TOOLS) {
+    // tool_search not present or already within the cap
+    return tools.slice(0, MAX_INLINE_TOOLS);
+  }
+
+  // tool_search would be dropped by naive slice — swap it in
+  const capped = tools.slice(0, MAX_INLINE_TOOLS);
+  capped[MAX_INLINE_TOOLS - 1] = tools[toolSearchIndex];
+  return capped;
+}
+
+/**
  * Main filter: reduce the tools sent to the LLM API.
  *
  * Returns:
@@ -184,6 +212,7 @@ export function shouldEnableToolSearch(
  * - toolSearchEnabled: whether filtering was applied
  *
  * Tools are sorted for prompt cache stability: builtin prefix, then MCP tools.
+ * All return paths enforce MAX_INLINE_TOOLS to prevent API 128-tool limit errors.
  */
 export function filterToolsForRequest(
   allTools: McpTool[],
@@ -193,7 +222,7 @@ export function filterToolsForRequest(
   if (!options.enabled) {
     // Tool search disabled — send all tools except tool_search itself
     const tools = allTools.filter(t => t.name !== TOOL_SEARCH_TOOL_NAME);
-    return { filteredTools: sortToolsForCache(tools), deferredTools: [], toolSearchEnabled: false };
+    return { filteredTools: enforceHardCap(sortToolsForCache(tools)), deferredTools: [], toolSearchEnabled: false };
   }
 
   const inlineTools: McpTool[] = [];
@@ -210,19 +239,22 @@ export function filterToolsForRequest(
   if (deferredTools.length === 0) {
     // Nothing to defer — disable tool search
     const tools = allTools.filter(t => t.name !== TOOL_SEARCH_TOOL_NAME);
-    return { filteredTools: sortToolsForCache(tools), deferredTools: [], toolSearchEnabled: false };
+    return { filteredTools: enforceHardCap(sortToolsForCache(tools)), deferredTools: [], toolSearchEnabled: false };
   }
 
   // Find previously discovered tools from message history
   const discoveredNames = extractDiscoveredToolNames(messages);
 
-  // Include discovered deferred tools inline
-  const discoveredDeferred = deferredTools.filter(t => discoveredNames.has(t.name));
+  // Include discovered deferred tools inline, capped so total stays within MAX_INLINE_TOOLS
+  const maxDiscovered = Math.max(0, MAX_INLINE_TOOLS - inlineTools.length);
+  const discoveredDeferred = deferredTools
+    .filter(t => discoveredNames.has(t.name))
+    .slice(0, maxDiscovered);
 
   const filteredTools = [...inlineTools, ...discoveredDeferred];
 
   return {
-    filteredTools: sortToolsForCache(filteredTools),
+    filteredTools: enforceHardCap(sortToolsForCache(filteredTools)),
     deferredTools,
     toolSearchEnabled: true,
   };

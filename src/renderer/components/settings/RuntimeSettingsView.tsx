@@ -3,20 +3,34 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../ui/ToastProvider';
 import RuntimeSettingsHeaderView from './RuntimeSettingsHeaderView';
-import RuntimeSettingsContentView, { RuntimeStatus, GitVersion, PythonVersion } from './RuntimeSettingsContentView';
+import RuntimeSettingsContentView, { RuntimeStatus, RuntimeCheckingState, GitVersion, PythonVersion } from './RuntimeSettingsContentView';
 import { DEFAULT_PYTHON_VERSION } from '../../lib/runtime/runtimeVersions';
 import { appDataManager } from '../../lib/userData/appDataManager';
 import { useFeatureFlag } from '../../lib/featureFlags';
 import type { RuntimeEnvironment } from '../../lib/userData/types';
 import '../../styles/RuntimeSettings.css';
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[RuntimeSettingsView]');
+
+/** Polling interval for live status refresh while the Runtime tab is open (app-managed mode only). */
+const STATUS_POLL_INTERVAL_MS = 60_000;
+
+/** Default status shown before the first probe resolves. Per-section `checking` flags drive the "Checking…" UI. */
+const DEFAULT_STATUS: RuntimeStatus = {
+  bun: false,
+  uv: false,
+  bunPath: '',
+  uvPath: '',
+};
 
 const RuntimeSettingsView: React.FC = () => {
   const [runtimeEnv, setRuntimeEnv] = useState<RuntimeEnvironment | null>(null);
   // Independent install version draft state to avoid AppDataManager push interrupting user input fields
   const [installVersions, setInstallVersions] = useState({ bun: '', uv: '' });
-  const [status, setStatus] = useState<RuntimeStatus | null>(null);
+  // Status starts from a default so the tab renders immediately; each slice is filled in independently.
+  const [status, setStatus] = useState<RuntimeStatus>(DEFAULT_STATUS);
+  const [checking, setChecking] = useState<RuntimeCheckingState>({ core: true, git: true });
   const [gitVersion, setGitVersion] = useState<GitVersion | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -24,6 +38,7 @@ const RuntimeSettingsView: React.FC = () => {
   const [newPythonVersion, setNewPythonVersion] = useState<string>(DEFAULT_PYTHON_VERSION);
   const [isPythonLoading, setIsPythonLoading] = useState(false);
   const { showSuccess, showError } = useToast();
+  const { t } = useI18n();
   const isGitEnabled = useFeatureFlag('openkosmosUseGit');
 
   // Subscribe to AppDataManager, receive runtimeEnvironment changes in real time
@@ -56,65 +71,126 @@ const RuntimeSettingsView: React.FC = () => {
     }
   }, []);
 
-  // loadData only loads status and python version list (these don't go through AppDataManager)
-  const loadData = useCallback(async () => {
+  // ── Independent status checks ──
+  // Each component is probed on its own IPC channel so the tab renders immediately
+  // and each row updates as soon as its own probe resolves (no waiting on the slowest).
+
+  const checkCore = useCallback(async () => {
+    setChecking((c) => ({ ...c, core: true }));
     try {
-      const sts = await window.electronAPI.runtime.checkStatus();
-      setStatus(sts);
-
-      // Only check Git status if feature is enabled
-      if (isGitEnabled) {
-        const gitSts = await window.electronAPI.runtime.checkGitVersion();
-        setGitVersion(gitSts);
-      }
-
-      if (sts.uv) {
-        loadPythonVersions();
-      }
+      const core = await window.electronAPI.runtime.checkCore();
+      setStatus((s) => ({ ...s, ...core }));
+      if (core.uv) loadPythonVersions();
     } catch (e) {
       logger.error(e);
+    } finally {
+      setChecking((c) => ({ ...c, core: false }));
     }
-  }, [loadPythonVersions, isGitEnabled]);
+  }, [loadPythonVersions]);
 
+
+  const checkGit = useCallback(async () => {
+    if (!isGitEnabled) {
+      setChecking((c) => ({ ...c, git: false }));
+      return;
+    }
+    setChecking((c) => ({ ...c, git: true }));
+    try {
+      const gitSts = await window.electronAPI.runtime.checkGitVersion();
+      setGitVersion(gitSts);
+    } catch (e) {
+      logger.error(e);
+    } finally {
+      setChecking((c) => ({ ...c, git: false }));
+    }
+  }, [isGitEnabled]);
+
+  // Fire every check independently and in parallel.
+  const checkAll = useCallback(() => {
+    checkCore();
+    checkGit();
+  }, [checkCore, checkGit]);
+
+  // Run all checks immediately on mount, then poll while the tab is open (app-managed mode only).
+  // Polling is scoped to this component: leaving the Runtime tab unmounts the view (React Router
+  // <Route element>), which clears the interval via the cleanup below. Additionally, polling is
+  // paused while the page is hidden (window minimized / switched away / background) so we don't
+  // keep spawning runtime probe subprocesses every minute when no one is looking.
+  const isInternalMode = runtimeEnv?.mode === 'internal';
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    // Initial check always runs on mount (and when re-entering the tab).
+    checkAll();
+    if (!isInternalMode) return;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (timer === null) {
+        timer = setInterval(checkAll, STATUS_POLL_INTERVAL_MS);
+      }
+    };
+    const stopPolling = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        // Refresh immediately on return so the user sees fresh status, then resume polling.
+        checkAll();
+        startPolling();
+      }
+    };
+
+    // Only poll if the page is currently visible.
+    if (!document.hidden) startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopPolling();
+    };
+  }, [checkAll, isInternalMode]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await loadData();
-      showSuccess('Runtime status refreshed');
+      checkAll();
+      showSuccess(t('settings.runtime.refreshing'));
     } catch (e) {
-      showError('Failed to refresh runtime status');
+      showError(t('settings.runtime.refreshFailed'));
     } finally {
       setIsRefreshing(false);
     }
-  }, [loadData, showSuccess, showError]);
+  }, [checkAll, showSuccess, showError, t]);
 
   const handleModeChange = useCallback(async (mode: 'system' | 'internal') => {
     try {
       await window.electronAPI.runtime.setMode(mode);
       // AppCacheManager will push update → AppDataManager → setRuntimeEnv auto-refresh
-      showSuccess(`Switched to ${mode} mode`);
+      showSuccess(t('settings.runtime.switchedMode', { mode }));
     } catch (e) {
-      showError('Failed to switch mode');
+      showError(t('settings.runtime.switchModeFailed'));
     }
-  }, [showSuccess, showError]);
+  }, [showSuccess, showError, t]);
 
   const handleInstall = useCallback(async (tool: 'bun' | 'uv') => {
     setIsLoading(true);
     try {
       const version = installVersions[tool];
       await window.electronAPI.runtime.install(tool, version);
-      showSuccess(`Installed ${tool} v${version}`);
-      await loadData();
+      showSuccess(t('settings.runtime.installedTool', { tool, version }));
+      await checkCore();
     } catch (e: any) {
-      showError(`Failed to install ${tool}: ${e.message}`);
+      showError(t('settings.runtime.installToolFailed', { tool, error: e.message }));
     } finally {
       setIsLoading(false);
     }
-  }, [installVersions, loadData, showSuccess, showError]);
+  }, [installVersions, checkCore, showSuccess, showError, t]);
 
   const handleVersionChange = useCallback((tool: 'bun' | 'uv', value: string) => {
     setInstallVersions(prev => ({ ...prev, [tool]: value }));
@@ -124,63 +200,43 @@ const RuntimeSettingsView: React.FC = () => {
     if (!newPythonVersion) return;
     setIsPythonLoading(true);
     try {
+      // "Update" performs install + pin in one action.
       await window.electronAPI.runtime.installPythonVersion(newPythonVersion);
-      showSuccess(`Python ${newPythonVersion} installed successfully`);
+      await window.electronAPI.runtime.setPinnedPythonVersion(newPythonVersion);
+      showSuccess(t('settings.runtime.pythonInstalledDefault', { version: newPythonVersion }));
       await loadPythonVersions();
     } catch (e: any) {
-      showError(`Failed to install Python ${newPythonVersion}: ${e.message}`);
+      showError(t('settings.runtime.pythonUpdateFailed', { version: newPythonVersion, error: e.message }));
     } finally {
       setIsPythonLoading(false);
     }
-  }, [newPythonVersion, loadPythonVersions, showSuccess, showError]);
-
-  const handleUninstallPython = useCallback(async (version: string) => {
-    if (!confirm(`Are you sure you want to uninstall Python ${version}?`)) return;
-    setIsPythonLoading(true);
-    try {
-      await window.electronAPI.runtime.uninstallPythonVersion(version);
-      showSuccess(`Uninstalled Python ${version}`);
-      // pinnedPythonVersion is auto-updated via AppCacheManager → AppDataManager push, no manual setConfig needed
-      await loadPythonVersions();
-    } catch (e: any) {
-      showError(`Failed to uninstall: ${e.message}`);
-    } finally {
-      setIsPythonLoading(false);
-    }
-  }, [loadPythonVersions, showSuccess, showError]);
-
-  const handlePinPythonVersion = useCallback(async (version: string) => {
-    try {
-      await window.electronAPI.runtime.setPinnedPythonVersion(version);
-      // AppCacheManager will push update → AppDataManager → setRuntimeEnv auto-refresh
-      showSuccess(`Pinned Python ${version}`);
-    } catch {
-      showError('Failed to pin version');
-    }
-  }, [showSuccess, showError]);
+  }, [newPythonVersion, loadPythonVersions, showSuccess, showError, t]);
 
   const handleCleanUvCache = useCallback(async () => {
     setIsLoading(true);
     try {
       await window.electronAPI.runtime.cleanUvCache();
-      showSuccess('uv cache cleaned');
+      showSuccess(t('settings.runtime.uvCacheCleaned'));
     } catch (e) {
-      showError('Failed to clean uv cache');
+      showError(t('settings.runtime.uvCacheCleanFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, [showSuccess, showError]);
+  }, [showSuccess, showError, t]);
 
   // Merge AppDataManager runtimeEnv with installVersions draft for the view config
   const configForView = runtimeEnv
     ? { ...runtimeEnv, bunVersion: installVersions.bun, uvVersion: installVersions.uv }
     : null;
 
-  if (!configForView || !status) {
+  // Wait only for runtime config (read synchronously from AppDataManager cache on mount).
+  // Status is no longer gated here — the tab renders immediately and each row shows a
+  // "Checking…" state until its own probe resolves.
+  if (!configForView) {
     return (
       <div className="runtime-settings-view">
         <div className="runtime-settings-loading">
-          Loading runtime status...
+          {t('settings.runtime.loadingStatus')}
         </div>
       </div>
     );
@@ -198,6 +254,7 @@ const RuntimeSettingsView: React.FC = () => {
       <RuntimeSettingsContentView
         config={configForView}
         status={status}
+        checking={checking}
         gitVersion={gitVersion}
         pythonVersions={pythonVersions}
         isLoading={isLoading}
@@ -209,10 +266,7 @@ const RuntimeSettingsView: React.FC = () => {
         onVersionChange={handleVersionChange}
         onNewPythonVersionChange={setNewPythonVersion}
         onInstallPython={handleInstallPython}
-        onUninstallPython={handleUninstallPython}
-        onPinPythonVersion={handlePinPythonVersion}
         onCleanUvCache={handleCleanUvCache}
-        onRefresh={loadData}
       />
     </div>
   );

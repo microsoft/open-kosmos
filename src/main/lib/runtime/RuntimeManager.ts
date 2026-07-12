@@ -11,6 +11,23 @@ import type { RuntimeEnvironment, RuntimeMode } from '../userDataADO/types/app';
 import { DEFAULT_RUNTIME_ENVIRONMENT } from '../userDataADO/types/app';
 import { getTerminalManager } from '../terminalManager';
 import StreamZip from 'node-stream-zip';
+import {
+  ensureVenvMatchesPinnedPython as ensureVenvMatchesPinnedPythonImpl,
+  venvBaseInterpreterResolves as venvBaseInterpreterResolvesImpl,
+  ensurePinnedPythonInstalled as ensurePinnedPythonInstalledImpl,
+  doRecreateVenv as doRecreateVenvImpl,
+  ensureVenvPipAvailable as ensureVenvPipAvailableImpl,
+  type PythonSelfHealCtx,
+} from './pythonSelfHeal';
+import {
+  listPythonPackages as listPythonPackagesImpl,
+  installPythonPackages as installPythonPackagesImpl,
+  uninstallPythonPackage as uninstallPythonPackageImpl,
+  withVenvMutationLock,
+  type PythonPackage,
+  type PythonPackagesCtx,
+} from './pythonPackages';
+
 const logger = createLogger();
 
 export type InternalToolType = 'bun' | 'uv';
@@ -19,6 +36,7 @@ export class RuntimeManager {
   private static instance: RuntimeManager;
   private binPath: string;
   private venvPath: string;
+
   // Installation locks to prevent concurrent installations of the same component
   private installLocks: Map<string, Promise<void>> = new Map();
 
@@ -87,14 +105,24 @@ export class RuntimeManager {
   public async setRuntimeMode(mode: RuntimeMode): Promise<void> {
     logger.info(`Switching runtime mode to: ${mode}`);
     const current = appCacheManager.getConfig();
+    const previousMode = current.runtimeEnvironment?.mode ?? DEFAULT_RUNTIME_ENVIRONMENT.mode;
     await appCacheManager.updateConfig({
       runtimeEnvironment: {
         ...(current.runtimeEnvironment ?? DEFAULT_RUNTIME_ENVIRONMENT),
         mode,
       },
     });
-    if (mode === 'internal') {
+    // Only (re)kick the background self-heal chain on an actual transition INTO
+    // internal mode. App startup already calls initializeInternalMode() once when
+    // the persisted mode is internal; the FRE flow then issues runtime:set-mode
+    // 'internal' again as an idempotent guarantee. Without this guard that second
+    // call spawned a parallel self-heal chain — a duplicate ensurePinnedPythonInstalled
+    // (and previously a duplicate `uv python install`). Skipping the re-init when the
+    // mode is unchanged leaves the original startup chain as the single owner.
+    if (mode === 'internal' && previousMode !== 'internal') {
       this.initializeInternalMode();
+    } else if (mode === 'internal') {
+      logger.debug('Runtime mode already internal, skipping duplicate initializeInternalMode()', 'RuntimeManager');
     }
   }
 
@@ -149,7 +177,8 @@ export class RuntimeManager {
    *   - process.cwd() is "/" on packaged macOS apps and "C:\Windows\System32"
    *     on packaged Windows apps — both are not writable.
    *   - app.getPath('userData') is always writable, in both dev and production.
-   *   - Other app-managed resources (playwright profiles) already live under userData.
+   *   - Other app-managed resources (whisper models, native modules, playwright
+   *     profiles) already live under userData.
    *
    * The VIRTUAL_ENV environment variable is set in getEnvWithInternalPath()
    * so that `uv pip install`, `python`, and any subprocess automatically
@@ -181,59 +210,47 @@ export class RuntimeManager {
    *   Only major.minor is compared (e.g. "3.12"). Patch-level differences
    *   (3.12.8 → 3.12.9) produce compatible venvs and do NOT trigger rebuild.
    */
-  private async ensureVenvMatchesPinnedPython(pinnedVersion: string): Promise<void> {
-    const venvDir = this.venvPath;
-    const pyvenvCfg = path.join(venvDir, 'pyvenv.cfg');
+  // Implementations live in ./pythonSelfHeal as free functions (keeps this class under
+  // the file-length budget). They take `this` as context and call back through the
+  // manager (e.g. this.recreateVenv), so existing spies/tests targeting these methods
+  // still fire. See pythonSelfHeal.ts for the full layer-1/layer-2 self-heal rationale.
+  // `selfHealCtx` exposes the private fields/methods the helpers need (TS treats `this`
+  // as having private members, so it cannot be passed to the structural ctx directly).
+  private get selfHealCtx(): PythonSelfHealCtx {
+    return {
+      venvPath: this.venvPath,
+      getBinaryPath: (tool) => this.getBinaryPath(tool),
+      listPythonVersionsFast: () => this.listPythonVersionsFast(),
+      installPythonVersion: (version) => this.installPythonVersion(version),
+      recreateVenv: (version) => this.recreateVenv(version),
+      venvBaseInterpreterResolves: () => this.venvBaseInterpreterResolves(),
+      ensureVenvPipAvailable: () => this.ensureVenvPipAvailable(),
+    };
+  }
 
-    // Extract semver from pinned version (handles both "3.12.9" and "cpython-3.12.9-..." formats)
-    const semverMatch = pinnedVersion.match(/(\d+\.\d+\.\d+)/);
-    if (!semverMatch) {
-      logger.warn(`[FRE] Cannot parse semver from pinned version "${pinnedVersion}", skipping venv check`, 'RuntimeManager');
-      return;
-    }
-    const pinnedSemver = semverMatch[1]; // e.g. "3.12.9"
-    // Compare major.minor only (patch difference is OK, venv is compatible)
-    const pinnedMajorMinor = pinnedSemver.split('.').slice(0, 2).join('.'); // e.g. "3.12"
+  private ensureVenvMatchesPinnedPython(pinnedVersion: string): Promise<void> {
+    return ensureVenvMatchesPinnedPythonImpl(this.selfHealCtx, pinnedVersion);
+  }
 
-    // Read current venv's Python version from pyvenv.cfg
-    let venvVersion: string | null = null;
-    try {
-      if (fs.existsSync(pyvenvCfg)) {
-        const content = fs.readFileSync(pyvenvCfg, 'utf-8');
-        const match = content.match(/version_info\s*=\s*(\d+\.\d+)/);
-        if (match) {
-          venvVersion = match[1]; // e.g. "3.10"
-        }
-      }
-    } catch (err) {
-      logger.warn(`[FRE] Failed to read pyvenv.cfg: ${err instanceof Error ? err.message : String(err)}`, 'RuntimeManager');
-    }
+  private venvBaseInterpreterResolves(): boolean {
+    return venvBaseInterpreterResolvesImpl(this.selfHealCtx);
+  }
 
-    // If no venv exists, proactively create one
-    if (!fs.existsSync(venvDir)) {
-      logger.debug('[FRE] No python-venv directory found, creating for pinned version', 'RuntimeManager');
-      // Proactively create venv for the pinned version
-      await this.recreateVenv(pinnedVersion);
-      return;
-    }
+  private ensurePinnedPythonInstalled(pinnedVersion: string): Promise<void> {
+    return ensurePinnedPythonInstalledImpl(this.selfHealCtx, pinnedVersion);
+  }
 
-    if (venvVersion === pinnedMajorMinor) {
-      logger.debug(`[FRE] python-venv Python version (${venvVersion}) matches pinned (${pinnedMajorMinor}), no rebuild needed`, 'RuntimeManager');
-      return;
-    }
+  public ensurePythonPipAvailable(): Promise<boolean> {
+    return this.ensureVenvPipAvailable();
+  }
 
-    // Version mismatch — rebuild
-    logger.info(
-      `[FRE] python-venv Python version mismatch: venv=${venvVersion || 'unknown'}, pinned=${pinnedMajorMinor}. Rebuilding...`,
-      'RuntimeManager'
-    );
-
-    await this.recreateVenv(pinnedVersion);
+  private ensureVenvPipAvailable(): Promise<boolean> {
+    return withVenvMutationLock(() => ensureVenvPipAvailableImpl(this.selfHealCtx));
   }
 
   /**
    * Delete the venv at {userData}/python-venv and recreate it with
-   * `uv venv --python <version> <venvPath>`.
+   * `uv venv --seed --python <version> <venvPath>`.
    *
    * No writability check is needed because {userData} is always writable.
    */
@@ -256,60 +273,14 @@ export class RuntimeManager {
     }
 
     this._venvCreationVersion = pythonVersion;
-    this._venvCreationPromise = this.doRecreateVenv(pythonVersion).finally(() => {
+    this._venvCreationPromise = withVenvMutationLock(() => this.doRecreateVenv(pythonVersion)).finally(() => {
       this._venvCreationPromise = null;
     });
     await this._venvCreationPromise;
   }
 
-  private async doRecreateVenv(pythonVersion: string): Promise<void> {
-    const venvDir = this.venvPath;
-
-    // Remove old venv
-    try {
-      if (fs.existsSync(venvDir)) {
-        fs.rmSync(venvDir, { recursive: true, force: true });
-        logger.info('[FRE] Deleted stale python-venv directory', 'RuntimeManager');
-      }
-    } catch (err) {
-      logger.error(`[FRE] Failed to delete python-venv: ${err instanceof Error ? err.message : String(err)}`, 'RuntimeManager');
-      return;
-    }
-
-    // Recreate venv using uv — explicitly specify the venv path so uv doesn't
-    // rely on cwd-based discovery. This works in both dev and packaged environments.
-    // Use the full path to uv binary instead of bare "uv" to avoid PATH resolution
-    // issues on fresh installs where the bin directory was just created.
-    // Quote the path for TerminalManager's parseCommandString so paths with
-    // spaces (e.g. "C:\Users\John Smith\AppData\...\uv.exe") are not split.
-    const uvBin = this.getBinaryPath('uv');
-    if (!fs.existsSync(uvBin)) {
-      logger.warn(`[FRE] uv binary not found at ${uvBin}, skipping venv creation`, 'RuntimeManager');
-      return;
-    }
-    const uvCommand = uvBin.includes(' ') ? `"${uvBin}"` : uvBin;
-
-    try {
-      const terminalManager = getTerminalManager();
-      const result = await terminalManager.executeCommand({
-        command: uvCommand,
-        args: ['venv', '--python', pythonVersion, venvDir],
-        cwd: path.dirname(venvDir),
-        type: 'command',
-        timeoutMs: 60_000,
-      });
-
-      if (result.exitCode === 0) {
-        logger.info(`[FRE] python-venv created at ${venvDir} with Python ${pythonVersion}`, 'RuntimeManager');
-      } else {
-        logger.error(
-          `[FRE] Failed to create python-venv (exit code ${result.exitCode}): ${result.stderr.substring(0, 300)}`,
-          'RuntimeManager'
-        );
-      }
-    } catch (err) {
-      logger.error(`[FRE] Error creating python-venv: ${err instanceof Error ? err.message : String(err)}`, 'RuntimeManager');
-    }
+  private doRecreateVenv(pythonVersion: string): Promise<void> {
+    return doRecreateVenvImpl(this.selfHealCtx, pythonVersion);
   }
 
   // --- Path & Environment ---
@@ -394,6 +365,9 @@ export class RuntimeManager {
       };
     }
   }
+
+
+
 
   /**
    * ============================================================================
@@ -567,13 +541,18 @@ export class RuntimeManager {
       .then(() => {
         // Refresh shims after all tools are installed
         this.ensureShims(true);
-        // Step 3: After tools are installed, ensure the Python venv exists.
+        // Step 3: After tools are installed, ensure the Python runtime is fully ready.
         // This must run AFTER uv is available (ensureRequiredToolsInstalled installs uv).
-        // If a pinned Python version is configured but no venv exists yet,
-        // create one proactively so that subsequent `uv pip install` calls succeed.
+        // Two layers must both be present, in order:
+        //   (a) layer-1 interpreter: `uv python install <pinned>` into uv's python dir.
+        //       Previously this NEVER ran at startup (only the manual button did), so a
+        //       fresh machine / externally-deleted interpreter stayed broken.
+        //   (b) layer-2 venv: {userData}/python-venv. Rebuilt if missing, version-mismatched,
+        //       or dangling (base interpreter gone).
         const pinnedVersion = this.getRunTimeConfig().pinnedPythonVersion;
         if (pinnedVersion) {
-          return this.ensureVenvMatchesPinnedPython(pinnedVersion);
+          return this.ensurePinnedPythonInstalled(pinnedVersion)
+            .then(() => this.ensureVenvMatchesPinnedPython(pinnedVersion));
         }
       })
       .catch(err => {
@@ -905,16 +884,27 @@ export class RuntimeManager {
           return existingLock;
       }
 
-      // Start global mirror before installation
-      const mirror = LocalPythonMirror.getInstance();
-      try {
-           await mirror.start();
-      } catch (e) {
-           logger.warn(`[FRE] Failed to start local python mirror, proceeding without it`, 'RuntimeManager', { error: e });
-      }
-
-      // Create installation promise and store it
-      const installPromise = this.doInstallPythonVersion(version);
+      // Register the lock SYNCHRONOUSLY before any await. Mirror start, the actual
+      // `uv python install`, and mirror stop all live inside this single promise so
+      // that there is ZERO await between the get-check above and the set below. Two
+      // concurrent callers (e.g. two initializeInternalMode() runs racing through
+      // ensurePinnedPythonInstalled) would otherwise both pass the empty-lock check
+      // and both yield at `await mirror.start()` before either set the lock, spawning
+      // two `uv python install` processes. Building the promise here closes that window.
+      const installPromise = (async () => {
+          const mirror = LocalPythonMirror.getInstance();
+          try {
+              await mirror.start();
+          } catch (e) {
+              logger.warn(`[FRE] Failed to start local python mirror, proceeding without it`, 'RuntimeManager', { error: e });
+          }
+          try {
+              await this.doInstallPythonVersion(version);
+          } finally {
+              // Stop mirror
+              mirror.stop();
+          }
+      })();
       this.installLocks.set(lockKey, installPromise);
 
       try {
@@ -922,9 +912,6 @@ export class RuntimeManager {
       } finally {
           // Clean up lock after completion (success or failure)
           this.installLocks.delete(lockKey);
-
-          // Stop mirror
-          mirror.stop();
       }
   }
 
@@ -980,6 +967,7 @@ export class RuntimeManager {
       }
 
       const env = this.getEnvWithInternalPath();
+      delete env.VIRTUAL_ENV;
       logger.debug(`[FRE][python][${new Date().toISOString()}] Environment prepared for uv python install`, 'RuntimeManager', {
         PATH: env['PATH']?.substring(0, 200) + '...', // Truncate for log readability
         UV_PYTHON: env['UV_PYTHON']
@@ -1170,6 +1158,33 @@ export class RuntimeManager {
               resolve(); // Resolve anyway
           });
       });
+  }
+
+  /** Context for the Python package helpers (delegated to pythonPackages.ts; keeps class small). */
+  private get packagesCtx(): PythonPackagesCtx {
+    return {
+          venvPath: this.venvPath,
+          getBinaryPath: (tool) => this.getBinaryPath(tool),
+          getEnvWithInternalPath: () => this.getEnvWithInternalPath(),
+          ensureVenvReady: async () => {
+            const pinned = this.getRunTimeConfig().pinnedPythonVersion;
+            if (pinned && pinned.trim().length > 0) {
+              await this.ensureVenvMatchesPinnedPython(pinned);
+            }
+          },
+    };
+  }
+
+  public listPythonPackages(): Promise<PythonPackage[]> {
+    return listPythonPackagesImpl(this.packagesCtx);
+  }
+
+  public installPythonPackages(packages: string[]): Promise<void> {
+    return installPythonPackagesImpl(this.packagesCtx, packages);
+  }
+
+  public uninstallPythonPackage(packageName: string): Promise<void> {
+    return uninstallPythonPackageImpl(this.packagesCtx, packageName);
   }
 
   // --- Direct Installation Methods (No subprocess) ---
@@ -1438,6 +1453,7 @@ export class RuntimeManager {
           }
       });
 
+      // FRE-only aggregate status used by the first-run experience.
       ipcMain.handle('runtime:check-status', async () => {
           logger.debug('[FRE] IPC: runtime:check-status called', 'RuntimeManager');
           const status = {
@@ -1449,6 +1465,22 @@ export class RuntimeManager {
           logger.debug('[FRE] IPC: runtime:check-status result', 'RuntimeManager', status);
           return status;
       });
+
+      // Granular status checks: each component is probed independently so the
+      // Runtime settings tab can render immediately and update each row as its
+      // own probe resolves, instead of blocking on the slowest subprocess.
+      // The monolithic 'runtime:check-status' above is retained for the FRE flow.
+
+      // Core tools (bun/uv) are checked via synchronous filesystem lookups — returns instantly.
+      ipcMain.handle('runtime:check-core', () => {
+          return {
+              bun: this.isInstalled('bun'),
+              uv: this.isInstalled('uv'),
+              bunPath: this.getBinaryPath('bun'),
+              uvPath: this.getBinaryPath('uv'),
+          };
+      });
+
 
       ipcMain.handle('runtime:list-python-versions', async () => {
         logger.debug('[FRE] IPC: runtime:list-python-versions called', 'RuntimeManager');
@@ -1499,6 +1531,21 @@ export class RuntimeManager {
       ipcMain.handle('runtime:clean-uv-cache', async () => {
         logger.debug('[FRE] IPC: runtime:clean-uv-cache called', 'RuntimeManager');
         return this.cleanUvCache();
+      });
+
+      ipcMain.handle('runtime:list-python-packages', async () => {
+        logger.debug('[FRE] IPC: runtime:list-python-packages called', 'RuntimeManager');
+        return this.listPythonPackages();
+      });
+
+      ipcMain.handle('runtime:add-python-packages', async (_, packages: string[]) => {
+        logger.info('[FRE] IPC: runtime:add-python-packages called', 'RuntimeManager', { packages });
+        return this.installPythonPackages(packages);
+      });
+
+      ipcMain.handle('runtime:uninstall-python-package', async (_, packageName: string) => {
+        logger.info('[FRE] IPC: runtime:uninstall-python-package called', 'RuntimeManager', { packageName });
+        return this.uninstallPythonPackage(packageName);
       });
 
       ipcMain.handle('runtime:check-git-version', async () => {

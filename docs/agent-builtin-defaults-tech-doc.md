@@ -164,7 +164,7 @@ When adding a new built-in Skill in the future, developers must:
    - Add a new entry to `BUILTIN_SKILL_CHANGELOG`: `{ N: ['new-skill-name'] }`.
    - Bump `BUILTIN_DEFAULTS_VERSION` to `N`.
 
-2. **Update the profile template** (`resources/examples/profiles/profile.json`): set `"builtinDefaultsVersion"` to the new version number. `DEFAULT_PROFILE_V2` and `createDefaultProfile()` already reference `BUILTIN_DEFAULTS_VERSION` dynamically, so no source code changes are needed beyond `builtinSkills.ts`.
+2. **No profile template update is required**: `DEFAULT_PROFILE_V2` and `createDefaultProfile()` already reference `BUILTIN_DEFAULTS_VERSION` dynamically, so no source code changes are needed beyond `builtinSkills.ts`.
 
 Example — adding `xlsx` as a built-in Skill:
 

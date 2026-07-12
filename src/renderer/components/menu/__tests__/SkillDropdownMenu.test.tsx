@@ -43,10 +43,8 @@ describe('SkillDropdownMenu', () => {
       value: {
         isDev: vi.fn().mockResolvedValue(true),
         platform: 'darwin',
-        skillLibrary: {
-          updateSkillFromDevice: vi.fn(),
-        },
         skills: {
+          updateSkillFromDevice: vi.fn(),
           openSkillFolder: vi.fn(),
         },
       },

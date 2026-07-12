@@ -9,6 +9,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { createLogger } from '../unifiedLogger';
 import { profileCacheManager } from '../userDataADO';
+import { skillsConfigManager } from '../userDataADO/skillsConfigManager';
 // @ts-ignore - js-yaml types may not be available
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
@@ -26,9 +27,9 @@ export interface SkillConfig {
   name: string;
   description: string;
   version: string;
-  /** Remote CDN version for IN-LIBRARY skills, empty string for ON-DEVICE skills */
+  /** Inert legacy version metadata retained for persisted-profile compatibility */
   remoteVersion?: string;
-  source: 'ON-DEVICE' | 'IN-LIBRARY' | 'PLUGIN';
+  source: 'ON-DEVICE' | 'IN-LIBRARY';
 }
 
 export interface SkillValidationResult {
@@ -432,8 +433,7 @@ export class SkillManager {
    * Check whether a skill already exists
    */
   public checkSkillExists(userAlias: string, skillName: string): any | null {
-    const profile = profileCacheManager.getCachedProfile(userAlias);
-    return profile && profile.skills ? profile.skills.find(s => s.name === skillName) : null;
+    return skillsConfigManager.getSkill(userAlias, skillName) ?? null;
   }
 
   /**

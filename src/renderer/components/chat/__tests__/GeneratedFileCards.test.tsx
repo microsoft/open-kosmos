@@ -23,7 +23,7 @@ vi.mock('../../ui/ToastProvider', async () => ({
 vi.mock('../../userData/userDataProvider', async () => ({
   useAgentConfig: () => ({
     agent: {
-      knowledge: { knowledgeBase: '/workspace/knowledge' },
+      knowledgeBase: '/workspace/knowledge',
     },
   }),
 }));
@@ -58,7 +58,7 @@ describe('GeneratedFileCards', () => {
           openPath: mockOpenPath,
           showInFolder: vi.fn().mockResolvedValue({ success: true }),
         },
-        skillLibrary: {
+        skills: {
           installSkillFromFilePath: vi.fn().mockResolvedValue({ success: true, skillName: 'Test Skill', isOverwrite: false }),
         },
       },
@@ -142,7 +142,11 @@ describe('GeneratedFileCards', () => {
     fireEvent.click(screen.getByText('Move to Knowledge Base'));
 
     await waitFor(() => {
-      expect(mockMoveFileToKnowledgeBase).toHaveBeenCalledWith('/workspace/output/report.md', '/workspace/knowledge');
+      expect(mockMoveFileToKnowledgeBase).toHaveBeenCalledWith(
+        '/workspace/output/report.md',
+        '/workspace/knowledge',
+        expect.objectContaining({ replaceExistingConfirm: expect.any(Function) }),
+      );
       expect(mockShowToast).toHaveBeenCalledWith(
         'File moved to knowledge base',
         'success',
@@ -210,7 +214,7 @@ describe('GeneratedFileCards', () => {
       <GeneratedFileCards
         items={[
           {
-            filePath: '/Users/pumpedgechina/Library/Application Support/openkosmos-app/profiles/demo_user/chat_workspaces/chat_1774501148705_hn6mnv93u/202603/chatSession_20260326203735/我的母亲.md',
+            filePath: '/Users/example/Library/Application Support/openkosmos-app/profiles/sample-user/chat_workspaces/chat_1774501148705_hn6mnv93u/202603/chatSession_20260326203735/sample.md',
             exists: true,
           },
         ]}

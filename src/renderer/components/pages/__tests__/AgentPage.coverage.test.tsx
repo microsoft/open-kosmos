@@ -21,7 +21,7 @@ const {
   const mockAuthData = { userId: 'user1', token: 'token123' };
   const mockNeedsFRE = vi.fn(() => false);
   const mockSubscribe = vi.fn(() => vi.fn()); // returns unsubscribe fn
-  const mockGetProfile = vi.fn(() => ({ primaryAgent: 'Kobi' }));
+  const mockGetProfile = vi.fn(() => ({ primaryChat: 'chat-1' }));
   const mockGetChatConfigs = vi.fn(() => [
     { chat_id: 'chat-1', agent: { name: 'Kobi' } },
   ]);
@@ -82,6 +82,7 @@ vi.mock('../../../lib/userData', () => ({
 vi.mock('../../../lib/chat/startNewChatFor', () => ({
   startNewChatFor: mockStartNewChatFor,
 }));
+
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
   useMessagesWithStream: () => ({ messages: [], streamingMessageId: null }),

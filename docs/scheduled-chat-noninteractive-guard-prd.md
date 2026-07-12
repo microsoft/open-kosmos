@@ -4,7 +4,7 @@
 
 Scheduled chat sessions run as unattended background jobs. They do not have a visible user present to answer follow-up questions or respond to interactive UI cards.
 
-Today, the chat runtime already blocks interactive UI in remote IM sessions, but scheduled-silent runs still execute inside the general tool and interaction pipeline. This creates two problems:
+Scheduled-silent runs execute inside the general tool and interaction pipeline. This creates two problems:
 
 1. Background runs can still attempt `request_interactive_input` or other user-blocking interaction flows.
 2. The runtime may silently skip those interactions instead of surfacing a clear unattended-execution failure.
@@ -48,10 +48,6 @@ The guard must cover:
 - `request_interactive_input`
 - unified `choice` / `form` request flow
 - direct `requestUserInfoInput` flows used by tool post-processing
-
-### 5. Existing remote IM behavior must remain unchanged
-
-Remote IM sessions must continue using the current plain-text-only behavior instead of the new scheduled failure behavior.
 
 ## Non-Goals
 

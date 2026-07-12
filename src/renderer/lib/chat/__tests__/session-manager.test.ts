@@ -11,14 +11,7 @@ vi.mock('../../utilities/logger', () => ({
   }),
 }));
 
-vi.mock('../../featureFlags', () => ({
-  isFeatureEnabled: vi.fn(() => false),
-}));
-
 import { SessionManager, type ChatSessionCache, type SessionListener, type MessageListener } from '../session-manager';
-import { isFeatureEnabled } from '../../featureFlags';
-
-const mockedIsFeatureEnabled = vi.mocked(isFeatureEnabled);
 
 function makeChunk(overrides: Partial<StreamingChunk>): StreamingChunk {
   return {
@@ -47,7 +40,6 @@ describe('SessionManager', () => {
 
   beforeEach(() => {
     manager = new SessionManager();
-    mockedIsFeatureEnabled.mockReturnValue(false);
   });
 
   describe('handleChatSessionCacheCreated', () => {
@@ -80,8 +72,7 @@ describe('SessionManager', () => {
       expect(manager.getChatSessionCache('s1')!.messages).toHaveLength(1);
     });
 
-    it('filters MCP-injected image messages when browserControl is enabled', () => {
-      mockedIsFeatureEnabled.mockReturnValue(true);
+    it('filters MCP-injected image messages from initial data', () => {
       const messages: Message[] = [
         makeMessage({ id: 'user_img_1', role: 'user' }),
         makeMessage({ id: 'u1', role: 'user' }),
@@ -92,8 +83,7 @@ describe('SessionManager', () => {
       expect(cache.messages[0].id).toBe('u1');
     });
 
-    it('does not filter when browserControl is enabled but no img messages exist', () => {
-      mockedIsFeatureEnabled.mockReturnValue(true);
+    it('preserves initial data when no injected image messages exist', () => {
       const messages: Message[] = [
         makeMessage({ id: 'u1', role: 'user' }),
         makeMessage({ id: 'u2', role: 'user' }),
@@ -243,8 +233,7 @@ describe('SessionManager', () => {
       );
     });
 
-    it('filters MCP-injected image messages when browserControl is enabled', () => {
-      mockedIsFeatureEnabled.mockReturnValue(true);
+    it('filters MCP-injected image messages added to the cache', () => {
       manager.handleChatSessionCacheCreated('s1', 'c1');
       const msg = makeMessage({ id: 'user_img_abc', role: 'user' });
       manager.addUserMessage('s1', msg);

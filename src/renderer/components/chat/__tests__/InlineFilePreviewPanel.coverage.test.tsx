@@ -204,7 +204,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       text: () => Promise.resolve('# Remote content'),
     }));
     render(<InlineFilePreviewPanel file={REMOTE_MD_FILE} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-markdown')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-markdown-content')).not.toBeNull());
   });
 
   // ---- remote file: fetch fails ----
@@ -234,7 +234,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
   // ---- markdown: view source toggle ----
   it('toggles between rendered and source views for markdown', async () => {
     render(<InlineFilePreviewPanel file={MD_FILE} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-markdown')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-markdown-content')).not.toBeNull());
     // Click "View Source"
     const toggleBtn = screen.getByTitle('View Source');
     fireEvent.click(toggleBtn);
@@ -251,7 +251,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       content: '# Hello',
     });
     render(<InlineFilePreviewPanel file={MD_FILE} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-frontmatter')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-frontmatter')).not.toBeNull());
     expect(screen.getByText('title')).toBeInTheDocument();
     expect(screen.getByText('My Doc')).toBeInTheDocument();
   });
@@ -287,7 +287,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
     await waitFor(() => expect(document.querySelector('iframe')).not.toBeNull());
     fireEvent.click(screen.getByTitle('View Source'));
     // After toggle, the monaco wrapper should appear
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull());
   });
 
   // ---- JSON file ----
@@ -297,7 +297,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       content: '{"key": "value"}',
     });
     render(<InlineFilePreviewPanel file={JSON_FILE} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull());
   });
 
   // ---- code file ----
@@ -307,7 +307,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       content: 'const x = 1;',
     });
     render(<InlineFilePreviewPanel file={CODE_FILE} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull());
   });
 
   // ---- pdf file: local path ----
@@ -696,7 +696,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
     };
     (window.electronAPI as any).fs.readFile = vi.fn().mockResolvedValue({ success: true, content: 'hello' });
     render(<InlineFilePreviewPanel file={plainFile} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull());
   });
 
   // ---- text/markdown mimeType classification ----
@@ -707,7 +707,7 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       mimeType: 'text/markdown',
     };
     render(<InlineFilePreviewPanel file={mdMimeFile} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-markdown')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-markdown-content')).not.toBeNull());
   });
 
   // ---- application/json mimeType ----
@@ -718,6 +718,6 @@ describe('InlineFilePreviewPanel — extended coverage', () => {
       mimeType: 'application/json',
     };
     render(<InlineFilePreviewPanel file={jsonMimeFile} isOpen={true} onClose={onClose} />);
-    await waitFor(() => expect(document.querySelector('.inline-preview-monaco-wrapper')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.file-viewer-edit-wrapper')).not.toBeNull());
   });
 });

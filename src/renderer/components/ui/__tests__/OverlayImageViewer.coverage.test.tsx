@@ -251,6 +251,41 @@ describe('OverlayImageViewer', () => {
     expect(screen.queryByText('Loading...')).toBeNull();
   });
 
+  it('shows an error state instead of hanging the spinner when the image fails to load', () => {
+    renderViewer();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('imageViewer:open', { detail: { images: sampleImages, initialIndex: 0 } }),
+      );
+    });
+    const mainImg = document.querySelector('.image-viewer-image')!;
+    act(() => {
+      fireEvent.error(mainImg);
+    });
+    // Spinner is cleared and an error message is shown — no infinite loading.
+    expect(screen.queryByText('Loading...')).toBeNull();
+    expect(screen.getByText('Image failed to load')).toBeInTheDocument();
+    expect(document.querySelector('.image-viewer-image')).toBeNull();
+  });
+
+  it('recovers from an error state when navigating to another image', () => {
+    renderViewer();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('imageViewer:open', { detail: { images: sampleImages, initialIndex: 0 } }),
+      );
+    });
+    act(() => {
+      fireEvent.error(document.querySelector('.image-viewer-image')!);
+    });
+    expect(screen.getByText('Image failed to load')).toBeInTheDocument();
+
+    // Navigating clears the error so the next image gets a fresh load attempt.
+    fireEvent.click(screen.getByLabelText('Next image'));
+    expect(screen.queryByText('Image failed to load')).toBeNull();
+    expect(document.querySelector('.image-viewer-image')).not.toBeNull();
+  });
+
   it('shows Save button', () => {
     renderViewer();
     act(() => {

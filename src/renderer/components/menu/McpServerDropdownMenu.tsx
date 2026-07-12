@@ -2,6 +2,7 @@ import React, { useLayoutEffect } from 'react';
 import { Pencil, Play, Pause, RotateCw, Trash2 } from 'lucide-react';
 import { useProfileData } from '../userData/userDataProvider';
 import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface McpServerDropdownMenuProps {
   mcpServerMenuRef: React.RefObject<HTMLDivElement>;
@@ -27,6 +28,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
   onClose,
 }) => {
   const { mcpServers } = useProfileData();
+  const { t } = useI18n();
 
   // Find current server
   const currentServer = mcpServers.find((s: any) => s.name === serverName);
@@ -34,12 +36,9 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
   // Check if this is a built-in server
   const BUILTIN_SERVER_NAME = 'builtin-tools';
   const isBuiltinServer = serverName === BUILTIN_SERVER_NAME;
-  
-  // Check if this is a plugin server
-  const isPluginServer = currentServer?.source === 'PLUGIN' || serverName.startsWith('plugin--');
-  
-  // If it is a built-in server or plugin server, do not show the menu
-  if (isBuiltinServer || isPluginServer) {
+
+  // If it is a built-in server, do not show the menu
+  if (isBuiltinServer) {
     return null;
   }
 
@@ -99,7 +98,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
       {/* If all action functions are undefined, show a hint */}
       {!hasAnyAction && (
         <div className="dropdown-menu-item" style={{ opacity: 0.6, cursor: 'default' }}>
-          No actions available
+          {t('common.noActionsAvailable')}
         </div>
       )}
 
@@ -115,7 +114,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Play size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Connect</span>
+          <span className="dropdown-menu-item-text">{t('mcp.server.connect')}</span>
         </button>
       )}
       {availableActions.disconnect && finalOnDisconnect && (
@@ -130,7 +129,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Pause size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Disconnect</span>
+          <span className="dropdown-menu-item-text">{t('mcp.server.disconnect')}</span>
         </button>
       )}
       {availableActions.reconnect && finalOnReconnect && (
@@ -145,7 +144,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><RotateCw size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Reconnect</span>
+          <span className="dropdown-menu-item-text">{t('mcp.server.reconnect')}</span>
         </button>
       )}
       {finalOnEdit && (
@@ -165,7 +164,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           disabled={currentServer?.status === 'connecting' || currentServer?.status === 'disconnecting'}
         >
           <span className="dropdown-menu-item-icon"><Pencil size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Edit</span>
+          <span className="dropdown-menu-item-text">{t('common.edit')}</span>
         </button>
       )}
       {finalOnDelete && (
@@ -180,7 +179,7 @@ const McpServerDropdownMenu: React.FC<McpServerDropdownMenuProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Trash2 size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Delete</span>
+          <span className="dropdown-menu-item-text">{t('common.delete')}</span>
         </button>
       )}
     </div>

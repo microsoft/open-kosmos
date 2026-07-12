@@ -379,7 +379,8 @@ export class ConfigAdapter extends EventEmitter {
       command: config.transport === 'stdio' ? config.command : undefined,
       args: config.transport === 'stdio' ? config.args : undefined,
       url: config.transport !== 'stdio' ? config.url : undefined,
-      env: config.env
+      env: config.env,
+      headers: config.transport !== 'stdio' ? config.headers : undefined
     };
   }
 

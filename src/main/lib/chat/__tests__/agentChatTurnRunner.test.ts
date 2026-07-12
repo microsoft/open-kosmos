@@ -19,9 +19,10 @@ vi.mock('../agentChatUtilities', async () => ({
 }));
 
 import { AgentChatTurnRunner } from '../agentChatTurnRunner';
-import { CancellationError } from '../../cancellation';
+import { CancellationError, CancellationTokenSource } from '../../cancellation';
 import { ChatStatus } from '../agentChatTypes';
 import { GhcApiError } from '../../utilities/errors';
+import { NonInteractiveRuntimeInteractionError } from '../agentChatInteractionPolicy';
 
 function createRunner() {
   const currentChatSession = {
@@ -97,6 +98,14 @@ describe('AgentChatTurnRunner', () => {
     expect(result).toEqual(deps.getDisplayMessages());
   });
 
+  it('can defer the retry final idle transition to the caller', async () => {
+    const { runner, deps } = createRunner();
+
+    await runner.runRetry({ deferFinalIdle: true });
+
+    expect(deps.runConversationAttempt).toHaveBeenCalledWith(undefined, undefined, { deferFinalIdle: true });
+  });
+
   it('logs graceful retry cancellation separately from ordinary failures', async () => {
     const { runner, deps } = createRunner();
     deps.runConversationAttempt.mockRejectedValueOnce(new CancellationError('cancelled'));
@@ -109,6 +118,33 @@ describe('AgentChatTurnRunner', () => {
       expect.objectContaining({ agentName: 'OpenKosmos' }),
     );
     expect(loggerMock.error).not.toHaveBeenCalledWith(expect.stringContaining('Retry failed'));
+  });
+
+  it('stops retry before starting when the token is already cancelled', async () => {
+    const { runner, deps } = createRunner();
+    const token = { isCancellationRequested: true } as any;
+
+    await expect(runner.runRetry({ token })).rejects.toBeInstanceOf(CancellationError);
+
+    expect(deps.runConversationAttempt).not.toHaveBeenCalled();
+  });
+
+  it('logs retry failures for non-Error thrown values', async () => {
+    const { runner, deps } = createRunner();
+    deps.runConversationAttempt.mockRejectedValueOnce('bad retry');
+
+    await expect(runner.runRetry({})).rejects.toBe('bad retry');
+
+    expect(loggerMock.error).toHaveBeenCalledWith('[AgentChat] Retry failed: bad retry');
+  });
+
+  it('logs retry failures for Error instances', async () => {
+    const { runner, deps } = createRunner();
+    deps.runConversationAttempt.mockRejectedValueOnce(new Error('retry exploded'));
+
+    await expect(runner.runRetry({})).rejects.toThrow('retry exploded');
+
+    expect(loggerMock.error).toHaveBeenCalledWith('[AgentChat] Retry failed: retry exploded');
   });
 
   it('logs stream-message failures separately from graceful cancellation', async () => {
@@ -124,6 +160,40 @@ describe('AgentChatTurnRunner', () => {
     await expect(runner.runStreamMessage({ userMessage })).rejects.toThrow('network down');
 
     expect(loggerMock.error).toHaveBeenCalledWith('[AgentChat] Conversation processing failed: network down');
+  });
+
+  it('logs graceful stream-message cancellation separately from ordinary failures', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      id: 'user-1',
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: 'hello' }],
+    } as any;
+    deps.runConversationAttempt.mockRejectedValueOnce(new CancellationError('stop'));
+
+    await expect(runner.runStreamMessage({ userMessage })).rejects.toThrow('stop');
+
+    expect(loggerMock.info).toHaveBeenCalledWith(
+      '[AgentChat] ✅ Operation cancelled gracefully',
+      'streamMessage',
+      expect.objectContaining({ agentName: 'OpenKosmos' }),
+    );
+  });
+
+  it('logs stream-message failures for non-Error thrown values', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      id: 'user-1',
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: 'hello' }],
+    } as any;
+    deps.runConversationAttempt.mockRejectedValueOnce('bad stream');
+
+    await expect(runner.runStreamMessage({ userMessage })).rejects.toBe('bad stream');
+
+    expect(loggerMock.error).toHaveBeenCalledWith('[AgentChat] Conversation processing failed: bad stream');
   });
 
   it('adds the user message and emits a user chunk before running the conversation attempt', async () => {
@@ -147,8 +217,97 @@ describe('AgentChatTurnRunner', () => {
       chatSessionId: 'session-1',
       userMessage: expect.objectContaining({ id: 'user-1' }),
     }));
-    expect(deps.runConversationAttempt).toHaveBeenCalledWith(undefined, undefined);
+    expect(deps.runConversationAttempt).toHaveBeenCalledWith(undefined, undefined, { deferFinalIdle: true });
     expect(result).toEqual(deps.getDisplayMessages());
+  });
+
+  it('can run a synthetic stream turn without persisting the trigger message', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      id: 'wake-1',
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: '<task-notification-trigger/>' }],
+      metadata: { synthetic: true },
+    } as any;
+
+    const result = await runner.runStreamMessage({
+      userMessage,
+      emitUserMessage: false,
+      persistUserMessage: false,
+    });
+
+    expect(deps.addMessageToSession).not.toHaveBeenCalled();
+    expect(deps.emitStreamingChunk).not.toHaveBeenCalled();
+    expect(deps.runConversationAttempt).toHaveBeenCalledWith(undefined, undefined, { deferFinalIdle: true });
+    expect(result).toEqual(deps.getDisplayMessages());
+  });
+
+  it('invokes onUserMessageCommitted after persisting, before running the conversation attempt', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      id: 'user-1',
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: 'hello' }],
+    } as any;
+
+    const order: string[] = [];
+    deps.addMessageToSession.mockImplementationOnce(async () => { order.push('persist'); });
+    deps.runConversationAttempt.mockImplementationOnce(async () => { order.push('run'); });
+    const onUserMessageCommitted = vi.fn(() => { order.push('commit'); });
+
+    await runner.runStreamMessage({ userMessage, emitUserMessage: true, onUserMessageCommitted });
+
+    expect(onUserMessageCommitted).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['persist', 'commit', 'run']);
+  });
+
+  it('does not invoke onUserMessageCommitted when the trigger message is not persisted', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      id: 'wake-1',
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: '<task-notification-trigger/>' }],
+    } as any;
+    const onUserMessageCommitted = vi.fn();
+
+    await runner.runStreamMessage({
+      userMessage,
+      emitUserMessage: false,
+      persistUserMessage: false,
+      onUserMessageCommitted,
+    });
+
+    expect(onUserMessageCommitted).not.toHaveBeenCalled();
+    expect(deps.addMessageToSession).not.toHaveBeenCalled();
+  });
+
+  it('can defer the final idle transition to the caller', async () => {
+    const { runner, deps } = createRunner();
+
+    await runner.run({ executionNonce: 1, deferFinalIdle: true });
+
+    expect(deps.setChatStatus).toHaveBeenNthCalledWith(1, ChatStatus.SENDING_RESPONSE);
+    expect(deps.setChatStatus).toHaveBeenNthCalledWith(2, ChatStatus.RECEIVED_RESPONSE);
+    expect(deps.setChatStatus).not.toHaveBeenCalledWith(ChatStatus.IDLE);
+  });
+
+  it('emits a generated message id when streaming a user message without an id', async () => {
+    const { runner, deps } = createRunner();
+    const userMessage = {
+      role: 'user',
+      timestamp: 123,
+      content: [{ type: 'text', text: 'hello' }],
+    } as any;
+
+    await runner.runStreamMessage({ userMessage, emitUserMessage: true });
+
+    expect(deps.emitStreamingChunk).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: expect.stringMatching(/^user_session-1_/),
+      userMessage: expect.objectContaining({ id: undefined }),
+    }));
   });
 
   it('cleans up and clears output on cancellation failure', async () => {
@@ -171,6 +330,15 @@ describe('AgentChatTurnRunner', () => {
     expect(deps.clearOutput).toHaveBeenCalledTimes(1);
     // Should NOT call cleanupIncompleteToolCalls (that's cancellation-only)
     expect(deps.cleanupIncompleteToolCalls).not.toHaveBeenCalled();
+  });
+
+  it('stringifies non-Error values in generic failure handling', async () => {
+    const { runner, deps } = createRunner();
+
+    await runner.handleFailure('plain failure');
+
+    expect(loggerMock.error).toHaveBeenCalledWith('[AgentChat] Unified streaming processing failed: plain failure');
+    expect(deps.setChatStatus).toHaveBeenCalledWith(ChatStatus.IDLE);
   });
 
   it('persists usage and API-reported model on the assistant message', async () => {
@@ -199,6 +367,35 @@ describe('AgentChatTurnRunner', () => {
       total_tokens: 700,
     });
     expect(savedMessage.model).toBe('gpt-4.1-2025-04-14');
+  });
+
+  it('reports usage to callbacks and anchors prompt token estimates', async () => {
+    const { runner, deps } = createRunner();
+    const onUsageReceived = vi.fn();
+    const anchorTokenEstimate = vi.fn();
+    Object.assign(deps, { onUsageReceived, anchorTokenEstimate });
+    deps.callWithToolsStreaming.mockResolvedValue({
+      finishReason: 'stop',
+      message: {
+        id: 'assistant-usage',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+      },
+      usage: {
+        promptTokens: 50,
+        completionTokens: 20,
+        totalTokens: 70,
+      },
+    });
+
+    await runner.run({ executionNonce: 1 });
+
+    expect(onUsageReceived).toHaveBeenCalledWith({
+      promptTokens: 50,
+      completionTokens: 20,
+      totalTokens: 70,
+    });
+    expect(anchorTokenEstimate).toHaveBeenCalledWith(50);
   });
 
   it('falls back to config model ID when API does not report model', async () => {
@@ -235,6 +432,48 @@ describe('AgentChatTurnRunner', () => {
     expect(savedMessage.usage).toBeUndefined();
     // model should still be set (config fallback)
     expect(savedMessage.model).toBe('gpt-4.1');
+  });
+
+  it('anchors neither usage nor estimates when prompt token count is absent', async () => {
+    const { runner, deps } = createRunner();
+    const onUsageReceived = vi.fn();
+    const anchorTokenEstimate = vi.fn();
+    Object.assign(deps, { onUsageReceived, anchorTokenEstimate });
+    deps.callWithToolsStreaming.mockResolvedValue({
+      finishReason: 'stop',
+      message: {
+        id: 'assistant-no-prompt',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+      },
+      usage: {
+        promptTokens: 0,
+        completionTokens: 5,
+        totalTokens: 5,
+      },
+    });
+
+    await runner.run({ executionNonce: 1 });
+
+    expect(onUsageReceived).toHaveBeenCalled();
+    expect(anchorTokenEstimate).not.toHaveBeenCalled();
+  });
+
+  it('skips persisting an empty assistant response without tool calls', async () => {
+    const { runner, deps } = createRunner();
+    deps.callWithToolsStreaming.mockResolvedValue({
+      finishReason: 'stop',
+      message: {
+        id: 'assistant-empty',
+        role: 'assistant',
+        content: [{ type: 'text', text: '   ' }],
+      },
+    });
+
+    await runner.run({ executionNonce: 1 });
+
+    expect(deps.addMessageToSession).not.toHaveBeenCalled();
+    expect(deps.extractFactsFromConversation).toHaveBeenCalled();
   });
 
   it('stops the tool-follow-up pipeline when execution becomes stale during a tool turn', async () => {
@@ -285,6 +524,52 @@ describe('AgentChatTurnRunner', () => {
     expect(deps.setChatStatus).toHaveBeenNthCalledWith(2, ChatStatus.RECEIVED_RESPONSE);
     expect(deps.setChatStatus).not.toHaveBeenCalledWith(ChatStatus.IDLE);
     expect(assertCallCount).toBeGreaterThan(0);
+  });
+
+  it('persists assistant tool calls after approval hooks can mutate arguments', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-tool',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-1',
+          type: 'function',
+          function: {
+            name: 'read_file',
+            arguments: '{"path":"before.txt"}',
+          },
+        },
+      ],
+    } as any;
+
+    deps.callWithToolsStreaming
+      .mockResolvedValueOnce({
+        finishReason: 'tool_calls',
+        message: assistantResponse,
+      })
+      .mockResolvedValueOnce({
+        finishReason: 'stop',
+        message: {
+          id: 'assistant-final',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'done' }],
+        },
+      });
+    deps.batchValidateAndRequestApproval.mockImplementation(async (toolCalls: any[]) => {
+      toolCalls[0].function.arguments = '{"path":"after.txt"}';
+      return new Map([['tool-1', true]]);
+    });
+    deps.executeToolCall.mockResolvedValue({ success: true });
+    deps.postProcessToolResult.mockResolvedValue({ success: true });
+
+    await runner.run({ executionNonce: 1 });
+
+    const savedAssistant = deps.addMessageToSession.mock.calls[0][0];
+    expect(savedAssistant.role).toBe('assistant');
+    expect(savedAssistant.tool_calls[0].function.arguments).toBe('{"path":"after.txt"}');
+    expect(deps.executeToolCall.mock.calls[0][0].function.arguments).toBe('{"path":"after.txt"}');
   });
 
   it('persists and emits structured system-fallback interactive-input results without collapsing them into user skips', async () => {
@@ -544,6 +829,141 @@ describe('AgentChatTurnRunner', () => {
     expect(JSON.stringify(toolMsg![0].content)).toContain('file not found');
   });
 
+  it('persists assistant tool-call message when cancellation happens during tool validation', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-tool-cancel',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"filePath":"/tmp/test.txt"}' },
+        },
+      ],
+    } as any;
+    const cancellation = new CancellationError('cancelled during hooks');
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockRejectedValueOnce(cancellation);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(cancellation);
+
+    expect(deps.addMessageToSession).toHaveBeenCalledWith(assistantResponse);
+    expect(deps.executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it('persists assistant tool-call message when tool validation throws a non-cancellation error', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-tool-approval-error',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"filePath":"/tmp/test.txt"}' },
+        },
+      ],
+    } as any;
+    const approvalError = new Error('approval service unavailable');
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockRejectedValueOnce(approvalError);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(approvalError);
+
+    expect(deps.addMessageToSession).toHaveBeenCalledWith(assistantResponse);
+    expect(deps.executeToolCall).not.toHaveBeenCalled();
+  });
+
+  it('persists assistant tool-call message when cancellation is requested after tool validation', async () => {
+    const { runner, deps } = createRunner();
+    const source = new CancellationTokenSource();
+    const assistantResponse = {
+      id: 'assistant-tool-cancel-after-validation',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"filePath":"/tmp/test.txt"}' },
+        },
+      ],
+    } as any;
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockImplementationOnce(async () => {
+      source.cancel();
+      return new Map([['tool-1', true]]);
+    });
+
+    await expect(runner.run({ token: source.token, executionNonce: 1 })).rejects.toThrow('Operation cancelled after tool validation');
+
+    expect(deps.addMessageToSession).toHaveBeenCalledWith(assistantResponse);
+    expect(deps.executeToolCall).not.toHaveBeenCalled();
+    source.dispose();
+  });
+
+  it('persists and emits tool execution failure for unknown thrown values', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-tool',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-unknown',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"filePath":"/tmp/test.txt"}' },
+        },
+      ],
+    } as any;
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-unknown', true]]));
+    deps.executeToolCall.mockRejectedValueOnce('bad tool');
+
+    await runner.run({ executionNonce: 1 });
+
+    const toolMsg = deps.addMessageToSession.mock.calls.find((call: any[]) => call[0].role === 'tool');
+    expect(JSON.stringify(toolMsg![0].content)).toContain('Unknown error');
+  });
+
+  it('persists and rethrows non-interactive runtime interaction failures', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-tool',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'request_interactive_input', arguments: '{"title":"Pick one"}' },
+        },
+      ],
+    } as any;
+    const blockedError = new NonInteractiveRuntimeInteractionError({
+      policy: 'forbid',
+      requestType: 'choice',
+      message: 'Interactive input is unavailable',
+    });
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-1', true]]));
+    deps.executeToolCall.mockRejectedValueOnce(blockedError);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(blockedError);
+
+    const toolMsg = deps.addMessageToSession.mock.calls.find((call: any[]) => call[0].role === 'tool');
+    expect(toolMsg).toBeDefined();
+    expect(JSON.stringify(toolMsg![0].content)).toContain('Interactive input is unavailable');
+  });
+
   it('handles tool calls with MCP image result by injecting a user image message', async () => {
     const { runner, deps } = createRunner();
     const assistantResponse = {
@@ -586,6 +1006,41 @@ describe('AgentChatTurnRunner', () => {
     expect(imageMsgCall).toBeDefined();
   });
 
+  it('uses jpg fallback when an MCP image mime type has no subtype', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-img',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        {
+          id: 'tool-img',
+          type: 'function',
+          function: { name: 'take_screenshot', arguments: '{}' },
+        },
+      ],
+    } as any;
+
+    const imageResult = {
+      type: 'image',
+      data: 'base64imagedata',
+      mimeType: 'image',
+    };
+
+    deps.callWithToolsStreaming.mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-img', true]]));
+    deps.executeToolCall.mockResolvedValue(imageResult);
+    deps.postProcessToolResult.mockResolvedValue(imageResult);
+    deps.createMcpImageHash.mockReturnValue('img-hash-fallback');
+
+    await runner.run({ executionNonce: 1 });
+
+    const imageMsgCall = deps.addMessageToSession.mock.calls.find(
+      (call: any[]) => call[0].role === 'user' && call[0].content?.some((p: any) => p.type === 'image'),
+    );
+    expect(imageMsgCall![0].content[1].metadata.fileName).toMatch(/\.jpg$/);
+  });
+
   it('does not inject duplicate MCP image when hash already exists', async () => {
     const { runner, deps } = createRunner();
     const assistantResponse = {
@@ -617,6 +1072,95 @@ describe('AgentChatTurnRunner', () => {
       (call: any[]) => call[0].role === 'user' && call[0].content?.some((p: any) => p.type === 'image'),
     );
     expect(imageMsgCalls).toHaveLength(0);
+  });
+
+  it('threads tool-reported width/height into the image and surfaces its description', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-img3',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        { id: 'tool-img3', type: 'function', function: { name: 'computer_use', arguments: '{"action":"screenshot"}' } },
+      ],
+    } as any;
+
+    const imageResult = {
+      type: 'image',
+      data: 'base64imagedata',
+      mimeType: 'image/jpeg',
+      width: 1280,
+      height: 800,
+      description: 'Screenshot of display #2 (1280x800px). Frontmost app: Freeform.',
+    };
+
+    deps.callWithToolsStreaming
+      .mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse })
+      .mockResolvedValueOnce({
+        finishReason: 'stop',
+        message: { id: 'a2', role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-img3', true]]));
+    deps.executeToolCall.mockResolvedValue(imageResult);
+    deps.postProcessToolResult.mockResolvedValue(imageResult);
+    deps.createMcpImageHash.mockReturnValue('img-hash-3');
+    deps.hasInjectedMcpImageHash.mockReturnValue(false);
+
+    await runner.run({ executionNonce: 1 });
+
+    // Injected vision message carries pixel dimensions so token accounting can size it.
+    const imageMsgCall = deps.addMessageToSession.mock.calls.find(
+      (call: any[]) => call[0].role === 'user' && call[0].content?.some((p: any) => p.type === 'image'),
+    );
+    const imagePart = imageMsgCall![0].content.find((p: any) => p.type === 'image');
+    expect(imagePart.metadata.width).toBe(1280);
+    expect(imagePart.metadata.height).toBe(800);
+
+    // The tool's own (text) result surfaces the description and dims, never the raw bytes.
+    const toolMsgCall = deps.addMessageToSession.mock.calls.find((call: any[]) => call[0].role === 'tool');
+    const toolText = toolMsgCall![0].content[0].text;
+    expect(toolText).toContain('Frontmost app: Freeform');
+    expect(toolText).toContain('"width": 1280');
+    expect(toolText).not.toContain('base64imagedata');
+  });
+
+  it('omits image dimensions when a tool reports only one of width/height', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-img4',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        { id: 'tool-img4', type: 'function', function: { name: 'computer_use', arguments: '{"action":"screenshot"}' } },
+      ],
+    } as any;
+
+    // width present but height missing -> dimensions are dropped (cannot size reliably).
+    const imageResult = { type: 'image', data: 'b64', mimeType: 'image/png', width: 1280 };
+
+    deps.callWithToolsStreaming
+      .mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse })
+      .mockResolvedValueOnce({
+        finishReason: 'stop',
+        message: { id: 'a2', role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-img4', true]]));
+    deps.executeToolCall.mockResolvedValue(imageResult);
+    deps.postProcessToolResult.mockResolvedValue(imageResult);
+    deps.createMcpImageHash.mockReturnValue('img-hash-4');
+    deps.hasInjectedMcpImageHash.mockReturnValue(false);
+
+    await runner.run({ executionNonce: 1 });
+
+    const imageMsgCall = deps.addMessageToSession.mock.calls.find(
+      (call: any[]) => call[0].role === 'user' && call[0].content?.some((p: any) => p.type === 'image'),
+    );
+    const imagePart = imageMsgCall![0].content.find((p: any) => p.type === 'image');
+    expect(imagePart.metadata.width).toBeUndefined();
+    expect(imagePart.metadata.height).toBeUndefined();
+    // Falls back to the generic note when the tool supplies no description.
+    const toolMsgCall = deps.addMessageToSession.mock.calls.find((call: any[]) => call[0].role === 'tool');
+    expect(toolMsgCall![0].content[0].text).toContain('raw image data removed');
   });
 
   it('applies storage compression and recalculates context after a non-tool turn', async () => {
@@ -688,6 +1232,94 @@ describe('AgentChatTurnRunner', () => {
     expect(truncatedMsgContent).toContain('truncated');
   });
 
+  it('handles unnormalized and anonymous truncated tool calls defensively', async () => {
+    const { runner, deps } = createRunner();
+    const { normalizeToolCalls, detectTruncatedToolCalls } = await import('../agentChatUtilities');
+    const mockNormalize = normalizeToolCalls as Mock;
+    const mockDetect = detectTruncatedToolCalls as Mock;
+    const anonymousTruncatedToolCall = {
+      id: 'truncated-anon',
+      type: 'function',
+      function: { arguments: '{"filePath":"/tmp' },
+    };
+    const assistantResponse = {
+      id: 'assistant-trunc',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [anonymousTruncatedToolCall],
+    } as any;
+
+    mockNormalize.mockReturnValueOnce(null);
+    mockDetect.mockReturnValueOnce([anonymousTruncatedToolCall]);
+    deps.callWithToolsStreaming.mockResolvedValueOnce({
+      finishReason: 'length',
+      message: assistantResponse,
+    });
+
+    await runner.run({ executionNonce: 1 });
+
+    const toolMsg = deps.addMessageToSession.mock.calls.find((call: any[]) => call[0].role === 'tool');
+    expect(JSON.stringify(toolMsg![0].content)).toContain('unknown');
+  });
+
+  it('does not treat ordinary provider errors as context overflow', async () => {
+    const { runner, deps } = createRunner();
+    const error = new GhcApiError('rate limited', 429);
+    deps.callWithToolsStreaming.mockRejectedValueOnce(error);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(error);
+
+    expect(deps.checkAndCompress).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat non-GitHub errors as context overflow', async () => {
+    const { runner, deps } = createRunner();
+    const error = new Error('prompt token count is too high');
+    deps.callWithToolsStreaming.mockRejectedValueOnce(error);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(error);
+
+    expect(deps.checkAndCompress).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores malformed partial cancellation payloads', async () => {
+    const { runner, deps } = createRunner();
+    const malformed: any = new Error('cancelled');
+    malformed.name = 'StreamCancellationError';
+    malformed.partialResponse = { message: { id: 'assistant' }, finishReason: 12 };
+    deps.callWithToolsStreaming.mockRejectedValueOnce(malformed);
+
+    await expect(runner.run({ executionNonce: 1 })).rejects.toBe(malformed);
+
+    expect(deps.addMessageToSession).not.toHaveBeenCalled();
+  });
+
+  it('continues when storage compression has no matching persisted message ids', async () => {
+    const { applyStorageCompressionToRecentMessages } = await import('../agentChatUtilities');
+    const mockCompress = applyStorageCompressionToRecentMessages as Mock;
+    mockCompress.mockResolvedValueOnce({
+      success: true,
+      compressedMessage: {
+        id: 'missing',
+        role: 'user',
+        timestamp: 1,
+        content: [{ type: 'text', text: 'compressed' }],
+      },
+    });
+    const { runner, deps } = createRunner();
+    (deps.getCurrentChatSession() as any).chat_history = [
+      { id: 'other', role: 'user', content: [{ type: 'text', text: 'original' }] },
+    ];
+    (deps.getCurrentChatSession() as any).context_history = [
+      { id: 'other', role: 'user', content: [{ type: 'text', text: 'original' }] },
+    ];
+
+    await runner.run({ executionNonce: 1 });
+
+    expect(deps.saveChatSession).toHaveBeenCalled();
+    expect((deps.getCurrentChatSession() as any).chat_history[0].id).toBe('other');
+  });
+
   it('emits tool_result chunk with isError=true for denied tool result', async () => {
     const { runner, deps } = createRunner();
     const assistantResponse = {
@@ -716,5 +1348,38 @@ describe('AgentChatTurnRunner', () => {
     );
     expect(toolResultChunk).toBeDefined();
     expect(toolResultChunk![0].toolResult.isError).toBe(true);
+  });
+
+  it('emits tool_result chunk with isError=true when post-processing denies a successful result', async () => {
+    const { runner, deps } = createRunner();
+    const assistantResponse = {
+      id: 'assistant-post-denied',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      tool_calls: [
+        { id: 'tool-post-denied', type: 'function', function: { name: 'read_file', arguments: '{"path":"safe.txt"}' } },
+      ],
+    } as any;
+
+    deps.callWithToolsStreaming
+      .mockResolvedValueOnce({ finishReason: 'tool_calls', message: assistantResponse })
+      .mockResolvedValueOnce({
+        finishReason: 'stop',
+        message: { id: 'a2', role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      });
+    deps.batchValidateAndRequestApproval.mockResolvedValue(new Map([['tool-post-denied', true]]));
+    deps.executeToolCall.mockResolvedValue({ success: true, content: 'raw secret' });
+    deps.postProcessToolResult.mockResolvedValue({ denied: true, message: 'Blocked by hook' });
+
+    await runner.run({ executionNonce: 1 });
+
+    const toolResultChunk = deps.emitStreamingChunk.mock.calls.find(
+      (call: any[]) => call[0].type === 'tool_result',
+    );
+    expect(toolResultChunk).toBeDefined();
+    expect(toolResultChunk![0].toolResult).toMatchObject({
+      content: JSON.stringify({ denied: true, message: 'Blocked by hook' }, null, 2),
+      isError: true,
+    });
   });
 });

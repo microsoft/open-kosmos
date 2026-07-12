@@ -9,12 +9,14 @@ function resolveUserDataPath(): string {
   try {
     return app.getPath('userData');
   } catch {
-    return process.env.OpenKosmos_TEST_USER_DATA_PATH || path.join(os.tmpdir(), 'openkosmos-app-test');
+    return process.env.OPENKOSMOS_TEST_USER_DATA_PATH || path.join(os.tmpdir(), 'openkosmos-app-test');
   }
 }
 
 export function getOrCreateInstallationDeviceId(): string {
-  const idFilePath = path.join(resolveUserDataPath(), 'analytics-device-id');
+  const userDataPath = resolveUserDataPath();
+  const idFilePath = path.join(userDataPath, 'installation-device-id');
+  const legacyIdFilePath = path.join(userDataPath, 'analytics-device-id');
 
   try {
     const existingId = fs.existsSync(idFilePath)
@@ -23,6 +25,14 @@ export function getOrCreateInstallationDeviceId(): string {
 
     if (existingId) {
       return existingId;
+    }
+
+    const legacyId = fs.existsSync(legacyIdFilePath)
+      ? fs.readFileSync(legacyIdFilePath, 'utf8').trim()
+      : '';
+    if (legacyId) {
+      fs.renameSync(legacyIdFilePath, idFilePath);
+      return legacyId;
     }
 
     const nextId = randomUUID();

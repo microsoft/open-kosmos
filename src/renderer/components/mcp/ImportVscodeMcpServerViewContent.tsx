@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react'
+import '../../styles/ContentView.css'
+import '../../styles/ToolbarSettingsView.css'
 import '../../styles/ImportVscodeMcpServerView.css'
 import { useMCPServers } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
@@ -12,31 +14,18 @@ import { readFileContent } from '../../lib/utilities/fileSystemUtils'
 import { detectVSCodeConfigs } from '../../lib/mcp/VscodeConfigDetector'
 import { McpOps } from '../../lib/mcp/mcpOps'
 import { OpenKosmosAppMCPServerConfig } from '../../types/mcpTypes'
-import { Info } from 'lucide-react'
-
-interface ParsedServerConfig {
-  name: string
-  transport: 'stdio' | 'sse' | 'StreamableHttp'
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-  url?: string
-  hasConflict?: boolean
-  originalConfig: any
-}
-
-interface DetectedConfig {
-  path: string
-  exists: boolean
-  serverCount: number
-  servers?: ParsedServerConfig[]
-  error?: string
-}
-
-interface ImportOptions {
-  conflictResolution: 'skip' | 'rename' | 'overwrite'
-  validateBeforeImport: boolean
-}
+import {
+  DetectionSection,
+  ImportActions,
+  ImportOptionsSection,
+  ImportTooltip,
+  ServerSelectionSection,
+  StatusSection,
+  type DetectedConfig,
+  type ImportOptions,
+  type ParsedServerConfig,
+} from './ImportVscodeMcpServerSections'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface ImportVscodeMcpServerViewContentProps {
   onImportComplete?: (importedCount: number) => void
@@ -46,6 +35,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
   onImportComplete
 }) => {
   const { showError, showSuccess } = useToast()
+  const { t } = useI18n()
   const [isScanning, setIsScanning] = useState(false)
   const [detectedConfig, setDetectedConfig] = useState<DetectedConfig | null>(null)
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set())
@@ -229,6 +219,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
       let args: string[] = []
       let url = ''
       let env: Record<string, string> = {}
+      let headers: Record<string, string> | undefined
 
       if (config.type === 'stdio' || (config.command && !config.url)) {
         transport = 'stdio'
@@ -247,6 +238,11 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
         env = config.env
       }
 
+      if (config.headers && typeof config.headers === 'object' && !Array.isArray(config.headers) &&
+          Object.keys(config.headers).length > 0 && Object.values(config.headers).every((v: unknown) => typeof v === 'string')) {
+        headers = config.headers
+      }
+
       // Check for name conflict
       const hasConflict = existingNames.includes(name)
 
@@ -256,6 +252,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
         command,
         args,
         env,
+        headers,
         url,
         hasConflict,
         originalConfig: config
@@ -312,7 +309,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
 
   const handleRealImport = useCallback(async () => {
     if (!detectedConfig?.servers || selectedServers.size === 0) {
-      showError('Please select at least one server to import')
+      showError(t('mcp.importVscode.selectAtLeastOne'))
       return
     }
 
@@ -355,12 +352,13 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             command: server.command || '',
             args: server.args || [],
             env: server.env || {},
+            headers: server.headers,
             url: server.url || '',
             in_use: true,
             // 🆕 Added from Import from VS Code: uniformly use 1.0.0 and ON-DEVICE
             version: '1.0.0',
             source: 'ON-DEVICE',
-            // ON-DEVICE servers do not need remoteVersion, set to empty string
+            // New local imports do not carry legacy remote version metadata.
             remoteVersion: ''
           }
 
@@ -387,7 +385,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             if (result.success) {
               importedCount++
             } else {
-              errors.push(`${server.name}: Failed to update server - ${result.error || 'Unknown error'}`)
+              errors.push(`${server.name}: Failed to update server - ${result.error || t('common.unknownError')}`)
             }
           } else {
             // Use McpOps.add for new servers or renamed servers
@@ -396,7 +394,7 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
             if (result.success) {
               importedCount++
             } else {
-              errors.push(`${server.name}: Failed to add server - ${result.error || 'Unknown error'}`)
+              errors.push(`${server.name}: Failed to add server - ${result.error || t('common.unknownError')}`)
             }
           }
 
@@ -406,236 +404,58 @@ const ImportVscodeMcpServerViewContent: React.FC<ImportVscodeMcpServerViewConten
       }
 
       if (importedCount > 0) {
-        showSuccess(
-          `Successfully imported ${importedCount} server${importedCount > 1 ? 's' : ''}!` +
-          (errors.length > 0 ? ` (${errors.length} failed)` : '')
-        )
+        showSuccess(t('mcp.importVscode.importSuccess', {
+          count: importedCount,
+          serverLabel: t(importedCount > 1 ? 'mcp.importVscode.serverMultiple' : 'mcp.importVscode.serverSingle'),
+          suffix: errors.length > 0 ? t('mcp.importVscode.failedSuffix', { count: errors.length }) : '',
+        }))
         onImportComplete?.(importedCount)
 
         // Refresh runtime info to initialize and connect servers
         await refreshRuntimeInfo()
       } else {
-        showError(`Import failed: ${errors.join('; ')}`)
+        showError(t('mcp.importVscode.importFailedWithError', { error: errors.join('; ') }))
       }
 
     } catch (error) {
-      showError(`Import failed: ${error instanceof Error ? error.message : String(error)}`)
+      showError(t('mcp.importVscode.importFailedWithError', { error: error instanceof Error ? error.message : String(error) }))
     } finally {
       setIsScanning(false)
     }
-  }, [detectedConfig?.servers, selectedServers, importOptions, existingServerNames, showError, showSuccess, onImportComplete])
-
-  const handleTestImport = useCallback(async () => {
-    setIsScanning(true)
-    try {
-      // Simple test - just show success
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      showSuccess('VSCode import dialog is working!')
-      onImportComplete?.(1)
-    } catch (error) {
-      showError(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      setIsScanning(false)
-    }
-  }, [showSuccess, showError, onImportComplete])
+  }, [detectedConfig?.servers, selectedServers, importOptions, existingServerNames, showError, showSuccess, onImportComplete, refreshRuntimeInfo, t])
 
   return (
-    <div className="vscode-importer-content">
-      {/* Auto-detection section */}
-      <div className="detection-section">
-        {isScanning ? (
-          <div className="scanning-status">
-            <span className="spinner">🔍</span>
-            <span>Scanning for VSCode MCP configuration...</span>
+    <div className="content-view-container vscode-importer-content">
+      <div className="toolbar-settings-content mcp-settings-editor-content">
+        <div className="toolbar-settings-form">
+          <div className="toolbar-settings-form-inner">
+            <DetectionSection isScanning={isScanning} detectedConfig={detectedConfig} />
+            <ServerSelectionSection
+              servers={detectedConfig?.servers}
+              selectedServers={selectedServers}
+              previewServer={previewServer}
+              onSelectAll={handleSelectAll}
+              onDeselectAll={handleDeselectAll}
+              onServerPreview={handleServerPreview}
+              onServerToggle={handleServerToggle}
+              onTooltipShow={handleTooltipShow}
+              onTooltipHide={handleTooltipHide}
+            />
+            <ImportOptionsSection
+              servers={detectedConfig?.servers}
+              importOptions={importOptions}
+              onConflictResolutionChange={(conflictResolution) => setImportOptions(prev => ({ ...prev, conflictResolution }))}
+              onValidateBeforeImportChange={(validateBeforeImport) => setImportOptions(prev => ({ ...prev, validateBeforeImport }))}
+            />
+            <StatusSection detectedConfig={detectedConfig} />
+            <ImportTooltip tooltipServer={tooltipServer} tooltipPosition={tooltipPosition} />
+            <ImportActions
+              isScanning={isScanning}
+              selectedCount={selectedServers.size}
+              onImport={handleRealImport}
+            />
           </div>
-        ) : detectedConfig ? (
-          <div className={`detection-result ${detectedConfig.exists && detectedConfig.serverCount > 0 ? 'success' : 'error'}`}>
-            {detectedConfig.exists && detectedConfig.serverCount > 0 ? (
-              <>
-                <div className="success-message">
-                  ✅ Scan successful! Found {detectedConfig.serverCount} MCP servers in VSCode configuration
-                </div>
-                <div className="detection-path">
-                  <strong>Configuration file path:</strong> {detectedConfig.path}
-                </div>
-              </>
-            ) : detectedConfig.exists ? (
-              <>
-                <div className="warning-message">
-                  ⚠️ Found VSCode configuration file but no MCP servers detected
-                </div>
-                <div className="detection-path">
-                  <strong>Configuration file path:</strong> {detectedConfig.path}
-                </div>
-                <div className="help-message">
-                  Please ensure MCP servers are properly configured in VSCode.
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="error-message">
-                  ❌ {detectedConfig.error}
-                </div>
-                <div className="help-message">
-                  <h4>Solutions:</h4>
-                  <ul>
-                    <li>Ensure VSCode is properly installed</li>
-                    <li>Check if MCP servers are configured in VSCode</li>
-                    <li>Verify MCP configuration file is in standard path</li>
-                  </ul>
-                </div>
-              </>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Server selection section - show if servers detected */}
-      {detectedConfig?.servers && detectedConfig.servers.length > 0 && (
-        <>
-          <div className="server-selection">
-            <div className="selection-header">
-              <h3>Available Configurations ({detectedConfig.servers.length} servers)</h3>
-              <div className="selection-controls">
-                <button onClick={handleSelectAll} className="btn-secondary">Select All</button>
-                <button onClick={handleDeselectAll} className="btn-secondary">Deselect All</button>
-              </div>
-            </div>
-
-            <div className="server-list">
-              {detectedConfig.servers.map((server) => (
-                <div
-                  key={server.name}
-                  className={`server-item ${server.hasConflict ? 'conflict' : ''} ${previewServer?.name === server.name ? 'selected' : ''}`}
-                  onClick={() => handleServerPreview(server)}
-                >
-                  <label className="server-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedServers.has(server.name)}
-                      onChange={() => handleServerToggle(server.name)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <span className="server-info">
-                      <span className="server-name">{server.name}</span>
-                      <span className="server-transport">({server.transport})</span>
-                      {server.hasConflict && <span className="conflict-badge">Name conflict!</span>}
-                    </span>
-                  </label>
-                  <div
-                    className="server-info-icon"
-                    title="View original VSCode configuration"
-                    onMouseEnter={(e) => handleTooltipShow(e, server)}
-                    onMouseLeave={handleTooltipHide}
-                  >
-                    <Info className="info-icon" size={16} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Import options section */}
-          <div className="import-options">
-            <h3>Import Options</h3>
-
-            <div className="option-group">
-              <h4>Conflict Resolution:</h4>
-              <div className="radio-group">
-                <label>
-                  <input
-                    type="radio"
-                    name="conflictResolution"
-                    value="skip"
-                    checked={importOptions.conflictResolution === 'skip'}
-                    onChange={(e) => setImportOptions(prev => ({ ...prev, conflictResolution: e.target.value as any }))}
-                  />
-                  Skip conflicting servers
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="conflictResolution"
-                    value="rename"
-                    checked={importOptions.conflictResolution === 'rename'}
-                    onChange={(e) => setImportOptions(prev => ({ ...prev, conflictResolution: e.target.value as any }))}
-                  />
-                  Rename conflicting servers (format: X-YYYYMMDDHHMMSS)
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="conflictResolution"
-                    value="overwrite"
-                    checked={importOptions.conflictResolution === 'overwrite'}
-                    onChange={(e) => setImportOptions(prev => ({ ...prev, conflictResolution: e.target.value as any }))}
-                  />
-                  Overwrite existing servers
-                </label>
-              </div>
-            </div>
-
-            <div className="option-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={importOptions.validateBeforeImport}
-                  onChange={(e) => setImportOptions(prev => ({ ...prev, validateBeforeImport: e.target.checked }))}
-                />
-                Validate configurations before import
-              </label>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Status section - only show if no servers detected or ready to import */}
-      {(!detectedConfig?.servers || detectedConfig.servers.length === 0) && (
-        <div className="status-section">
-          {!detectedConfig ? (
-            <>
-              <h3>Waiting for scan</h3>
-              <p>Opening this dialog will automatically scan for VSCode MCP configuration files.</p>
-            </>
-          ) : detectedConfig.exists && detectedConfig.serverCount === 0 ? (
-            <>
-              <h3>No MCP servers found</h3>
-              <p>Found VSCode configuration file, but it contains no MCP server configurations.</p>
-            </>
-          ) : (
-            <>
-              <h3>Ready to import</h3>
-              <p>VSCode import feature is ready, waiting for configuration file detection.</p>
-            </>
-          )}
         </div>
-      )}
-
-      {/* Floating tooltip rendered outside server-list */}
-      {tooltipServer && tooltipPosition && (
-        <div
-          className="info-tooltip-fixed"
-          style={{
-            position: 'fixed',
-            top: tooltipPosition.top,
-            right: tooltipPosition.right,
-            zIndex: 9999
-          }}
-        >
-          <div className="tooltip-header">Original VSCode Configuration:</div>
-          <pre className="tooltip-json-preview">{JSON.stringify(tooltipServer.originalConfig, null, 2)}</pre>
-        </div>
-      )}
-
-      {/* Import button section */}
-      <div className="import-actions">
-        <button
-          className="btn-primary"
-          onClick={handleRealImport}
-          disabled={isScanning || selectedServers.size === 0}
-        >
-          {isScanning ? 'Importing...' : `Import Selected (${selectedServers.size})`}
-        </button>
       </div>
     </div>
   )

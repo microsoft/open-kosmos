@@ -40,7 +40,7 @@ vi.mock('../../chat/agentChatManager', () => ({
 
 vi.mock('../../userDataADO/profileCacheManager', () => ({
   profileCacheManager: {
-    getCachedProfile: () => ({ primaryAgent: 'Kobi' }),
+    getCachedProfile: () => ({ primaryChat: 'chat-1' }),
     getChatConfig: () => ({ agent: { name: 'Kobi' } }),
     getAllChatConfigs: () => [{ chat_id: 'chat-1', agent: { name: 'Kobi' } }],
   },
@@ -59,7 +59,7 @@ vi.mock('../../llm/ghcModelApi', () => ({
 }));
 
 // Mock userDataADO barrel (used by evalJudgeRunner)
-const mockJudgeGetCachedProfile = vi.fn().mockReturnValue({ primaryAgent: 'Kobi' });
+const mockJudgeGetCachedProfile = vi.fn().mockReturnValue({ primaryChat: 'chat-1' });
 const mockJudgeGetAllChatConfigs = vi.fn().mockReturnValue([
   { chat_id: 'chat-1', agent: { name: 'Kobi', model: 'gpt-4o' } },
 ]);
@@ -615,16 +615,14 @@ describe('EvalAgentRunner error paths', () => {
     ).rejects.toThrow('No profile found');
   });
 
-  it('throws when no chat config matches the primary agent', async () => {
+  it('throws when no chat config exists at all', async () => {
     const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
-    vi.spyOn(profileCacheManager, 'getAllChatConfigs').mockReturnValueOnce([
-      { chat_id: 'chat-99', agent: { name: 'OtherAgent' } } as any,
-    ]);
+    vi.spyOn(profileCacheManager, 'getAllChatConfigs').mockReturnValueOnce([]);
 
     const runner = new EvalAgentRunner('testuser');
     await expect(
       runner.run({ type: 'run_test', id: 'req-1', data: { prompt: 'hi', metadata: {} } })
-    ).rejects.toThrow('No chat config found for primary agent');
+    ).rejects.toThrow('No chat config found for primary chat');
   });
 
   it('throws when getChatConfig returns null/no agent', async () => {
@@ -724,7 +722,7 @@ describe('EvalJudgeRunner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCallWithMessages.mockResolvedValue('Judge response');
-    mockJudgeGetCachedProfile.mockReturnValue({ primaryAgent: 'Kobi' });
+    mockJudgeGetCachedProfile.mockReturnValue({ primaryChat: 'chat-1' });
     mockJudgeGetAllChatConfigs.mockReturnValue([
       { chat_id: 'chat-1', agent: { name: 'Kobi', model: 'gpt-4o' } },
     ]);
@@ -762,15 +760,13 @@ describe('EvalJudgeRunner', () => {
     ).rejects.toThrow('No profile found');
   });
 
-  it('throws when no primary agent chat found', async () => {
-    mockJudgeGetAllChatConfigs.mockReturnValueOnce([
-      { chat_id: 'chat-99', agent: { name: 'OtherAgent', model: 'gpt-4o' } },
-    ]);
+  it('throws when no chats exist at all', async () => {
+    mockJudgeGetAllChatConfigs.mockReturnValueOnce([]);
     const runner = new EvalJudgeRunner('testuser');
 
     await expect(
       runner.run({ type: 'judge', messages: [{ role: 'user', content: 'hi' }] })
-    ).rejects.toThrow('No model configured for primary agent');
+    ).rejects.toThrow('No model configured for primary chat');
   });
 
   it('throws when agent has no model configured', async () => {
@@ -781,11 +777,11 @@ describe('EvalJudgeRunner', () => {
 
     await expect(
       runner.run({ type: 'judge', messages: [{ role: 'user', content: 'hi' }] })
-    ).rejects.toThrow('No model configured for primary agent');
+    ).rejects.toThrow('No model configured for primary chat');
   });
 
-  it('uses "Kobi" as default primary agent name when profile.primaryAgent is absent', async () => {
-    mockJudgeGetCachedProfile.mockReturnValueOnce({}); // no primaryAgent field
+  it('falls back to first chat model when profile.primaryChat is absent', async () => {
+    mockJudgeGetCachedProfile.mockReturnValueOnce({}); // no primaryChat field
     const runner = new EvalJudgeRunner('testuser');
 
     const result = await runner.run({
@@ -795,6 +791,18 @@ describe('EvalJudgeRunner', () => {
 
     expect(result.type).toBe('judge_result');
     expect(mockCallWithMessages).toHaveBeenCalledWith('gpt-4o', expect.any(Array), 4000, 0.7);
+  });
+
+  it('throws with an empty primary-chat label when primaryChat is absent and the fallback chat has no model', async () => {
+    mockJudgeGetCachedProfile.mockReturnValueOnce({}); // no primaryChat → primaryChat ?? '' takes the '' arm
+    mockJudgeGetAllChatConfigs.mockReturnValueOnce([
+      { chat_id: 'chat-1', agent: { name: 'Kobi' } }, // fallback chat, but no model
+    ]);
+    const runner = new EvalJudgeRunner('testuser');
+
+    await expect(
+      runner.run({ type: 'judge', messages: [{ role: 'user', content: 'hi' }] })
+    ).rejects.toThrow('No model configured for primary chat ""');
   });
 
   it('propagates ghcModelApi errors', async () => {
@@ -829,7 +837,7 @@ describe('EvalHttpServer additional routes and body handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCallWithMessages.mockResolvedValue('Judge response');
-    mockJudgeGetCachedProfile.mockReturnValue({ primaryAgent: 'Kobi' });
+    mockJudgeGetCachedProfile.mockReturnValue({ primaryChat: 'chat-1' });
     mockJudgeGetAllChatConfigs.mockReturnValue([
       { chat_id: 'chat-1', agent: { name: 'Kobi', model: 'gpt-4o' } },
     ]);
@@ -927,6 +935,23 @@ describe('EvalHttpServer additional routes and body handling', () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toMatch(/judge failed/);
+  });
+
+  it('POST /eval/judge stringifies non-Error failures', async () => {
+    mockCallWithMessages.mockRejectedValueOnce('judge exploded');
+    const res = await fetch(`${baseUrl}/eval/judge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + MOCK_TOKEN,
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Evaluate.' }],
+      }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toContain('judge exploded');
   });
 
   it('POST /eval/run returns 429 when concurrent limit exceeded', async () => {
@@ -1285,5 +1310,80 @@ describe('EvalHttpServer req error handler', () => {
     expect(mockRes.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
     expect(mockRes.end).toHaveBeenCalledWith(expect.stringContaining('Error reading request body'));
     expect(onSuccessCalled).toBe(false);
+  });
+});
+
+describe('EvalHttpServer direct private coverage', () => {
+  beforeEach(() => {
+    process.env.EVAL_AUTH_TOKEN = 'direct-private-token';
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete process.env.EVAL_AUTH_TOKEN;
+  });
+
+  it('times out one-shot runs with a 504 response and decrements activeRuns', async () => {
+    const server = new EvalHttpServer('testuser', 0);
+    const sendJsonSpy = vi.spyOn(server as any, 'sendJson').mockImplementation(() => {});
+    (server as any).agentRunner.runOneShot = vi.fn(() => new Promise(() => {}));
+    (server as any).agentRunner.run = vi.fn();
+
+    const response = {} as any;
+    const runPromise = (server as any).handleRun({ prompt: 'slow request', metadata: {} }, response);
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    await runPromise;
+
+    expect(sendJsonSpy).toHaveBeenCalledWith(response, 504, {
+      error: expect.stringContaining('run failed: Request timed out after 600s'),
+    });
+    expect((server as any).activeRuns).toBe(0);
+    expect((server as any).agentRunner.runOneShot).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'run_test' }),
+      expect.any(AbortSignal)
+    );
+  });
+
+  it('ignores the end event after an oversized body already produced a 413 response', async () => {
+    const { EventEmitter } = await import('events');
+    const server = new EvalHttpServer('testuser', 0);
+    const mockReq = new EventEmitter() as any;
+    mockReq.destroy = vi.fn();
+
+    const mockRes = {
+      writeHead: vi.fn(),
+      end: vi.fn(),
+    } as any;
+
+    const onSuccess = vi.fn();
+
+    (server as any).readJsonBody(mockReq, mockRes, onSuccess);
+    mockReq.emit('data', Buffer.from('x'.repeat(1024 * 1024 + 1)));
+    mockReq.emit('end');
+
+    expect(mockReq.destroy).toHaveBeenCalledTimes(1);
+    expect(mockRes.writeHead).toHaveBeenCalledTimes(1);
+    expect(mockRes.end).toHaveBeenCalledTimes(1);
+    expect(mockRes.writeHead).toHaveBeenCalledWith(413, expect.any(Object));
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe('EvalHttpServer numeric invalid CLI port', () => {
+  it('falls back to the default port when --eval-port is out of range', () => {
+    const originalArgv = process.argv;
+    process.argv = [...process.argv, '--eval-port=70000'];
+    process.env.EVAL_AUTH_TOKEN = 'tok';
+
+    try {
+      const server = new EvalHttpServer('testuser');
+      expect(server.getPort()).toBe(8100);
+    } finally {
+      process.argv = originalArgv;
+      delete process.env.EVAL_AUTH_TOKEN;
+    }
   });
 });

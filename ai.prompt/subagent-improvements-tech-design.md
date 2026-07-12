@@ -1,6 +1,6 @@
 # Tech Design: Sub-Agent System Improvements
 
-<!-- Last verified: 2026-05-21 -->
+<!-- Last verified: 2026-06-29 -->
 
 ## 1. Overview
 
@@ -9,7 +9,7 @@ This document covers the technical design for sub-agent system improvements in t
 - **Batch 1 (Completed):** Ad-hoc dynamic spawn, failure transparency, deliverables directory isolation
 - **Batch 2 (Completed):** Background async execution, partial result extraction, inter-agent communication (child→parent)
 - **Batch 3 (Completed):** Auto-background promotion (120s), bidirectional communication (parent→child)
-- **Batch 4 (Planned):** Auto-wake on idle, transcript persistence, session→task lifecycle binding
+- **Batch 4 (In Progress):** Auto-wake on idle is delivered; transcript persistence and session→task lifecycle binding remain planned
 
 See [subagent-improvements-prd.md](subagent-improvements-prd.md) for requirements.
 
@@ -40,10 +40,9 @@ See [subagent-improvements-prd.md](subagent-improvements-prd.md) for requirement
 
 | Method | File | Purpose |
 |--------|------|---------|
-| `spawnAdhocSubAgent()` | `subAgentManager.ts` | Build synthetic config, validate tool subset, execute |
-| `validateToolAvailability()` | `subAgentManager.ts` | Check MCP connectivity + skill installation |
+| `spawnAdhocSubAgent()` | `subAgentManager.ts` | Build synthetic config, inherit parent MCP tools, validate optional tool subset, execute |
 | `deriveDeliverablesPath(name, taskId)` | `subAgentManager.ts` | Generate `{safeName}-{shortTaskId}` subdirectory |
-| `SpawnSubAgentTool.execute()` | `subAgentTool.ts` | Unified tool entry point with recursion guard; `subagent_type` selects named vs ad-hoc |
+| `SubAgentTool.execute()` | `subAgentTool.ts` | Tool entry point with recursion guard; ad-hoc spawn only |
 
 ---
 
@@ -61,8 +60,7 @@ See [subagent-improvements-prd.md](subagent-improvements-prd.md) for requirement
 | `handleNotification()` | `subAgentManager.ts` | Queue sub-agent→parent notifications (cap: 5) |
 | `drainNotifications()` | `subAgentManager.ts` | Atomically pop and return queued notifications |
 | `getBackgroundTaskStatus()` | `subAgentManager.ts` | Return status of all background tasks for a session |
-| `drainBackgroundSubAgentResults()` | `agentChat.ts` | Drain results+notifications, set on promptService |
-| `setBackgroundResultContexts()` | `agentChatPromptService.ts` | Store contexts for injection; drained after use |
+| `drainBackgroundSubAgentResults()` | `agentChat.ts` | Drain results+notifications, inject as `<task-notification>` into context_history |
 
 ### 3.2 Data Structures (Batch 2)
 
@@ -106,7 +104,7 @@ Parent LLM → sub_agent({ run_in_background: true })
 
 executeInBackground():
   ├── Create synthetic CancellationToken wrapping AbortController
-  ├── Call spawnSubAgent() / spawnAdhocSubAgent() with synthetic token
+  ├── Call spawnAdhocSubAgent() with synthetic token
   ├── On success: enqueueResult(parentSessionId, result)
   ├── On failure: extractPartialResult() → enqueueResult(...)
   └── Cleanup: activeInstances.delete, backgroundTasks.delete
@@ -131,7 +129,7 @@ Parent's next LLM turn:
 ### 3.5 Test Coverage (Batch 2)
 
 - `subAgentManager.test.ts`: 104 tests (+spawnSubAgentAsync, background tasks, drainResults, drainNotifications, notification cap, getBackgroundTaskStatus)
-- `subAgentTool.test.ts`: tests covering run_in_background, partial result, recursion guard, no-context, named and ad-hoc modes
+- `subAgentTool.test.ts`: tests covering run_in_background, partial result, recursion guard, no-context, and ad-hoc tool arguments
 - **Total: 374 tests passing, 91-98% line coverage on Batch 2 code**
 
 ---
@@ -142,10 +140,10 @@ Parent's next LLM turn:
 
 #### 4.1.1 Core Mechanism
 
-Currently, `spawnSubAgent()` blocks via `await chat.run()` inside a `Promise.race` with the existing timeout. To implement auto-promotion, we transform the blocking path into a **race with a promotion timer**:
+Currently, `spawnAdhocSubAgent()` blocks via `await chat.run()` inside a `Promise.race` with the existing timeout. To implement auto-promotion, we transform the blocking path into a **race with a promotion timer**:
 
 ```typescript
-// In SubAgentManager.spawnSubAgent() — modified sync path
+// In SubAgentManager.spawnAdhocSubAgent() — modified sync path
 const AUTO_PROMOTE_MS = SUB_AGENT_LIMITS.AUTO_BACKGROUND_TIMEOUT_MS; // 120_000
 
 const chatPromise = chat.run();
@@ -335,17 +333,9 @@ this.tools.set('send_to_subagent', {
 });
 ```
 
-#### 4.2.6 System Prompt Guidance Update
+#### 4.2.6 Tool Guidance Update
 
-Add to `buildSubAgentsSystemPrompt()`:
-
-```
-### Communicating with Background Agents
-Use `send_to_subagent({ task_id, message })` to send follow-up instructions to running background agents.
-- Only works for background agents (not sync agents)
-- Use for: corrections, additional requirements, focus redirection
-- The agent will incorporate your message at its next turn
-```
+Sub-agent prompt injection has been removed. Background-agent follow-up guidance now belongs in the retained ad-hoc `sub_agent`, `send_to_subagent`, and `get_subagent_status` tool descriptions/schemas rather than a generated `buildSubAgentsSystemPrompt()` section.
 
 #### 4.2.7 Files to Modify
 
@@ -365,7 +355,7 @@ Use `send_to_subagent({ task_id, message })` to send follow-up instructions to r
 Parent LLM Turn N (sync spawn)
   │
   ├─ tool_call: sub_agent({ task: "long research..." })
-  │     → await spawnSubAgent()  [blocking]
+  │     → await spawnAdhocSubAgent()  [blocking]
   │           │
   │           ├── ... 120s passes ...
   │           ├── AUTO-PROMOTE: promoteToBackground()
@@ -463,13 +453,13 @@ Total Batch 3 estimate: **~5 days**
 
 | Claude Code Approach | OpenKosmos Decision | Rationale |
 |---------------------|-----------------|-----------|
-| Single `Agent` tool for everything | Single `sub_agent` tool (unified in Batch 3.5) | Aligned — `subagent_type` selects named vs ad-hoc |
+| Single `Agent` tool for everything | Single `sub_agent` tool | Aligned - ad-hoc spawn only |
 | No explicit resource limits | No hard numeric limits (Infinity); turn budget and cancellation token remain | Desktop app is adequately protected by turn budgets and the AbortController cascade |
 | Worktree isolation (git branch) | Directory isolation (deliverables subdirectory) | OpenKosmos is not a Code Agent; git isolation overkill for research tasks |
 | 120s auto-background always on | 120s auto-promote with opt-out | Same timeout, but allow explicit sync for short tasks |
 | `SendMessage(to: name)` peer routing | `send_to_subagent(task_id, message)` parent→child only | Simpler; peer-to-peer deferred until swarm mode needed |
 | tmux-based multi-process swarm | Same-process Promise.allSettled | Electron app; IPC overhead of multi-process not justified |
-| Push notification (auto-wake idle parent) | 🔲 Batch 4: auto-wake via synthetic user message | Same concept, adapted for Electron chat turn model |
+| Push notification (auto-wake idle parent) | ✅ Batch 4.1: auto-wake via non-persisted synthetic user message | Same concept, adapted for Electron chat turn model |
 | Disk transcript (JSONL sidechain) | 🔲 Batch 4: JSONL file per sub-agent task | Aligned approach |
 
 ### Where We Converge
@@ -483,7 +473,7 @@ Total Batch 3 estimate: **~5 days**
 | Parent→child messaging | ✅ Batch 3 | Simplified (task_id vs name) |
 | Partial result extraction | ✅ Batch 2 | Aligned |
 | Unified single tool | ✅ Batch 3.5 | Aligned (`sub_agent` ≈ CC's `Agent`) |
-| Push notification (auto-wake) | 🔲 Batch 4 | Planned |
+| Push notification (auto-wake) | ✅ Batch 4.1 | Delivered |
 | Disk transcript persistence | 🔲 Batch 4 | Planned |
 
 ---
@@ -495,14 +485,12 @@ Total Batch 3 estimate: **~5 days**
 | **Fork mode** | `backgroundTasks` Map structure can later support shared-prefix fork groups |
 | **Agent resume** | Batch 4 transcript persistence provides the foundation — replay from JSONL |
 | **Thinking budget** | `SubAgentChatOptions` can add `thinkingConfig` field when model API supports it |
-| **Named agent swarm** | `pendingMessages` queue pattern extends naturally to peer-to-peer routing |
-| **Admin governance** | All features gated by `openkosmosFeatureSubAgent` flag |
 
 ---
 
 ## 11. Batch 4 — Detailed Design
 
-### 11.1 Auto-Wake on Result Ready
+### 11.1 Auto-Wake on Result Ready ✅ Delivered
 
 #### 11.1.1 Problem
 
@@ -523,9 +511,8 @@ AgentChatManager (event listener, debounced 500ms)
   ├── GUARD: instance exists?
   ├── GUARD: chatStatus === IDLE?
   ├── GUARD: no pending auto-wake already queued?
-  ├── GUARD: not inside a synthetic turn (recursion)?
   │
-  └── streamMessage(parentSessionId, syntheticTrigger, { emitUserMessage: false })
+  └── streamMessage(parentSessionId, syntheticTrigger, { emitUserMessage: false, persistUserMessage: false })
          │
          ▼
   Normal turn: drainBackgroundSubAgentResults() → LLM → response to user
@@ -546,9 +533,9 @@ const triggerMessage: UserMessage = {
 ```
 
 **Lifecycle:**
-1. Injected into context → triggers turn
+1. Created in memory with `metadata.synthetic = true`
 2. `drainBackgroundSubAgentResults()` runs → injects real `<task-notification>` user message
-3. After drain succeeds, synthetic trigger is **removed** from `contextHistory` (cleanup)
+3. `persistUserMessage: false` prevents the trigger from being added to `chat_history` or `context_history`
 4. LLM only sees the `<task-notification>` content, not the trigger
 
 #### 11.1.4 Event Emission
@@ -585,7 +572,7 @@ private setupAutoWakeListener(): void {
     const instance = this.registry.getInstance(parentSessionId);
     if (!instance) return;
     if (instance.chatStatus !== ChatStatus.IDLE) return;
-    if (!isFeatureEnabled('openkosmosFeatureSubAgentAutoWake')) return;
+    // Auto-wake is baseline behavior (no feature-flag gate).
 
     // Mark pending to prevent double-trigger
     this.pendingAutoWakes.add(parentSessionId);
@@ -596,7 +583,7 @@ private setupAutoWakeListener(): void {
     );
     trigger.metadata = { synthetic: true, purpose: 'auto-wake' };
 
-    this.streamMessage(parentSessionId, trigger, { emitUserMessage: false })
+    this.streamMessage(parentSessionId, trigger, { emitUserMessage: false, persistUserMessage: false })
       .finally(() => {
         this.pendingAutoWakes.delete(parentSessionId);
       });
@@ -606,31 +593,30 @@ private setupAutoWakeListener(): void {
 }
 ```
 
-#### 11.1.6 Recursion Prevention
+#### 11.1.6 Duplicate Wake Prevention
 
-A synthetic auto-wake turn could itself spawn a background agent. To prevent infinite auto-wake loops:
+A synthetic auto-wake turn should not enqueue duplicate synthetic triggers for the same parent session while one wake is already in flight:
 
 ```typescript
-// In AgentChat — track whether current turn is synthetic
-private isSyntheticTurn = false;
-
-// In drainBackgroundSubAgentResults():
-if (this.isSyntheticTurn) {
-  // Drain results (so LLM sees them), but mark context
-  // so AgentChatManager's listener ignores completions from this turn
-}
+if (this.pendingWakes.has(parentSessionId)) return;
+this.pendingWakes.add(parentSessionId);
+instance.streamMessage(trigger, undefined, undefined, {
+  emitUserMessage: false,
+  persistUserMessage: false,
+  interactionPolicy: 'forbid',
+}).finally(() => this.pendingWakes.delete(parentSessionId));
 ```
 
-The simpler approach: the debounce + `pendingAutoWakes` Set naturally prevents re-triggering while a synthetic turn is in progress.
+The debounce plus the per-session `pendingWakes` set prevents duplicate wake turns while a synthetic wake is in progress. If the parent is busy, `SubAgentAutoWakeController` retries the debounce only while the durable ledger still has a pending delivery, so the retry loop terminates once another turn drains and acks the result.
 
 #### 11.1.7 Files to Modify
 
 | File | Change |
 |------|--------|
 | `subAgentManager.ts` | Extend `EventEmitter`, emit `subAgentResultReady` in `enqueueResult()` |
-| `agentChatManager.ts` | Add `setupAutoWakeListener()`, `pendingAutoWakes` Set, debounced handler |
-| `agentChat.ts` | Mark synthetic trigger messages, clean up after drain |
-| `featureFlags.ts` | Add `openkosmosFeatureSubAgentAutoWake` flag |
+| `subAgentAutoWake.ts` | Listen for result-ready events, debounce wakes, retry busy parents, recover durable ledger entries after restart |
+| `agentChat.ts` / `agentChatTurnRunner.ts` | Support `persistUserMessage: false` so synthetic wake triggers start a turn without polluting saved history |
+| `subAgentDeliveryLedger.ts` | Durable on-disk outbox so completed background results survive an app restart before the in-memory queue is drained |
 
 ---
 
@@ -1064,16 +1050,16 @@ Background SubAgent completes
   ▼ (500ms debounce)
 AgentChatManager auto-wake listener
   │
-  ├── GUARD: instance exists? IDLE? no pending wake? feature enabled?
-  ├── Inject synthetic trigger message (metadata.synthetic=true)
-  └── streamMessage(chatSessionId, trigger, { emitUserMessage: false })
+  ├── GUARD: instance exists? IDLE? no pending wake?
+  ├── Create synthetic trigger message (metadata.synthetic=true)
+  └── streamMessage(chatSessionId, trigger, { emitUserMessage: false, persistUserMessage: false })
         │
         ▼
 AgentChat.streamMessage() → normal turn flow
   │
   ├── drainBackgroundSubAgentResults()
   │     → <task-notification> user message injected
-  │     → synthetic trigger removed from contextHistory
+  │     → synthetic trigger was never persisted
   ├── LLM sees task-notification → processes results → responds
   └── setChatStatus(IDLE)
         │
@@ -1114,11 +1100,11 @@ Phase 3 — Streaming to Frontend                           [~3 days]
   ├─ React hooks (useSubAgentTaskMessages, etc.)            [0.25d]
   └─ Preload bridge + tests                                 [0.25d]
 
-Phase 4 — Auto-Wake on Idle                               [~1.5 days]
+Phase 4 — Auto-Wake on Idle                               [completed]
   ├─ SubAgentManager extends EventEmitter + emit             [0.25d]
   ├─ AgentChatManager listener + debounce + guards           [0.5d]
-  ├─ Synthetic trigger injection + cleanup                   [0.5d]
-  └─ Feature flag + tests                                    [0.25d]
+  ├─ Non-persisted synthetic trigger injection               [done]
+  └─ Always-on baseline behavior + tests                     [done]
 ```
 
 Total Batch 4 estimate: **~8 days**
@@ -1139,7 +1125,7 @@ Total Batch 4 estimate: **~8 days**
 | Auto-wake skipped when session not IDLE | `agentChatManager.test.ts` |
 | Auto-wake debounces multiple completions | `agentChatManager.test.ts` |
 | Auto-wake skipped when session disposed | `agentChatManager.test.ts` |
-| Synthetic trigger removed after drain | `agentChat.test.ts` |
+| Synthetic trigger is not persisted | `agentChatTurnRunner.test.ts` |
 | `SubAgentTaskStore.createTask()` persists to disk | `subAgentTaskStore.test.ts` |
 | `SubAgentTaskStore.appendMessage()` writes to both histories | `subAgentTaskStore.test.ts` |
 | `SubAgentTaskStore.replaceContextHistory()` only changes context | `subAgentTaskStore.test.ts` |

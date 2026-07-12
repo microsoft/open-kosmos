@@ -24,6 +24,9 @@ describe('AgentChatManagerSessionCoordinator', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks keeps implementations; reset getChatConfig so throwing
+    // implementations from one test cannot leak into the next.
+    (profileCacheManager.getChatConfig as Mock).mockReset();
   });
 
   afterEach(() => {
@@ -100,7 +103,7 @@ describe('AgentChatManagerSessionCoordinator', () => {
     expect(onIdleTimeout).not.toHaveBeenCalled();
   });
 
-  it('creates chat session directories under the agent workspace', async () => {
+  it('creates chat session directories under the chat workspace', async () => {
     const coordinator = createCoordinator();
     const tmpRoot = path.join(os.tmpdir(), `openkosmos-agentchat-${Date.now()}`);
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
@@ -201,5 +204,327 @@ describe('AgentChatManagerSessionCoordinator', () => {
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
+  });
+
+  it('exposes the current instance and chat session id after activation', () => {
+    const coordinator = createCoordinator();
+    expect(coordinator.getCurrentInstance()).toBeNull();
+
+    const instance = {} as never;
+    coordinator.activateSession('session_1', instance);
+
+    expect(coordinator.getCurrentInstance()).toBe(instance);
+    expect(coordinator.getCurrentChatSessionId()).toBe('session_1');
+  });
+
+  it('clears the current session only when the chat session id matches', () => {
+    const coordinator = createCoordinator();
+    const instance = {} as never;
+    coordinator.activateSession('session_1', instance);
+
+    coordinator.clearCurrentSession('session_other');
+    expect(coordinator.getCurrentInstance()).toBe(instance);
+
+    coordinator.clearCurrentSession('session_1');
+    expect(coordinator.getCurrentInstance()).toBeNull();
+    expect(coordinator.getCurrentChatSessionId()).toBeNull();
+  });
+
+  it('returns the registered or null new-chat session id', () => {
+    const coordinator = createCoordinator();
+    expect(coordinator.getNewChatSessionId('chat_1')).toBeNull();
+
+    coordinator.getOrCreateNewChatSessionId('chat_1', () => 'session_1');
+    expect(coordinator.getNewChatSessionId('chat_1')).toBe('session_1');
+  });
+
+  it('normalizes a missing new-chat session id to null on exit mismatch', () => {
+    const coordinator = createCoordinator();
+    expect(coordinator.exitNewChatSession('chat_unknown', 'whatever')).toEqual({
+      success: false,
+      existingChatSessionId: null,
+    });
+  });
+
+  it('normalizes an empty registered new-chat session id to null on successful exit', () => {
+    const coordinator = createCoordinator();
+    expect(coordinator.getOrCreateNewChatSessionId('chat_empty', () => '')).toBe('');
+    expect(coordinator.exitNewChatSession('chat_empty', '')).toEqual({
+      success: true,
+      existingChatSessionId: null,
+    });
+  });
+
+  it('clears pending unread for the current session and no-ops without one', () => {
+    const coordinator = createCoordinator();
+    coordinator.clearPendingUnreadForCurrentSession();
+
+    coordinator.activateSession('session_1', {} as never);
+    coordinator.handleSessionLostFocus('session_1', 'sending_response', 'interactive');
+    expect(coordinator.hasPendingUnread('session_1')).toBe(true);
+
+    coordinator.clearPendingUnreadForCurrentSession();
+    expect(coordinator.hasPendingUnread('session_1')).toBe(false);
+  });
+
+  it('routes idle lost-focus events through status change without marking unread', () => {
+    vi.useFakeTimers();
+    const coordinator = createCoordinator();
+
+    coordinator.handleSessionLostFocus('session_1', 'idle', 'interactive');
+
+    expect(coordinator.hasPendingUnread('session_1')).toBe(false);
+    expect(coordinator.hasIdleTimer('session_1')).toBe(true);
+  });
+
+  it('protects a pending new-chat session id from idle cancellation', () => {
+    const coordinator = createCoordinator();
+    const newSessionId = coordinator.getOrCreateNewChatSessionId('chat_1', () => 'session_new');
+    expect(coordinator.isProtectedSession(newSessionId, 'interactive')).toBe(true);
+  });
+
+  it('protects the current foreground interactive session', () => {
+    const coordinator = createCoordinator();
+    coordinator.activateSession('session_1', {} as never);
+    expect(coordinator.isProtectedSession('session_1', 'interactive')).toBe(true);
+  });
+
+  it('does not protect the current session when the window is not foreground', () => {
+    const coordinator = new AgentChatManagerSessionCoordinator(
+      {
+        onIdleTimeout,
+        isMainWindowForeground: () => false,
+        getMainWindowState: () => ({
+          hasWindow: true,
+          destroyed: false,
+          visible: false,
+          minimized: true,
+          focused: false,
+        }),
+      },
+      1000,
+    );
+    coordinator.activateSession('session_1', {} as never);
+    expect(coordinator.isProtectedSession('session_1', 'interactive')).toBe(false);
+  });
+
+  it('is not protected for non-interactive runtime modes', () => {
+    const coordinator = createCoordinator();
+    expect(coordinator.isProtectedSession('session_1', 'scheduled-silent')).toBe(false);
+    expect(coordinator.isProtectedSession('session_1', null)).toBe(false);
+  });
+
+  it('invokes the idle timeout callback when the timer elapses', () => {
+    vi.useFakeTimers();
+    const coordinator = createCoordinator();
+    coordinator.handleStatusChange('session_1', 'idle', 'interactive');
+    vi.advanceTimersByTime(1000);
+    expect(onIdleTimeout).toHaveBeenCalledWith('session_1');
+  });
+
+  it('clears idle timers and resets all coordinator state', () => {
+    vi.useFakeTimers();
+    const coordinator = createCoordinator();
+    coordinator.handleStatusChange('session_1', 'idle', 'interactive');
+    coordinator.activateSession('session_2', {} as never);
+    expect(coordinator.hasIdleTimer('session_1')).toBe(true);
+
+    coordinator.reset();
+    expect(coordinator.hasIdleTimer('session_1')).toBe(false);
+    expect(coordinator.getCurrentInstance()).toBeNull();
+    expect(coordinator.getCurrentChatSessionId()).toBeNull();
+  });
+
+  it('logs and continues when clearing an idle timer throws during reset', () => {
+    vi.useFakeTimers();
+    const coordinator = createCoordinator();
+    coordinator.handleStatusChange('session_1', 'idle', 'interactive');
+
+    const spy = vi.spyOn(global, 'clearTimeout').mockImplementationOnce(() => {
+      throw new Error('clear fail');
+    });
+    coordinator.reset();
+    spy.mockRestore();
+
+    expect(coordinator.hasIdleTimer('session_1')).toBe(false);
+  });
+
+  it('stringifies non-Error failures when clearing timers during reset', () => {
+    vi.useFakeTimers();
+    const coordinator = createCoordinator();
+    coordinator.handleStatusChange('session_1', 'idle', 'interactive');
+
+    const spy = vi.spyOn(global, 'clearTimeout').mockImplementationOnce(() => {
+      throw 'clear-str';
+    });
+    coordinator.reset();
+    spy.mockRestore();
+
+    expect(coordinator.hasIdleTimer('session_1')).toBe(false);
+  });
+
+  it('returns null when there is no current user alias', async () => {
+    const coordinator = createCoordinator();
+    const result = await coordinator.ensureChatSessionDirectory(
+      null,
+      'chat_1',
+      'chatSession_20260405235959_device_x',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the resolved agent has no workspace path', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: {} });
+    const result = await coordinator.ensureChatSessionDirectory(
+      'alias',
+      'chat_1',
+      'chatSession_20260405235959_device_x',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the workspace path is only whitespace', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: { workspace: '   ' } });
+    const result = await coordinator.ensureChatSessionDirectory(
+      'alias',
+      'chat_1',
+      'chatSession_20260405235959_device_x',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the chat session id has no parseable month', async () => {
+    const coordinator = createCoordinator();
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-badsession-'));
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: { workspace: tmpRoot } });
+    try {
+      const result = await coordinator.ensureChatSessionDirectory('alias', 'chat_1', 'not-a-valid-session-id');
+      expect(result).toBeNull();
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reuses existing month and session directories on repeated ensure calls', async () => {
+    const coordinator = createCoordinator();
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-reuse-'));
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: { workspace: tmpRoot } });
+    try {
+      const first = await coordinator.ensureChatSessionDirectory(
+        'alias',
+        'chat_1',
+        'chatSession_20260405235959_device_x',
+      );
+      const second = await coordinator.ensureChatSessionDirectory(
+        'alias',
+        'chat_1',
+        'chatSession_20260405235959_device_x',
+      );
+      expect(second).toBe(first);
+      expect(fs.existsSync(second!)).toBe(true);
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null and logs when resolving the chat session directory throws', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockImplementation(() => {
+      throw new Error('boom');
+    });
+    const result = await coordinator.ensureChatSessionDirectory(
+      'alias',
+      'chat_1',
+      'chatSession_20260405235959_device_x',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when resolving throws a non-Error value', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockImplementation(() => {
+      throw 'nope';
+    });
+    const result = await coordinator.ensureChatSessionDirectory(
+      'alias',
+      'chat_1',
+      'chatSession_20260405235959_device_x',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the fork target directory cannot be resolved', async () => {
+    const coordinator = createCoordinator();
+    const result = await coordinator.forkChatSessionDirectory(null, 'chat_1', 'src', 'tgt');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when forking with a missing source but a non-empty target', async () => {
+    const coordinator = createCoordinator();
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-missing-src-'));
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: { workspace: tmpRoot } });
+    const targetSessionId = 'chatSession_20260406000000_device_target';
+    const targetDir = path.join(tmpRoot, '202604', targetSessionId);
+    try {
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.writeFileSync(path.join(targetDir, 'existing.txt'), 'x', 'utf8');
+
+      const result = await coordinator.forkChatSessionDirectory(
+        'alias',
+        'chat_1',
+        'chatSession_20260405235959_device_missing',
+        targetSessionId,
+      );
+      expect(result).toBeNull();
+      expect(fs.readFileSync(path.join(targetDir, 'existing.txt'), 'utf8')).toBe('x');
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces an existing empty target directory when forking', async () => {
+    const coordinator = createCoordinator();
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openkosmos-agentchat-empty-target-'));
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({ agent: { workspace: tmpRoot } });
+    const sourceSessionId = 'chatSession_20260405235959_device_source';
+    const targetSessionId = 'chatSession_20260406000000_device_target';
+    const sourceDir = path.join(tmpRoot, '202604', sourceSessionId);
+    const targetDir = path.join(tmpRoot, '202604', targetSessionId);
+    try {
+      fs.mkdirSync(sourceDir, { recursive: true });
+      fs.writeFileSync(path.join(sourceDir, 'a.txt'), 'data', 'utf8');
+      fs.mkdirSync(targetDir, { recursive: true });
+
+      const result = await coordinator.forkChatSessionDirectory(
+        'alias',
+        'chat_1',
+        sourceSessionId,
+        targetSessionId,
+      );
+      expect(result).toBe(targetDir);
+      expect(fs.readFileSync(path.join(targetDir, 'a.txt'), 'utf8')).toBe('data');
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null and logs when forking throws an Error', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockImplementation(() => {
+      throw new Error('kaboom');
+    });
+    const result = await coordinator.forkChatSessionDirectory('alias', 'chat_1', 'src', 'tgt');
+    expect(result).toBeNull();
+  });
+
+  it('stringifies non-Error fork failures', async () => {
+    const coordinator = createCoordinator();
+    (profileCacheManager.getChatConfig as Mock).mockImplementation(() => {
+      throw 'string failure';
+    });
+    const result = await coordinator.forkChatSessionDirectory('alias', 'chat_1', 'src', 'tgt');
+    expect(result).toBeNull();
   });
 });

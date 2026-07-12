@@ -17,36 +17,20 @@ describe('featureFlagDefinitions', () => {
     arch: 'arm64',
   };
 
-  it('enables openkosmosFeatureRemoteChannel by default in production', () => {
-    const config = getFeatureFlagConfig('openkosmosFeatureRemoteChannel');
-
-    expect(config).toBeDefined();
-    expect(resolveDefaultValue(config!.defaultValue, productionContext)).toBe(true);
-  });
-
-  it('keeps openkosmosFeatureRemoteChannel enabled in development too', () => {
-    const config = getFeatureFlagConfig('openkosmosFeatureRemoteChannel');
-    const developmentContext: FeatureFlagContext = {
-      ...productionContext,
-      isDev: true,
-    };
-
-    expect(config).toBeDefined();
-    expect(resolveDefaultValue(config!.defaultValue, developmentContext)).toBe(true);
-  });
-
-  it('enables openkosmosFeatureExternalAgent by default', () => {
+  it('enables openkosmosFeatureExternalAgent in dev only', () => {
     const config = getFeatureFlagConfig('openkosmosFeatureExternalAgent');
 
     expect(config).toBeDefined();
-    expect(resolveDefaultValue(config!.defaultValue, productionContext)).toBe(true);
+    expect(resolveDefaultValue(config!.defaultValue, devContext)).toBe(true);
+    expect(resolveDefaultValue(config!.defaultValue, productionContext)).toBe(false);
   });
 
-  it('keeps openkosmosFeatureSubAgent dev-only', () => {
-    const config = getFeatureFlagConfig('openkosmosFeatureSubAgent');
+  it('enables openkosmosFeatureToolSearch in all environments', () => {
+    const config = getFeatureFlagConfig('openkosmosFeatureToolSearch');
 
     expect(config).toBeDefined();
-    expect(resolveDefaultValue(config!.defaultValue, productionContext)).toBe(false);
+    expect(resolveDefaultValue(config!.defaultValue, productionContext)).toBe(true);
+    expect(resolveDefaultValue(config!.defaultValue, devContext)).toBe(true);
   });
 
   it('returns undefined for unknown flag name', () => {
@@ -57,8 +41,17 @@ describe('featureFlagDefinitions', () => {
     it('returns all flag names', () => {
       const names = getAllFeatureFlagNames();
       expect(names.length).toBe(FEATURE_FLAG_DEFINITIONS.length);
-      expect(names).toContain('openkosmosFeatureScreenshot');
-      expect(names).toContain('openkosmosFeatureRemoteChannel');
+      expect(names).toEqual([
+        'openkosmosFeatureScreenshot',
+        'openkosmosFeatureVoiceInput',
+        'openkosmosUseGit',
+        'openkosmosFeatureScheduler',
+        'openkosmosUseSync',
+        'openkosmosPathPortability',
+        'openkosmosFeatureBuddy',
+        'openkosmosFeatureExternalAgent',
+        'openkosmosFeatureToolSearch',
+      ]);
     });
   });
 
@@ -93,23 +86,13 @@ describe('featureFlagDefinitions', () => {
       expect(resolveDefaultValue(config.defaultValue, productionContext)).toBe(true);
     });
 
-    it('browserControl: enabled in dev on win32 and darwin, disabled on linux', () => {
-      const config = getFeatureFlagConfig('browserControl')!;
-      expect(resolveDefaultValue(config.defaultValue, { ...devContext, platform: 'win32' })).toBe(true);
-      expect(resolveDefaultValue(config.defaultValue, { ...devContext, platform: 'darwin' })).toBe(true);
-      expect(resolveDefaultValue(config.defaultValue, { ...devContext, platform: 'linux' })).toBe(false);
-      expect(resolveDefaultValue(config.defaultValue, { ...productionContext, platform: 'darwin' })).toBe(false);
-    });
-
     it('dev-only flags are false in production and true in dev', () => {
       const devOnlyFlags = [
+        'openkosmosFeatureVoiceInput',
         'openkosmosUseGit',
+        'openkosmosUseSync',
         'openkosmosPathPortability',
-        'openkosmosFeatureCodingAgent',
-        'openkosmosFeatureDoctor',
         'openkosmosFeatureBuddy',
-        'openkosmosFeaturePlugins',
-        'openkosmosFeatureToolSearch',
       ] as const;
 
       for (const flagName of devOnlyFlags) {

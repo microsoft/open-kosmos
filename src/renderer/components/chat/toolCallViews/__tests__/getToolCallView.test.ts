@@ -5,23 +5,36 @@
 /**
  * toolCallViews/index.ts — getToolCallView & hasCustomView dispatch tests
  *
- * Validates that the Phase 5 spawn_subagent / spawn_subagents
- * tool names correctly map to their corresponding view components.
+ * Validates that the ad-hoc sub_agent tool maps to its custom view.
  */
 
 import { getToolCallView, hasCustomView } from '../index';
-import { SubAgentToolCallView, ParallelSubAgentsToolCallView } from '../SubAgentToolCallView';
+import { CodingAgentToolCallView } from '../CodingAgentToolCallView';
+import { CreateScheduleToolCallView } from '../CreateScheduleToolCallView';
+import { ExecuteCommandToolCallView } from '../ExecuteCommandToolCallView';
+import { GetScheduleToolCallView } from '../GetScheduleToolCallView';
+import { SubAgentToolCallView } from '../SubAgentToolCallView';
+import { UpdateScheduleToolCallView } from '../UpdateScheduleToolCallView';
+import { WebFetchToolCallView } from '../WebFetchToolCallView';
+import { WebSearchToolCallView } from '../WebSearchToolCallView';
+import { WriteFileToolCallView } from '../WriteFileToolCallView';
 
 describe('getToolCallView', () => {
   // ========== Existing tools (regression) ==========
 
   describe('existing tools (regression)', () => {
-    it('should return a view for bing_web_search', () => {
-      expect(getToolCallView('bing_web_search')).not.toBeNull();
-    });
-
-    it('should return a view for execute_command', () => {
-      expect(getToolCallView('execute_command')).not.toBeNull();
+    it.each([
+      ['bing_web_search', WebSearchToolCallView],
+      ['fetch_web_content', WebFetchToolCallView],
+      ['execute_command', ExecuteCommandToolCallView],
+      ['write_file', WriteFileToolCallView],
+      ['create_file', WriteFileToolCallView],
+      ['create_schedule', CreateScheduleToolCallView],
+      ['get_schedule', GetScheduleToolCallView],
+      ['update_schedule', UpdateScheduleToolCallView],
+      ['coding_agent', CodingAgentToolCallView],
+    ])('should return the custom view for %s', (toolName, expectedView) => {
+      expect(getToolCallView(toolName)).toBe(expectedView);
     });
 
     it('should return null for present_deliverables', () => {
@@ -33,28 +46,20 @@ describe('getToolCallView', () => {
     });
   });
 
-  // ========== Sub-Agent tools (Phase 5) ==========
+  // ========== Ad-hoc Sub-Agent tool ==========
 
-  describe('sub-agent tools (Phase 5)', () => {
-    it('should return SubAgentToolCallView for spawn_subagent', () => {
-      const view = getToolCallView('spawn_subagent');
+  describe('sub-agent tool', () => {
+    it('should return SubAgentToolCallView for sub_agent', () => {
+      const view = getToolCallView('sub_agent');
       expect(view).toBe(SubAgentToolCallView);
     });
 
-    it('should return ParallelSubAgentsToolCallView for spawn_subagents', () => {
-      const view = getToolCallView('spawn_subagents');
-      expect(view).toBe(ParallelSubAgentsToolCallView);
-    });
   });
 });
 
 describe('hasCustomView', () => {
-  it('should return true for spawn_subagent', () => {
-    expect(hasCustomView('spawn_subagent')).toBe(true);
-  });
-
-  it('should return true for spawn_subagents', () => {
-    expect(hasCustomView('spawn_subagents')).toBe(true);
+  it('should return true for sub_agent', () => {
+    expect(hasCustomView('sub_agent')).toBe(true);
   });
 
   it('should return false for unknown tool', () => {

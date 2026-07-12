@@ -8,6 +8,8 @@ import { BuddyMilestoneEffect } from './BuddyMilestoneEffect';
 import { BuddyContextMenu } from './BuddyContextMenu';
 import { BuddyStatsModal } from './BuddyStatsModal';
 import { RARITY_COLORS } from '../../../main/lib/buddy/types';
+import { useI18n } from '../../lib/i18n/useI18n';
+import { getBuddyStatLabel } from './buddyLabels';
 import './buddy.css';
 
 const PET_ANIMATION_DURATION = 2500;
@@ -22,6 +24,7 @@ export interface BuddyFloatingWidgetProps {
 }
 
 export const BuddyFloatingWidget: React.FC<BuddyFloatingWidgetProps> = ({ buddy, actions }) => {
+  const { t } = useI18n();
 
   const [position, setPosition] = useState(() => ({
     x: typeof window !== 'undefined' ? window.innerWidth - 140 : 100,
@@ -46,7 +49,7 @@ export const BuddyFloatingWidget: React.FC<BuddyFloatingWidgetProps> = ({ buddy,
 
   // V2: Find active buddy from roster
   const activeBuddy = buddy.roster.find((b) => b.id === buddy.activeBuddyId) ?? null;
-  const rarityColor = buddy.companion ? RARITY_COLORS[buddy.companion.rarity] : '#9ca3af';
+  const rarityColor = buddy.companion ? RARITY_COLORS[buddy.companion.rarity] : 'var(--color-neutral-400)';
 
   // V2: Level-up auto-dismiss after 3 seconds
   const { dismissLevelUp } = actions;
@@ -228,7 +231,10 @@ export const BuddyFloatingWidget: React.FC<BuddyFloatingWidgetProps> = ({ buddy,
 
   // V2: Build speech bubble text (level-up takes priority over reaction)
   const speechText = buddy.levelUp
-    ? `Level ${buddy.levelUp.level}! +1 ${buddy.levelUp.statGained}`
+    ? t('buddy.levelUpSpeech', {
+        level: buddy.levelUp.level,
+        stat: getBuddyStatLabel(t, buddy.levelUp.statGained),
+      })
     : buddy.reaction?.text ?? null;
 
   // --- Render docked state: thick colored tab + hover zone ---
@@ -323,7 +329,7 @@ export const BuddyFloatingWidget: React.FC<BuddyFloatingWidgetProps> = ({ buddy,
         {/* Level-up toast */}
         {buddy.levelUp && (
           <div className="buddy-levelup-toast">
-            Level {buddy.levelUp.level}!
+            {t('buddy.levelUp', { level: buddy.levelUp.level })}
           </div>
         )}
 

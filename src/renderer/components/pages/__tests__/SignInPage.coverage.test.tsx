@@ -34,12 +34,6 @@ vi.mock('../../ui/ToastProvider', () => ({
   useToast: () => ({ showError: mockShowError, showSuccess: mockShowSuccess }),
 }));
 
-vi.mock('../../ui/button', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) => (
-    <button onClick={onClick} disabled={disabled} {...rest}>{children}</button>
-  ),
-}));
-
 vi.mock('../../ui/card', () => ({
   Card:            ({ children, className }: any) => <div className={className}>{children}</div>,
   CardContent:     ({ children }: any) => <div>{children}</div>,
@@ -181,6 +175,70 @@ describe('SignInPage — additional coverage', () => {
         expect((window as any).electronAPI.auth.startGhcDeviceFlow).toHaveBeenCalled();
       });
     });
+
+    describe('startup result processing edge cases', () => {
+      it('ignores later startupResult changes after initialization', async () => {
+        const { rerender } = render(<SignInPage />);
+        await waitFor(() => screen.getByText(/Sign In with GitHub Copilot/i));
+
+        rerender(<SignInPage startupResult={makeProfiles([
+          {
+            type: 'valid',
+            alias: 'late-user',
+            authData: { ghcAuth: { user: { login: 'late-user', name: 'Late User' } } },
+          },
+        ])} />);
+
+        await waitFor(() => {
+          expect(screen.queryByText(/Choose Your Profile/i)).toBeNull();
+          expect(screen.queryByText(/@late-user/i)).toBeNull();
+        });
+      });
+
+      it('falls back to the sign-in card when startupResult access throws', async () => {
+        const badStartupResult = Object.defineProperty({}, 'stage2', {
+          get() {
+            throw new Error('bad startup payload');
+          },
+        });
+
+        render(<SignInPage startupResult={badStartupResult as any} />);
+
+        await waitFor(() => {
+          expect(screen.getByText(/Sign In with GitHub Copilot/i)).toBeTruthy();
+          expect(screen.queryByText(/Choose Your Profile/i)).toBeNull();
+        });
+      });
+    });
+
+    describe('valid profile sign-in', () => {
+      it('sets current auth and dispatches auth success for valid profiles', async () => {
+        mockSetCurrentAuth.mockResolvedValue(undefined);
+        const dispatched: CustomEvent[] = [];
+        const listener = (event: Event) => dispatched.push(event as CustomEvent);
+        window.addEventListener('ghc:authSuccess', listener);
+
+        render(<SignInPage startupResult={makeProfiles([
+          {
+            type: 'valid',
+            alias: 'valid-user',
+            authData: { ghcAuth: { user: { login: 'valid-user', name: 'Valid User' } } },
+          },
+        ])} />);
+        await waitFor(() => screen.getByText(/Choose Your Profile/i));
+
+        await act(async () => {
+          fireEvent.click(screen.getByText(/@valid-user/i));
+        });
+
+        await waitFor(() => {
+          expect(mockSetCurrentAuth).toHaveBeenCalled();
+          expect(dispatched.some(event => event.detail.source === 'signin_page_valid_profile')).toBe(true);
+        });
+
+        window.removeEventListener('ghc:authSuccess', listener);
+      });
+    });
   });
 
   // ──────────────────────── expired (non-recoverable) profile ─────────────
@@ -269,6 +327,17 @@ describe('SignInPage — additional coverage', () => {
         window.dispatchEvent(new CustomEvent('ghc:authSuccess', {
           detail: { source: 'unknown' },
         }));
+        await new Promise(r => setTimeout(r, 150));
+      });
+      await waitFor(() =>
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('no data')),
+      );
+    });
+
+    it('missing source falls back to unknown and shows error when no auth data is present', async () => {
+      render(<SignInPage />);
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('ghc:authSuccess', { detail: {} }));
         await new Promise(r => setTimeout(r, 150));
       });
       await waitFor(() =>
@@ -409,13 +478,13 @@ describe('SignInPage — additional coverage', () => {
       expect(true).toBe(true);
     });
 
-    it('handleOpenGitHub opens the SSO URL in a new tab', async () => {
+    it('handleOpenGitHub opens the GitHub device URL in a new tab', async () => {
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
       await openDeviceFlow();
       await waitFor(() => screen.getByText(/Manually open GitHub authorization page/i));
       fireEvent.click(screen.getByText(/Manually open GitHub authorization page/i));
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining('github.com/login/device'),
+        'https://github.com/login/device',
         '_blank',
       );
       openSpy.mockRestore();
@@ -457,7 +526,7 @@ describe('SignInPage — additional coverage', () => {
   // ──────────────────────── device code event — clipboard + window.open ───
 
   describe('ghc:deviceCode auto-actions', () => {
-    it('auto-opens SSO URL when verification_uri present', async () => {
+    it('auto-opens the verification URL when verification_uri is present', async () => {
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
       render(<SignInPage />);
 
@@ -472,7 +541,7 @@ describe('SignInPage — additional coverage', () => {
       });
 
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining('github.com/login/device'),
+        'https://github.com/login/device',
         '_blank',
       );
       openSpy.mockRestore();
@@ -492,6 +561,155 @@ describe('SignInPage — additional coverage', () => {
       });
 
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('AUTO-COPY');
+    });
+
+    it('handles device code payloads without user_code or verification_uri', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      render(<SignInPage />);
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('ghc:deviceCode', {
+          detail: { expires_in: 900 },
+        }));
+        await new Promise(r => setTimeout(r, 900));
+      });
+
+      await waitFor(() => screen.getByText(/GitHub Copilot Authorization/i));
+      fireEvent.click(screen.getByText('Copy'));
+      fireEvent.click(screen.getByText(/Manually open GitHub authorization page/i));
+
+      expect(navigator.clipboard.writeText).not.toHaveBeenCalledWith(undefined);
+      expect(openSpy).not.toHaveBeenCalled();
+      openSpy.mockRestore();
+    });
+  });
+
+  describe('device flow callbacks from electronAPI', () => {
+    it('bridges generated device code, success, and error callbacks to window events', async () => {
+      const generatedEvents: CustomEvent[] = [];
+      const successEvents: CustomEvent[] = [];
+      const errorEvents: CustomEvent[] = [];
+      const onGenerated = (event: Event) => generatedEvents.push(event as CustomEvent);
+      const onSuccess = (event: Event) => successEvents.push(event as CustomEvent);
+      const onError = (event: Event) => errorEvents.push(event as CustomEvent);
+      window.addEventListener('ghc:deviceCode', onGenerated);
+      window.addEventListener('ghc:authSuccess', onSuccess);
+      window.addEventListener('ghc:authError', onError);
+
+      render(<SignInPage />);
+      await waitFor(() => screen.getByText(/Sign In with GitHub Copilot/i));
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Sign In with GitHub Copilot/i));
+      });
+
+      const generatedCallback = (window as any).electronAPI.auth.onDeviceCodeGenerated.mock.calls[0][0];
+      const successCallback = (window as any).electronAPI.auth.onDeviceFlowSuccess.mock.calls[0][0];
+      const errorCallback = (window as any).electronAPI.auth.onDeviceFlowError.mock.calls[0][0];
+
+      await act(async () => {
+        generatedCallback({ user_code: 'CALLBACK-CODE', expires_in: 900 });
+        successCallback({ authInfo: { login: 'callback-user' } });
+        errorCallback({ error: 'callback error' });
+      });
+
+      expect(generatedEvents.some(event => event.detail.user_code === 'CALLBACK-CODE')).toBe(true);
+      expect(successEvents.some(event => event.detail.source === 'device_flow')).toBe(true);
+      expect(errorEvents.some(event => event.detail.message === 'callback error')).toBe(true);
+      expect((window as any).electronAPI.auth.removeDeviceFlowListeners).toHaveBeenCalled();
+
+      window.removeEventListener('ghc:deviceCode', onGenerated);
+      window.removeEventListener('ghc:authSuccess', onSuccess);
+      window.removeEventListener('ghc:authError', onError);
+    });
+
+    it('uses the fallback error message when device flow start fails without an error string', async () => {
+      (window as any).electronAPI.auth.startGhcDeviceFlow = vi.fn().mockResolvedValue({ success: false });
+      render(<SignInPage />);
+      await waitFor(() => screen.getByText(/Sign In with GitHub Copilot/i));
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Sign In with GitHub Copilot/i));
+      });
+
+      await waitFor(() =>
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Failed to start device flow')),
+      );
+    });
+
+    it('uses the unknown-error fallback for non-Error device flow failures', async () => {
+      (window as any).electronAPI.auth.startGhcDeviceFlow = vi.fn().mockRejectedValue('boom');
+      render(<SignInPage />);
+      await waitFor(() => screen.getByText(/Sign In with GitHub Copilot/i));
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Sign In with GitHub Copilot/i));
+      });
+
+      await waitFor(() =>
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')),
+      );
+    });
+  });
+
+  describe('auth error event fallbacks', () => {
+    it('shows Unknown error when the auth error event has no message', async () => {
+      render(<SignInPage />);
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('ghc:authError', { detail: {} }));
+      });
+
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'));
+    });
+  });
+
+  describe('timer and environment branches', () => {
+    it('counts a one-second device code down to zero', async () => {
+      vi.useFakeTimers();
+      render(<SignInPage />);
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('ghc:deviceCode', {
+          detail: {
+            user_code: 'ONE-SECOND',
+            verification_uri: 'https://github.com/login/device',
+            expires_in: 1,
+          },
+        }));
+        vi.advanceTimersByTime(801);
+        await Promise.resolve();
+      });
+
+      expect(screen.getByText(/0:01/)).toBeTruthy();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+
+      expect(screen.getByText(/0:00/)).toBeTruthy();
+      vi.useRealTimers();
+    });
+
+    it('executes development-only debug guard branches', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+
+      const { unmount } = render(<SignInPage />);
+      await waitFor(() => screen.getByText(/Sign In with GitHub Copilot/i));
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('ghc:deviceCode', {
+          detail: { user_code: 'DEV-CODE', verification_uri: 'https://github.com/login/device', expires_in: 900 },
+        }));
+        window.dispatchEvent(new CustomEvent('ghc:authSuccess', {
+          detail: { source: 'device_flow', authInfo: { login: 'dev-user' } },
+        }));
+        fireEvent.click(screen.getByText(/Sign In with GitHub Copilot/i));
+      });
+
+      unmount();
+      process.env.NODE_ENV = originalNodeEnv;
     });
   });
 
@@ -548,6 +766,25 @@ describe('SignInPage — additional coverage', () => {
         expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('login')),
       );
     });
+
+    it('shows the unknown-error fallback when setting current auth rejects with a non-Error value', async () => {
+      mockSetCurrentAuth.mockRejectedValueOnce('not-an-error');
+      const profile = {
+        type: 'valid',
+        alias: 'rejects-string',
+        authData: { ghcAuth: { user: { login: 'rejects-string', name: 'Rejects String' } } },
+      };
+
+      render(<SignInPage startupResult={makeProfiles([profile])} />);
+      await waitFor(() => screen.getByText(/Choose Your Profile/i));
+      await act(async () => {
+        fireEvent.click(screen.getByText(/@rejects-string/i));
+      });
+
+      await waitFor(() =>
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error')),
+      );
+    });
   });
 
   // ──────────────────────── legacy format with expiredUsers ───────────────
@@ -570,6 +807,111 @@ describe('SignInPage — additional coverage', () => {
       render(<SignInPage startupResult={legacyResult} />);
       await waitFor(() => screen.getByText(/Token refresh needed/i));
       expect(screen.getByText('@olduser')).toBeTruthy();
+    });
+
+    it('handles missing legacy validUsers and expiredUsers arrays', async () => {
+      const legacyResult = {
+        stage2: {
+          authManagerInitialized: false,
+        },
+      } as any;
+
+      render(<SignInPage startupResult={legacyResult} />);
+      await waitFor(() => {
+        expect(screen.queryByText(/Choose Your Profile/i)).toBeNull();
+        expect(screen.getByText(/Sign In with GitHub Copilot/i)).toBeTruthy();
+      });
+    });
+
+    it('renders expired user avatar and alias fallbacks', async () => {
+      const legacyResult = {
+        stage2: {
+          authManagerInitialized: false,
+          validUsers: [],
+          expiredUsers: [
+            {
+              alias: 'avatar-expired',
+              authData: {
+                ghcAuth: {
+                  user: {
+                    name: 'Avatar Expired',
+                    login: 'avatar-expired',
+                    avatarUrl: 'https://example.com/expired.png',
+                  },
+                },
+              },
+            },
+            {
+              alias: 'fallback-expired',
+              authData: { ghcAuth: { user: {} } },
+            },
+          ],
+        },
+      } as any;
+
+      render(<SignInPage startupResult={legacyResult} />);
+      await waitFor(() => screen.getByText(/Token refresh needed/i));
+
+      const expiredAvatar = Array.from(document.querySelectorAll('img')).find(img =>
+        img.src.includes('expired.png'),
+      );
+      expect(expiredAvatar).toBeTruthy();
+      expect(screen.getAllByText(/fallback-expired/i).length).toBeGreaterThan(0);
+      expect(screen.getByText('F')).toBeTruthy();
+    });
+
+    it('reauthenticates expired profiles without authOps', async () => {
+      delete (window as any).electronAPI.authOps;
+      const legacyResult = {
+        stage2: {
+          authManagerInitialized: false,
+          validUsers: [],
+          expiredUsers: [
+            {
+              alias: 'no-authops',
+              authData: { ghcAuth: { user: { login: 'no-authops', name: 'No AuthOps' } } },
+            },
+          ],
+        },
+      } as any;
+
+      render(<SignInPage startupResult={legacyResult} />);
+      await waitFor(() => screen.getByText(/Token refresh needed/i));
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/@no-authops/i));
+      });
+
+      await waitFor(() =>
+        expect((window as any).electronAPI.auth.startGhcDeviceFlow).toHaveBeenCalled(),
+      );
+    });
+
+    it('shows reauthentication failure when the nested device-flow cleanup throws', async () => {
+      (window as any).electronAPI.auth = undefined;
+      const legacyResult = {
+        stage2: {
+          authManagerInitialized: false,
+          validUsers: [],
+          expiredUsers: [
+            {
+              alias: 'broken-auth',
+              authData: { ghcAuth: { user: { login: 'broken-auth', name: 'Broken Auth' } } },
+            },
+          ],
+        },
+      } as any;
+
+      render(<SignInPage startupResult={legacyResult} />);
+      await waitFor(() => screen.getByText(/Token refresh needed/i));
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/@broken-auth/i));
+      });
+
+      await waitFor(() =>
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Re-authentication failed')),
+      );
     });
   });
 

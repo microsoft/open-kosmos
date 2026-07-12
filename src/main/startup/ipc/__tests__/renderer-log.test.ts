@@ -2,7 +2,9 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 const mockOn = vi.fn();
 const mockHandleLog = vi.fn();
-const mockGetDevLogger = vi.fn(() => ({ handleLog: mockHandleLog }));
+const mockGetDevLogger = vi.fn<() => { handleLog: typeof mockHandleLog } | null>(
+  () => ({ handleLog: mockHandleLog }),
+);
 
 vi.mock('electron', () => ({
   ipcMain: {
@@ -72,6 +74,19 @@ describe('renderer log IPC', () => {
     await getRegisteredHandler()({}, { message: 'plain console output' });
 
     expect(mockGetDevLogger).not.toHaveBeenCalled();
+    expect(mockHandleLog).not.toHaveBeenCalled();
+  });
+
+  it('does not call handleLog when development mode is enabled but no DevLogger exists', async () => {
+    process.argv.push('--dev');
+    mockGetDevLogger.mockReturnValueOnce(null);
+    const injectedIpc = { on: vi.fn((channel: string, handler: Function) => mockOn(channel, handler)) } as any;
+
+    const { registerRendererLogIPC } = await import('../renderer-log');
+    registerRendererLogIPC(injectedIpc);
+    await getRegisteredHandler()({}, { __openkosmos_log: true, level: 'INFO', message: 'hello' });
+
+    expect(injectedIpc.on).toHaveBeenCalledWith('logger:rendererLog', expect.any(Function));
     expect(mockHandleLog).not.toHaveBeenCalled();
   });
 });

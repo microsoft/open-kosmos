@@ -2,12 +2,8 @@
 
 ## 1. Background
 
-OpenKosmos currently has two supported Skill installation paths:
-
-1. In-library install via Skill Library.
-2. On-device package install via `.zip` or `.skill` import.
-
-Both supported paths eventually call the same formal registration chain:
+OpenKosmos supports on-device Skill installation from local `.zip`, `.skill`, and
+folder inputs. Supported installs call the same formal registration chain:
 
 1. `skillManager.installSkill(...)`
 2. `profileCacheManager.addSkill(...)` or `updateSkill(...)`
@@ -45,11 +41,10 @@ Today, OpenKosmos does not provide a single supported product flow that covers a
 
 The exported conversation shows all of the following facts in sequence:
 
-1. The assistant first tried `install_skill_from_library` for `pptx` and related names and failed because the Skill was not in the OpenKosmos Skill Library.
-2. The assistant later created or copied local Skill files directly into the user's profile Skill directory, including `pptx` and `pptx-design-system`.
-3. The assistant later verified the physical files existed on disk.
-4. The assistant ran `get_skill_installation_state` for `pptx` and `pptx-design-system`, and both returned `NotAdded` with the message that the Skill was not added to the profile's global Skill list.
-5. The assistant explicitly concluded that the problem was "missing global registration of the skill" and that Agent-level binding existed without global registration.
+1. The assistant created or copied local Skill files directly into the user's profile Skill directory, including `pptx` and `pptx-design-system`.
+2. The assistant later verified the physical files existed on disk.
+3. Installation-state checks returned `NotAdded` because the Skills were absent from the profile's global Skill list.
+4. The assistant concluded that Agent-level binding existed without global registration.
 
 ### 2.2 Product conclusion
 
@@ -156,8 +151,6 @@ Recommended rollout:
 3. Existing local Skill folder
 4. Existing `SKILL.md` entry point whose parent folder is a valid Skill folder
 
-Built-in library install remains supported as a separate product surface.
-
 ## 7. Current Product Gaps
 
 ### 7.1 Add Skill From Device Is Too Narrow
@@ -230,9 +223,8 @@ OpenKosmos should offer a repair action that still reuses the same installation 
 
 Settings -> Skills should offer clear install choices:
 
-1. Add from Library
-2. Add Skill From Device
-3. Later: Install from URL
+1. Add Skill From Device
+2. Later: Install from URL
 
 `Add Skill From Device` must support:
 
@@ -287,7 +279,7 @@ Minimum acceptable product behavior:
 1. Offer repair from Agent-missing-Skill state.
 2. Expand file-card install support beyond `.skill` packages.
 3. Show dependency or executable-content warnings for third-party Skills.
-4. Record analytics distinguishing library install, package install, folder install, and repair.
+4. Record analytics distinguishing package install, folder install, and repair.
 
 ### 10.3 Won't Have in MVP
 

@@ -8,9 +8,9 @@
   align-items: center;
   gap: 14px;
   padding: 12px 16px;
-  border: 1px solid #e8e5e0;
-  border-radius: 12px;
-  background: #ffffff;
+  border: 1px solid var(--color-warm-200);
+  border-radius: var(--radius-xl);
+  background: var(--color-white);
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
   user-select: none;
@@ -18,17 +18,17 @@
 }
 
 .say-hi-card:hover {
-  border-color: #2563eb;
-  background: #f8faff;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+  border-color: var(--color-accent-strong);
+  background: var(--color-info-surface-subtle);
+  box-shadow: 0 2px 8px rgb(var(--color-accent-strong-rgb) / 0.08);
 }
 
 .say-hi-card:active {
-  background: #eff6ff;
+  background: var(--color-info-surface);
 }
 
 .say-hi-card:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-accent-strong);
   outline-offset: 2px;
 }
 
@@ -39,8 +39,8 @@
   justify-content: center;
   width: 38px;
   height: 38px;
-  background: #f0f5ff;
-  border-radius: 10px;
+  background: var(--color-info-surface);
+  border-radius: var(--radius-lg);
   flex-shrink: 0;
   font-size: 18px;
   line-height: 1;
@@ -48,7 +48,7 @@
 }
 
 .say-hi-card:hover .say-hi-card-icon {
-  background: #e0edff;
+  background: var(--color-sky-soft-100);
 }
 
 /* Text area */
@@ -60,14 +60,14 @@
 .say-hi-card-title {
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--color-text-default);
   margin: 0 0 2px 0;
   line-height: 1.4;
 }
 
 .say-hi-card-description {
   font-size: 12px;
-  color: #888;
+  color: var(--color-warm-400);
   margin: 0;
   line-height: 1.5;
   overflow: hidden;

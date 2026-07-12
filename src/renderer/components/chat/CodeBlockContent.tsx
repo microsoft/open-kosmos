@@ -16,13 +16,13 @@ export const CodeBlockContent: React.FC<{ language: string; content: string }> =
   if (PLAIN_TEXT_LANGUAGES.has(language)) {
     return (
       <div style={{
-        background: 'rgb(40,44,52)',
+        background: 'var(--syntax-block-bg)',
         borderRadius: '0 0 0.375rem 0.375rem',
         padding: '1em',
         overflow: 'auto',
         fontSize: '0.875rem',
       }}>
-        <pre style={{ margin: 0, whiteSpace: 'pre', color: '#abb2bf', fontFamily: 'var(--font-mono)' }}>
+        <pre style={{ margin: 0, whiteSpace: 'pre', color: 'var(--syntax-block-text)', fontFamily: 'var(--font-mono)' }}>
           <code>{content}</code>
         </pre>
       </div>

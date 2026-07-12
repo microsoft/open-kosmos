@@ -13,6 +13,7 @@ const mockHasTool = vi.hoisted(() => vi.fn());
 const mockExecuteTool = vi.hoisted(() => vi.fn());
 const mockGetExecutionContext = vi.hoisted(() => vi.fn());
 const mockGetInstance = vi.hoisted(() => vi.fn());
+const mockGetChatConfig = vi.hoisted(() => vi.fn());
 
 vi.mock('../builtinTools/builtinToolsManager', () => ({
   BuiltinToolsManager: class MockBuiltinToolsManager {
@@ -30,6 +31,12 @@ vi.mock('../unifiedLogger', () => ({
   createConsoleLogger: vi.fn(() => Promise.resolve({
     log: vi.fn(), info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(),
   })),
+}));
+
+vi.mock('../../userDataADO/profileCacheManager', () => ({
+  profileCacheManager: {
+    getChatConfig: mockGetChatConfig,
+  },
 }));
 
 import { BuiltinMcpClient, BUILTIN_SERVER_NAME } from '../builtinMcpClient';
@@ -58,6 +65,7 @@ describe('BuiltinMcpClient', () => {
     toolsManagerInstance = makeToolsManagerInstance();
     mockGetInstance.mockReturnValue(toolsManagerInstance);
     mockGetExecutionContext.mockReturnValue(null);
+    mockGetChatConfig.mockReturnValue(undefined);
 
     client = new BuiltinMcpClient();
   });
@@ -190,7 +198,29 @@ describe('BuiltinMcpClient', () => {
     const result = await client.executeTool({ toolName: 'search', toolArgs: { query: 'test' } });
 
     expect(result).toBe('search results');
-    expect(mockExecuteTool).toHaveBeenCalledWith('search', { query: 'test' }, undefined, 'session-1');
+    expect(mockExecuteTool).toHaveBeenCalledWith(
+      'search',
+      { query: 'test' },
+      undefined,
+      'session-1',
+      { chatSessionId: 'session-1' },
+      undefined,
+    );
+  });
+
+  it('executeTool lets registered but hidden tools reach manager execution gates', async () => {
+    mockGetStats.mockReturnValue({ isInitialized: true });
+    mockHasTool.mockReturnValue(true);
+    mockExecuteTool.mockResolvedValue({
+      success: true,
+      data: JSON.stringify({ ok: false, error: 'browser tool is disabled (enable it in Settings → Browser)' }),
+    });
+
+    await client.connectToServer();
+    const result = await client.executeTool({ toolName: 'browser', toolArgs: { action: 'read_page' } });
+
+    expect(result).toContain('Settings → Browser');
+    expect(mockExecuteTool).toHaveBeenCalledWith('browser', { action: 'read_page' }, undefined, undefined, null, undefined);
   });
 
   it('executeTool returns empty string when data is falsy', async () => {
@@ -230,7 +260,7 @@ describe('BuiltinMcpClient', () => {
     const controller = new AbortController();
     await client.executeTool({ toolName: 'search', toolArgs: {}, signal: controller.signal });
 
-    expect(mockExecuteTool).toHaveBeenCalledWith('search', {}, controller.signal, undefined);
+    expect(mockExecuteTool).toHaveBeenCalledWith('search', {}, controller.signal, undefined, null, undefined);
   });
 
   it('executeTool uses null chatSessionId when no execution context', async () => {
@@ -242,7 +272,78 @@ describe('BuiltinMcpClient', () => {
     await client.connectToServer();
     await client.executeTool({ toolName: 'search', toolArgs: {} });
 
-    expect(mockExecuteTool).toHaveBeenCalledWith('search', {}, undefined, undefined);
+    expect(mockExecuteTool).toHaveBeenCalledWith('search', {}, undefined, undefined, null, undefined);
+  });
+
+  it('captures workspace root before async manager resolution', async () => {
+    mockGetStats.mockReturnValue({ isInitialized: true });
+    mockHasTool.mockReturnValue(true);
+    mockExecuteTool.mockResolvedValue({ success: true, data: 'ok' });
+    mockGetExecutionContext.mockReturnValueOnce({
+      chatSessionId: 'session-a',
+      chatId: 'chat-a',
+      userAlias: 'user-a',
+    }).mockReturnValue({
+      chatSessionId: 'session-b',
+      chatId: 'chat-b',
+      userAlias: 'user-b',
+    });
+    mockGetChatConfig.mockImplementation((userAlias: string, chatId: string) => ({
+      agent: { workspace: `${userAlias}:${chatId}:workspace` },
+    }));
+
+    await client.connectToServer();
+    await client.executeTool({ toolName: 'browser', toolArgs: { action: 'open_local_file', localPath: 'report.html' } });
+
+    expect(mockExecuteTool).toHaveBeenCalledWith(
+      'browser',
+      { action: 'open_local_file', localPath: 'report.html' },
+      undefined,
+      'session-a',
+      {
+        chatSessionId: 'session-a',
+        chatId: 'chat-a',
+        userAlias: 'user-a',
+      },
+      'user-a:chat-a:workspace',
+    );
+  });
+
+  it('resolves workspace root from the current chat in multi-agent chats', async () => {
+    mockGetStats.mockReturnValue({ isInitialized: true });
+    mockHasTool.mockReturnValue(true);
+    mockExecuteTool.mockResolvedValue({ success: true, data: 'ok' });
+    mockGetExecutionContext.mockReturnValue({
+      chatSessionId: 'session-a',
+      chatId: 'chat-a',
+      userAlias: 'user-a',
+      agentName: 'Builder',
+    });
+    mockGetChatConfig.mockReturnValue({
+      chat_type: 'multi_agent',
+      workspace: '/chat-workspace',
+      agents: [
+        { name: 'Reviewer', workspace: '/reviewer-workspace' },
+        { name: 'Builder', workspace: '/builder-workspace' },
+      ],
+    });
+
+    await client.connectToServer();
+    await client.executeTool({ toolName: 'browser', toolArgs: { action: 'open_local_file', localPath: 'report.html' } });
+
+    expect(mockExecuteTool).toHaveBeenCalledWith(
+      'browser',
+      { action: 'open_local_file', localPath: 'report.html' },
+      undefined,
+      'session-a',
+      {
+        chatSessionId: 'session-a',
+        chatId: 'chat-a',
+        userAlias: 'user-a',
+        agentName: 'Builder',
+      },
+      '/chat-workspace',
+    );
   });
 
   // ── cleanup ───────────────────────────────────────────────────────────────

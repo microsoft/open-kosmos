@@ -7,6 +7,7 @@ import { EllipseModel, uuid } from '../model'
 import Resizer from './shape-resizer';
 import { DragLimiter, type MEvent } from '../../common/drag-limiter';
 import { StrokeEvent, CapturedHooks } from '../../common/keyboard-painter';
+import { getString } from '../../common/localString';
 
 interface PaintState {
   stroke: string;
@@ -155,7 +156,7 @@ class EllipseShape extends PureComponent<Props, State> {
         {...attrs}
         style={{ cursor: 'move' }}
         aria-live="assertive"
-        aria-label='render ellipse'
+        aria-label={getString('renderEllipse')}
         onPointerDown={this.onPointerDown}
       />
     );

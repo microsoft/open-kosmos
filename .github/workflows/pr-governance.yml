@@ -1,0 +1,37 @@
+name: PR Public Governance Check
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  governance:
+    name: Public Governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check public governance invariants
+        run: npm run check:governance
+
+      - name: Verify generated third-party license evidence
+        run: |
+          npm run generate:third-party-notices
+          git diff --exit-code -- \
+            docs/third-party-license-inventory.json \
+            docs/third-party-license-inventory.csv

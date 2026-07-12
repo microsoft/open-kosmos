@@ -114,16 +114,18 @@ export class ChatOpsManager {
       }
 
       // Generate chat ID if not provided
+      const { workspace: legacyAgentWorkspace, ...agentWithoutWorkspace } = (chatConfig.agent || {}) as ChatAgent & { workspace?: string };
       const finalChatConfig: ChatConfig = {
         chat_id: chatConfig.chat_id || await generateChatId(),
         chat_type: chatConfig.chat_type || 'single_agent',
-        ...(chatConfig.agent && { agent: { ...chatConfig.agent, workspace: chatConfig.agent.workspace || '' } }),
+        workspace: chatConfig.workspace || legacyAgentWorkspace || '',
+        ...(chatConfig.agent && { agent: agentWithoutWorkspace as ChatAgent }),
         ...(chatConfig.agents && { agents: chatConfig.agents })
       };
 
       // Ensure agent exists for single_agent type
       if (finalChatConfig.chat_type === 'single_agent' && !finalChatConfig.agent) {
-        finalChatConfig.agent = { ...DEFAULT_CHAT_AGENT, workspace: '' };
+        finalChatConfig.agent = { ...DEFAULT_CHAT_AGENT };
       }
 
       const result = await (window as any).electronAPI.profile.addChatConfig(finalChatConfig);
@@ -403,9 +405,9 @@ export class ChatOpsManager {
     const defaultChatConfig: ChatConfig = {
       chat_id: await generateChatId(),
       chat_type: 'single_agent',
+      workspace: '',
       agent: {
         ...DEFAULT_CHAT_AGENT,
-        workspace: '', // 🔄 workspace is now at the agent level; the backend will automatically set the default path
         ...customAgent
       }
     };

@@ -1,7 +1,8 @@
-import React, { useLayoutEffect, useState, useRef, createElement, useCallback } from 'react';
+import React, { useLayoutEffect, useState, useRef, createElement } from 'react';
 import { Pencil, Trash2, Copy, Upload, Archive } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useProfileData } from '../userData/userDataProvider';
+import { useChatAgent, resolveChatAgent } from '../../lib/agent';
 import { useToast } from '../ui/ToastProvider';
 import { isBuiltinAgent } from '../../lib/userData/types';
 import { BRAND_NAME } from '@shared/constants/branding';
@@ -16,6 +17,8 @@ import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
 import { DuplicateAgentAtom } from '../overlay/DuplicateAgentOverlay';
 import { DeleteConfirmAtom } from '../overlay/DeleteOverlay';
+import { ArchiveConfirmAtom } from '../overlay/ArchiveOverlay';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const zeroState: {
   isOpen: boolean;
@@ -60,15 +63,18 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
   const agentMenuRef = useRef<HTMLDivElement>(null);
   const { chats, data } = useProfileData();
   const { showSuccess, showError } = useToast();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [isImporting, setIsImporting] = useState(false);
   const onDuplicateAgent = DuplicateAgentAtom.useChange().show;
   const deleteConfirmActions = DeleteConfirmAtom.useChange();
+  const archiveConfirmActions = ArchiveConfirmAtom.useChange();
 
   useClickOut(agentMenuRef, onClose);
 
   // Re-anchor from the live trigger so list expansion/collapse does not leave a stale menu position.
   useLayoutEffect(() => {
+    /* v8 ignore next 3 -- ref is always set when component renders */
     if (!agentMenuRef.current) {
       return;
     }
@@ -76,6 +82,7 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
     let animationFrameId: number | null = null;
 
     const updatePosition = () => {
+      /* v8 ignore next 3 -- defensive null check; ref is set before rAF fires */
       if (!agentMenuRef.current) {
         return;
       }
@@ -116,15 +123,16 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
 
   // Find current chat config
   const currentChat = chats.find(chat => chat.chat_id === chatId);
+  const currentAgent = useChatAgent(currentChat);
 
   // Determine if this is a built-in agent (list differs by branding) - cannot be deleted
-  const isBuiltinAgentFlag = isBuiltinAgent(currentChat?.agent?.name, BRAND_NAME);
+  const isBuiltinAgentFlag = isBuiltinAgent(currentAgent?.name, BRAND_NAME);
 
-  // Get current primaryAgent
-  const primaryAgent = data?.profile?.primaryAgent;
+  // Get the current primary chat id
+  const primaryChat = data?.profile?.primaryChat;
 
-  // Check if the current Agent is already the Primary Agent
-  const isPrimaryAgent = primaryAgent === currentChat?.agent?.name;
+  // Check if the current chat is already the primary chat
+  const isPrimaryChat = primaryChat === currentChat?.chat_id;
 
   const handleEditAgentClick = (chatId: string) => {
     onClose();
@@ -134,76 +142,57 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
   const handleDeleteAgentClick = (chatId: string) => {
     onClose();
     const chat = chats.find((c) => c.chat_id === chatId);
-    const agentName = chat?.agent?.name || 'Unknown Agent';
+    const agentName = resolveChatAgent(chat)?.name || 'Unknown Agent';
     deleteConfirmActions.showAgent(chatId, agentName, false);
   };
 
-  // Handle archiving an agent
-  const onArchiveAgent = useCallback(async (chatId: string) => {
-    try {
-      const chat = chats.find((c) => c.chat_id === chatId);
-      const agentName = chat?.agent?.name || 'Unknown Agent';
-
-      if (!window.electronAPI?.profile?.archiveChatConfig) {
-        showError('Archive API not available');
-        return;
-      }
-
-      const result = await window.electronAPI.profile.archiveChatConfig(chatId);
-
-      if (result.success) {
-        showSuccess(`Agent "${agentName}" archived successfully`);
-        // Refresh profile data to update UI
-        await profileDataManager.refresh();
-      } else {
-        showError(`Failed to archive agent: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to archive agent: ${errorMessage}`);
-    }
-  }, [chats, showSuccess, showError]);
+  const handleArchiveAgentClick = (chatId: string) => {
+    onClose();
+    const chat = chats.find((c) => c.chat_id === chatId);
+    const agentName = resolveChatAgent(chat)?.name || 'Unknown Agent';
+    archiveConfirmActions.show(chatId, agentName);
+  };
 
   // Handle duplicating an Agent
   const handleDuplicateAgent = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (chatId && currentChat?.agent?.name) {
-      onDuplicateAgent(chatId, currentChat.agent.name);
+    if (chatId && currentAgent?.name) {
+      onDuplicateAgent(chatId, currentAgent.name);
     }
     onClose();
   };
 
-  // Handle setting as Primary Agent
+  // Handle setting as primary chat
   const handleSetAsPrimaryAgent = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
-    if (!currentChat?.agent?.name) {
-      showError('Agent name not found');
+    if (!currentChat?.chat_id) {
+      showError(t('agent.menu.chatNotFound'));
       return;
     }
 
     try {
-      if (!window.electronAPI?.profile?.setPrimaryAgent) {
-        showError('setPrimaryAgent API not available');
+      if (!window.electronAPI?.profile?.setPrimaryChat) {
+        showError(t('agent.menu.setPrimaryApiUnavailable'));
         return;
       }
 
-      const result = await window.electronAPI.profile.setPrimaryAgent(currentChat.agent.name);
+      const result = await window.electronAPI.profile.setPrimaryChat(currentChat.chat_id);
 
       if (result.success) {
-        showSuccess(`${currentChat.agent.name} has been set as primary agent`);
+        showSuccess(t('agent.menu.setPrimarySuccess', { name: currentAgent?.name ?? 'Chat' }));
         // Refresh profile data to update UI
         await profileDataManager.refresh();
         // Close the menu
         onClose();
       } else {
-        showError(`Failed to set primary agent: ${result.error || 'Unknown error'}`);
+        showError(t('agent.menu.setPrimaryFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to set primary agent: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('agent.menu.setPrimaryFailed', { error: errorMessage }));
     }
   };
 
@@ -212,11 +201,13 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
     e.stopPropagation();
     e.preventDefault();
 
+    /* v8 ignore next 4 -- chatId is always set when menu is open (atom toggle requires it) */
     if (!chatId) {
-      showError('Chat ID not found');
+      showError(t('agent.menu.chatIdNotFound'));
       return;
     }
 
+    /* v8 ignore next 3 -- React state batching prevents testing this guard in unit tests */
     if (isImporting) {
       return;
     }
@@ -225,7 +216,7 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
       setIsImporting(true);
 
       if (!window.electronAPI?.agentChat?.importChatSession) {
-        showError('Import API not available');
+        showError(t('agent.menu.importApiUnavailable'));
         return;
       }
 
@@ -236,17 +227,17 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
           await profileDataManager.refresh();
           navigate(`/agent/chat/${chatId}/${result.importedSessionId}`);
         }
-        showSuccess('Successfully imported chat session');
+        showSuccess(t('agent.menu.importSuccess'));
         onClose();
       } else {
         if (result.error !== 'File selection canceled') {
-          showError(`Import failed: ${result.error || 'Unknown error'}`);
+          showError(t('agent.menu.importFailed', { error: result.error || t('common.unknownError') }));
         }
         onClose();
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Import failed: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('agent.menu.importFailed', { error: errorMessage }));
     } finally {
       setIsImporting(false);
     }
@@ -272,10 +263,10 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
         role="menuitem"
       >
         <span className="dropdown-menu-item-icon"><Pencil size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">Edit Agent</span>
+        <span className="dropdown-menu-item-text">{t('agent.menu.editAgent')}</span>
       </button>
-      {/* Only show this option when the current Agent is not the Primary Agent */}
-      {!isPrimaryAgent && (
+      {/* Only show this option when the current chat is not primary */}
+      {!isPrimaryChat && (
         <button
           className="dropdown-menu-item"
           onClick={handleSetAsPrimaryAgent}
@@ -286,7 +277,7 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
             </svg>
           </span>
-          <span className="dropdown-menu-item-text">Set as Primary Agent</span>
+          <span className="dropdown-menu-item-text">{t('agent.menu.setPrimary')}</span>
         </button>
       )}
       {/* Import a single ChatSession JSON file */}
@@ -297,39 +288,39 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
         role="menuitem"
       >
         <span className="dropdown-menu-item-icon"><Upload size={16} strokeWidth={1.5} /></span>
-        <span className="dropdown-menu-item-text">{isImporting ? 'Importing...' : 'Import Chat Session JSON'}</span>
+        <span className="dropdown-menu-item-text">{isImporting ? t('agent.menu.importing') : t('agent.menu.importChatSession')}</span>
       </button>
       {/* Duplicate Agent menu item: available for all agents */}
-      {currentChat?.agent?.name && (
+      {currentAgent?.name && (
         <button
           className="dropdown-menu-item"
           onClick={handleDuplicateAgent}
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Copy size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Duplicate</span>
+          <span className="dropdown-menu-item-text">{t('common.duplicate')}</span>
         </button>
       )}
-      {/* Archive Agent menu item: only shown when not a built-in agent and not the Primary Agent */}
-      {onArchiveAgent && !isBuiltinAgentFlag && !isPrimaryAgent && (
+      {/* Archive menu item: only shown when not a built-in agent and not the primary chat */}
+      {!isBuiltinAgentFlag && !isPrimaryChat && (
         <button
           className="dropdown-menu-item"
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
+            /* v8 ignore next -- chatId is always set when menu is open */
             if (chatId) {
-              onArchiveAgent(chatId);
+              handleArchiveAgentClick(chatId);
             }
-            onClose();
           }}
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Archive size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Archive Agent</span>
+          <span className="dropdown-menu-item-text">{t('common.archive')}</span>
         </button>
       )}
-      {/* Delete Agent menu item: only shown when not a built-in agent and not the Primary Agent */}
-      {!isBuiltinAgentFlag && !isPrimaryAgent && (
+      {/* Delete menu item: only shown when not a built-in agent and not the primary chat */}
+      {!isBuiltinAgentFlag && !isPrimaryChat && (
         <button
           className="dropdown-menu-item danger"
           onClick={(e) => {
@@ -340,7 +331,7 @@ const AgentDropdownMenu: React.FC<InnerProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Trash2 size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Delete Agent</span>
+          <span className="dropdown-menu-item-text">{t('common.delete')}</span>
         </button>
       )}
     </div>

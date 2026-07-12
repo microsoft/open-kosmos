@@ -84,9 +84,12 @@ vi.mock('../../token/TokenCounter', async () => ({
 }));
 
 vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set(['sub_agent', 'computer_use', 'send_to_subagent']),
   mcpClientManager: {
     getToolsForSubAgent: vi.fn().mockReturnValue([]),
     executeTool: vi.fn().mockResolvedValue('tool result'),
+    isBuiltinTool: vi.fn(() => true),
   },
 }));
 
@@ -148,7 +151,7 @@ function createMockSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubA
     name: 'test-sub-agent',
     description: 'A specialized test sub-agent',
     system_prompt: 'You are a specialized testing agent. Follow testing best practices.',
-    mcpServers: [],
+    mcp_servers: [],
     ...overrides,
   };
 }
@@ -307,10 +310,7 @@ describe('SubAgentChat', () => {
     it('should return empty string when no workspace or skills configured', () => {
       const options = createMockOptions();
       const chat = new SubAgentChat(options);
-      const config = createMockSubAgentConfig({
-        skills: undefined,
-      });
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
       expect(result).toBe('');
     });
@@ -318,47 +318,50 @@ describe('SubAgentChat', () => {
     it('should include workspace info when configured', () => {
       const options = createMockOptions();
       const chat = new SubAgentChat(options);
-      const config = createMockSubAgentConfig({
-        skills: undefined,
-      });
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
       // workspace field removed; no workspace section expected
       expect(result).not.toContain('## Workspace');
     });
 
-    it('should include skills info when skills are configured and found', () => {
-      const options = createMockOptions();
-      const chat = new SubAgentChat(options);
-      const config = createMockSubAgentConfig({
-        skills: ['valid-skill'],
+    it('should include skills info when resolved skills are configured and found', () => {
+      const options = createMockOptions({
+        subAgent: {
+          ...createMockOptions().subAgent,
+          resolvedSkills: [{ name: 'valid-skill', installed: true, inherited: false }],
+        },
       });
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const chat = new SubAgentChat(options);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
       expect(result).toContain('## Available Skills');
       expect(result).toContain('valid-skill');
       expect(result).toContain('A valid test skill');
     });
 
-    it('should return empty string for skills section when no skills found', () => {
-      const options = createMockOptions();
-      const chat = new SubAgentChat(options);
-      const config = createMockSubAgentConfig({
-        skills: ['nonexistent-skill'],
+    it('should return empty string for skills section when no resolved skills are found', () => {
+      const options = createMockOptions({
+        subAgent: {
+          ...createMockOptions().subAgent,
+          resolvedSkills: [{ name: 'nonexistent-skill', installed: false, inherited: false }],
+        },
       });
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const chat = new SubAgentChat(options);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
       // Should not include skills section since metadata can't be resolved
       expect(result).not.toContain('## Available Skills');
     });
 
-    it('should combine skills info when skills configured', () => {
-      const options = createMockOptions();
-      const chat = new SubAgentChat(options);
-      const config = createMockSubAgentConfig({
-        skills: ['valid-skill'],
+    it('should combine skills info when resolved skills are configured', () => {
+      const options = createMockOptions({
+        subAgent: {
+          ...createMockOptions().subAgent,
+          resolvedSkills: [{ name: 'valid-skill', installed: true, inherited: false }],
+        },
       });
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const chat = new SubAgentChat(options);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
       expect(result).not.toContain('## Workspace');
       expect(result).toContain('## Available Skills');
@@ -601,7 +604,7 @@ describe('SubAgentChat', () => {
     it('should use resolvedSkills when non-empty, including inherited tag', () => {
       const options = createMockOptions({
         subAgent: {
-          config: createMockSubAgentConfig({ skills: ['valid-skill'] }),
+          config: createMockSubAgentConfig(),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',
           parentSessionId: 'chatSession_20260227120000',
@@ -623,25 +626,23 @@ describe('SubAgentChat', () => {
       expect(result).toContain('valid-skill');
     });
 
-    it('should fall back to config.skills when resolvedSkills is empty', () => {
+    it('should not include skills when resolvedSkills is empty', () => {
       const options = createMockOptions({
         subAgent: {
-          config: createMockSubAgentConfig({ skills: ['valid-skill'] }),
+          config: createMockSubAgentConfig(),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',
           parentSessionId: 'chatSession_20260227120000',
           userAlias: 'testUser',
           resolvedMcpServers: [],
-          resolvedSkills: [], // empty → should fall back
+          resolvedSkills: [],
           taskId: 'sa_test_001',
         },
       });
       const chat = new SubAgentChat(options);
-      const config = options.subAgent.config;
-      const result = (chat as any).buildWorkspaceAndSkillsInfo(config);
+      const result = (chat as any).buildWorkspaceAndSkillsInfo(options.subAgent.config);
 
-      expect(result).toContain('## Available Skills');
-      expect(result).toContain('valid-skill');
+      expect(result).not.toContain('## Available Skills');
     });
 
     it('should include Knowledge Base section when resolvedKnowledgeBase is set', () => {
@@ -691,9 +692,7 @@ describe('SubAgentChat', () => {
     it('should combine workspace, resolved skills, and knowledge base', () => {
       const options = createMockOptions({
         subAgent: {
-          config: createMockSubAgentConfig({
-            skills: ['valid-skill'],
-          }),
+          config: createMockSubAgentConfig(),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',
           parentSessionId: 'chatSession_20260227120000',
@@ -1355,7 +1354,7 @@ describe('SubAgentChat', () => {
       const options = createMockOptions({
         subAgent: {
           config: createMockSubAgentConfig({
-            mcpServers: [{ name: 'config-server', tools: ['old'] }],
+            mcp_servers: [{ name: 'config-server', tools: ['old'] }],
           }),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',
@@ -1382,13 +1381,13 @@ describe('SubAgentChat', () => {
       expect(tools).toEqual(['mock-tool']);
     });
 
-    it('should fall back to config.mcpServers when resolvedMcpServers is empty', async () => {
+    it('should fall back to config.mcp_servers when resolvedMcpServers is empty', async () => {
       const { mcpClientManager } = await import('../../mcpRuntime/mcpClientManager');
 
       const options = createMockOptions({
         subAgent: {
           config: createMockSubAgentConfig({
-            mcpServers: [{ name: 'fallback-server', tools: ['t1'] }],
+            mcp_servers: [{ name: 'fallback-server', tools: ['t1'] }],
           }),
           inheritedModel: 'gpt-4o',
           parentChatId: 'chat_001',

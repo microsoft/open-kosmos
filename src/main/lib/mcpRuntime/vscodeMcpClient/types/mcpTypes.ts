@@ -12,6 +12,8 @@ export interface McpServerDefinition {
   args?: string[];
   url?: string;
   env?: Record<string, string>;
+  /** HTTP headers for http/sse transports (e.g. `x-apikey`, `Authorization`). */
+  headers?: Record<string, string>;
   workingDirectory?: string;
   disabled?: boolean;
   trusted?: boolean;

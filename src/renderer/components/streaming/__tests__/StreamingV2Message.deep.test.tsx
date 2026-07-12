@@ -25,6 +25,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../styles/StreamingV2Message.css', () => ({}));
 vi.mock('../../../styles/markdown-render.css', () => ({}));
+vi.mock('../../../lib/userData/useEmbeddedBrowserEnabled', () => ({
+  useEmbeddedBrowserEnabled: () => false,
+}));
 
 vi.mock('react-syntax-highlighter', () => ({
   Prism: ({ children, language }: any) => (

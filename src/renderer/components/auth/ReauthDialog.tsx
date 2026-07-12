@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
-import { Button } from '../ui/button';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 export interface ReauthDialogProps {
   isOpen: boolean;
@@ -23,6 +23,8 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
   userMessage,
   onGitHubCopilotLogin
 }) => {
+  const { t } = useI18n();
+
   // Prevent Dialog from closing - cannot be dismissed
   const handleOpenChange = (open: boolean) => {
     // Force keep open, do not allow user to close
@@ -38,13 +40,13 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
   const getReasonText = () => {
     switch (reason) {
       case 'missing_access_token':
-        return 'Access token missing';
+        return t('auth.reasonMissingAccessToken');
       case 'missing_refresh_token':
-        return 'Refresh token missing';
+        return t('auth.reasonMissingRefreshToken');
       case 'token_refresh_failed_should_clear_session':
-        return 'Token refresh failed, session has expired';
+        return t('auth.reasonTokenRefreshFailed');
       default:
-        return 'Authentication expired';
+        return t('auth.reasonExpired');
     }
   };
 
@@ -54,51 +56,51 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
       onOpenChange={handleOpenChange}
     >
       <DialogContent className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-sm w-screen h-screen max-w-none">
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 p-8 border border-gray-200">
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 p-8 border border-neutral-200">
           <DialogHeader className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 bg-danger-100 rounded-full flex items-center justify-center">
                 <span className="text-3xl">🔐</span>
               </div>
             </div>
-            <DialogTitle className="text-xl font-semibold text-gray-900">
-              Re-authentication Required
+            <DialogTitle className="text-xl font-semibold text-neutral-900">
+              {t('auth.reauthRequired')}
             </DialogTitle>
-            <DialogDescription className="text-gray-600 mt-2">
+            <DialogDescription className="text-neutral-600 mt-2">
               {getReasonText()}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
             {/* Auth expired info */}
-            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+            <div className="bg-danger-50 p-4 rounded-lg border border-danger-200">
               <div className="flex items-start">
                 <div className="shrink-0 mr-3">
-                  <span className="text-red-600 text-xl">⚠️</span>
+                  <span className="text-danger-600 text-xl">⚠️</span>
                 </div>
                 <div className="flex-1">
-                  <h4 className="text-sm font-medium text-red-800 mb-1">
-                    Authentication session has expired
+                  <h4 className="text-sm font-medium text-danger-800 mb-1">
+                    {t('auth.sessionExpiredTitle')}
                   </h4>
-                  <p className="text-sm text-red-700">
-                    {userMessage || 'Your authentication token has expired or is invalid. Please sign in again to continue using the app.'}
+                  <p className="text-sm text-danger-700">
+                    {userMessage || t('auth.sessionExpiredDescription')}
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Explanatory info */}
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <div className="bg-primary-50 p-4 rounded-lg border border-primary-200">
               <div className="flex items-start">
                 <div className="shrink-0 mr-3">
-                  <span className="text-blue-600 text-xl">ℹ️</span>
+                  <span className="text-primary-600 text-xl">ℹ️</span>
                 </div>
                 <div className="flex-1">
-                  <h4 className="text-sm font-medium text-blue-800 mb-1">
-                    Why re-authentication is required
+                  <h4 className="text-sm font-medium text-primary-800 mb-1">
+                    {t('auth.whyReauthRequired')}
                   </h4>
-                  <p className="text-sm text-blue-700">
-                    To protect your account security, authentication tokens expire periodically. Please sign in again via GitHub Copilot to continue using all features.
+                  <p className="text-sm text-primary-700">
+                    {t('auth.whyReauthDescription')}
                   </p>
                 </div>
               </div>
@@ -106,10 +108,9 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
 
             {/* Sign-in button */}
             <div className="space-y-4">
-              <Button
+              <button
                 onClick={handleGitHubLogin}
-                className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 px-4 rounded-md transition-colors font-medium"
-                size="lg"
+                className="btn-primary w-full"
               >
                 <div className="flex items-center justify-center gap-3">
                   <svg
@@ -124,24 +125,24 @@ export const ReauthDialog: React.FC<ReauthDialogProps> = ({
                       clipRule="evenodd"
                     />
                   </svg>
-                  <span>Sign in via GitHub Copilot</span>
+                  <span>{t('auth.signInViaGitHubCopilot')}</span>
                 </div>
-              </Button>
+              </button>
 
               {/* Hint text */}
               <div className="text-center">
-                <p className="text-xs text-gray-500">
-                  Clicking the button above will open the GitHub Copilot authentication flow
+                <p className="text-xs text-neutral-500">
+                  {t('auth.reauthButtonHint')}
                 </p>
               </div>
             </div>
           </div>
 
           {/* Footer hint */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="bg-yellow-50 p-3 rounded-lg">
-              <p className="text-xs text-yellow-700 text-center">
-                💡 This dialog cannot be closed. Re-authentication must be completed before continuing to use the app.
+          <div className="mt-8 pt-6 border-t border-neutral-200">
+            <div className="bg-warning-50 p-3 rounded-lg">
+              <p className="text-xs text-warning-700 text-center">
+                💡 {t('auth.reauthCannotClose')}
               </p>
             </div>
           </div>

@@ -8,6 +8,7 @@
 
 import { BuiltinToolDefinition } from './types';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatAgents } from '../../userDataADO/agentAccessor';
 
 /**
  * Tool execution result interface
@@ -76,10 +77,13 @@ export class ListAgentsTool {
 
       if (profile.chats && Array.isArray(profile.chats)) {
         for (const chat of profile.chats) {
-          if (chat.agent && chat.agent.name) {
+          for (const agent of getChatAgents(chat)) {
+            if (!agent?.name) {
+              continue;
+            }
             // Avoid adding duplicate agent names
-            if (!agentNames.includes(chat.agent.name)) {
-              agentNames.push(chat.agent.name);
+            if (!agentNames.includes(agent.name)) {
+              agentNames.push(agent.name);
             }
           }
         }

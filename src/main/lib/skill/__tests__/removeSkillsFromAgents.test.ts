@@ -1,10 +1,22 @@
 import { removeSkillsFromAgents } from '../removeSkillsFromAgents';
 import { profileCacheManager } from '../../userDataADO';
+import { chatSkillSnapshotStore } from '../../userDataADO/chatSkillSnapshotStore';
 
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
     getCachedProfile: vi.fn(),
     updateChatConfig: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/chatSkillSnapshotStore', () => ({
+  chatSkillSnapshotStore: {
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    clearForAlias: vi.fn(),
+    clearAll: vi.fn(),
+    invalidateAffectedChats: vi.fn(),
   },
 }));
 
@@ -19,7 +31,6 @@ describe('removeSkillsFromAgents', () => {
         {
           chat_id: 'chat-1',
           chat_type: 'single_agent',
-          skill_snapshot: { prompt: 'old' },
           agent: { name: 'Deck Builder', skills: ['pptx', 'figma'], role: '', emoji: 'A', model: '', mcp_servers: [], system_prompt: '' },
         },
         {
@@ -53,7 +64,6 @@ describe('removeSkillsFromAgents', () => {
       'chat-1',
       expect.objectContaining({
         agent: expect.objectContaining({ skills: ['figma'] }),
-        skill_snapshot: undefined,
       }),
     );
     expect(profileCacheManager.updateChatConfig).toHaveBeenNthCalledWith(
@@ -65,9 +75,11 @@ describe('removeSkillsFromAgents', () => {
           expect.objectContaining({ name: 'Designer', skills: [] }),
           expect.objectContaining({ name: 'Reviewer', skills: [] }),
         ]),
-        skill_snapshot: undefined,
       }),
     );
+    expect(chatSkillSnapshotStore.clear).toHaveBeenCalledTimes(2);
+    expect(chatSkillSnapshotStore.clear).toHaveBeenNthCalledWith(1, 'tester', 'chat-1');
+    expect(chatSkillSnapshotStore.clear).toHaveBeenNthCalledWith(2, 'tester', 'chat-2');
   });
 
   it('reports unchanged targets when none of the requested skills are applied', async () => {
@@ -120,8 +132,8 @@ describe('removeSkillsFromAgents', () => {
       'chat-1',
       expect.objectContaining({
         agent: expect.objectContaining({ skills: [] }),
-        skill_snapshot: undefined,
       }),
     );
+    expect(chatSkillSnapshotStore.clear).toHaveBeenCalledWith('tester', 'chat-1');
   });
 });

@@ -3,7 +3,6 @@ export interface ExecuteCommandToolArgs {
   command: string;
   cwd: string;
   args?: string[];
-  timeoutSeconds?: number;
   shell?: 'powershell' | 'cmd' | 'bash' | 'sh' | 'zsh';
   background?: boolean;
 }
@@ -15,7 +14,7 @@ export interface ExecuteCommandBackgroundResult {
 }
 
 export interface ExecuteCommandInteractiveAuthHint {
-  commandFamily: 'gh-auth-login' | 'gh-auth-refresh' | 'az-login' | 'npm-login' | 'npm-adduser' | 'pnpm-login' | 'yarn-npm-login';
+  commandFamily: 'gh-auth-login' | 'gh-auth-refresh' | 'npm-login' | 'npm-adduser' | 'pnpm-login' | 'yarn-npm-login';
   verificationUri?: string;
   deviceCode?: string;
   timeoutMs: number;

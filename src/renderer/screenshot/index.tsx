@@ -1,6 +1,8 @@
 import { screenshotApi } from '../ipc/screenshot-overlay';
+import { useI18n } from '../lib/i18n/useI18n';
 import { displayId, initData } from './constant';
 import { Screenshot } from './core';
+import { setScreenshotStringLanguage } from './core/common/localString';
 import { Rect } from './core/type';
 
 
@@ -35,6 +37,9 @@ const source = initData.then(data => ({
 }));
 
 export function App() {
+  const { language } = useI18n();
+  setScreenshotStringLanguage(language);
+
   return (
     <Screenshot source={source} hooks={hooks} />
   );

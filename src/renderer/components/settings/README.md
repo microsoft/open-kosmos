@@ -77,12 +77,12 @@ All files live in `src/renderer/components/settings/`, named as follows:
 | `XxxSettingsHeaderView.tsx` | Header layer |
 | `XxxSettingsContentView.tsx` | Content layer |
 
-Example (Toolbar):
+Example (Screenshot):
 
 ```
-ToolbarSettingsView.tsx
-ToolbarSettingsHeaderView.tsx
-ToolbarSettingsContentView.tsx
+ScreenshotSettingsView.tsx
+ScreenshotSettingsHeaderView.tsx
+ScreenshotSettingsContentView.tsx
 ```
 
 > **Convention**: New pages must use `XxxSettingsView.tsx` naming. `XxxView.tsx` is a legacy exception.
@@ -604,13 +604,13 @@ Pages that are fully shipped to all users do not need a feature flag.
 | About | `/settings/about` | — |
 | Screenshot | `/settings/screenshot` | `openkosmosFeatureScreenshot` |
 | Runtime | `/settings/runtime` | — |
-| Chrome Extension | `/settings/chrome-extension` | `browserControl` |
+| Voice Input | `/settings/voice-input` | `openkosmosFeatureVoiceInput` |
 
 ---
 
 ## App-Level Config (app.json)
 
-For settings that are **shared across all profiles** (e.g., runtime environment, updater version), use the app-level config pipeline instead of profile-level state.
+For settings that are **shared across all profiles** (for example, runtime environment), use the app-level config pipeline instead of profile-level state.
 
 See the full guide: [`src/main/lib/userDataADO/README.md — App-Level Config Development Guide`](../../../main/lib/userDataADO/README.md#app-level-config-development-guide)
 
@@ -636,7 +636,7 @@ useEffect(() => {
 
 ## Profile-Level Config (profile.json)
 
-For settings that are **per-user** (e.g., MCP servers, agent configuration, toolbar settings), use the profile-level config pipeline. Each user's data is stored in `{userData}/profiles/{alias}/profile.json` and is fully isolated from other profiles.
+For settings that are **per-user** (e.g., MCP servers, agent configuration), use the profile-level config pipeline. Each user's data is stored in `{userData}/profiles/{alias}/profile.json` and is fully isolated from other profiles.
 
 See the full guide: [`src/main/lib/userDataADO/README.md — Profile-Level Config Development Guide`](../../../main/lib/userDataADO/README.md#profile-level-config-development-guide)
 

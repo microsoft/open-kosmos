@@ -101,7 +101,6 @@ vi.mock('../../subAgent/../chat/systemReminderUtils', () => ({
 import { SubAgentChat, truncateToLines } from '../../subAgent/subAgentChat';
 import type { SubAgentChatOptions } from '../../subAgent/types';
 import type { SubAgent } from '../../subAgent/types';
-import type { SubAgentConfig } from '../../subAgent/../userDataADO/types/profile';
 import type { CancellationToken } from '../../subAgent/../cancellation/CancellationToken';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -113,22 +112,19 @@ function makeCancellationToken(cancelled = false): CancellationToken {
   };
 }
 
-function makeSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
+function makeSubAgentProfileConfig(overrides: Partial<SubAgent['config']> = {}): SubAgent['config'] {
   return {
     name: 'test-agent',
-    display_name: 'Test Agent',
     description: 'desc',
-    emoji: '🤖',
-    version: '1.0',
     system_prompt: 'You are helpful.',
     mcp_servers: [],
     ...overrides,
-  } as SubAgentConfig;
+  } as SubAgent['config'];
 }
 
 function makeSubAgent(overrides: Partial<SubAgent> = {}): SubAgent {
   return {
-    config: makeSubAgentConfig(),
+    config: makeSubAgentProfileConfig(),
     inheritedModel: 'gpt-4o',
     parentChatId: 'parent-chat',
     parentSessionId: 'parent-session',
@@ -805,17 +801,6 @@ describe('SubAgentChat - buildSystemPrompt (private)', () => {
     expect(text).toContain('/workspace/deliverables');
   });
 
-  it('does not use workspace as deliverables path (no longer a fallback)', () => {
-    const options = makeOptions({
-      subAgent: makeSubAgent({ config: makeSubAgentConfig({ workspace: '/my/workspace' }) }),
-    });
-    const chat = new SubAgentChat(options);
-    const messages = (chat as any).buildSystemPrompt();
-    const text = messages[0].content[0].text;
-    // workspace is no longer used as deliverables path fallback
-    expect(text).not.toContain('Deliverables Directory');
-  });
-
   it('includes knowledge base when resolvedKnowledgeBase is set', () => {
     const options = makeOptions({
       subAgent: makeSubAgent({ resolvedKnowledgeBase: '/kb/path' }),
@@ -986,13 +971,6 @@ describe('SubAgentChat - getDeliverablesPath (private)', () => {
   it('returns deliverablesPath from options when provided', () => {
     const chat = new SubAgentChat(makeOptions({ deliverablesPath: '/custom/path' }));
     expect((chat as any).getDeliverablesPath()).toBe('/custom/path');
-  });
-
-  it('returns null when workspace is set but no deliverablesPath (workspace no longer used as fallback)', () => {
-    const chat = new SubAgentChat(makeOptions({
-      subAgent: makeSubAgent({ config: makeSubAgentConfig({ workspace: '/workspace/path' }) }),
-    }));
-    expect((chat as any).getDeliverablesPath()).toBeNull();
   });
 
   it('returns null when no path configured', () => {

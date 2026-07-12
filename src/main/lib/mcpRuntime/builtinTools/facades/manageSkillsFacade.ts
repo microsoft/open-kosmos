@@ -27,7 +27,7 @@ export class ManageSkillsFacade {
       name: 'manage_skills',
       description:
         'Install, uninstall, bind, or unbind skills. ' +
-        '"install" downloads a skill to the device from library/device/clawhub/github. ' +
+        '"install" imports a local skill artifact or folder. ' +
         '"uninstall" removes a skill from the device. ' +
         '"bind" attaches an installed skill to one or more agents. ' +
         '"unbind" detaches a skill from agents without uninstalling it. ' +
@@ -48,13 +48,13 @@ export class ManageSkillsFacade {
           },
           source: {
             type: 'string',
-            enum: ['library', 'device', 'clawhub', 'github'],
-            description: 'Install source (only for action=install, default=library)',
+            enum: ['device'],
+            description: 'Install source (only local device paths are supported)',
           },
           path: {
             type: 'string',
             description:
-              'Local absolute path to skill artifact (required when source=device/clawhub/github)',
+              'Local absolute path to a skill artifact or folder (required for install)',
           },
           agent_names: {
             type: 'array',
@@ -107,12 +107,9 @@ export class ManageSkillsFacade {
     skillNames: string[],
     args: ManageSkillsInput,
   ): Promise<FacadeResult> {
-    const source = args.source || 'library';
-    const needsPath = source === 'device' || source === 'clawhub' || source === 'github';
-
-    if (needsPath && (!args.path || !args.path.trim())) {
+    if (!args.path || !args.path.trim()) {
       return errorResult(
-        `"path" is required when source=${source}.`,
+        '"path" is required when installing a skill.',
         'Provide the local absolute path to the skill artifact.',
       );
     }
@@ -121,14 +118,9 @@ export class ManageSkillsFacade {
 
     for (const skillName of skillNames) {
       try {
-        const installSource =
-          source === 'library'
-            ? { type: 'library-name' as const, value: skillName }
-            : { type: 'device-path' as const, value: args.path!.trim() };
-
         const result = await installAndActivateSkill({
           userAlias: ManageSkillsFacade.getCurrentUserAlias(),
-          source: installSource,
+          source: { type: 'device-path', value: args.path.trim() },
           requestSource: 'chat-tool',
           activation: { mode: 'install-only' },
         });

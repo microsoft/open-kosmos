@@ -85,14 +85,6 @@ vi.mock('../../../lib/chat/agentChatManager', () => ({
   agentChatManager: mockAgentChatManager,
 }));
 
-// ─── analyticsManager mock ────────────────────────────────────────────────────
-
-vi.mock('../../../lib/analytics', () => ({
-  analyticsManager: {
-    recordChatMessageSent: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
 // ─── importChatSessionFromFile mock ───────────────────────────────────────────
 
 vi.mock('../../../lib/userDataADO/index', () => ({
@@ -166,6 +158,12 @@ describe('agent-chat IPC handlers', () => {
       const result = await handlers.get('agentChat:initialize')!(fakeEvent, 'user1');
       expect(result.success).toBe(false);
       expect(result.error).toBe('init error');
+    });
+
+    it('normalizes non-Error failures', async () => {
+      mockAgentChatManager.initialize.mockRejectedValue('init failed');
+      const result = await handlers.get('agentChat:initialize')!(fakeEvent, 'user1');
+      expect(result).toEqual({ success: false, error: 'Unknown error' });
     });
   });
 

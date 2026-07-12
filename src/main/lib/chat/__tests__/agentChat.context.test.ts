@@ -159,45 +159,10 @@ function createContextService() {
     setContextTokenUsage: vi.fn(),
   });
 
-  service.enhanceUserMessageContext = vi.fn(async (message: Message) =>
-    MessageHelper.setTextContent(message, 'enhanced user content')
-  );
   service.calculateAndNotifyContext = vi.fn().mockResolvedValue(undefined);
 
   return { service, currentChatSession };
 }
-
-describe('AgentChatContextService.addMessageToContext', () => {
-  it('enhances user messages before appending them to context history', async () => {
-    const { service, currentChatSession } = createContextService();
-
-    await service.addMessageToContext(createTextMessage('original user content', 'user', 'user_1'));
-
-    expect(service.enhanceUserMessageContext).toHaveBeenCalledTimes(1);
-    expect(currentChatSession.context_history).toEqual([
-      expect.objectContaining({
-        id: 'user_1',
-        content: [{ type: 'text', text: 'enhanced user content' }],
-      }),
-    ]);
-    expect(service.calculateAndNotifyContext).toHaveBeenCalledTimes(1);
-  });
-
-  it('appends assistant messages to context history without enhancement', async () => {
-    const { service, currentChatSession } = createContextService();
-
-    await service.addMessageToContext(createTextMessage('assistant content', 'assistant', 'assistant_1'));
-
-    expect(service.enhanceUserMessageContext).not.toHaveBeenCalled();
-    expect(currentChatSession.context_history).toEqual([
-      expect.objectContaining({
-        id: 'assistant_1',
-        content: [{ type: 'text', text: 'assistant content' }],
-      }),
-    ]);
-    expect(service.calculateAndNotifyContext).toHaveBeenCalledTimes(1);
-  });
-});
 
 describe('AgentChatContextService compression and token gating', () => {
   beforeEach(() => {

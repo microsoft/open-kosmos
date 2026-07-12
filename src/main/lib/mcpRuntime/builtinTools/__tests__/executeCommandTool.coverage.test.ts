@@ -14,8 +14,14 @@ const {
   mockStopInstance,
   mockSpawn,
   mockInstanceOn,
+  mockGetRunTimeConfig,
+  mockWaitForShimsReady,
+  mockEnsurePythonPipAvailable,
 } = vi.hoisted(() => {
   const mockGetExecutionContext = vi.fn().mockReturnValue(null);
+  const mockGetRunTimeConfig = vi.fn().mockReturnValue({ mode: 'system' });
+  const mockWaitForShimsReady = vi.fn().mockResolvedValue(undefined);
+  const mockEnsurePythonPipAvailable = vi.fn().mockResolvedValue(true);
   const mockInstanceOn = vi.fn();
   const mockStartInstance = vi.fn().mockResolvedValue(undefined);
   const mockExecuteInstance = vi.fn().mockResolvedValue({
@@ -42,13 +48,18 @@ const {
     mockStopInstance,
     mockInstanceOn,
     mockSpawn,
+    mockGetRunTimeConfig,
+    mockWaitForShimsReady,
+    mockEnsurePythonPipAvailable,
   };
 });
 
 vi.mock('../../../runtime/RuntimeManager', () => ({
   RuntimeManager: {
     getInstance: vi.fn().mockReturnValue({
-      getRunTimeConfig: vi.fn().mockReturnValue({ mode: 'system' }),
+      getRunTimeConfig: mockGetRunTimeConfig,
+      waitForShimsReady: mockWaitForShimsReady,
+      ensurePythonPipAvailable: mockEnsurePythonPipAvailable,
       getBinPath: vi.fn().mockReturnValue('/mock/bin'),
       resolveCommand: vi.fn((cmd: string) => cmd),
     }),
@@ -103,6 +114,11 @@ const VALID_ARGS_BASE = {
   command: 'echo hello',
   cwd: '/tmp',
 };
+const originalPlatform = process.platform;
+
+function setPlatform(platform: NodeJS.Platform) {
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+}
 
 // ── dangerous patterns ────────────────────────────────────────────────────────
 describe('ExecuteCommandTool — dangerous pattern blocking', () => {
@@ -124,11 +140,11 @@ describe('ExecuteCommandTool — dangerous pattern blocking', () => {
     ).rejects.toThrow(/blocked by safety policy/);
   });
 
-  it('blocks microsoftonline logout endpoint', async () => {
+  it('blocks an identity-provider logout endpoint', async () => {
     await expect(
       ExecuteCommandTool.execute({
         ...VALID_ARGS_BASE,
-        command: 'curl https://login.microsoftonline.com/tenant/logout',
+        command: 'curl https://id.example.com/tenant/logout',
       })
     ).rejects.toThrow(/blocked by safety policy/);
   });
@@ -163,7 +179,18 @@ describe('ExecuteCommandTool — background mode', () => {
 describe('ExecuteCommandTool — terminal execution', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setPlatform(originalPlatform);
     mockGetExecutionContext.mockReturnValue(null);
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'system' });
+    mockWaitForShimsReady.mockResolvedValue(undefined);
+    mockEnsurePythonPipAvailable.mockResolvedValue(true);
+    mockInstanceOn.mockImplementation(() => undefined);
+    mockCreateInstance.mockImplementation(() => ({
+      id: 'instance-1',
+      on: mockInstanceOn,
+      start: mockStartInstance,
+      execute: mockExecuteInstance,
+    }));
     mockExecuteInstance.mockResolvedValue({
       stdout: 'hello world',
       stderr: '',
@@ -203,30 +230,172 @@ describe('ExecuteCommandTool — terminal execution', () => {
     const result = await ExecuteCommandTool.execute({ ...VALID_ARGS_BASE, cwd: '/home/user' }) as any;
     expect(result.cwd).toBe('/home/user');
   });
-});
 
-// ── normalizeTimeout ──────────────────────────────────────────────────────────
-describe('ExecuteCommandTool — normalizeTimeout', () => {
-  const normalize = (s: any, cmd: string) => (ExecuteCommandTool as any).normalizeTimeout(s, cmd);
+  it('waits for app-managed shims before foreground Python commands in internal mode', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
 
-  it('clamps 0 to 1 second', () => {
-    expect(normalize(0, 'ls')).toBeGreaterThan(0);
+    await ExecuteCommandTool.execute({ ...VALID_ARGS_BASE, command: 'python3 --version' });
+
+    expect(mockWaitForShimsReady).toHaveBeenCalledTimes(1);
   });
 
-  it('clamps 9999 to 900 seconds (900000ms)', () => {
-    expect(normalize(9999, 'ls')).toBe(900_000);
+  it('does not wait for app-managed shims before ordinary commands', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
+
+    await ExecuteCommandTool.execute({ ...VALID_ARGS_BASE, command: 'echo hello' });
+
+    expect(mockWaitForShimsReady).not.toHaveBeenCalled();
   });
 
-  it('uses INTERACTIVE_AUTH_TIMEOUT for gh auth login even with explicit lower value', () => {
-    expect(normalize(30, 'gh auth login')).toBe(900_000);
+  it('repairs missing app-managed pip and retries the original command once', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
+    mockExecuteInstance
+      .mockResolvedValueOnce({
+        stdout: '',
+        stderr: '/tmp/python-venv/bin/python3: No module named pip',
+        exitCode: 1,
+        timedOut: false,
+        durationMs: 20,
+        truncated: false,
+      })
+      .mockResolvedValueOnce({
+        stdout: 'installed',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 40,
+        truncated: false,
+      });
+
+    const result = await ExecuteCommandTool.execute({
+      ...VALID_ARGS_BASE,
+      command: 'python3 -m pip install numpy',
+    }) as any;
+
+    expect(mockEnsurePythonPipAvailable).toHaveBeenCalledTimes(1);
+    expect(mockCreateInstance).toHaveBeenCalledTimes(2);
+    expect(mockExecuteInstance).toHaveBeenCalledTimes(2);
+    expect(result.stdout).toBe('installed');
+    expect(result.exitCode).toBe(0);
   });
 
-  it('throws on Infinity', () => {
-    expect(() => normalize(Infinity, 'ls')).toThrow('finite');
+  it('does not retry missing pip more than once when repair fails', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
+    mockEnsurePythonPipAvailable.mockResolvedValueOnce(false);
+    mockExecuteInstance.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'No module named pip',
+      exitCode: 1,
+      timedOut: false,
+      durationMs: 20,
+      truncated: false,
+    });
+
+    const result = await ExecuteCommandTool.execute({
+      ...VALID_ARGS_BASE,
+      command: 'python3 -m pip install numpy',
+    }) as any;
+
+    expect(mockEnsurePythonPipAvailable).toHaveBeenCalledTimes(1);
+    expect(mockExecuteInstance).toHaveBeenCalledTimes(1);
+    expect(result.stderr).toBe('No module named pip');
+    expect(result.exitCode).toBe(1);
   });
 
-  it('throws on NaN', () => {
-    expect(() => normalize(NaN, 'ls')).toThrow('finite');
+  it('does not repair missing pip when the first run was cancelled', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
+    const controller = new AbortController();
+    controller.abort();
+    mockExecuteInstance.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'No module named pip',
+      exitCode: 1,
+      timedOut: false,
+      durationMs: 20,
+      truncated: false,
+    });
+
+    const result = await ExecuteCommandTool.execute(
+      {
+        ...VALID_ARGS_BASE,
+        command: 'python3 -m pip install numpy',
+      },
+      { signal: controller.signal, executionContext: null },
+    ) as any;
+
+    expect(mockEnsurePythonPipAvailable).not.toHaveBeenCalled();
+    expect(mockExecuteInstance).toHaveBeenCalledTimes(1);
+    expect(result.stderr).toBe('No module named pip');
+  });
+
+  it('does not repair missing pip for system-runtime commands', async () => {
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'system' });
+    mockExecuteInstance.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'No module named pip',
+      exitCode: 1,
+      timedOut: false,
+      durationMs: 20,
+      truncated: false,
+    });
+
+    const result = await ExecuteCommandTool.execute({
+      ...VALID_ARGS_BASE,
+      command: 'python3 -m pip install numpy',
+    }) as any;
+
+    expect(mockEnsurePythonPipAvailable).not.toHaveBeenCalled();
+    expect(mockExecuteInstance).toHaveBeenCalledTimes(1);
+    expect(result.stderr).toBe('No module named pip');
+  });
+
+  it('emits partial output for empty, truncated, and newline-terminated chunks', async () => {
+    const handlers = new Map<string, (chunk: string) => void>();
+    const eventSender = { send: vi.fn() };
+    mockGetExecutionContext.mockReturnValue({
+      eventSender,
+      currentToolCallId: 'tool-call-1',
+      chatId: 'chat-1',
+      chatSessionId: 'session-1',
+      reportActivity: vi.fn(),
+      registerCancellationHandler: vi.fn(() => ({ dispose: vi.fn() })),
+      cancellationToken: { isCancellationRequested: false },
+    });
+    mockInstanceOn.mockImplementation((event: string, cb: (chunk: string) => void) => {
+      handlers.set(event, cb);
+    });
+    mockExecuteInstance.mockImplementation(async () => {
+      handlers.get('stdout')?.('');
+      handlers.get('stdout')?.('x'.repeat(9001));
+      handlers.get('stderr')?.('warning\n');
+      handlers.get('stderr')?.('next warning');
+      return {
+        stdout: 'done',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 50,
+        truncated: true,
+      };
+    });
+
+    const result = await ExecuteCommandTool.execute(VALID_ARGS_BASE) as any;
+
+    expect(result.truncated).toBe(true);
+    expect(eventSender.send).toHaveBeenCalledWith(
+      'agentChat:streamingChunk',
+      expect.objectContaining({
+        type: 'tool_result',
+      }),
+    );
+  });
+
+  it('uses the non-Error fallback when terminal setup throws a non-Error value', async () => {
+    mockCreateInstance.mockRejectedValueOnce('terminal-crashed');
+
+    await expect(ExecuteCommandTool.execute(VALID_ARGS_BASE)).rejects.toThrow(
+      'command execution failed: Unknown error',
+    );
   });
 });
 
@@ -242,6 +411,44 @@ describe('ExecuteCommandTool — getDefinition', () => {
     expect(required).toContain('description');
     expect(required).toContain('command');
     expect(required).toContain('cwd');
+  });
+
+  it('describes the Windows default shell on win32', () => {
+    setPlatform('win32');
+
+    expect(ExecuteCommandTool.getDefinition().description).toContain('Default shell: powershell');
+
+    setPlatform(originalPlatform);
+  });
+});
+
+describe('ExecuteCommandTool — app-managed Python command helpers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetRunTimeConfig.mockReturnValue({ mode: 'internal' });
+    mockEnsurePythonPipAvailable.mockResolvedValue(true);
+  });
+
+  it('recognizes Python, pip, and uv pip commands', () => {
+    const isPythonOrPip = (cmd: string) => (ExecuteCommandTool as any).isPythonOrPipCommand(cmd);
+
+    expect(isPythonOrPip('python -m pip install numpy')).toBe(true);
+    expect(isPythonOrPip('pip install numpy')).toBe(true);
+    expect(isPythonOrPip('pip3 install numpy')).toBe(true);
+    expect(isPythonOrPip('uv pip install numpy')).toBe(true);
+    expect(isPythonOrPip('')).toBe(false);
+  });
+
+  it('does not attempt pip repair for non-Python commands', async () => {
+    await expect((ExecuteCommandTool as any).repairMissingPipForCommand('echo hello')).resolves.toBe(false);
+
+    expect(mockEnsurePythonPipAvailable).not.toHaveBeenCalled();
+  });
+
+  it('logs and returns false when pip repair throws a non-Error value', async () => {
+    mockEnsurePythonPipAvailable.mockRejectedValueOnce('repair-crashed');
+
+    await expect((ExecuteCommandTool as any).repairMissingPipForCommand('python3 -m pip install numpy')).resolves.toBe(false);
   });
 });
 
@@ -259,11 +466,6 @@ describe('ExecuteCommandTool — buildInteractiveAuthHint', () => {
     expect(hint).toBeDefined();
     expect(hint.commandFamily).toBe('gh-auth-login');
     expect(hint.verificationUri).toContain('https://');
-  });
-
-  it('extracts device code with label', () => {
-    const hint = build('az login', 'device code ABCD-1234 enter it', '');
-    expect(hint?.deviceCode).toBe('ABCD-1234');
   });
 
   it('returns hint for npm adduser', () => {
@@ -310,11 +512,6 @@ describe('ExecuteCommandTool — auth command detection', () => {
   it('detects gh auth refresh', () => {
     expect(isAuth('gh auth refresh')).toBe(true);
     expect(family('gh auth refresh')).toBe('gh-auth-refresh');
-  });
-
-  it('detects az login', () => {
-    expect(isAuth('az login')).toBe(true);
-    expect(family('az login')).toBe('az-login');
   });
 
   it('detects npm login', () => {

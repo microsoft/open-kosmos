@@ -253,7 +253,6 @@ export interface AgentChatRuntimeState {
   getCurrentChatSession(): ChatSessionFile | null;
   setCurrentChatSession(next: ChatSessionFile | null): void;
   getEventSender(): Electron.WebContents | null;
-  isRemoteSession(): boolean;
 }
 ```
 
@@ -414,10 +413,9 @@ Source methods in `agentChat.ts`:
 2. `getLatestCustomSystemPrompt()`
 3. `getGlobalSystemPrompt()`
 4. `getAgentSpecificSystemPrompt()`
-5. `buildSubAgentsSystemPrompt()`
-6. `getCombinedSystemPromptForContext()`
-7. `refreshSkillSnapshotIfNeeded()`
-8. `getCombinedSystemPromptForCurrentTurn()`
+5. `getCombinedSystemPromptForContext()`
+6. `refreshSkillSnapshotIfNeeded()`
+7. `getCombinedSystemPromptForCurrentTurn()`
 
 Service API:
 
@@ -519,8 +517,6 @@ Source methods:
 
 1. `postProcessToolResult()`
 2. `postProcessForRequestInteractiveInputTool()`
-3. `postProcessForGetMcpTemplateFromLibraryTool()`
-4. `postProcessForGetAgentTemplateFromLibraryTool()`
 
 Service API:
 

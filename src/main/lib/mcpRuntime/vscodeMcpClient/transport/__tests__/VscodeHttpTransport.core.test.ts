@@ -4,7 +4,26 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { VscodeHttpTransport } from '../VscodeHttpTransport';
+// ── Mock auth dependencies ────────────────────────────────────────────────────
+const mockResolveMetadata = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockGetTokenForServer = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock('../../../auth/McpAuthMetadataService', () => ({
+  McpAuthMetadataService: {
+    resolve: mockResolveMetadata,
+    updateFromHeaders: vi.fn((existing: unknown) => existing),
+  },
+}));
+
+vi.mock('../../../auth/McpAuthService', () => ({
+  McpAuthService: {
+    getInstance: vi.fn(() => ({
+      getTokenForServer: mockGetTokenForServer,
+    })),
+  },
+}));
+
+import { VscodeHttpTransport, HttpStatusError } from '../VscodeHttpTransport';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -252,6 +271,37 @@ describe('VscodeHttpTransport — SSE fallback on 4xx', () => {
   });
 });
 
+// ── Error: 4xx after auth challenge ──────────────────────────────────────────
+
+describe('VscodeHttpTransport — error after successful auth', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockResolveMetadata.mockReset();
+    mockGetTokenForServer.mockReset();
+  });
+
+  it('throws with helpful message on 404 post-auth when Authorization header present', async () => {
+    mockResolveMetadata.mockResolvedValue({
+      authorizationServerUrl: 'https://auth.example.com',
+      authorizationServerMetadata: { issuer: 'https://auth.example.com' },
+      scopes: ['api://res/.default'],
+      providerLabel: 'Test',
+      telemetry: { resourceMetadataSource: 'header', serverMetadataSource: 'header' },
+    });
+    mockGetTokenForServer.mockResolvedValue('tok-abc');
+
+    vi.spyOn(global, 'fetch')
+      // 1st: initial POST → 401 triggers auth
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer scope="api://res/.default"' } }))
+      // 2nd: retry POST with auth header → 404
+      .mockResolvedValueOnce(new Response('Not found', { status: 404 }));
+
+    const t = makeTransport();
+    await t.start();
+    await expect(t.send('{}')).rejects.toThrow(/404 status from/);
+  });
+});
+
 // ── 4xx that is NOT 401/403 but auth challenge has been seen → real error ─────
 
 describe('VscodeHttpTransport — 4xx after _sawAuthChallenge', () => {
@@ -438,6 +488,59 @@ describe('VscodeHttpTransport — send() wraps thrown errors', () => {
     await expect(t.send('{}')).rejects.toThrow(/network failure/);
     expect(t.state.state).toBe('error');
   });
+
+  it('keeps state running on HTTP 4xx status errors', async () => {
+    // 1st POST → 200 (sets Http mode)
+    // 2nd POST → 400 (application-level error, transport stays healthy)
+    // 3rd: backchannel GET → 404
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Mcp-Session-Id': 's1' },
+        })
+      )
+      .mockResolvedValue(new Response('bad request', { status: 400 }));
+
+    const t = makeTransport();
+    await t.start();
+    await t.send('{"id":1}');
+    await expect(t.send('{"id":2}')).rejects.toThrow(/400 status/);
+    expect(t.state.state).toBe('running');
+  });
+
+  it('keeps state running on HTTP 500 status errors after mode is established', async () => {
+    // 1st POST → 200 (sets Http mode, leaves _sawAuthChallenge=false but mode!=Unknown)
+    // 2nd POST → 500 — once mode is Http, a 5xx is a real semantic failure,
+    //   not a protocol fallback trigger, so it must throw without resetting state.
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Mcp-Session-Id': 's1' },
+        })
+      )
+      .mockResolvedValue(new Response('server error', { status: 500 }));
+
+    const t = makeTransport();
+    await t.start();
+    await t.send('{"id":1}');
+    await expect(t.send('{"id":2}')).rejects.toThrow(/500 status/);
+    expect(t.state.state).toBe('running');
+  });
+});
+
+// ── HttpStatusError class ─────────────────────────────────────────────────────
+
+describe('HttpStatusError', () => {
+  it('carries the httpStatus property', () => {
+    const err = new HttpStatusError(404, '404 status sending message: not found');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(HttpStatusError);
+    expect(err.httpStatus).toBe(404);
+    expect(err.name).toBe('HttpStatusError');
+    expect(err.message).toContain('404 status');
+  });
 });
 
 // ── Config headers are forwarded ──────────────────────────────────────────────
@@ -452,6 +555,165 @@ describe('VscodeHttpTransport — config headers forwarded', () => {
     await t.send('{}');
     const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
     expect(headers?.['X-Custom']).toBe('value123');
+  });
+
+  it('user lowercase content-type does not duplicate with internal Content-Type', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(jsonResponse(JSON.stringify({})));
+    const t = makeTransport('https://example.com/mcp', { 'content-type': 'text/custom' });
+    await t.start();
+    await t.send('{}');
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers?.['Content-Type']).toBe('application/json');
+    expect(headers?.['content-type']).toBeUndefined();
+  });
+
+  it('OAuth Authorization replaces user lowercase authorization', async () => {
+    // Simulate: user provides lowercase 'authorization', server returns 401, OAuth adds 'Authorization'
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 401 })) // trigger auth challenge
+      .mockResolvedValueOnce(jsonResponse(JSON.stringify({}))); // retry succeeds
+
+    mockResolveMetadata.mockResolvedValueOnce({
+      providerLabel: 'Test',
+      authorizationServerUrl: 'https://auth.example.com/tenant',
+      authorizationServerMetadata: { issuer: 'https://auth.example.com/tenant' },
+      scopes: ['resource.read'],
+      telemetry: { resourceMetadataSource: 'test', serverMetadataSource: 'test' },
+    });
+    mockGetTokenForServer.mockResolvedValueOnce('oauth-token-123');
+
+    const t = makeTransport('https://example.com/mcp', { 'authorization': 'Static key' });
+    await t.start();
+    await t.send('{}');
+
+    // The retry call should have only Authorization (uppercase), not both
+    const retryCalls = fetchSpy.mock.calls.filter(c => (c[1] as RequestInit)?.method === 'POST');
+    if (retryCalls.length >= 2) {
+      const retryHeaders = (retryCalls[1][1] as RequestInit).headers as Record<string, string>;
+      expect(retryHeaders?.['Authorization']).toBe('Bearer oauth-token-123');
+      expect(retryHeaders?.['authorization']).toBeUndefined();
+    }
+  });
+});
+
+// ── Backchannel auth injection ───────────────────────────────────────────────
+
+describe('VscodeHttpTransport — backchannel auth retry on 401', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockGetTokenForServer.mockReset();
+    mockResolveMetadata.mockReset().mockResolvedValue(null);
+  });
+
+  it('retries backchannel GET with refreshed token on 401', async () => {
+    // Flow: 1st POST → 200 (sets Http mode, triggers backchannel)
+    //       backchannel GET #1 → 401 (triggers auth refresh)
+    //       backchannel GET #2 → 200 SSE stream (success after refresh)
+    const sseBody = 'event: message\ndata: {"test":true}\n\n';
+    const encoder = new TextEncoder();
+    const makeSSEStream = () => new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(sseBody));
+        controller.close();
+      },
+    });
+
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      // 1st: POST → 200 with session (establishes Http mode)
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'sess1' },
+      }))
+      // 2nd: backchannel GET → 401 (triggers refresh)
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      // 3rd: backchannel GET retry → 200 SSE
+      .mockResolvedValueOnce(new Response(makeSSEStream(), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }));
+
+    // Set up auth metadata so _addAuthHeader and _requestToken work
+    // Call order: (1) POST _addAuthHeader → undefined (no token yet)
+    //             (2) backchannel _addAuthHeader → undefined (no cached token)
+    //             (3) backchannel auth retry _requestToken({forceRefresh}) → 'fresh-token'
+    mockGetTokenForServer
+      .mockResolvedValueOnce(undefined)     // POST _addAuthHeader
+      .mockResolvedValueOnce(undefined)     // backchannel _addAuthHeader
+      .mockResolvedValueOnce('fresh-token'); // backchannel forceRefresh after 401
+
+    const t = makeTransport();
+    // Simulate authMetadata being already resolved (from a prior POST auth flow)
+    (t as any).authMetadata = {
+      providerLabel: 'Test',
+      authorizationServerUrl: 'https://auth.example.com',
+      authorizationServerMetadata: { issuer: 'https://auth.example.com' },
+      scopes: ['api'],
+      telemetry: { resourceMetadataSource: 'test', serverMetadataSource: 'test' },
+    };
+
+    await t.start();
+    await t.send('{"id":1}'); // triggers backchannel
+
+    // Wait for backchannel auth retry to complete (async loop)
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      const gets = fetchSpy.mock.calls.filter(c => (c[1] as RequestInit)?.method === 'GET');
+      if (gets.length >= 2) break;
+    }
+
+    // The retry GET (3rd call) should carry the refreshed token
+    const getCalls = fetchSpy.mock.calls.filter(c => (c[1] as RequestInit)?.method === 'GET');
+    expect(getCalls.length).toBeGreaterThanOrEqual(2);
+    const retryHeaders = (getCalls[1][1] as RequestInit).headers as Record<string, string>;
+    expect(retryHeaders?.['Authorization']).toBe('Bearer fresh-token');
+    expect(mockGetTokenForServer).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), expect.objectContaining({ forceRefresh: true })
+    );
+
+    await t.stop();
+    void fetchSpy;
+  });
+});
+
+// ── Sign-in misfire negative test ────────────────────────────────────────────
+
+describe('VscodeHttpTransport — sign-in message gating', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockGetTokenForServer.mockReset();
+    mockResolveMetadata.mockReset().mockResolvedValue(null);
+  });
+
+  it('does not show feature-gate message when token refresh fails', async () => {
+    // Flow: POST → 401 (auth challenge) → token mint succeeds → retry → 403
+    //       → force refresh fails (returns undefined) → should NOT throw "after successful sign-in"
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 401 }))  // initial 401
+      .mockResolvedValueOnce(new Response('forbidden', { status: 403 }))  // retry with token → 403
+      .mockResolvedValueOnce(new Response('forbidden', { status: 403 })); // force refresh retry (won't happen since refresh fails)
+
+    mockResolveMetadata.mockResolvedValueOnce({
+      providerLabel: 'Test',
+      authorizationServerUrl: 'https://auth.example.com/tenant',
+      authorizationServerMetadata: { issuer: 'https://auth.example.com/tenant' },
+      scopes: ['resource.read'],
+      telemetry: { resourceMetadataSource: 'test', serverMetadataSource: 'test' },
+    });
+
+    mockGetTokenForServer
+      .mockResolvedValueOnce('good-token')  // first mint succeeds
+      .mockResolvedValueOnce(undefined);     // force refresh fails
+
+    const t = makeTransport();
+    await t.start();
+
+    const err = await t.send('{}').catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('403');
+    expect((err as Error).message).not.toContain('after successful sign-in');
+
+    await t.stop();
+    void fetchSpy;
   });
 });
 

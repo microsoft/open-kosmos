@@ -3,6 +3,7 @@ import { profileDataManager } from '@/lib/userData/profileDataManager';
 import { useAgentConfig } from '../../userData/userDataProvider';
 import { getModelCapabilities } from '@/lib/models/ghcModels';
 import { useClickOut } from '@/components/ui/use-click-out';
+import { useI18n } from '@/lib/i18n/useI18n';
 
 interface Props {
   currentChatId: string | null;
@@ -26,6 +27,7 @@ interface Props {
  *   always matches what the user sees.
  */
 function Selector({ currentChatId, shouldLockComposeUi }: Props) {
+  const { t } = useI18n();
   const { updateConfig, isLoading } = useAgentConfig();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -107,7 +109,7 @@ function Selector({ currentChatId, shouldLockComposeUi }: Props) {
         className="reasoning-effort-button"
         onClick={() => setOpen(o => !o)}
         disabled={isLoading || shouldLockComposeUi}
-        title="Reasoning effort"
+        title={t('chat.reasoning.title')}
       >
         <span className="reasoning-effort-label">{buttonLabel}</span>
       </button>

@@ -102,6 +102,7 @@ describe('AddNewMcpServerViewContent', () => {
 
     expect(screen.getByRole('button', { name: /Verify to Continue/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(screen.getByText('Required')).toBeInTheDocument();
   });
 
   it('Verify button is disabled when config textarea is empty', () => {

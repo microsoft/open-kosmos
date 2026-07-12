@@ -6,6 +6,7 @@ import { MessageHelper } from '@shared/types/chatTypes';
 import { agentChatManager } from "../chat/agentChatManager";
 import { AgentChat } from "../chat/agentChat";
 import { profileCacheManager } from "../userDataADO/profileCacheManager";
+import { findChatByPrimaryChat, getChatPrimaryAgent } from "../userDataADO/agentAccessor";
 import { createLogger } from '../unifiedLogger';
 
 const logger = createLogger();
@@ -237,7 +238,7 @@ export class EvalAgentRunner {
   ): Promise<import('../chat/agentChat').AgentChat> {
 
     const chatConfig = profileCacheManager.getChatConfig(this.userAlias, chatId);
-    if (!chatConfig || !chatConfig.agent) {
+    if (!chatConfig || !getChatPrimaryAgent(chatConfig)) {
       throw new Error(
         `No chat config found for chatId: ${chatId}, userAlias: ${this.userAlias}`
       );
@@ -262,14 +263,11 @@ export class EvalAgentRunner {
     }
 
     const allChats = profileCacheManager.getAllChatConfigs(this.userAlias);
-    const primaryAgentName = profile.primaryAgent || 'Kobi';
-    const defaultChat = allChats.find(
-      (c) => c.agent?.name === primaryAgentName
-    );
+    const defaultChat = findChatByPrimaryChat(allChats, profile.primaryChat) ?? allChats[0];
 
     if (!defaultChat) {
       throw new Error(
-        `No chat config found for primary agent "${primaryAgentName}"`
+        `No chat config found for primary chat "${profile.primaryChat ?? ''}"`
       );
     }
 
@@ -304,7 +302,7 @@ export class EvalAgentRunner {
   }
 
   /**
-   * Extracts sub-agent message lists from spawn_subagent tool results.
+   * Extracts sub-agent message lists from sub_agent tool results.
    * Sub-agent results are embedded in tool result messages.
    */
   private extractSubAgentMessages(

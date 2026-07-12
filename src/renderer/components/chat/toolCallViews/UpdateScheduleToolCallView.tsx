@@ -8,6 +8,7 @@ import { ToolCallViewProps, UpdateScheduleToolArgs, UpdateScheduleToolResult } f
 import { MessageHelper } from '@shared/types/chatTypes';
 import { describeCronExpression } from '../../../lib/scheduler/cronDescriptions';
 import { useCurrentChatId } from '../../../lib/chat/agentChatSessionCacheManager';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 const parseToolArgs = (argsStr?: string): UpdateScheduleToolArgs | null => {
   if (!argsStr) return null;
@@ -32,6 +33,7 @@ export const UpdateScheduleToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const currentChatId = useCurrentChatId();
   const args = parseToolArgs(toolCall.function.arguments);
@@ -44,10 +46,10 @@ export const UpdateScheduleToolCallView: React.FC<ToolCallViewProps> = ({
   const isInterrupted = executionStatus === 'interrupted';
   const isSuccess = result?.success === true;
   const job = result?.job;
-  const targetAgentId = job?.agent_id || currentChatId;
+  const targetChatId = job?.chat_id || currentChatId;
 
   // Use result job data when available, fall back to args for the executing state
-  const displayName = job?.name || args.name || 'Scheduled Task';
+  const displayName = job?.name || args.name || t('chat.schedule.defaultTask');
   const displayCron = job?.cron_expression || args.cron_expression;
   const displayMessage = job?.message || args.message;
   const displayDescription = job?.description || args.description;
@@ -66,12 +68,12 @@ export const UpdateScheduleToolCallView: React.FC<ToolCallViewProps> = ({
           <button
             className="schedule-card-link"
             onClick={() => {
-              if (targetAgentId) {
-                navigate(`/agent/chat/${targetAgentId}/settings/schedules`);
+              if (targetChatId) {
+                navigate(`/agent/chat/${targetChatId}/settings/schedules`);
               }
             }}
-            title={targetAgentId ? 'Open target agent schedules' : 'Agent schedules unavailable'}
-            disabled={!targetAgentId}
+            title={targetChatId ? t('chat.schedule.openTarget') : t('chat.schedule.unavailable')}
+            disabled={!targetChatId}
           >
             <ExternalLink size={14} />
           </button>
@@ -91,7 +93,7 @@ export const UpdateScheduleToolCallView: React.FC<ToolCallViewProps> = ({
 
         {isInterrupted && (
           <div className="schedule-card-description">
-            Interrupted before schedule update result was recorded.
+            {t('chat.schedule.updateInterrupted')}
           </div>
         )}
 
@@ -106,13 +108,13 @@ export const UpdateScheduleToolCallView: React.FC<ToolCallViewProps> = ({
         <div className="schedule-card-fields">
           {displayCron && (
             <div className="schedule-field">
-              <span className="schedule-field-label">Schedule</span>
+              <span className="schedule-field-label">{t('chat.schedule.cardLabel')}</span>
               <span className="schedule-field-value">{describeCronExpression(displayCron)}</span>
             </div>
           )}
           {displayMessage && (
             <div className="schedule-field">
-              <span className="schedule-field-label">Prompt</span>
+              <span className="schedule-field-label">{t('chat.schedule.prompt')}</span>
               <span className="schedule-field-value schedule-field-message">{displayMessage}</span>
             </div>
           )}

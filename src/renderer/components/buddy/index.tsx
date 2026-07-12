@@ -6,6 +6,7 @@ import { BuddyMainPanel } from './BuddyMainPanel';
 import { BuddyFloatingWidget } from './BuddyFloatingWidget';
 import { Egg } from 'lucide-react';
 import { RARITY_COLORS } from '../../../main/lib/buddy/types';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 function Buddy() {
   const [isHatchingCeremony, setIsHatchingCeremony] = HatchingCeremonyAtom.use();
@@ -50,6 +51,7 @@ export default () => {
 };
 
 function Entry() {
+  const { t } = useI18n();
   const [state, actions] = BuddyAtom.use();
   const setIsHatchingCeremony = HatchingCeremonyAtom.useChange();
 
@@ -72,8 +74,8 @@ function Entry() {
     <button
       className={`buddy-egg-button${hasBuddy ? '' : ' no-buddy'}`}
       onClick={onBuddyClick}
-      title={hasBuddy ? 'Open Backpack' : 'Hatch your first buddy!'}
-      aria-label={hasBuddy ? 'Open buddy backpack' : 'Hatch first buddy'}
+      title={hasBuddy ? t('buddy.openBackpack') : t('buddy.hatchFirstBuddyTitle')}
+      aria-label={hasBuddy ? t('buddy.openBackpackAria') : t('buddy.hatchFirstBuddyAria')}
       type="button"
     >
       <Egg className="buddy-egg-icon" size={20} />

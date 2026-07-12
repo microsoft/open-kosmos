@@ -80,6 +80,7 @@ vi.mock('node:child_process', () => ({
 
 import { PlaywrightManager } from '../PlaywrightManager';
 import { EventEmitter } from 'events';
+import { app } from 'electron';
 
 function freshManager(): PlaywrightManager {
   (PlaywrightManager as any).instance = null;
@@ -144,6 +145,31 @@ describe('PlaywrightManager — checkBrowserInstalled cache invalidation', () =>
     const result = await manager.checkBrowserInstalled();
     expect(result.installed).toBe(true);
   });
+
+  it('returns the cached result while the executable still exists', async () => {
+    const fakeBrowser = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunch.mockResolvedValue(fakeBrowser);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    await manager.checkBrowserInstalled();
+    const result = await manager.checkBrowserInstalled();
+
+    expect(result.installed).toBe(true);
+    expect(mockLaunch).toHaveBeenCalledOnce();
+  });
+
+  it('classifies an unrelated launch error as an unusable browser', async () => {
+    mockLaunch.mockRejectedValue(new Error('sandbox permission denied'));
+
+    const manager = freshManager();
+    const result = await manager.checkBrowserInstalled();
+
+    expect(result).toEqual({
+      installed: false,
+      error: 'Error: sandbox permission denied',
+    });
+  });
 });
 
 // ── installBrowser — concurrent guard ────────────────────────────────────────
@@ -161,6 +187,25 @@ describe('PlaywrightManager — installBrowser concurrent guard', () => {
     // Fire two concurrent installs
     const [r1, r2] = await Promise.all([manager.installBrowser(), manager.installBrowser()]);
     expect(r1.success || r2.success).toBe(true);
+  });
+
+  it('reports a concurrent install failure to both callers', async () => {
+    const child = makeFakeChild(1);
+    mockSpawn.mockReturnValue(child);
+    mockExistsSync.mockReturnValue(false);
+
+    const manager = freshManager();
+    vi.spyOn(manager as any, '_findPlaywrightCli').mockReturnValue(null);
+    const [first, second] = await Promise.all([
+      manager.installBrowser(),
+      manager.installBrowser(),
+    ]);
+
+    expect(first.success).toBe(false);
+    expect(second).toEqual({
+      success: false,
+      message: 'Concurrent installation failed',
+    });
   });
 });
 
@@ -409,12 +454,75 @@ describe('PlaywrightManager — launchPersistentContext', () => {
     closeHandler?.();
     expect((manager as any).activeContexts.size).toBe(0);
   });
+
+  it('holds the profile lease until the persistent context closes', async () => {
+    let closeHandler: (() => void) | undefined;
+    const fakeCtx = {
+      close: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn((event: string, handler: () => void) => {
+        if (event === 'close') closeHandler = handler;
+      }),
+    };
+    mockLaunchPersistentContext.mockResolvedValue(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    const releaseProfileLease = vi.fn();
+    vi.spyOn(manager.profiles, 'acquireProfileLease').mockResolvedValue(releaseProfileLease);
+
+    await manager.launchPersistentContext({ profileName: 'shared-profile' });
+    expect(releaseProfileLease).not.toHaveBeenCalled();
+
+    closeHandler?.();
+    expect(releaseProfileLease).toHaveBeenCalledOnce();
+  });
+
+  it('releases the profile lease when persistent context launch fails', async () => {
+    mockLaunchPersistentContext.mockRejectedValue(new Error('custom channel error'));
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    const releaseProfileLease = vi.fn();
+    vi.spyOn(manager.profiles, 'acquireProfileLease').mockResolvedValue(releaseProfileLease);
+
+    await expect(
+      manager.launchPersistentContext({ profileName: 'shared-profile', channel: 'chrome' })
+    ).rejects.toThrow('custom channel error');
+    expect(releaseProfileLease).toHaveBeenCalledOnce();
+  });
+});
+
+describe('PlaywrightManager — launchBrowser lifecycle', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('removes a temporary browser when it disconnects', async () => {
+    let disconnectedHandler: (() => void) | undefined;
+    const fakeBrowser = {
+      close: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn((event: string, handler: () => void) => {
+        if (event === 'disconnected') disconnectedHandler = handler;
+      }),
+    };
+    mockLaunch.mockResolvedValue(fakeBrowser);
+
+    const manager = freshManager();
+    await manager.launchBrowser();
+    expect((manager as any).activeBrowsers.size).toBe(1);
+
+    disconnectedHandler?.();
+    expect((manager as any).activeBrowsers.size).toBe(0);
+  });
 });
 
 // ── _findInternalNodeShim ─────────────────────────────────────────────────────
 
 describe('PlaywrightManager — _findInternalNodeShim', () => {
+  const originalPlatform = process.platform;
+
   beforeEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
 
   it('returns null when node shim does not exist', () => {
     mockExistsSync.mockReturnValue(false);
@@ -429,6 +537,62 @@ describe('PlaywrightManager — _findInternalNodeShim', () => {
     const result = (manager as any)._findInternalNodeShim();
     expect(result).not.toBeNull();
     expect(typeof result).toBe('string');
+  });
+
+  it('uses non-Windows shim names and handles path resolution failures', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    mockExistsSync.mockReturnValue(false);
+    const manager = freshManager();
+
+    expect((manager as any)._findInternalNodeShim()).toBeNull();
+
+    vi.spyOn(app, 'getPath').mockImplementationOnce(() => {
+      throw 'path unavailable';
+    });
+    expect((manager as any)._findInternalNodeShim()).toBeNull();
+  });
+
+  it('uses Windows shim names and handles an Error path resolution failure', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    mockExistsSync.mockImplementation((candidate: string) => (
+      candidate.endsWith('node.cmd') || candidate.endsWith('bun.exe')
+    ));
+    const manager = freshManager();
+
+    expect((manager as any)._findInternalNodeShim()).toContain('node.cmd');
+
+    vi.spyOn(app, 'getPath').mockImplementationOnce(() => {
+      throw new Error('path unavailable');
+    });
+    expect((manager as any)._findInternalNodeShim()).toBeNull();
+  });
+
+  it('builds non-Windows install strategies with an internal shim', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    const manager = freshManager();
+    vi.spyOn(manager as any, '_findInternalNodeShim').mockReturnValue('/fake/node');
+
+    const strategies = (manager as any)._getInstallStrategies('/fake/cli.js');
+
+    expect(strategies).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: '/fake/node', shell: false }),
+      expect.objectContaining({ command: 'node', shell: false }),
+      expect.objectContaining({ command: 'npx', shell: false }),
+    ]));
+  });
+
+  it('builds Windows install strategies with batch-file shell handling', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    const manager = freshManager();
+    vi.spyOn(manager as any, '_findInternalNodeShim').mockReturnValue('C:\\fake\\node.cmd');
+
+    const strategies = (manager as any)._getInstallStrategies('C:\\fake\\cli.js');
+
+    expect(strategies).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: 'C:\\fake\\node.cmd', shell: true }),
+      expect.objectContaining({ command: 'node.exe', shell: false }),
+      expect.objectContaining({ command: 'npx.cmd', shell: true }),
+    ]));
   });
 });
 
@@ -459,6 +623,17 @@ describe('PlaywrightManager — _cleanupPlaywrightInstallLock', () => {
     mockRmSync.mockImplementation(() => { throw new Error('permission denied'); });
 
     const manager = freshManager();
+    expect(() => (manager as any)._cleanupPlaywrightInstallLock('timeout')).not.toThrow();
+  });
+
+  it('removes a directory lock and handles a non-Error cleanup failure', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true });
+    const manager = freshManager();
+
+    expect(() => (manager as any)._cleanupPlaywrightInstallLock('timeout')).not.toThrow();
+
+    mockRmSync.mockImplementationOnce(() => { throw 'permission denied'; });
     expect(() => (manager as any)._cleanupPlaywrightInstallLock('timeout')).not.toThrow();
   });
 });
@@ -556,6 +731,21 @@ describe('PlaywrightManager — launchPersistentContext chromium fallback', () =
     expect(ctx).toBe(fakeCtx);
   });
 
+  it('falls back when Edge throws a non-Error value', async () => {
+    const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
+    mockLaunchPersistentContext
+      .mockRejectedValueOnce('Edge launch failed')
+      .mockResolvedValueOnce(fakeCtx);
+    mockExistsSync.mockReturnValue(true);
+
+    const manager = freshManager();
+    vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
+
+    await expect(
+      manager.launchPersistentContext({ profileName: 'test-profile' }),
+    ).resolves.toBe(fakeCtx);
+  });
+
   it('recovers from corrupted chromium profile (exitCode=33)', async () => {
     const fakeCtx = { close: vi.fn().mockResolvedValue(undefined), on: vi.fn() };
     mockLaunchPersistentContext
@@ -609,7 +799,7 @@ describe('PlaywrightManager — launchPersistentContext chromium fallback', () =
     vi.spyOn(manager, 'ensureBrowserInstalled').mockResolvedValue({ installed: true });
     await expect(
       manager.launchPersistentContext({ profileName: 'test-profile' })
-    ).rejects.toThrow('exitCode=33');
+    ).rejects.toThrow('permission denied');
   });
 });
 
@@ -626,7 +816,7 @@ describe('PlaywrightManager — _getPlaywrightCacheDir platform paths', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     const manager = freshManager();
     const dir = (manager as any)._getPlaywrightCacheDir();
-    expect(dir).toContain('Library/Caches');
+    expect(dir.replace(/\\/g, '/')).toContain('Library/Caches');
   });
 
   it('uses LOCALAPPDATA on win32', () => {
@@ -645,7 +835,37 @@ describe('PlaywrightManager — _getPlaywrightCacheDir platform paths', () => {
     process.env.XDG_CACHE_HOME = '/custom/cache';
     const manager = freshManager();
     const dir = (manager as any)._getPlaywrightCacheDir();
-    expect(dir).toContain('/custom/cache');
+    expect(dir.replace(/\\/g, '/')).toContain('/custom/cache');
     process.env.XDG_CACHE_HOME = saved;
+  });
+
+  it('uses platform defaults when cache environment variables are absent', () => {
+    const savedLocalAppData = process.env.LOCALAPPDATA;
+    const savedXdgCacheHome = process.env.XDG_CACHE_HOME;
+    delete process.env.LOCALAPPDATA;
+    delete process.env.XDG_CACHE_HOME;
+    const manager = freshManager();
+
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    expect((manager as any)._getPlaywrightCacheDir()).toContain('ms-playwright');
+
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    expect((manager as any)._getPlaywrightCacheDir()).toContain('.cache');
+
+    if (savedLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = savedLocalAppData;
+    if (savedXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = savedXdgCacheHome;
+  });
+});
+
+describe('PlaywrightManager — _findPlaywrightCli', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('returns the first existing bundled CLI candidate', () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    const manager = freshManager();
+
+    expect((manager as any)._findPlaywrightCli()).toContain('playwright-core');
   });
 });

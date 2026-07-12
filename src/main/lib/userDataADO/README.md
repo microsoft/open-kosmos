@@ -6,6 +6,9 @@ This module handles all persistent data for OpenKosmos:
 |------|-------|----------------|--------------------|
 | `{userData}/app.json` | App-level, shared by all profiles | `AppCacheManager` | `AppDataManager` |
 | `{userData}/profiles/{alias}/profile.json` | Profile-level, per-user | `ProfileCacheManager` | `ProfileDataManager` |
+| `{userData}/profiles/{alias}/mcp.json` | Installed global MCP servers, per-user | `McpConfigManager` | `ProfileDataManager` via injected `mcp_servers` |
+| `{userData}/profiles/{alias}/skills.json` | Global skill registry, per-user | `SkillsConfigManager` | `ProfileDataManager` via injected `skills` |
+| `{userData}/profiles/{alias}/hooks.json` | Global Agent Hook library (the hook *list*), per-user | `HooksConfigManager` | `ProfileDataManager` via injected `hooks` |
 
 ---
 
@@ -30,7 +33,6 @@ This file is the **single source of truth** for the complete `app.json` data str
 ```json
 {
   "updaterVersion": "",
-  "nativeServerVersion": "",
   "runtimeEnvironment": {
     "mode": "internal",
     "bunVersion": "1.3.6",
@@ -69,7 +71,6 @@ export const DEFAULT_MY_FEATURE_CONFIG: MyFeatureConfig = {
 // 3. Add the field to AppConfig
 export interface AppConfig {
   updaterVersion?: string;
-  nativeServerVersion?: string;
   runtimeEnvironment?: RuntimeEnvironment;  // existing
   myFeature?: MyFeatureConfig;              // ← add here
 }
@@ -182,9 +183,9 @@ private appConfigSanitize(config: Partial<AppConfig>): AppConfig {
 #### Architecture
 
 ```
-[Main Process]                        [Renderer Process]
+[Main Process]                        [Renderer Processes]
 
-AppCacheManager                       AppDataManager
+AppCacheManager                       AppDataManager instances
   ├─ cache: AppConfig  ──IPC push──►    ├─ cache: AppConfig
   ├─ updateConfig()    ◄──IPC call──    ├─ updateConfig()
   └─ getConfig()                        ├─ getConfig()
@@ -192,7 +193,7 @@ AppCacheManager                       AppDataManager
                                         └─ getRuntimeEnvironment()  // convenience
 ```
 
-- **Main → Renderer push**: `AppCacheManager.updateConfig()` triggers a 150 ms debounced `app:configUpdated` IPC event.
+- **Main → Renderer push**: `AppCacheManager.updateConfig()` triggers a 150 ms debounced `app:configUpdated` IPC event to every live renderer window.
 - **Renderer → Main call**: `AppDataManager.updateConfig()` invokes `app:updateAppConfig` IPC handler.
 
 #### IPC channels (defined in `preload.ts`)
@@ -201,7 +202,7 @@ AppCacheManager                       AppDataManager
 |---------|-----------|-------------|
 | `app:getAppConfig` | Renderer → Main (invoke) | Pull current config on init |
 | `app:updateAppConfig` | Renderer → Main (invoke) | Write config updates |
-| `app:configUpdated` | Main → Renderer (push) | Notify renderer of any change |
+| `app:configUpdated` | Main → Renderer (push) | Notify every live renderer window of any change |
 
 #### Using AppDataManager in a React component
 
@@ -251,7 +252,7 @@ For complex features (like Runtime), create a dedicated manager class that encap
 
 **Rules:**
 - The feature manager holds **no local copy** of config data. `getRunTimeConfig()` always reads from `AppCacheManager.getConfig()` (in-memory, O(1)).
-- All writes go through `appCacheManager.updateConfig()`, which handles sanitize + persist + frontend notification in one call.
+- All writes go through `appCacheManager.updateConfig()`, which handles sanitize + persist + live renderer notification in one call.
 - The feature manager never writes directly to any file.
 
 ```typescript
@@ -284,21 +285,23 @@ When adding a new app-level config field:
 
 ## Profile-Level Config Development Guide
 
-> **Profile-level config** is persisted in `{userData}/profiles/{alias}/profile.json` and is **isolated per user**. Use this pattern when a setting should be different for each user (e.g., MCP server list, agent configuration, toolbar settings).
+> **Profile-level config** is persisted in `{userData}/profiles/{alias}/profile.json` and is **isolated per user**. Use this pattern when a setting should be different for each user (e.g., agent configuration, voice input settings, per-profile feature toggles).
 >
 > For app-level config shared across all profiles, follow the `AppCacheManager` pattern instead.
+>
+> **Exception:** installed global MCP servers are profile-scoped but persisted in `{userData}/profiles/{alias}/mcp.json`, owned by `McpConfigManager`. Do not use `profile.json` / `ProfileV2.mcp_servers` as the runtime source of truth for installed global MCP server configs. The same split applies to the **global skill registry** (`skills.json`, owned by `SkillsConfigManager`) and the **global Agent Hook library** (`hooks.json`, owned by `HooksConfigManager` — but note the Hooks **master switch `hooksEnabled` still lives in `profile.json`**; only the hook *list* is split out).
 
 ### Reference Implementation
 
-The **MCP Servers** feature (`mcp_servers` array in `profile.json`) is the canonical example. All code references below use it as the template.
+The examples below use a small `myFeature` profile field as the template. MCP is intentionally not used as the canonical profile-field example anymore because installed global MCP servers are split into `mcp.json`.
 
 ---
 
-### Step 1 — Update the Template File (Required)
+### Step 1 — Update Profile Defaults (Required)
 
-**File:** `resources/examples/profiles/profile.json`
+**File:** `src/main/lib/userDataADO/types/profile.ts`
 
-This file is the **single source of truth** for the complete `profile.json` data structure. It must always reflect every field, including new ones you add, with their correct default values.
+`DEFAULT_PROFILE_V2` is the source of truth for default durable `profile.json` values created by code. It must reflect every profile-owned field, including new ones you add, with the correct default values. Do not add installed global MCP servers here; they belong to `mcp.json`.
 
 ```json
 {
@@ -308,20 +311,6 @@ This file is the **single source of truth** for the complete `profile.json` data
   "alias": "example_user",
   "freDone": false,
   "primaryAgent": "Kobi",
-  "mcp_servers": [
-    {
-      "name": "example-server",
-      "transport": "stdio",
-      "command": "uvx",
-      "args": ["example-mcp"],
-      "env": {},
-      "url": "",
-      "in_use": true,
-      "version": "1.0.0",
-      "remoteVersion": "",
-      "source": "ON-DEVICE"
-    }
-  ],
   "myFeature": {
     "enabled": false,
     "threshold": 100
@@ -332,8 +321,8 @@ This file is the **single source of truth** for the complete `profile.json` data
 **Rules:**
 - Every field that can appear in `profile.json` must exist here.
 - Default values must match the corresponding `DEFAULT_*` constants in `types/profile.ts`.
-- Never leave undefined/null by default in the template — use `""` for optional strings, `false` for booleans, `[]` for arrays.
-- All team members use this file as a reference when they need to understand the full data shape.
+- Never leave undefined/null in the default object — use `""` for optional strings, `false` for booleans, `[]` for arrays.
+- All team members use this default object as a reference when they need to understand the full data shape.
 
 ---
 
@@ -341,7 +330,7 @@ This file is the **single source of truth** for the complete `profile.json` data
 
 **File:** `src/main/lib/userDataADO/types/profile.ts`
 
-Follow the existing pattern used by `ScreenshotSettings`, etc.:
+Follow the existing pattern used by `ScreenshotSettings`, `VoiceInputSettings`, etc.:
 
 ```typescript
 // 1. Define the interface for the new config section
@@ -420,7 +409,7 @@ private async ensureV2ProfileIntegrity(alias: string, profile: ProfileV2): Promi
 }
 ```
 
-**MCP example:** The `mcp_servers` array migration that backfills `version`, `source`, and `remoteVersion` sub-fields (added in newer versions) lives in this method.
+**MCP note:** V4 migration still needs to see a transient top-level `mcp_servers` value during load so it can clean legacy `memex-*` entries. `ProfileCacheManager.readProfileFromFile()` attaches that field temporarily from `McpConfigManager`, then strips it before caching/writing `profile.json`.
 
 **Important rules from the method's own header:**
 - Always deep-copy the input: `JSON.parse(JSON.stringify(profile))` — never mutate the `profile` argument.
@@ -433,7 +422,7 @@ Add corresponding sanitization in `sanitizeProfileV2` to ensure the field is nev
 
 ```typescript
 private sanitizeProfileV2(profile: ProfileV2): ProfileV2 {
-  // ... existing sanitization (mcp_servers, chats, skills, etc.) ...
+  // ... existing sanitization (chats, skills, settings, etc.) ...
 
   const sanitizedProfile: ProfileV2 = {
     // ... existing fields ...
@@ -530,44 +519,42 @@ const MySettingsView: React.FC = () => {
 
 ### Step 5 — Feature Manager Pattern
 
-For features with non-trivial business logic (like MCP), create a dedicated manager class that encapsulates all logic and delegates all persistence to `ProfileCacheManager`:
+For features with non-trivial business logic, create a dedicated manager class that encapsulates domain behavior and delegates persistence to the owner of the relevant file.
 
 ```
-[MCPClientManager]
-  ├─ getAllMcpServerInfo(alias)     → profileCacheManager.getAllMcpServerInfo(alias)
-  ├─ addServer(alias, config)      → profileCacheManager.addMcpServerConfig(alias, config)
-  │                                   └─ sanitizeProfileV2 → write disk → notifyProfileDataManager
-  ├─ updateServer(alias, name, ..) → profileCacheManager.updateMcpServerConfig(alias, name, config)
-  ├─ deleteServer(alias, name)     → profileCacheManager.deleteMcpServerConfig(alias, name)
-  └─ (MCP runtime state is managed internally by mcpClientManager, NOT persisted in profile.json)
+[MyFeatureManager]
+  ├─ getSettings(alias)        → profileCacheManager.getProfile(alias).myFeature
+  ├─ updateSettings(alias, ..) → profileCacheManager update helper / IPC handler
+  │                              └─ sanitizeProfileV2 → write profile.json → notifyProfileDataManager
+  └─ runtime state             → manager-owned memory or a separate runtime IPC event
 ```
 
 **Rules:**
 - The feature manager holds **no local copy** of persisted config data.
-  All reads go to `profileCacheManager.getXxx(alias)` (in-memory, O(1)).
-- All writes go through the appropriate `profileCacheManager.updateXxx()` method, which handles sanitize + persist + frontend notification in one call.
-- The feature manager **never writes directly** to any file.
-- Runtime/transient state (e.g., MCP connection status, tool list) **is not** stored in `profile.json`. It lives in the feature manager's own in-memory structure and is pushed to the renderer via a separate IPC event.
+  Profile-owned fields are read from `ProfileCacheManager` / `ProfileDataManager`.
+- Profile-owned writes go through the appropriate `ProfileCacheManager` write path, which handles sanitize + persist + frontend notification in one call.
+- The feature manager **never writes directly** to `profile.json`.
+- Runtime/transient state is not stored in `profile.json`. It lives in the feature manager's own in-memory structure and is pushed to the renderer via a separate IPC event when needed.
 
-**MCP example:**
+**MCP exception:**
 
 ```typescript
-// In MCPClientManager
+// Installed global MCP server persistence is owned by McpConfigManager, not profile.json.
+// ProfileCacheManager only gates existing-profile CRUD and sends the unchanged
+// profile:cacheUpdated wire payload with mcp_servers re-injected from the manager.
 
-// Read — always delegate to profileCacheManager
+// Read runtime source of truth
 public getAllMcpServerInfo(alias: string): McpServerConfig[] {
-  const { profileCacheManager } = require('../userDataADO');
-  return profileCacheManager.getAllMcpServerInfo(alias);
+  return mcpConfigManager.getServers(alias);
 }
 
-// Write — delegate to profileCacheManager (which handles sanitize + persist + IPC push)
+// Write installed global MCP servers
 public async addServer(alias: string, config: McpServerConfig): Promise<boolean> {
-  const { profileCacheManager } = require('../userDataADO');
-  return profileCacheManager.addMcpServerConfig(alias, config);
-  // ProfileCacheManager.addMcpServerConfig() will call notifyProfileDataManager()
-  // which pushes profile:cacheUpdated to the renderer
+  return mcpConfigManager.addServer(alias, config);
 }
 ```
+
+For UI-facing profile notifications, `ProfileCacheManager` re-injects `mcp_servers: mcpConfigManager.getServers(alias)` into both `profile:cacheUpdated` and `profile:getProfile`. `ProfileV2.mcp_servers` is optional/deprecated and should only appear transiently during load/migration; do not read or write it at runtime.
 
 ---
 
@@ -575,15 +562,16 @@ public async addServer(alias: string, config: McpServerConfig): Promise<boolean>
 
 When adding a new profile-level config field:
 
-- [ ] `resources/examples/profiles/profile.json` — add the field with its default value (always keep this template complete)
-- [ ] `src/main/lib/userDataADO/types/profile.ts` — add interface + default constant + optional type guard; add optional field to `ProfileV2`
+- [ ] `src/main/lib/userDataADO/types/profile.ts` — add interface + `DEFAULT_PROFILE_V2` default + optional type guard; add optional field to `ProfileV2`
 - [ ] `ProfileCacheManager.ensureV2ProfileIntegrity()` — backfill missing field on read (+ migration if moving data from a legacy location); set `needsSave = true` if modified
 - [ ] `ProfileCacheManager.sanitizeProfileV2()` — validate and clean field on write (strip invalid types, fall back to defaults)
 - [ ] IPC handler in `main.ts` — add `ipcMain.handle('myFeature:update', ...)` that calls the feature manager or `profileCacheManager` write method
 - [ ] `preload.ts` — expose the new IPC channel under `window.electronAPI.myFeature`
 - [ ] `src/renderer/lib/userData/types/index.ts` — re-export new type if needed by renderer
-- [ ] Feature Manager (if applicable) — delegate all profile reads to `profileCacheManager.getXxx()`, all writes to `profileCacheManager.updateXxx()`; never write to disk directly
+- [ ] Feature Manager (if applicable) — delegate profile-owned reads/writes to `ProfileCacheManager`; never write `profile.json` directly
 - [ ] Settings UI — read from `profileDataManager.getCache()` + `subscribe()`, write via `window.electronAPI.myFeature.update()`; never call `window.electronAPI.profile.getProfile()` directly in a settings component
+
+When changing installed global MCP servers, use `McpConfigManager` / `mcp.json` instead of this generic profile-field checklist.
 
 ---
 

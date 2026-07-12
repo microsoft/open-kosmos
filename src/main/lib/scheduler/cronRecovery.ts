@@ -1,4 +1,6 @@
 import { CronExpressionParser } from 'cron-parser';
+import type { SchedulerJob } from './types';
+import type { PendingColdStartCatchUp } from './schedulerRuntimeStateStore';
 
 export const MAX_RESUME_CATCH_UP_DELAY_MS = 6 * 60 * 60 * 1000;
 
@@ -110,4 +112,93 @@ export function getColdStartCatchUpBaseline(previousState: SchedulerActivationBa
     windowStartAt: cleanWindowStart.toISOString(),
     source: 'clean-exit',
   };
+}
+
+export interface PendingColdStartReplayItem {
+  job: SchedulerJob;
+  occurrenceAt: string;
+}
+
+export interface PendingColdStartReplayPlan {
+  replay: PendingColdStartReplayItem[];
+  drop: string[];
+}
+
+/**
+ * Decide which persisted pending cold-start catch-ups should be replayed now and
+ * which should be dropped. A pending entry is replayed only when its job is still
+ * an enabled cron job, its occurrence has not already been completed by a later
+ * finished run, and it is still inside the catch-up window; otherwise it is
+ * dropped so the persisted state does not accumulate stale entries.
+ */
+export function planPendingColdStartReplays(
+  pending: Record<string, PendingColdStartCatchUp> | undefined,
+  jobs: SchedulerJob[],
+  nowMs: number,
+): PendingColdStartReplayPlan {
+  const plan: PendingColdStartReplayPlan = { replay: [], drop: [] };
+  const entries = Object.entries(pending ?? {});
+  if (entries.length === 0) {
+    return plan;
+  }
+
+  const jobById = new Map(jobs.map((job) => [job.id, job]));
+  for (const [jobId, entry] of entries) {
+    const job = jobById.get(jobId);
+    if (!job || !job.enabled || job.scheduleType !== 'cron' || !job.cronExpression) {
+      plan.drop.push(jobId);
+      continue;
+    }
+
+    const occurrenceMs = new Date(entry.occurrenceAt).getTime();
+    if (!Number.isFinite(occurrenceMs)) {
+      plan.drop.push(jobId);
+      continue;
+    }
+
+    const lastFinishedAtMs = job.lastFinishedAt ? Date.parse(job.lastFinishedAt) : Number.NaN;
+    if (Number.isFinite(lastFinishedAtMs) && lastFinishedAtMs >= occurrenceMs) {
+      plan.drop.push(jobId);
+      continue;
+    }
+
+    if (!shouldCatchUpMissedOccurrence(occurrenceMs, nowMs)) {
+      plan.drop.push(jobId);
+      continue;
+    }
+
+    plan.replay.push({ job, occurrenceAt: entry.occurrenceAt });
+  }
+
+  return plan;
+}
+
+export interface PendingColdStartReplayContext {
+  readState: () => Promise<{ pendingColdStartCatchUps?: Record<string, PendingColdStartCatchUp> }>;
+  listJobs: () => Promise<SchedulerJob[]>;
+  clearPending: (jobId: string) => Promise<unknown>;
+  replay: (job: SchedulerJob, occurrenceAt: string) => Promise<unknown>;
+  now?: () => number;
+}
+
+/**
+ * Read persisted pending cold-start catch-ups, drop the stale/superseded ones, and
+ * replay the still-valid ones. Kept here (rather than inline in SchedulerManager) so
+ * the whole drop/replay flow can be unit-tested without the scheduler runtime.
+ */
+export async function runPendingColdStartReplays(context: PendingColdStartReplayContext): Promise<void> {
+  const runtimeState = await context.readState();
+  const pending = runtimeState.pendingColdStartCatchUps;
+  if (!pending || Object.keys(pending).length === 0) {
+    return;
+  }
+
+  const jobs = await context.listJobs();
+  const plan = planPendingColdStartReplays(pending, jobs, (context.now ?? Date.now)());
+  for (const jobId of plan.drop) {
+    await context.clearPending(jobId);
+  }
+  for (const item of plan.replay) {
+    await context.replay(item.job, item.occurrenceAt);
+  }
 }

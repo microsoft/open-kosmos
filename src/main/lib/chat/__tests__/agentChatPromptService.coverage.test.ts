@@ -39,12 +39,10 @@ const {
   mockGetCachedProfile,
   mockGetAllChatConfigs,
   mockGetChatConfig,
-  mockUpdateChatSkillSnapshot,
 } = vi.hoisted(() => ({
   mockGetCachedProfile: vi.fn(),
   mockGetAllChatConfigs: vi.fn(() => []),
   mockGetChatConfig: vi.fn(() => null),
-  mockUpdateChatSkillSnapshot: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('../../userDataADO/profileCacheManager', () => ({
@@ -52,7 +50,25 @@ vi.mock('../../userDataADO/profileCacheManager', () => ({
     getCachedProfile: mockGetCachedProfile,
     getAllChatConfigs: mockGetAllChatConfigs,
     getChatConfig: mockGetChatConfig,
-    updateChatSkillSnapshot: mockUpdateChatSkillSnapshot,
+  },
+}));
+
+vi.mock('../../userDataADO/chatSkillSnapshotStore', () => ({
+  chatSkillSnapshotStore: {
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    clearForAlias: vi.fn(),
+    clearAll: vi.fn(),
+    invalidateAffectedChats: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(() => []),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
   },
 }));
 
@@ -77,13 +93,6 @@ vi.mock('../../featureFlags', () => ({
   isFeatureEnabled: vi.fn(() => false),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({
-      getCachedConfigs: vi.fn(() => []),
-    })),
-  },
-}));
 
 vi.mock('../skillSnapshotBuilder', () => ({
   buildChatSkillSnapshot: vi.fn(() => ({
@@ -103,6 +112,8 @@ vi.mock('../../mcpRuntime/mcpClientManager', () => ({
 import { AgentChatPromptService } from '../agentChatPromptService';
 import type { AgentChatPromptServiceDeps } from '../agentChatPromptService';
 import { getGlobalSystemPromptAsMessages } from '../globalSystemPrompt';
+import { chatSkillSnapshotStore } from '../../userDataADO/chatSkillSnapshotStore';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 
 function makeDeps(overrides: Partial<AgentChatPromptServiceDeps> = {}): AgentChatPromptServiceDeps {
   return {
@@ -111,7 +122,6 @@ function makeDeps(overrides: Partial<AgentChatPromptServiceDeps> = {}): AgentCha
     getChatSessionId: vi.fn(() => 'session-2024-01-01T000000'),
     getAgentName: vi.fn(() => 'TestAgent'),
     getLatestAgentConfig: vi.fn(() => null),
-    isRemoteSession: vi.fn(() => false),
     getInteractionPolicy: vi.fn(() => 'allow-ui' as const),
     ...overrides,
   };
@@ -124,7 +134,8 @@ beforeEach(() => {
   mockGetCachedProfile.mockReturnValue(null);
   mockGetAllChatConfigs.mockReturnValue([]);
   mockGetChatConfig.mockReturnValue(null);
-  mockUpdateChatSkillSnapshot.mockResolvedValue(true);
+  vi.mocked(chatSkillSnapshotStore.get).mockReturnValue(undefined);
+  vi.mocked(skillsConfigManager.getSkills).mockReturnValue([]);
 });
 
 // ── getCurrentAvailableTools — tool name filtering branch ────────────────────
@@ -158,9 +169,7 @@ describe('getAgentSpecificSystemPrompt — claude skills directory', () => {
           name: 'TestAgent',
           knowledge: { knowledgeBase: '/my/kb' },
           skills: [],
-          sub_agents: [],
         },
-        skill_snapshot: null,
       },
     ]);
 
@@ -192,9 +201,7 @@ describe('getAgentSpecificSystemPrompt — claude skills directory', () => {
           name: 'TestAgent',
           knowledge: { knowledgeBase: '/my/kb' },
           skills: [],
-          sub_agents: [],
         },
-        skill_snapshot: null,
       },
     ]);
 
@@ -218,7 +225,7 @@ describe('getAgentSpecificSystemPrompt — claude skills directory', () => {
     expect(text).toContain('No description available');
   });
 
-  it('includes skill_snapshot prompt when present', () => {
+  it('includes skill snapshot prompt when present in the in-memory store', () => {
     mockGetAllChatConfigs.mockReturnValue([
       {
         agent: {
@@ -226,11 +233,16 @@ describe('getAgentSpecificSystemPrompt — claude skills directory', () => {
           knowledge: { knowledgeBase: null },
           workspace: null,
           skills: [],
-          sub_agents: [],
         },
-        skill_snapshot: { prompt: '\n## SKILL SNAPSHOT\nsome prompt content' },
       },
     ]);
+    vi.mocked(chatSkillSnapshotStore.get).mockReturnValue({
+      binding_signature: 'binding',
+      registry_signature: 'registry',
+      generated_at: '2026-03-24T00:00:00.000Z',
+      skills: [],
+      prompt: '\n## SKILL SNAPSHOT\nsome prompt content',
+    } as any);
 
     const svc = new AgentChatPromptService(makeDeps());
     const result = svc.getAgentSpecificSystemPrompt();
@@ -287,14 +299,9 @@ describe('refreshSkillSnapshotIfNeeded — catch branch', () => {
   it('clears old snapshot when no agent but snapshot exists', async () => {
     mockGetChatConfig.mockReturnValue({
       agent: null,
-      skill_snapshot: { binding_signature: 'old', prompt: 'old' },
     });
     const svc = new AgentChatPromptService(makeDeps());
     await svc.refreshSkillSnapshotIfNeeded();
-    expect(mockUpdateChatSkillSnapshot).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      null,
-    );
+    expect(chatSkillSnapshotStore.clear).toHaveBeenCalledWith('user@test.com', 'chat-123');
   });
 });

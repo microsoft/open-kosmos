@@ -11,19 +11,23 @@ import { agentChatManager } from '../chat/agentChatManager';
 import { chatSessionStore } from '../chat/chatSessionStore';
 import { scheduleStore } from './scheduleStore';
 import { SchedulerJob, type ScheduleJobCreateInput } from './types';
+import type { SchedulerManualRunOptions } from '../../../shared/ipc/scheduler';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
 import { schedulerRuntimeStateStore, type SchedulerRuntimeState } from './schedulerRuntimeStateStore';
-import { INTERRUPTED_SCHEDULED_SESSION_ERROR } from '../../../shared/constants/scheduler';
+import { INTERRUPTED_SCHEDULED_SESSION_ERROR, SCHEDULER_ALIAS_CHANGED_ERROR } from '../../../shared/constants/scheduler';
 import { generateChatSessionId as generateRuntimeChatSessionId } from '../userDataADO/pathUtils';
 import {
   findMissedCronOccurrence,
-  getColdStartCatchUpBaseline,
   getSchedulerTimeZone,
   MAX_RESUME_CATCH_UP_DELAY_MS,
+  runPendingColdStartReplays,
   shouldCatchUpMissedOccurrence,
 } from './cronRecovery';
 import { runCronWatchdog } from './cronWatchdog';
-import { notifyScheduledJobCompletion } from '../remoteChannel/schedulerNotifier';
+import { SchedulerExecutionGuards, type ExecutionToken } from './SchedulerExecutionGuards';
+import { ensureSchedulerJobMcpReady, formatSchedulerMcpDisconnectedError } from './schedulerMcpReadiness';
+import { runColdStartCatchUp } from './coldStartCatchUpRunner';
+import { cleanupSchedulerSessionHistory } from './sessionHistoryCleanup';
 
 const logger = createLogger();
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -44,6 +48,7 @@ type SchedulerTaskRuntimeMeta = {
   lastTickArrivedAt?: string;
   lastCronWatchdogCheckedAt?: string;
   lastCronWatchdogCatchUpAt?: string;
+  pendingCronWatchdogRetryAt?: string;
   lastExecuteStartAt?: string;
   lastExecuteEndAt?: string;
   lastExecuteOutcome?: 'success' | 'failed';
@@ -53,6 +58,7 @@ type SchedulerTaskRuntimeMeta = {
 
 type SchedulerExecutionResult = {
   success: boolean;
+  cancelled?: boolean;
   chatSessionId?: string;
   messagesCount?: number;
   error?: string;
@@ -79,7 +85,6 @@ type SchedulerTaskUnregisterReason =
   | 'toggle-enable-replace-existing'
   | 'update-job'
   | 'delete-job'
-  | 'once-job-fired'
   | 'once-job-completed'
   | 'once-job-failed'
   | 'once-job-expired'
@@ -93,6 +98,9 @@ type SchedulerRuntimeDiagnostics = {
   schedulerGeneration: number;
   activeTaskCount: number;
   activeJobIds: string[];
+  executingJobIds: string[];
+  executionSlotsAvailable: number;
+  maxConcurrentExecutions: number;
   taskRuntimeMetaSnapshot: SchedulerTaskRuntimeMeta[];
 };
 
@@ -117,6 +125,10 @@ export class SchedulerManager {
 
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+  private static readonly MAX_CONCURRENT_EXECUTIONS = 3;
+
+  private executionGuards = new SchedulerExecutionGuards(SchedulerManager.MAX_CONCURRENT_EXECUTIONS);
+
   private constructor() {}
 
   static getInstance(): SchedulerManager {
@@ -138,6 +150,9 @@ export class SchedulerManager {
       schedulerGeneration: this.schedulerGeneration,
       activeTaskCount: this.activeTasks.size,
       activeJobIds,
+      executingJobIds: this.executionGuards.getExecutingJobIds(),
+      executionSlotsAvailable: this.executionGuards.getExecutionSlotsAvailable(),
+      maxConcurrentExecutions: this.executionGuards.maxConcurrentExecutions,
       taskRuntimeMetaSnapshot: this.getTaskRuntimeMetaSnapshot(activeJobIds),
     };
   }
@@ -160,6 +175,7 @@ export class SchedulerManager {
     this.currentUserAlias = alias;
     this.currentAliasActivatedAt = startupAtIso;
     this.clearActiveTasks(previousAlias && previousAlias !== alias ? 'alias-switch' : 'initialize-clear');
+    this.executionGuards.reset();
 
     logger.info('scheduler.initialize.start', 'initialize', {
       alias,
@@ -214,8 +230,7 @@ export class SchedulerManager {
         })),
       });
 
-      await this.handleColdStartCatchUp(startupAtMs, jobs, runtimeState);
-
+      // Arm live cron ticks and the heartbeat before the gated cold-start catch-up.
       for (const job of jobs) {
         if (job.enabled) {
           try {
@@ -234,6 +249,17 @@ export class SchedulerManager {
         }
       }
 
+      this.startHeartbeat();
+
+      logger.info('scheduler.initialize.live-armed', 'initialize', {
+        alias,
+        schedulerGeneration,
+        activeTasks: this.activeTasks.size,
+        activeJobIds: Array.from(this.activeTasks.keys()),
+      });
+
+      await this.handleColdStartCatchUp(startupAtMs, jobs, runtimeState);
+
       logger.info('scheduler.initialize.end', 'initialize', {
         alias,
         schedulerGeneration,
@@ -242,8 +268,6 @@ export class SchedulerManager {
         activeTasks: this.activeTasks.size,
         activeJobIds: Array.from(this.activeTasks.keys()),
       });
-
-      this.startHeartbeat();
     } catch (error) {
       logger.warn('scheduler.initialize.failed', 'initialize', {
         alias,
@@ -289,12 +313,12 @@ export class SchedulerManager {
     return true;
   }
 
-  async toggleJobsByAgent(agentId: string, enabled: boolean): Promise<number> {
+  async toggleJobsByAgent(chatId: string, enabled: boolean): Promise<number> {
     if (!this.currentUserAlias) {
-      logger.warn('scheduler.toggle-jobs-for-agent.skipped-no-alias', 'toggleJobsByAgent', { agentId, enabled });
+      logger.warn('scheduler.toggle-jobs-for-agent.skipped-no-alias', 'toggleJobsByAgent', { chatId, enabled });
       return 0;
     }
-    const jobs = await scheduleStore.listJobs(this.currentUserAlias, agentId);
+    const jobs = await scheduleStore.listJobs(this.currentUserAlias, chatId);
     let toggled = 0;
     for (const job of jobs) {
       if (job.enabled === enabled) continue;
@@ -303,20 +327,20 @@ export class SchedulerManager {
         toggled++;
       } catch (err) {
         logger.warn('scheduler.toggle-job-for-agent.failed', 'toggleJobsByAgent', {
-          alias: this.currentUserAlias, agentId, jobId: job.id, enabled,
+          alias: this.currentUserAlias, chatId, jobId: job.id, enabled,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
     logger.info('scheduler.jobs-toggled-for-agent', 'toggleJobsByAgent', {
-      alias: this.currentUserAlias, agentId, enabled, toggledCount: toggled,
+      alias: this.currentUserAlias, chatId, enabled, toggledCount: toggled,
     });
     return toggled;
   }
 
-  async listJobs(agentId?: string): Promise<SchedulerJob[]> {
+  async listJobs(chatId?: string): Promise<SchedulerJob[]> {
     if (!this.currentUserAlias) return [];
-    return await scheduleStore.listJobs(this.currentUserAlias, agentId);
+    return await scheduleStore.listJobs(this.currentUserAlias, chatId);
   }
 
   async getJob(jobId: string): Promise<SchedulerJob | null> {
@@ -326,7 +350,7 @@ export class SchedulerManager {
 
   async updateJob(
     jobId: string,
-    updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'cronExpression' | 'runAt' | 'description' | 'enabled' | 'scheduleType' | 'status' | 'lastRunAt' | 'executedAt' | 'notifyOnCompletion'>>,
+    updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'cronExpression' | 'runAt' | 'description' | 'enabled' | 'scheduleType' | 'status' | 'lastRunAt' | 'executedAt'>>,
   ): Promise<boolean> {
     if (!this.currentUserAlias) {
       throw new Error('Scheduler is not initialized for the current user.');
@@ -380,7 +404,40 @@ export class SchedulerManager {
     }
   }
 
-  async runJobNow(jobId: string): Promise<SchedulerExecutionResult> {
+  /**
+   * A one-time schedule is auto-disabled once its single run concludes — whether
+   * it completed, failed, was cancelled/interrupted (recorded as a disabled
+   * 'completed' job, indistinguishable from a clean completion), or expired. Such
+   * a "spent" one-time schedule can be re-triggered from the beginning, but ONLY
+   * via the explicit Schedules "..." menu Retry action (which passes
+   * `isManualRetry`). Plain "Run now" callers (schedule cards, the Agent editor
+   * Schedules tab, the run-schedule tool) deliberately keep the strict guard so
+   * they cannot rerun a spent one-time schedule.
+   *
+   * "Spent" is detected by `status !== 'pending'` OR a set `lastRunAt`. The
+   * `lastRunAt` fallback is essential: `markJobExecutionStarted` transiently
+   * resets `status` back to 'pending' (and stamps `lastRunAt`) for the duration
+   * of a run. If the app crashes/exits mid-retry, recovery only patches the chat
+   * session metadata to 'failed' — it never restores the job's terminal status —
+   * so the job is left at `status: 'pending'` while still being a spent run.
+   * Without the `lastRunAt` check the interrupted retry would still surface a
+   * Retry button yet be rejected as non-rerunnable, stranding the user. Because
+   * `lastRunAt` is only ever written by execution, a one-time schedule that has
+   * never run (status 'pending' and no `lastRunAt`) and is disabled was explicitly
+   * turned off, not spent, so even Retry leaves it blocked. Cron schedules are
+   * never auto-disabled, so a disabled cron stays blocked too.
+   */
+  private isRerunnableOnce(job: SchedulerJob): boolean {
+    if (job.scheduleType !== 'once') {
+      return false;
+    }
+    return job.status !== 'pending' || job.lastRunAt != null;
+  }
+
+  async runJobNow(
+    jobId: string,
+    options?: SchedulerManualRunOptions,
+  ): Promise<SchedulerExecutionResult> {
     if (!this.currentUserAlias) {
       return {
         success: false,
@@ -396,7 +453,8 @@ export class SchedulerManager {
       };
     }
 
-    if (!job.enabled) {
+    const allowSpentOnceRetry = options?.isManualRetry === true && this.isRerunnableOnce(job);
+    if (!job.enabled && !allowSpentOnceRetry) {
       return {
         success: false,
         error: 'Only enabled schedules can be run manually.',
@@ -407,7 +465,7 @@ export class SchedulerManager {
       alias: this.currentUserAlias,
       jobId: job.id,
       name: job.name,
-      agentId: job.agentId,
+      chatId: job.chat_id,
       scheduleType: job.scheduleType,
     });
 
@@ -549,148 +607,20 @@ export class SchedulerManager {
     jobs: SchedulerJob[],
     runtimeState: SchedulerRuntimeState,
   ): Promise<void> {
-    if (!this.currentUserAlias) {
+    const alias = this.currentUserAlias;
+    if (!alias) {
       return;
     }
 
-    const recurringJobs = jobs.filter(
-      (job) => job.enabled && job.scheduleType === 'cron' && !!job.cronExpression,
-    );
-
-    if (recurringJobs.length === 0) {
-      return;
-    }
-
-    const pendingCatchUps = runtimeState.pendingColdStartCatchUps || {};
-    const replayedPendingOccurrences = new Set<string>();
-    let recoveredRuns = 0;
-
-    for (const job of recurringJobs) {
-      const pendingCatchUp = pendingCatchUps[job.id];
-      if (!pendingCatchUp) {
-        continue;
-      }
-
-      const pendingOccurrence = new Date(pendingCatchUp.occurrenceAt);
-      if (!shouldCatchUpMissedOccurrence(pendingOccurrence, startupAtMs)) {
-        await schedulerRuntimeStateStore.clearPendingColdStartCatchUp(this.currentUserAlias, job.id);
-        logger.info('scheduler.cold-start-catchup.drop-stale-pending', 'handleColdStartCatchUp', {
-          alias: this.currentUserAlias,
-          jobId: job.id,
-          name: job.name,
-          pendingOccurrenceAt: pendingCatchUp.occurrenceAt,
-          recordedAt: pendingCatchUp.recordedAt,
-        });
-        continue;
-      }
-
-      logger.info('scheduler.cold-start-catchup.replay-pending', 'handleColdStartCatchUp', {
-        alias: this.currentUserAlias,
-        jobId: job.id,
-        name: job.name,
-        pendingOccurrenceAt: pendingCatchUp.occurrenceAt,
-      });
-
-      const result = await this.executeColdStartCatchUp(job, pendingCatchUp.occurrenceAt, true);
-      if (result.success) {
-        replayedPendingOccurrences.add(`${job.id}::${pendingCatchUp.occurrenceAt}`);
-        recoveredRuns += 1;
-      }
-    }
-
-    const baseline = getColdStartCatchUpBaseline(runtimeState);
-    if (!baseline) {
-      logger.info('scheduler.cold-start-catchup.end-without-baseline', 'handleColdStartCatchUp', {
-        alias: this.currentUserAlias,
-        recurringJobs: recurringJobs.length,
-        recoveredRuns,
-      });
-      return;
-    }
-
-    const schedulerTimeZone = getSchedulerTimeZone();
-
-    logger.info('scheduler.cold-start-catchup.start', 'handleColdStartCatchUp', {
-      alias: this.currentUserAlias,
-      recurringJobs: recurringJobs.length,
-      windowStartAt: baseline.windowStartAt,
-      startupAt: new Date(startupAtMs).toISOString(),
-      baselineSource: baseline.source,
-      schedulerTimeZone,
-    });
-
-    for (const job of recurringJobs) {
-      const missedOccurrence = findMissedCronOccurrence(
-        job.cronExpression || '',
-        baseline.windowStartAt,
-        startupAtMs,
-        schedulerTimeZone,
-      );
-
-      if (!missedOccurrence) {
-        continue;
-      }
-
-      const occurrenceKey = `${job.id}::${missedOccurrence.toISOString()}`;
-      if (replayedPendingOccurrences.has(occurrenceKey)) {
-        logger.info('scheduler.cold-start-catchup.skip-duplicate-pending', 'handleColdStartCatchUp', {
-          alias: this.currentUserAlias,
-          jobId: job.id,
-          name: job.name,
-          missedScheduledAt: missedOccurrence.toISOString(),
-        });
-        continue;
-      }
-
-      const missedOccurrenceMs = missedOccurrence.getTime();
-      const lastRunAtMs = job.lastRunAt ? Date.parse(job.lastRunAt) : Number.NaN;
-      if (Number.isFinite(lastRunAtMs) && lastRunAtMs >= missedOccurrenceMs) {
-        logger.info('scheduler.cold-start-catchup.skip-started', 'handleColdStartCatchUp', {
-          alias: this.currentUserAlias,
-          jobId: job.id,
-          name: job.name,
-          cron: job.cronExpression,
-          missedScheduledAt: missedOccurrence.toISOString(),
-          lastRunAt: job.lastRunAt,
-        });
-        continue;
-      }
-
-      const catchUpDelayMs = startupAtMs - missedOccurrenceMs;
-      if (!shouldCatchUpMissedOccurrence(missedOccurrence, startupAtMs)) {
-        logger.info('scheduler.cold-start-catchup.skip-stale', 'handleColdStartCatchUp', {
-          alias: this.currentUserAlias,
-          jobId: job.id,
-          name: job.name,
-          cron: job.cronExpression,
-          missedScheduledAt: missedOccurrence.toISOString(),
-          catchUpDelayMs,
-          maxCatchUpDelayMs: MAX_RESUME_CATCH_UP_DELAY_MS,
-        });
-        continue;
-      }
-
-      logger.info('scheduler.cold-start-catchup.execute', 'handleColdStartCatchUp', {
-        alias: this.currentUserAlias,
-        jobId: job.id,
-        name: job.name,
-        cron: job.cronExpression,
-        missedScheduledAt: missedOccurrence.toISOString(),
-        catchUpDelayMs,
-        baselineSource: baseline.source,
-      });
-
-      const result = await this.executeColdStartCatchUp(job, missedOccurrence.toISOString(), false);
-      if (result.success) {
-        recoveredRuns += 1;
-      }
-    }
-
-    logger.info('scheduler.cold-start-catchup.end', 'handleColdStartCatchUp', {
-      alias: this.currentUserAlias,
-      recurringJobs: recurringJobs.length,
-      recoveredRuns,
-      baselineSource: baseline.source,
+    await runColdStartCatchUp({
+      alias,
+      startupAtMs,
+      jobs,
+      runtimeState,
+      getJob: (jobId) => scheduleStore.getJob(alias, jobId),
+      clearPending: (jobId) => schedulerRuntimeStateStore.clearPendingColdStartCatchUp(alias, jobId),
+      execute: (job, occurrenceAt, alreadyPending) =>
+        this.executeColdStartCatchUp(job, occurrenceAt, alreadyPending),
     });
   }
 
@@ -798,6 +728,20 @@ export class SchedulerManager {
     return result;
   }
 
+  /** Replay pending cold-start catch-ups skipped for MCP-not-ready (see ai.prompt.md). */
+  private async replayPendingColdStartCatchUps(): Promise<void> {
+    const alias = this.currentUserAlias;
+    if (!alias) {
+      return;
+    }
+    await runPendingColdStartReplays({
+      readState: () => schedulerRuntimeStateStore.readState(alias),
+      listJobs: () => scheduleStore.listJobs(alias),
+      clearPending: (jobId) => schedulerRuntimeStateStore.clearPendingColdStartCatchUp(alias, jobId),
+      replay: (job, occurrenceAt) => this.executeColdStartCatchUp(job, occurrenceAt, true),
+    });
+  }
+
   private async markAliasDeactivated(alias: string, deactivatedAtIso: string): Promise<void> {
     await schedulerRuntimeStateStore.markDeactivated(alias, deactivatedAtIso);
     if (this.currentUserAlias === alias) {
@@ -869,6 +813,11 @@ export class SchedulerManager {
         });
       }
 
+      if (this.executionGuards.isJobExecuting(job.id)) {
+        logger.info('scheduler.cron.tick-skipped-overlap', 'registerCronTask', { jobId: job.id, firedAt });
+        return;
+      }
+
       logger.info('scheduler.cron.tick-arrived', 'registerCronTask', {
         jobId: job.id,
         name: job.name,
@@ -890,7 +839,7 @@ export class SchedulerManager {
         firedAt,
       });
       await this.executeJob(job, 'scheduled');
-    });
+    }, { timezone: getSchedulerTimeZone() });
 
     this.activeTasks.set(job.id, { kind: 'cron', task });
     const runtimeMeta = this.createTaskRuntimeMeta(job, 'cron');
@@ -951,21 +900,30 @@ export class SchedulerManager {
 
     this.unregisterTask(job.id, 're-register-before-once-register');
 
+    const retryUntilMs = runAtMs + MAX_RESUME_CATCH_UP_DELAY_MS;
+    const getGuardRetryDelayMs = () => Math.max(1, Math.min(60_000, retryUntilMs - Date.now()));
     const scheduleTimeout = (remainingMs: number) => {
       const nextDelayMs = Math.min(remainingMs, MAX_TIMEOUT_MS);
       const timer = setTimeout(async () => {
-        const activeTask = this.activeTasks.get(job.id);
-        if (!activeTask || activeTask.kind !== 'timeout') {
-          return;
-        }
+        if (this.activeTasks.get(job.id)?.kind !== 'timeout') return;
 
         if (remainingMs > MAX_TIMEOUT_MS) {
           await this.registerOneTimeTask(job);
           return;
         }
 
-        this.unregisterTask(job.id, 'once-job-fired');
-        await this.executeJob(job, 'scheduled');
+        const result = await this.executeJob(job, 'scheduled');
+        if (
+          result.error === 'skipped-overlap' ||
+          result.error === 'skipped-concurrency-limit'
+        ) {
+          if (Date.now() < retryUntilMs) {
+            scheduleTimeout(getGuardRetryDelayMs());
+          } else if (this.currentUserAlias) {
+            await scheduleStore.markJobExecutionFailed(this.currentUserAlias, job.id, new Date().toISOString());
+            this.unregisterTask(job.id, 'once-job-failed');
+          }
+        }
       }, nextDelayMs);
 
       this.activeTasks.set(job.id, { kind: 'timeout', timer });
@@ -1067,18 +1025,6 @@ export class SchedulerManager {
     });
   }
 
-  private notifyRemoteCompletion(job: SchedulerJob, success: boolean, chatSessionId?: string): void {
-    if (!this.currentUserAlias) return;
-    if (job.notifyOnCompletion === false) return;
-    notifyScheduledJobCompletion({
-      alias: this.currentUserAlias,
-      jobId: job.id,
-      jobName: job.name,
-      success,
-      chatSessionId,
-    });
-  }
-
   /** Execute a job by delegating runtime creation/execution to AgentChatManager. */
   private async executeJob(
     job: SchedulerJob,
@@ -1086,6 +1032,39 @@ export class SchedulerManager {
     preallocatedChatSessionId?: string,
     onReady?: (payload: { chatSessionId: string }) => void,
   ): Promise<SchedulerExecutionResult> {
+    const isManual = triggerSource === 'manual';
+
+    if (!isManual && this.executionGuards.isJobExecuting(job.id)) {
+      logger.info('scheduler.execute.skipped-overlap', 'executeJob', {
+        jobId: job.id,
+        name: job.name,
+        triggerSource,
+        alias: this.currentUserAlias,
+      });
+      return { success: false, error: 'skipped-overlap' };
+    }
+
+    if (!isManual && !this.executionGuards.hasAvailableSlot()) {
+      logger.info('scheduler.execute.skipped-concurrency-limit', 'executeJob', {
+        jobId: job.id,
+        name: job.name,
+        triggerSource,
+        alias: this.currentUserAlias,
+        maxConcurrent: SchedulerManager.MAX_CONCURRENT_EXECUTIONS,
+      });
+      return { success: false, error: 'skipped-concurrency-limit' };
+    }
+
+    const executionToken = this.executionGuards.markStarted(job.id);
+
+    // Capture the alias/generation this execution started under. The MCP-readiness
+    // wait below can yield for up to 30s; if a sign-out or alias switch lands during
+    // that window, every alias-dependent step after it (markJobExecutionStarted,
+    // runScheduledJob, markJobExecutionCompleted) would otherwise run against a
+    // different user. We re-check these after the wait and abort if they changed.
+    const executionAlias = this.currentUserAlias;
+    const executionGeneration = this.schedulerGeneration;
+
     const executedAt = new Date().toISOString();
     const runtimeMeta = this.taskRuntimeMeta.get(job.id);
     if (runtimeMeta) {
@@ -1098,7 +1077,7 @@ export class SchedulerManager {
     logger.info('scheduler.execute.start', 'executeJob', {
       jobId: job.id,
       name: job.name,
-      agentId: job.agentId,
+      chatId: job.chat_id,
       scheduleType: job.scheduleType,
       triggerSource,
       alias: this.currentUserAlias,
@@ -1107,6 +1086,46 @@ export class SchedulerManager {
     });
 
     try {
+      let preflightError: string | undefined;
+
+      if (!isManual) {
+        const readiness = await ensureSchedulerJobMcpReady(job, executionAlias);
+        if (!readiness.ready) {
+          preflightError = formatSchedulerMcpDisconnectedError(readiness.notConnected);
+          logger.warn('scheduler.execute.mcp-not-ready', 'executeJob', {
+            jobId: job.id,
+            name: job.name,
+            triggerSource,
+            alias: this.currentUserAlias,
+            requiredServers: readiness.requiredServers,
+            notConnected: readiness.notConnected,
+            preflightError,
+          });
+        }
+      }
+
+      // Abort if the active session was torn down (sign-out) or switched to another
+      // alias/generation while we waited for MCP servers to settle. The steps below
+      // read the live this.currentUserAlias, so continuing here would run this job
+      // under a different user's session. Returning a `skipped-*` result leaves
+      // lastRunAt untouched (no markJobExecutionStarted/Failed), so the missed run
+      // stays eligible for the original user instead of executing as the new one.
+      if (
+        this.currentUserAlias !== executionAlias ||
+        this.schedulerGeneration !== executionGeneration
+      ) {
+        logger.warn('scheduler.execute.skipped-alias-changed', 'executeJob', {
+          jobId: job.id,
+          name: job.name,
+          triggerSource,
+          executionAlias,
+          currentAlias: this.currentUserAlias,
+          executionGeneration,
+          currentGeneration: this.schedulerGeneration,
+        });
+        return { success: false, error: SCHEDULER_ALIAS_CHANGED_ERROR };
+      }
+
       if (this.currentUserAlias) {
         logger.info('scheduler.execute.before-mark-started', 'executeJob', {
           jobId: job.id,
@@ -1129,6 +1148,8 @@ export class SchedulerManager {
       const result = await agentChatManager.runScheduledJob(job, {
         chatSessionId: preallocatedChatSessionId,
         onReady,
+        isManualTrigger: isManual,
+        preflightError,
       });
       logger.info('scheduler.execute.after-runScheduledJob', 'executeJob', {
         jobId: job.id,
@@ -1155,8 +1176,6 @@ export class SchedulerManager {
           });
         }
 
-        this.notifyRemoteCompletion(job, true, result.chatSessionId);
-
         if (job.scheduleType === 'once') {
           this.unregisterTask(job.id, 'once-job-completed');
         }
@@ -1178,6 +1197,18 @@ export class SchedulerManager {
           messagesCount: result.messagesCount ?? 0,
           success: true,
         });
+
+        // Fire-and-forget: clean up old scheduler sessions to prevent unbounded growth
+        // This runs asynchronously and never blocks the main execution path
+        if (this.currentUserAlias && job.scheduleType === 'cron') {
+          void cleanupSchedulerSessionHistory(this.currentUserAlias, job).catch(err => {
+            logger.warn('scheduler.session-cleanup.error', 'executeJob', {
+              jobId: job.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+
         return result;
       }
 
@@ -1194,8 +1225,6 @@ export class SchedulerManager {
           alias: this.currentUserAlias,
         });
       }
-
-      this.notifyRemoteCompletion(job, false);
 
       if (job.scheduleType === 'once') {
         this.unregisterTask(job.id, 'once-job-failed');
@@ -1218,6 +1247,17 @@ export class SchedulerManager {
         error: result.error || 'Unknown error',
         success: false,
       });
+
+      // Fire-and-forget: clean up old scheduler sessions (including failed ones)
+      if (this.currentUserAlias && job.scheduleType === 'cron') {
+        void cleanupSchedulerSessionHistory(this.currentUserAlias, job).catch(err => {
+          logger.warn('scheduler.session-cleanup.error', 'executeJob', {
+            jobId: job.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+
       return result;
     } catch (error) {
       if (this.currentUserAlias) {
@@ -1233,8 +1273,6 @@ export class SchedulerManager {
           alias: this.currentUserAlias,
         });
       }
-
-      this.notifyRemoteCompletion(job, false);
 
       if (job.scheduleType === 'once') {
         this.unregisterTask(job.id, 'once-job-failed');
@@ -1262,6 +1300,8 @@ export class SchedulerManager {
         success: false,
         error: errorMessage,
       };
+    } finally {
+      this.executionGuards.markFinished(executionToken);
     }
   }
 
@@ -1282,6 +1322,7 @@ export class SchedulerManager {
 
     this.stopHeartbeat();
     this.clearActiveTasks(reason === 'unknown' ? 'dispose' : reason);
+    this.executionGuards.reset();
     this.currentUserAlias = null;
     this.currentAliasActivatedAt = null;
     logger.info('scheduler.dispose.end', 'dispose', {
@@ -1316,16 +1357,34 @@ export class SchedulerManager {
     this.stopHeartbeat();
 
     this.heartbeatTimer = setInterval(() => {
+      void this.replayPendingColdStartCatchUps().catch((error) => {
+        logger.warn('scheduler.cold-start-catchup.replay-failed', 'heartbeat', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
       if (this.activeTasks.size === 0) {
         return;
       }
 
+      const memUsage = process.memoryUsage();
       logger.info('scheduler.heartbeat', 'heartbeat', {
         alias: this.currentUserAlias,
         schedulerGeneration: this.schedulerGeneration,
         activeTaskCount: this.activeTasks.size,
         activeTaskJobIds: Array.from(this.activeTasks.keys()),
+        rssBytes: memUsage.rss,
+        heapUsedBytes: memUsage.heapUsed,
       });
+
+      const RSS_WARN_THRESHOLD = 2 * 1024 * 1024 * 1024;
+      if (memUsage.rss > RSS_WARN_THRESHOLD) {
+        logger.warn('scheduler.heartbeat.memory-pressure', 'heartbeat', {
+          rssMB: Math.round(memUsage.rss / 1024 / 1024),
+          heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+          activeTaskCount: this.activeTasks.size,
+        });
+      }
 
       const cronJobIds = Array.from(this.activeTasks.entries())
         .filter(([, task]) => task.kind === 'cron')
@@ -1344,9 +1403,7 @@ export class SchedulerManager {
             });
           }
         },
-        executeJob: async (job) => {
-          await this.executeJob(job, 'watchdog-catchup');
-        },
+        executeJob: (job) => this.executeJob(job, 'watchdog-catchup'),
       });
     }, SchedulerManager.HEARTBEAT_INTERVAL_MS);
   }

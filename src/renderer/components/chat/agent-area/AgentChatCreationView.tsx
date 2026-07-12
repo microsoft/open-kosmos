@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Sparkles, Library } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import AgentChatCreationHeaderView from './AgentChatCreationHeaderView'
 import '../../../styles/AgentChatCreation.css'
-import { isCdnConfigured } from '@shared/utils/cdn'
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[AgentChatCreationView]');
 
 /**
@@ -12,13 +12,12 @@ const logger = createLogger('[AgentChatCreationView]');
  *
  * Route: /agent/chat/creation
  *
- * Provides two ways to create an Agent:
- * 1. Customize an Agent
- * 2. Install from Agent Library
+ * Provides local custom Agent creation.
  */
 const AgentChatCreationView: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useI18n()
 
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -37,14 +36,6 @@ const AgentChatCreationView: React.FC = () => {
     navigate('/agent/chat/creation/custom-agent')
   }, [navigate])
 
-  const handleInstallFromLib = useCallback(() => {
-    navigate('/agent/chat/creation/agent-library')
-  }, [navigate])
-
-  // The Agent Library is a CDN-backed optional feature. When no CDN is
-  // configured, hide the entry entirely instead of leading to an empty view.
-  const isAgentLibraryAvailable = isCdnConfigured()
-
   return (
     <div className="agent-creation-view" key={refreshKey}>
       {/* Header */}
@@ -53,8 +44,8 @@ const AgentChatCreationView: React.FC = () => {
       {/* Content */}
       <div className="agent-creation-content">
         <div className="creation-options-container" key={`content-${refreshKey}`}>
-        <h2 className="creation-title">Create a New Agent</h2>
-        <p className="creation-subtitle">Choose how you want to create your agent</p>
+        <h2 className="creation-title">{t('agent.create.creationTitle')}</h2>
+        <p className="creation-subtitle">{t('agent.create.creationSubtitle')}</p>
 
         <div className="creation-options">
           {/* Custom Agent option */}
@@ -67,9 +58,9 @@ const AgentChatCreationView: React.FC = () => {
               <Sparkles size={32} strokeWidth={1.5} />
             </div>
             <div className="option-content">
-              <h3 className="option-title">Custom Agent</h3>
+              <h3 className="option-title">{t('agent.create.customAgent')}</h3>
               <p className="option-description">
-                Create a personalized agent with custom name, emoji, system prompt, and MCP servers configuration.
+                {t('agent.create.customAgentDescription')}
               </p>
             </div>
             <div className="option-arrow">
@@ -79,29 +70,6 @@ const AgentChatCreationView: React.FC = () => {
             </div>
           </button>
 
-          {/* Install from Agent Library option (only when CDN is configured) */}
-          {isAgentLibraryAvailable && (
-          <button
-            className="creation-option-card"
-            onClick={handleInstallFromLib}
-            type="button"
-          >
-            <div className="option-icon">
-              <Library size={32} strokeWidth={1.5} />
-            </div>
-            <div className="option-content">
-              <h3 className="option-title">Install from Agent Library</h3>
-              <p className="option-description">
-                Browse and install pre-configured agents from the Agent Library. Quick setup with proven configurations.
-              </p>
-            </div>
-            <div className="option-arrow">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </button>
-          )}
         </div>
         </div>
       </div>

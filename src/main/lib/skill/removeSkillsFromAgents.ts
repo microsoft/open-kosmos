@@ -1,6 +1,8 @@
 import { createLogger } from '../unifiedLogger';
 import { profileCacheManager } from '../userDataADO';
+import { chatSkillSnapshotStore } from '../userDataADO/chatSkillSnapshotStore';
 import type { ChatAgent, ChatConfig } from '../userDataADO/types/profile';
+import { getChatAgents, getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 
 const logger = createLogger();
 
@@ -32,14 +34,6 @@ export interface RemoveSkillsFromAgentsResult {
 
 function normalizeStringArray(values?: string[]): string[] {
   return Array.from(new Set((values || []).map(value => value?.trim()).filter((value): value is string => !!value)));
-}
-
-function getChatAgents(chat: ChatConfig): ChatAgent[] {
-  if (chat.chat_type === 'single_agent') {
-    return chat.agent ? [chat.agent] : [];
-  }
-
-  return chat.agents || [];
 }
 
 function targetKey(target: SkillAgentTarget): string {
@@ -180,7 +174,7 @@ export async function removeSkillsFromAgents(
     }
 
     if (chat.chat_type === 'single_agent') {
-      const agent = chat.agent;
+      const agent = getChatPrimaryAgent(chat);
       if (!agent || !agentNames.has(agent.name)) {
         continue;
       }
@@ -201,10 +195,10 @@ export async function removeSkillsFromAgents(
 
       const success = await profileCacheManager.updateChatConfig(userAlias, chatId, {
         agent: updatedAgent,
-        skill_snapshot: undefined,
       });
 
       if (success) {
+        chatSkillSnapshotStore.clear(userAlias, chatId);
         updatedTargets.push({ chatId, agentName: agent.name, removedSkills });
         removedBindingCount += removedSkills.length;
       } else {
@@ -215,7 +209,7 @@ export async function removeSkillsFromAgents(
       continue;
     }
 
-    const currentAgents = chat.agents || [];
+    const currentAgents = getChatAgents(chat);
     const removedByAgent = new Map<string, string[]>();
     let didChange = false;
 
@@ -246,8 +240,11 @@ export async function removeSkillsFromAgents(
 
     const success = await profileCacheManager.updateChatConfig(userAlias, chatId, {
       agents: updatedAgents,
-      skill_snapshot: undefined,
     });
+
+    if (success) {
+      chatSkillSnapshotStore.clear(userAlias, chatId);
+    }
 
     for (const agentName of agentNames) {
       const removedSkills = removedByAgent.get(agentName);

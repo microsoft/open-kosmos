@@ -52,7 +52,29 @@ describe('CodingAgentToolCallView', () => {
       <CodingAgentToolCallView toolCall={tc} toolResult={null} executionStatus="completed" />
     );
     expect(screen.getByText('Write a fibonacci function')).toBeTruthy();
-    expect(screen.getByText('Claude Code')).toBeTruthy();
+    expect(screen.getByText('Coding Agent (Claude Code)')).toBeTruthy();
+  });
+
+  it('titles with the CLI from the result (GitHub Copilot CLI)', () => {
+    const resultData = { output: 'done', exitCode: 0, durationMs: 100, cli: 'copilot' };
+    (MessageHelper.getText as any).mockReturnValue(JSON.stringify(resultData));
+    const tc = makeToolCall({ task: 'run something' });
+    const tr = makeResult(resultData);
+    render(
+      <CodingAgentToolCallView toolCall={tc} toolResult={tr as any} executionStatus="completed" />
+    );
+    expect(screen.getByText('Coding Agent (GitHub Copilot CLI)')).toBeTruthy();
+  });
+
+  it('falls back to the default name when the result CLI id is unrecognized', () => {
+    const resultData = { output: 'done', exitCode: 0, durationMs: 100, cli: 'bogus' };
+    (MessageHelper.getText as any).mockReturnValue(JSON.stringify(resultData));
+    const tc = makeToolCall({ task: 'run something' });
+    const tr = makeResult(resultData);
+    render(
+      <CodingAgentToolCallView toolCall={tc} toolResult={tr as any} executionStatus="completed" />
+    );
+    expect(screen.getByText('Coding Agent (Claude Code)')).toBeTruthy();
   });
 
   it('truncates long task descriptions', () => {
@@ -68,6 +90,15 @@ describe('CodingAgentToolCallView', () => {
   it('shows executing indicator when status is executing', () => {
     (MessageHelper.getText as any).mockReturnValue('');
     const tc = makeToolCall({ task: 'do something' });
+    render(
+      <CodingAgentToolCallView toolCall={tc} toolResult={null} executionStatus="executing" />
+    );
+    expect(screen.getByText(/Running Claude Code/)).toBeTruthy();
+  });
+
+  it('ignores args.cli before any result arrives because CLI is operator-selected', () => {
+    (MessageHelper.getText as any).mockReturnValue('');
+    const tc = makeToolCall({ task: 'do something', cli: 'gemini' });
     render(
       <CodingAgentToolCallView toolCall={tc} toolResult={null} executionStatus="executing" />
     );

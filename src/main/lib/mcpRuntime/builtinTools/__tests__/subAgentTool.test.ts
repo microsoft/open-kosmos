@@ -5,9 +5,7 @@
  * - getDefinition() schema correctness
  * - execute() — no context available
  * - execute() — recursion guard (isSubAgent)
- * - execute() — named agent path (sync + background)
  * - execute() — ad-hoc agent path (sync + background)
- * - execute() — named agent not found
  * - formatResult() — success, autoPromoted, failure, partialResult, availabilityWarnings
  * - Error handling (manager throws)
  */
@@ -16,14 +14,12 @@ import { SubAgentTool, SubAgentToolArgs } from '../subAgentTool';
 
 // ─── Mock dependencies ───
 
-const mockSpawnSubAgent = vi.fn();
 const mockSpawnSubAgentAsync = vi.fn();
 const mockSpawnAdhocSubAgent = vi.fn();
 
 vi.mock('../../../subAgent/subAgentManager', () => ({
   SubAgentManager: {
     getInstance: () => ({
-      spawnSubAgent: mockSpawnSubAgent,
       spawnSubAgentAsync: mockSpawnSubAgentAsync,
       spawnAdhocSubAgent: mockSpawnAdhocSubAgent,
     }),
@@ -31,6 +27,9 @@ vi.mock('../../../subAgent/subAgentManager', () => ({
 }));
 
 vi.mock('../../../unifiedLogger', () => ({
+  createLogger: vi.fn(() => ({
+    error: vi.fn(),
+  })),
   createConsoleLogger: vi.fn().mockResolvedValue({
     info: vi.fn(),
     warn: vi.fn(),
@@ -59,28 +58,32 @@ describe('SubAgentTool', () => {
       userAlias: 'testuser',
       isSubAgent: false,
       currentToolCallId: 'tc-1',
-      cancellationToken: { isCancelled: false },
+      cancellationToken: {
+        isCancelled: false,
+        isCancellationRequested: false,
+        onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+      },
       eventSender: { send: vi.fn() },
-      getSubAgentConfig: vi.fn(),
+      reportActivity: vi.fn(),
     };
   });
 
   // ─── Schema ───
 
   describe('getDefinition', () => {
-    it('returns correct tool name and schema', () => {
+    it('returns ad-hoc sub-agent schema', () => {
       const def = SubAgentTool.getDefinition();
       expect(def.name).toBe('sub_agent');
       expect(def.inputSchema.type).toBe('object');
       expect(def.inputSchema.required).toEqual(['prompt']);
       expect(def.inputSchema.properties).toHaveProperty('prompt');
-      expect(def.inputSchema.properties).toHaveProperty('subagent_type');
       expect(def.inputSchema.properties).toHaveProperty('system_prompt');
       expect(def.inputSchema.properties).toHaveProperty('tools');
       expect(def.inputSchema.properties).toHaveProperty('model');
       expect(def.inputSchema.properties).toHaveProperty('run_in_background');
       expect(def.inputSchema.properties).toHaveProperty('no_auto_promote');
       expect(def.inputSchema.properties).toHaveProperty('description');
+      expect((def.inputSchema.properties.tools as any).description).toContain('inherit the parent MCP tools');
     });
   });
 
@@ -106,75 +109,10 @@ describe('SubAgentTool', () => {
     });
   });
 
-  // ─── Named agent path ───
-
-  describe('execute — named agent (sync)', () => {
-    const baseArgs: SubAgentToolArgs = {
-      prompt: 'Research AI trends',
-      subagent_type: 'researcher',
-    };
-
-    it('returns error when named agent not found', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue(null);
-      const result = await SubAgentTool.execute(baseArgs);
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('"researcher" not found');
-    });
-
-    it('spawns named agent with isolated context by default', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'researcher' });
-      mockSpawnSubAgent.mockResolvedValue({
-        success: true,
-        result: 'Done',
-        turnCount: 3,
-        durationMs: 5000,
-      });
-
-      const result = await SubAgentTool.execute(baseArgs);
-      expect(result.success).toBe(true);
-      expect(result.data).toContain('researcher');
-      expect(result.data).toContain('Done');
-      expect(mockSpawnSubAgent).toHaveBeenCalledWith(expect.objectContaining({
-        subAgentName: 'researcher',
-        task: 'Research AI trends',
-      }));
-    });
-
-    it('passes no_auto_promote to manager', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'researcher' });
-      mockSpawnSubAgent.mockResolvedValue({ success: true, result: 'ok', turnCount: 1, durationMs: 1000 });
-
-      await SubAgentTool.execute({ ...baseArgs, no_auto_promote: true });
-      expect(mockSpawnSubAgent).toHaveBeenCalledWith(expect.objectContaining({
-        noAutoPromote: true,
-      }));
-    });
-  });
-
-  // ─── Named agent background path ───
-
-  describe('execute — named agent (background)', () => {
-    it('spawns async and returns taskId', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'writer' });
-      mockSpawnSubAgentAsync.mockResolvedValue({ taskId: 'task-123' });
-
-      const result = await SubAgentTool.execute({
-        prompt: 'Write a report',
-        subagent_type: 'writer',
-        run_in_background: true,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.data).toContain('task-123');
-      expect(result.data).toContain('background');
-      expect(mockSpawnSubAgent).not.toHaveBeenCalled();
-    });
-  });
-
   // ─── Ad-hoc agent path ───
 
   describe('execute — ad-hoc agent (sync)', () => {
-    it('spawns ad-hoc agent without subagent_type', async () => {
+    it('spawns ad-hoc agent', async () => {
       mockSpawnAdhocSubAgent.mockResolvedValue({
         success: true,
         result: 'Research complete',
@@ -198,6 +136,41 @@ describe('SubAgentTool', () => {
         tools: ['web_search'],
         model: 'gpt-4o',
       }));
+    });
+
+    it('passes reportActivity through onProgress for foreground ad-hoc sub-agents', async () => {
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        params.onProgress?.({ taskId: 'sa-adhoc', status: 'running' });
+        return { success: true, result: 'ok', turnCount: 1, durationMs: 1000 };
+      });
+
+      await SubAgentTool.execute({ prompt: 'Analyze docs' });
+
+      expect(mockContext.reportActivity).toHaveBeenCalledOnce();
+    });
+
+    it('reports activity when foreground ad-hoc sub-agent state updates are sent', async () => {
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        params.eventSender.send('subAgentTask:stateUpdate', { taskId: 'sa-adhoc' });
+        return { success: true, result: 'ok', turnCount: 1, durationMs: 1000 };
+      });
+
+      await SubAgentTool.execute({ prompt: 'Analyze docs' });
+
+      expect(mockContext.reportActivity).toHaveBeenCalledOnce();
+      expect(mockContext.eventSender.send).toHaveBeenCalledWith('subAgentTask:stateUpdate', { taskId: 'sa-adhoc' });
+    });
+
+    it('links AbortSignal cancellation into foreground ad-hoc sub-agent token', async () => {
+      const controller = new AbortController();
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        controller.abort();
+        expect(params.cancellationToken.isCancellationRequested).toBe(true);
+        return { success: false, error: 'cancelled', turnCount: 0, durationMs: 1000 };
+      });
+
+      await SubAgentTool.execute({ prompt: 'Analyze docs' }, { signal: controller.signal });
+      expect(mockSpawnAdhocSubAgent).toHaveBeenCalledOnce();
     });
   });
 
@@ -223,20 +196,18 @@ describe('SubAgentTool', () => {
 
   describe('formatResult — various outcomes', () => {
     it('handles autoPromoted result', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'x', context_access: 'isolated' });
-      mockSpawnSubAgent.mockResolvedValue({
+      mockSpawnAdhocSubAgent.mockResolvedValue({
         autoPromoted: true,
         result: 'Promoted to background (taskId: bg-1)',
       });
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'x' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(true);
       expect(result.data).toBe('Promoted to background (taskId: bg-1)');
     });
 
     it('handles failure with partialResult', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'x', context_access: 'isolated' });
-      mockSpawnSubAgent.mockResolvedValue({
+      mockSpawnAdhocSubAgent.mockResolvedValue({
         success: false,
         error: 'Timeout',
         partialResult: 'Got 3 of 5 items',
@@ -244,29 +215,27 @@ describe('SubAgentTool', () => {
         durationMs: 120000,
       });
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'x' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(true);
       expect(result.data).toContain('partial results');
       expect(result.data).toContain('Got 3 of 5 items');
     });
 
     it('handles failure without partialResult', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'x', context_access: 'isolated' });
-      mockSpawnSubAgent.mockResolvedValue({
+      mockSpawnAdhocSubAgent.mockResolvedValue({
         success: false,
         error: 'Agent crashed',
         turnCount: 1,
         durationMs: 500,
       });
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'x' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(false);
       expect(result.error).toContain('Agent crashed');
     });
 
     it('includes availability warnings when present', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'x', context_access: 'isolated' });
-      mockSpawnSubAgent.mockResolvedValue({
+      mockSpawnAdhocSubAgent.mockResolvedValue({
         success: true,
         result: 'Done',
         turnCount: 2,
@@ -274,7 +243,7 @@ describe('SubAgentTool', () => {
         availabilityWarnings: ['MCP server "github" was unavailable'],
       });
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'x' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(true);
       expect(result.data).toContain('reduced capabilities');
       expect(result.data).toContain('MCP server "github" was unavailable');
@@ -285,22 +254,18 @@ describe('SubAgentTool', () => {
 
   describe('execute — error handling', () => {
     it('catches and wraps thrown errors', async () => {
-      mockContext.getSubAgentConfig.mockImplementation(() => {
-        throw new Error('Config read failed');
-      });
+      mockSpawnAdhocSubAgent.mockRejectedValueOnce(new Error('Spawn failed'));
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'broken' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to spawn sub-agent');
-      expect(result.error).toContain('Config read failed');
+      expect(result.error).toContain('Spawn failed');
     });
 
     it('handles non-Error thrown values', async () => {
-      mockContext.getSubAgentConfig.mockImplementation(() => {
-        throw 'string error';
-      });
+      mockSpawnAdhocSubAgent.mockRejectedValueOnce('string error');
 
-      const result = await SubAgentTool.execute({ prompt: 'test', subagent_type: 'broken' });
+      const result = await SubAgentTool.execute({ prompt: 'test' });
       expect(result.success).toBe(false);
       expect(result.error).toContain('string error');
     });
@@ -309,23 +274,6 @@ describe('SubAgentTool', () => {
   // ─── Background launch failure regression tests ───
 
   describe('execute — background launch failure handling', () => {
-    it('returns error when named agent background launch fails', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'writer' });
-      mockSpawnSubAgentAsync.mockResolvedValue({
-        status: 'error',
-        error: 'Queue full',
-      });
-
-      const result = await SubAgentTool.execute({
-        prompt: 'Write a report',
-        subagent_type: 'writer',
-        run_in_background: true,
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Queue full');
-    });
-
     it('returns error when ad-hoc background launch fails', async () => {
       mockSpawnSubAgentAsync.mockResolvedValue({
         status: 'error',
@@ -341,18 +289,93 @@ describe('SubAgentTool', () => {
       expect(result.error).toBe('Model unavailable');
     });
 
-    it('returns fallback error message when status=error but no error string', async () => {
-      mockContext.getSubAgentConfig.mockReturnValue({ name: 'agent-x' });
+    it('returns fallback error message when ad-hoc background status=error has no error string', async () => {
       mockSpawnSubAgentAsync.mockResolvedValue({ status: 'error' });
 
       const result = await SubAgentTool.execute({
         prompt: 'test',
-        subagent_type: 'agent-x',
         run_in_background: true,
       });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to launch');
+    });
+  });
+
+  // ─── Helper coverage: execution context, cancellation linking, activity proxy ───
+
+  describe('execute — helpers', () => {
+    it('uses an explicitly provided execution context over the ambient one', async () => {
+      mockContext = null; // ambient context unavailable
+      mockSpawnAdhocSubAgent.mockResolvedValue({ success: true, result: 'ok', turnCount: 1, durationMs: 1000 });
+
+      const explicitContext = {
+        chatSessionId: 'session-explicit',
+        chatId: 'chat-explicit',
+        userAlias: 'explicit',
+        isSubAgent: false,
+        currentToolCallId: 'tc-explicit',
+        cancellationToken: {
+          isCancellationRequested: false,
+          onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+        },
+        eventSender: { send: vi.fn() },
+        reportActivity: vi.fn(),
+      };
+
+      const result = await SubAgentTool.execute({ prompt: 'task' }, { executionContext: explicitContext as any });
+
+      expect(result.success).toBe(true);
+      expect(mockSpawnAdhocSubAgent).toHaveBeenCalledWith(expect.objectContaining({
+        parentSessionId: 'session-explicit',
+        userAlias: 'explicit',
+      }));
+    });
+
+    it('immediately cancels the linked token when the signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      let observedCancelled: boolean | undefined;
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        observedCancelled = params.cancellationToken.isCancellationRequested;
+        return { success: true, result: 'ok', turnCount: 1, durationMs: 1000 };
+      });
+
+      const result = await SubAgentTool.execute({ prompt: 'task' }, { signal: controller.signal });
+
+      expect(result.success).toBe(true);
+      expect(observedCancelled).toBe(true);
+    });
+
+    it('passes an undefined event sender when the context has none', async () => {
+      mockContext.eventSender = undefined;
+      let observedSender: unknown = 'unset';
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        observedSender = params.eventSender;
+        return { success: true, result: 'ok', turnCount: 1, durationMs: 1000 };
+      });
+
+      await SubAgentTool.execute({ prompt: 'task' });
+
+      expect(observedSender).toBeUndefined();
+    });
+
+    it('proxies non-send properties of the event sender, binding functions', async () => {
+      const extra = vi.fn(() => 'bound-result');
+      mockContext.eventSender = { send: vi.fn(), label: 'sender-label', extra };
+      let labelValue: unknown;
+      let extraResult: unknown;
+      mockSpawnAdhocSubAgent.mockImplementation(async (params) => {
+        labelValue = params.eventSender.label;
+        extraResult = params.eventSender.extra();
+        return { success: true, result: 'ok', turnCount: 1, durationMs: 1000 };
+      });
+
+      await SubAgentTool.execute({ prompt: 'task' });
+
+      expect(labelValue).toBe('sender-label');
+      expect(extraResult).toBe('bound-result');
+      expect(extra).toHaveBeenCalledOnce();
     });
   });
 });

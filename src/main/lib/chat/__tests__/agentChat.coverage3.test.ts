@@ -139,21 +139,13 @@ vi.mock('../agentChatUtilities', async () => ({
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })),
-  },
-}));
 
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordChatSessionActivated: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: {
-    execute: vi.fn().mockResolvedValue({ additionalContexts: [] }),
+vi.mock('../../agentHooks/agentHookManager', async () => ({
+  AgentHookManager: {
+    getInstance: () => ({
+      runHooks: vi.fn().mockResolvedValue({}),
+      isEnabled: vi.fn(() => false),
+    }),
   },
 }));
 
@@ -198,6 +190,12 @@ vi.mock('../agentChatSessionService', async () => ({
     generateFallbackTitle = vi.fn().mockReturnValue('Fallback Title');
     addMessageToSession = vi.fn().mockResolvedValue(undefined);
     editUserMessage = vi.fn().mockResolvedValue([{ role: 'assistant', content: [] }]);
+    prepareEditedUserMessage = vi.fn().mockImplementation((_messageId: string, message: any) => ({
+      normalizedMessage: { id: message.id ?? 'm1', role: 'user', timestamp: message.timestamp ?? 1, content: message.content },
+      targetUserIndex: 0,
+      targetContextUserIndex: 0,
+    }));
+    applyEditedUserMessage = vi.fn().mockResolvedValue(undefined);
     validateUserMessageEditable = vi.fn().mockReturnValue({ canEdit: true, targetUserIndex: 0, targetUserMessage: null, targetContextUserIndex: 0 });
     replaceFilePathInSession = vi.fn().mockResolvedValue({ success: true, replacedCount: 0 });
   },
@@ -209,7 +207,6 @@ vi.mock('../agentChatPromptService', async () => ({
     getLatestCustomSystemPrompt = vi.fn().mockReturnValue([]);
     getGlobalSystemPrompt = vi.fn().mockReturnValue([]);
     getAgentSpecificSystemPrompt = vi.fn().mockReturnValue([]);
-    buildSubAgentsSystemPrompt = vi.fn().mockReturnValue('');
     getCombinedSystemPromptForContext = vi.fn().mockReturnValue([]);
     getCombinedSystemPromptForCurrentTurn = vi.fn().mockResolvedValue([]);
     refreshSkillSnapshotIfNeeded = vi.fn().mockResolvedValue(undefined);
@@ -311,6 +308,7 @@ vi.mock('../agentChatPushReceiver', async () => ({
     destroy = vi.fn();
   },
 }));
+
 
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
@@ -716,8 +714,8 @@ describe('AgentChat - scheduler and policy setters', () => {
   });
 
   it('setInteractionPolicy sets policy', () => {
-    agent.setInteractionPolicy('plain-text-only');
-    expect((agent as any).interactionPolicy).toBe('plain-text-only');
+    agent.setInteractionPolicy('forbid');
+    expect((agent as any).interactionPolicy).toBe('forbid');
   });
 
   it('getBlockedInteractionDetails returns null initially', () => {
@@ -859,35 +857,5 @@ describe('AgentChat - getContextTokenUsage', () => {
   it('returns null initially', () => {
     const agent = createAgent();
     expect(agent.getContextTokenUsage()).toBeNull();
-  });
-});
-
-// ─── getChatSessionEntryTypeForUserMessage ────────────────────────────────────
-describe('AgentChat - getChatSessionEntryTypeForUserMessage (private)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns "new" when chat_history is empty', () => {
-    const agent = createAgent();
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(msg)).toBe('new');
-  });
-
-  it('returns "continued" when chat_history has messages', () => {
-    const agent = createAgent({
-      chat_history: [{ id: 'm0', role: 'user', content: [], timestamp: Date.now() }],
-    });
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(msg)).toBe('continued');
-  });
-});
-
-// ─── getSubAgentConfig ────────────────────────────────────────────────────────
-describe('AgentChat - getSubAgentConfig', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns undefined when chatConfig has no sub_agents', () => {
-    const agent = createAgent();
-    const result = agent.getSubAgentConfig('non-existent');
-    expect(result).toBeUndefined();
   });
 });

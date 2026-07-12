@@ -37,7 +37,7 @@ function createProfile(): ProfileV2 {
     updatedAt: '2026-03-20T00:00:00.000Z',
     alias: 'testUser',
     freDone: true,
-    primaryAgent: 'Agent One',
+    primaryChat: 'chat-one',
     chats: [
       {
         chat_id: 'chat-1',
@@ -56,7 +56,6 @@ function createProfile(): ProfileV2 {
       },
     ],
     skills: [],
-    sub_agents: [],
     mcp_servers: [],
     'starred-chat-sessions': [],
   } as unknown as ProfileV2;
@@ -88,7 +87,6 @@ describe('ProfileDataManager starred session sync', () => {
         title: 'Important Session',
         lastUpdated: '2026-03-20T10:00:00.000Z',
         readStatus: 'unread',
-        source: { type: 'local' },
         agentName: 'Agent One',
         agentEmoji: '🤖',
         agentAvatar: '',
@@ -126,7 +124,6 @@ describe('ProfileDataManager starred session sync', () => {
         readStatus: 'unread',
         starred: true,
         starredAt: '2026-03-20T09:00:00.000Z',
-        source: { type: 'local' },
       },
       timestamp: Date.now(),
     });
@@ -150,7 +147,6 @@ describe('ProfileDataManager starred session sync', () => {
         title: 'Important Session',
         lastUpdated: '2026-03-20T10:00:00.000Z',
         readStatus: 'unread',
-        source: { type: 'local' },
         agentName: 'Agent One',
         agentEmoji: '🤖',
         agentAvatar: '',

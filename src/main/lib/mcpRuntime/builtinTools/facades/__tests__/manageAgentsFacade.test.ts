@@ -1,29 +1,7 @@
 /**
  * Unit tests for ManageAgentsFacade
  */
-
-vi.mock('../../getAgentTemplateFromLibraryTool', () => ({
-  GetAgentTemplateFromLibraryTool: {
-    execute: vi.fn().mockResolvedValue({
-      success: true,
-      config: {
-        name: 'Research Agent',
-        version: '1.0.0',
-        description: 'A research agent',
-        configuration: {
-          name: 'Research Agent',
-          model: 'gpt-4',
-          role: 'Researcher',
-          mcp_servers: [{ name: 'bing', tools: [] }],
-          context_enhancement: {
-            search_memory: { enabled: true },
-            generate_memory: { enabled: true },
-          },
-        },
-      },
-    }),
-  },
-}));
+// @ts-nocheck
 
 vi.mock('../../createAgentFromConfigTool', () => ({
   CreateAgentFromConfigTool: {
@@ -59,7 +37,19 @@ vi.mock('../../../../userDataADO/profileCacheManager', () => ({
   profileCacheManager: {
     currentUserAlias: 'test-user',
     getAllChatConfigs: vi.fn().mockReturnValue([
-      { chat_id: 'chat-1', agent: { name: 'Bot1', source: 'ON-DEVICE', version: '1.0.0' } },
+      {
+        chat_id: 'chat-1',
+        agent: {
+          name: 'Bot1',
+          source: 'ON-DEVICE',
+          version: '1.0.0',
+          system_prompt: { 'Base.md': 'identity', 'AGENTS.md': 'context' },
+          zero_states: {
+            greeting: 'Old greeting',
+            quick_starts: [{ id: 'old-card', title: 'Old', description: 'Old card', prompt: 'old prompt' }],
+          },
+        },
+      },
       { chat_id: 'chat-2', agent: { name: 'Bot2', source: 'IN-LIBRARY', version: '2.0.0' } },
     ]),
     deleteChatConfig: vi.fn().mockResolvedValue(true),
@@ -80,11 +70,36 @@ describe('ManageAgentsFacade', () => {
     vi.clearAllMocks();
   });
 
+  it('uses secondary agents when resolving update metadata', async () => {
+    vi.mocked(profileCacheManager.getAllChatConfigs).mockReturnValueOnce([
+      {
+        chat_id: 'chat-multi',
+        agents: [
+          { name: 'Primary', source: 'ON-DEVICE', version: '1.0.0' },
+          { name: 'Secondary', source: 'IN-LIBRARY', version: '2.0.0' },
+        ],
+      },
+    ] as any);
+
+    await ManageAgentsFacade.execute({
+      action: 'update',
+      name: 'Secondary',
+      model: 'gpt-4o',
+    });
+
+    expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+      agent_config: expect.objectContaining({
+        name: 'Secondary',
+      }),
+    });
+  });
+
   describe('getDefinition()', () => {
     it('returns correct tool name', () => {
       const def = ManageAgentsFacade.getDefinition();
       expect(def.name).toBe('manage_agents');
       expect(def.inputSchema.required).toEqual(['action']);
+      expect((def.inputSchema as any).properties.workspace).toBeUndefined();
     });
   });
 
@@ -103,6 +118,18 @@ describe('ManageAgentsFacade', () => {
     it('allows list without name', async () => {
       const result = await ManageAgentsFacade.execute({ action: 'list' });
       expect(result.success).toBe(true);
+    });
+
+    it('rejects workspace instead of accepting a no-op agent-owned workspace', async () => {
+      const result = await ManageAgentsFacade.execute({
+        action: 'create',
+        name: 'Bot',
+        workspace: '/tmp/ws',
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('workspace');
+      expect(CreateAgentFromConfigTool.execute).not.toHaveBeenCalled();
     });
   });
 
@@ -152,40 +179,6 @@ describe('ManageAgentsFacade', () => {
       );
     });
 
-    it('expands memory_enabled=true to full context_enhancement', async () => {
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Bot',
-        memory_enabled: true,
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context_enhancement: {
-            search_memory: { enabled: true, semantic_similarity_threshold: 0.7, semantic_top_n: 5 },
-            generate_memory: { enabled: true },
-          },
-        }),
-      );
-    });
-
-    it('expands memory_enabled=false', async () => {
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Bot',
-        memory_enabled: false,
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context_enhancement: {
-            search_memory: { enabled: false },
-            generate_memory: { enabled: false },
-          },
-        }),
-      );
-    });
-
     it('maps knowledge_base to knowledgeBase', async () => {
       await ManageAgentsFacade.execute({
         action: 'create',
@@ -218,172 +211,10 @@ describe('ManageAgentsFacade', () => {
         expect.objectContaining({
           zero_states: {
             greeting: 'Hello!',
-            quick_starts: [{ title: 'T', description: 'D', prompt: 'P' }],
+            quick_starts: [
+              expect.objectContaining({ title: 'T', description: 'D', prompt: 'P', id: expect.any(String) }),
+            ],
           },
-        }),
-      );
-    });
-  });
-
-  describe('action=create, from_library', () => {
-    it('returns error when library template not found', async () => {
-      const { GetAgentTemplateFromLibraryTool } = await import('../../getAgentTemplateFromLibraryTool');
-      vi.mocked(GetAgentTemplateFromLibraryTool.execute).mockResolvedValueOnce({
-        success: false,
-        message: 'Not found',
-      } as any);
-
-      const result = await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Unknown Agent',
-        from_library: true,
-      });
-      expect(result.success).toBe(false);
-      expect((result as any).error).toBe('LIBRARY_FETCH_FAILED');
-    });
-
-    it('uses template mcp_servers, context_enhancement, and zero_states when no override provided', async () => {
-      const { GetAgentTemplateFromLibraryTool } = await import('../../getAgentTemplateFromLibraryTool');
-      vi.mocked(GetAgentTemplateFromLibraryTool.execute).mockResolvedValueOnce({
-        success: true,
-        config: {
-          name: 'Research Agent',
-          version: '1.0.0',
-          description: 'A research agent',
-          configuration: {
-            name: 'Research Agent',
-            model: 'gpt-4',
-            role: 'Researcher',
-            mcp_servers: [{ name: 'bing', tools: [] }],
-            context_enhancement: {
-              search_memory: { enabled: true },
-              generate_memory: { enabled: true },
-            },
-          },
-        },
-      } as any);
-
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Research Agent',
-        from_library: true,
-        knowledge_base: '/data/kb',
-        greeting: 'Hello!',
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mcp_servers: [{ name: 'bing', tools: [] }],
-          context_enhancement: expect.objectContaining({ search_memory: { enabled: true } }),
-          knowledgeBase: '/data/kb',
-          zero_states: expect.objectContaining({ greeting: 'Hello!' }),
-        }),
-      );
-    });
-
-    it('inherits context_enhancement from template when memory_enabled not specified', async () => {
-      const { GetAgentTemplateFromLibraryTool } = await import('../../getAgentTemplateFromLibraryTool');
-      vi.mocked(GetAgentTemplateFromLibraryTool.execute).mockResolvedValueOnce({
-        success: true,
-        config: {
-          name: 'Research Agent',
-          version: '1.0.0',
-          description: 'desc',
-          configuration: {
-            name: 'Research Agent',
-            model: 'gpt-4',
-            role: 'Researcher',
-            context_enhancement: {
-              search_memory: { enabled: true },
-              generate_memory: { enabled: false },
-            },
-          },
-        },
-      } as any);
-
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Research Agent',
-        from_library: true,
-        // no memory_enabled override
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context_enhancement: { search_memory: { enabled: true }, generate_memory: { enabled: false } },
-        }),
-      );
-    });
-
-    it('uses template zero_states when no greeting override provided', async () => {
-      const { GetAgentTemplateFromLibraryTool } = await import('../../getAgentTemplateFromLibraryTool');
-      vi.mocked(GetAgentTemplateFromLibraryTool.execute).mockResolvedValueOnce({
-        success: true,
-        config: {
-          name: 'Research Agent',
-          version: '1.0.0',
-          description: 'A research agent',
-          configuration: {
-            name: 'Research Agent',
-            model: 'gpt-4',
-            role: 'Researcher',
-            zero_states: { greeting: 'Template greeting', quick_starts: [] },
-            avatar: 'https://example.com/avatar.png',
-          },
-        },
-      } as any);
-
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Research Agent',
-        from_library: true,
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          zero_states: { greeting: 'Template greeting', quick_starts: [] },
-          avatar: 'https://example.com/avatar.png',
-        }),
-      );
-    });
-
-    it('overrides context_enhancement when memory_enabled is provided with from_library', async () => {
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Research Agent',
-        from_library: true,
-        memory_enabled: false,
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context_enhancement: {
-            search_memory: { enabled: false },
-            generate_memory: { enabled: false },
-          },
-        }),
-      );
-    });
-
-    it('fetches template and applies overrides', async () => {
-      await ManageAgentsFacade.execute({
-        action: 'create',
-        name: 'Research Agent',
-        from_library: true,
-        model: 'gpt-4o',
-        mcp_servers: ['bing', 'github'],
-      });
-
-      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'Research Agent',
-          model: 'gpt-4o', // overridden
-          role: 'Researcher', // from template
-          mcp_servers: [
-            { name: 'bing', tools: [] },
-            { name: 'github', tools: [] },
-          ], // overridden
-          source: 'IN-LIBRARY',
         }),
       );
     });
@@ -408,7 +239,6 @@ describe('ManageAgentsFacade', () => {
         name: 'Bot1',
         knowledge_base: '/data/kb',
         mcp_servers: ['bing'],
-        memory_enabled: true,
         greeting: 'Hi!',
         quick_starts: [{ title: 'T', description: 'D', prompt: 'P' }],
       });
@@ -417,13 +247,201 @@ describe('ManageAgentsFacade', () => {
         agent_config: expect.objectContaining({
           knowledgeBase: '/data/kb',
           mcp_servers: [{ name: 'bing', tools: [] }],
-          context_enhancement: expect.objectContaining({ search_memory: { enabled: true, semantic_similarity_threshold: 0.7, semantic_top_n: 5 } }),
           zero_states: expect.objectContaining({ greeting: 'Hi!' }),
         }),
       });
     });
 
-    it('auto-increments version for ON-DEVICE agent', async () => {
+    it('defaults mcp_servers to merge mode on update (additive intent)', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        mcp_servers: ['bing'],
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          mcp_servers: [{ name: 'bing', tools: [] }],
+          mcp_servers_mode: 'merge',
+        }),
+      });
+    });
+
+    it('updates greeting without dropping quick_starts', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        greeting: 'New greeting',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          zero_states: {
+            greeting: 'New greeting',
+            quick_starts: [{ id: 'old-card', title: 'Old', description: 'Old card', prompt: 'old prompt' }],
+          },
+        }),
+      });
+    });
+
+    it('merges quick_starts by default during update', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        quick_starts: [{ title: 'New', description: 'New card', prompt: 'new prompt' }],
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          zero_states: expect.objectContaining({
+            quick_starts: [
+              { id: 'old-card', title: 'Old', description: 'Old card', prompt: 'old prompt' },
+              expect.objectContaining({ title: 'New', description: 'New card', prompt: 'new prompt', id: expect.any(String) }),
+            ],
+          }),
+        }),
+      });
+    });
+
+    it('replaces quick_starts when quick_starts_mode is replace', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        quick_starts: [{ title: 'Only', description: 'Only card', prompt: 'only prompt' }],
+        quick_starts_mode: 'replace',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          zero_states: expect.objectContaining({
+            quick_starts: [
+              expect.objectContaining({ title: 'Only', description: 'Only card', prompt: 'only prompt', id: expect.any(String) }),
+            ],
+          }),
+        }),
+      });
+    });
+
+    it('updates Project Context without overriding Agent Identity', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        project_context_prompt: 'new context',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          system_prompt: { 'Base.md': 'identity', 'AGENTS.md': 'new context' },
+        }),
+      });
+    });
+
+    it('treats legacy string system_prompt as an Agent Identity-only update', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        system_prompt: 'new identity',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          system_prompt: { 'Base.md': 'new identity', 'AGENTS.md': 'context' },
+        }),
+      });
+    });
+
+    it('threads mcp_servers_mode=replace through to the tool', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        mcp_servers: ['bing'],
+        mcp_servers_mode: 'replace',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          mcp_servers_mode: 'replace',
+        }),
+      });
+    });
+
+    it('forwards an explicit empty mcp_servers with replace mode (clear intent)', async () => {
+      // Regression guard: a truthiness check would drop `[]` and silently keep
+      // existing servers. `!== undefined` must let the clear-all intent through.
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        mcp_servers: [],
+        mcp_servers_mode: 'replace',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          mcp_servers: [],
+          mcp_servers_mode: 'replace',
+        }),
+      });
+    });
+
+    it('defaults skills to merge mode and threads skills_mode=replace', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        skills: ['code-review'],
+      });
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          skills: ['code-review'],
+          skills_mode: 'merge',
+        }),
+      });
+
+      vi.mocked(UpdateAgentTool.execute).mockClear();
+
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        skills: ['code-review'],
+        skills_mode: 'replace',
+      });
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          skills: ['code-review'],
+          skills_mode: 'replace',
+        }),
+      });
+    });
+
+    it('defaults hooks to merge mode and threads hooks_mode=replace', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        hooks: ['hook-a'],
+      });
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          hooks: ['hook-a'],
+          hooks_mode: 'merge',
+        }),
+      });
+
+      vi.mocked(UpdateAgentTool.execute).mockClear();
+
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        hooks: ['hook-a'],
+        hooks_mode: 'replace',
+      });
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          hooks: ['hook-a'],
+          hooks_mode: 'replace',
+        }),
+      });
+    });
+
+    it('updates an on-device agent without synthesizing provenance fields', async () => {
       await ManageAgentsFacade.execute({
         action: 'update',
         name: 'Bot1',
@@ -434,13 +452,11 @@ describe('ManageAgentsFacade', () => {
         agent_config: expect.objectContaining({
           name: 'Bot1',
           model: 'claude-sonnet-4-20250514',
-          version: '1.0.1',
-          source: 'ON-DEVICE',
         }),
       });
     });
 
-    it('keeps version for IN-LIBRARY agent', async () => {
+    it('treats legacy library metadata as inert during update', async () => {
       await ManageAgentsFacade.execute({
         action: 'update',
         name: 'Bot2',
@@ -450,8 +466,7 @@ describe('ManageAgentsFacade', () => {
       expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
         agent_config: expect.objectContaining({
           name: 'Bot2',
-          version: '2.0.0',
-          source: 'IN-LIBRARY',
+          model: 'gpt-4o',
         }),
       });
     });
@@ -465,55 +480,27 @@ describe('ManageAgentsFacade', () => {
       expect(result.message).toContain('not found');
     });
 
-    it('rejects modifying read-only fields on IN-LIBRARY agent', async () => {
+    it('allows locally editing fields on an agent with legacy library metadata', async () => {
       const result = await ManageAgentsFacade.execute({
         action: 'update',
         name: 'Bot2',
         emoji: '🤖',
         system_prompt: 'new prompt',
+        project_context_prompt: 'new context',
       });
-      expect(result.success).toBe(false);
-      expect(result.message).toContain('read-only');
-      expect(result.message).toContain('emoji (avatar)');
-      expect(result.message).toContain('system_prompt');
-      expect(UpdateAgentTool.execute).not.toHaveBeenCalled();
-    });
-
-    it('allows modifying non-read-only fields on IN-LIBRARY agent', async () => {
-      await ManageAgentsFacade.execute({
-        action: 'update',
-        name: 'Bot2',
-        model: 'gpt-4o-mini',
-        skills: ['code-review'],
-      });
+      expect(result.success).toBe(true);
       expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
         agent_config: expect.objectContaining({
           name: 'Bot2',
-          model: 'gpt-4o-mini',
-          skills: ['code-review'],
-          source: 'IN-LIBRARY',
-          version: '2.0.0',
+          emoji: '🤖',
+          system_prompt: {
+            'Base.md': 'new prompt',
+            'AGENTS.md': 'new context',
+          },
         }),
       });
     });
-  });
 
-  describe('action=remove (error cases)', () => {
-    it('returns error when currentUserAlias is null', async () => {
-      const original = (profileCacheManager as any).currentUserAlias;
-      (profileCacheManager as any).currentUserAlias = null;
-      const result = await ManageAgentsFacade.execute({ action: 'remove', name: 'Bot1' });
-      expect(result.success).toBe(false);
-      expect(result.message).toContain('No current user session');
-      (profileCacheManager as any).currentUserAlias = original;
-    });
-
-    it('returns error when deleteChatConfig throws', async () => {
-      vi.mocked(profileCacheManager.deleteChatConfig).mockRejectedValueOnce(new Error('DB error'));
-      const result = await ManageAgentsFacade.execute({ action: 'remove', name: 'Bot1' });
-      expect(result.success).toBe(false);
-      expect(result.message).toContain('DB error');
-    });
   });
 
   describe('getCurrentUserAlias catch', () => {
@@ -522,7 +509,7 @@ describe('ManageAgentsFacade', () => {
         get: () => { throw new Error('access error'); },
         configurable: true,
       });
-      const result = await ManageAgentsFacade.execute({ action: 'remove', name: 'Bot1' });
+      const result = await ManageAgentsFacade.execute({ action: 'update', name: 'Bot1' });
       expect(result.success).toBe(false);
       // Restore
       Object.defineProperty(profileCacheManager, 'currentUserAlias', {
@@ -532,17 +519,12 @@ describe('ManageAgentsFacade', () => {
     });
   });
 
-  describe('action=remove', () => {
-    it('finds and deletes chat config', async () => {
-      const result = await ManageAgentsFacade.execute({ action: 'remove', name: 'Bot1' });
-
-      expect(result.success).toBe(true);
-      expect(profileCacheManager.deleteChatConfig).toHaveBeenCalledWith('test-user', 'chat-1');
-    });
-
-    it('returns error for non-existent agent', async () => {
-      const result = await ManageAgentsFacade.execute({ action: 'remove', name: 'Ghost' });
+  describe('action=remove (removed capability)', () => {
+    it('is rejected as an invalid action and never deletes a chat', async () => {
+      const result = await ManageAgentsFacade.execute({ action: 'remove' as never, name: 'Bot1' });
       expect(result.success).toBe(false);
+      expect(result.message).toContain('Invalid action');
+      expect(profileCacheManager.deleteChatConfig).not.toHaveBeenCalled();
     });
   });
 
@@ -560,10 +542,124 @@ describe('ManageAgentsFacade', () => {
     });
   });
 
-  describe('action=status', () => {
-    it('maps name to agent_name', async () => {
-      await ManageAgentsFacade.execute({ action: 'status', name: 'Bot1' });
-      expect(GetAgentStatusTool.execute).toHaveBeenCalledWith({ agent_name: 'Bot1' });
+  describe('action=create, direct – all optional fields', () => {
+    it('sets role, model, system_prompt, skills when provided', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'create',
+        name: 'FullBot',
+        role: 'Engineer',
+        model: 'gpt-4o',
+        system_prompt: 'You are helpful',
+        skills: ['skill-a'],
+      });
+      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'Engineer',
+          model: 'gpt-4o',
+          system_prompt: { 'Base.md': 'You are helpful', 'AGENTS.md': '' },
+          skills: ['skill-a'],
+        }),
+      );
     });
+  });
+
+  describe('action=update – optional field branches', () => {
+    it('sets role and model on update', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        role: 'NewRole',
+        model: 'gpt-4o',
+        system_prompt: 'New prompt',
+      });
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          role: 'NewRole',
+          model: 'gpt-4o',
+          system_prompt: { 'Base.md': 'New prompt', 'AGENTS.md': 'context' },
+        }),
+      });
+    });
+  });
+
+  describe('legacy metadata update compatibility', () => {
+    it('allows updating only emoji', async () => {
+      const result = await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot2',
+        emoji: '🔥',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('allows updating only system_prompt', async () => {
+      const result = await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot2',
+        system_prompt: 'new prompt',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('additional direct create and update coverage', () => {
+    it('createDirect: sets all optional fields when provided (L273-277)', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'create',
+        name: 'Bot',
+        role: 'Helper',
+        model: 'gpt-4o',
+        system_prompt: 'be nice',
+        skills: ['code-review'],
+      });
+
+      expect(CreateAgentFromConfigTool.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'Helper',
+          model: 'gpt-4o',
+          system_prompt: { 'Base.md': 'be nice', 'AGENTS.md': '' },
+          skills: ['code-review'],
+        }),
+      );
+    });
+
+    it('update: sets emoji/role/system_prompt true-branches on ON-DEVICE (L348-352)', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        emoji: '🎯',
+        role: 'New Role',
+        system_prompt: 'new sys',
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          emoji: '🎯',
+          role: 'New Role',
+          system_prompt: { 'Base.md': 'new sys', 'AGENTS.md': 'context' },
+        }),
+      });
+    });
+
+    it('update: builds zero_states from quick_starts only (buildZeroStates greeting-undefined branch, L495)', async () => {
+      await ManageAgentsFacade.execute({
+        action: 'update',
+        name: 'Bot1',
+        quick_starts: [{ title: 'T', description: 'D', prompt: 'P' }],
+      });
+
+      expect(UpdateAgentTool.execute).toHaveBeenCalledWith({
+        agent_config: expect.objectContaining({
+          zero_states: {
+            greeting: 'Old greeting',
+            quick_starts: [
+              { id: 'old-card', title: 'Old', description: 'Old card', prompt: 'old prompt' },
+              expect.objectContaining({ title: 'T', description: 'D', prompt: 'P', id: expect.any(String) }),
+            ],
+          },
+        }),
+      });
+    });
+
   });
 });

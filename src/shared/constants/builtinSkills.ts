@@ -16,9 +16,8 @@
  *
  *  3. Bump BUILTIN_DEFAULTS_VERSION to N+1.
  *
- *  4. Update the profile template:
- *       resources/examples/profiles/profile.json
- *     set "builtinDefaultsVersion" to the new version number.
+ *  4. No profile template file needs to be updated. DEFAULT_PROFILE_V2
+ *     and createDefaultProfile() read BUILTIN_DEFAULTS_VERSION directly.
  *
  *  Example — adding a skill called "excel" as version 2:
  *

@@ -20,6 +20,7 @@ vi.mock('../streamingConfig', () => {
     batchSize: 10,
     batchDelay: 5,
     performanceTracking: true,
+    fallbackToV1OnError: true,
     maxRetries: 3,
     showStreamingMetrics: false,
     enableAdaptiveOptimization: true,

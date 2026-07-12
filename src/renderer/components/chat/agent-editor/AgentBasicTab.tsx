@@ -8,27 +8,29 @@ import { useChats } from '../../userData/userDataProvider'
 import { AgentAvatar } from '../../common/AgentAvatar'
 import ExternalAgentConnectionConfig from './ExternalAgentConnectionConfig'
 import { useScrollSelectedIntoView } from '../../../lib/hooks/useScrollSelectedIntoView'
+import { resolveChatAgent } from '@/lib/agent'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 const AgentBasicTab: React.FC<TabComponentProps> = ({
   mode,
-  agentId,
+  chatId,
   agentData,
   onSave,
   onAgentCreated,
   onDataChange,
   cachedData,
   fieldErrors,
-  readOnly = false,
-  isFromLibrary = false
+  readOnly = false
 }) => {
   // Get all chats for duplicate name checking
   const { chats } = useChats()
+  const { t } = useI18n()
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     emoji: '🤖',
-    avatar: '', // Agent avatar URL (only for IN-LIBRARY agents)
+    avatar: '',
     role: '', // Retained but unused
     model: getDefaultModel()
   })
@@ -42,7 +44,6 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   // UI state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [isInitialized, setIsInitialized] = useState(false)
   const [loadedAgentId, setLoadedAgentId] = useState<string | null>(null)
   const [nameWarning, setNameWarning] = useState<string>('')
@@ -53,11 +54,8 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   // Check if this is the Kobi Agent (emoji modification is prohibited)
   const isKobiAgent = agentData?.name?.toLowerCase() === 'kobi'
 
-  // IN-LIBRARY agent edit permissions:
-  // - avatar/emoji/name: not editable
-  // - model: editable
-  const isAvatarNameDisabled = readOnly || isKobiAgent || isFromLibrary
-  const isModelDisabled = readOnly // model is only disabled in readOnly mode; still editable when isFromLibrary
+  const isAvatarNameDisabled = readOnly || isKobiAgent
+  const isModelDisabled = readOnly
 
   // Initial data used to detect modifications
   const [initialData, setInitialData] = useState({
@@ -93,7 +91,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
   useEffect(() => {
     // In Update mode, or Add mode when agent is already created, sync data to form
     if (agentData && (mode === 'update' || (mode === 'add' && agentData.id))) {
-      // Only reset form data when not yet initialized or agentId changes
+      // Only reset form data when not yet initialized or chatId changes
       if (!isInitialized || loadedAgentId !== agentData.id) {
         const baseData = {
           name: agentData.name,
@@ -174,37 +172,18 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
 
   // Check for duplicate Agent name
   const checkDuplicateName = useCallback((name: string): boolean => {
-    if (!name.trim()) return false
-
     // In Update mode, exclude the agent currently being edited
     const currentAgentName = agentData?.name
 
     return chats.some(chat => {
+      const agent = resolveChatAgent(chat)
       // Skip current agent being edited
-      if (mode === 'update' && chat.agent?.name === currentAgentName) {
+      if (mode === 'update' && agent?.name === currentAgentName) {
         return false
       }
-      return chat.agent?.name === name.trim()
+      return agent?.name === name.trim()
     })
   }, [chats, agentData?.name, mode])
-
-  // Form validation
-  const validateForm = useCallback(() => {
-    const errors: Record<string, string> = {}
-
-    if (!formData.name.trim()) {
-      errors.name = 'Agent name is required'
-    } else if (checkDuplicateName(formData.name)) {
-      errors.name = 'Agent name already exists'
-    }
-
-    if (!isExternalAgent && !formData.model) {
-      errors.model = 'Model selection is required'
-    }
-
-    setValidationErrors(errors)
-    return Object.keys(errors).length === 0
-  }, [formData, checkDuplicateName])
 
   // Check if data has been modified
   const hasChanges = useCallback(() => {
@@ -232,24 +211,15 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
     // For the name field, check for duplicates in real time
     if (field === 'name') {
       if (value.trim() && checkDuplicateName(value)) {
-        setNameWarning('⚠️ This agent name already exists')
+        setNameWarning(t('agent.create.nameAlreadyExistsWarning'))
       } else {
         setNameWarning('')
       }
     }
 
-    // Clear the validation error for this field
-    if (validationErrors[field]) {
-      setValidationErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors[field]
-        return newErrors
-      })
-    }
-
-    // When user starts typing, notify parent to clear field errors (via onDataChange triggering parent to update fieldErrors)
-    // This clears errors from Save All Changes when user starts editing the name
-  }, [validationErrors, checkDuplicateName])
+    // When the user starts typing, the parent clears field errors via onDataChange
+    // (which prompts the parent to refresh fieldErrors).
+  }, [checkDuplicateName, t])
 
   // Handle Emoji selection
   const handleEmojiSelect = useCallback((emoji: string) => {
@@ -263,30 +233,21 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
     setShowModelDropdown(false)
   }, [handleInputChange])
 
-  // Dynamically determine the current effective mode
-  const getCurrentMode = useCallback(() => {
-    // If in Add mode but Agent is already created, treat it as Update mode
-    if (mode === 'add' && agentData?.id) {
-      return 'update'
-    }
-    return mode
-  }, [mode, agentData?.id])
-
   return (
     <div className="agent-tab">
       {/* Tab Body */}
       <div className="tab-body">
         {/* Avatar Section */}
         <div className="form-section">
-          <label className="form-label">Agent Avatar</label>
+          <label className="form-label">{t('agent.create.avatar')}</label>
           <div className="emoji-section">
             <div
               className={`emoji-display ${isAvatarNameDisabled ? 'disabled' : ''}`}
               onClick={() => !isAvatarNameDisabled && setShowEmojiPicker(true)}
-              title={isFromLibrary ? "Library Agent's avatar cannot be modified" : readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to change avatar"}
+              title={readOnly ? t('agent.create.avatarReadonly') : isKobiAgent ? t('agent.create.kobiAvatarReadonly') : t('agent.create.clickChangeAvatar')}
               style={isAvatarNameDisabled ? { cursor: 'not-allowed', opacity: 0.6 } : undefined}
             >
-              {/* Use AgentAvatar component: ON-DEVICE shows emoji, IN-LIBRARY prefers avatar */}
+              {/* Preserve persisted avatars while allowing local edits. */}
               <AgentAvatar
                 emoji={formData.emoji}
                 avatar={formData.avatar}
@@ -297,26 +258,26 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
               />
             </div>
             <span className="emoji-hint">
-              {isFromLibrary ? "Library Agent's avatar cannot be modified" : readOnly ? "Avatar cannot be modified" : isKobiAgent ? "Kobi Agent's avatar cannot be modified" : "Click to choose avatar"}
+              {readOnly ? t('agent.create.avatarReadonly') : isKobiAgent ? t('agent.create.kobiAvatarReadonly') : t('agent.create.clickChooseAvatar')}
             </span>
           </div>
         </div>
 
         {/* Agent Name */}
         <div className="form-section">
-          <label className="form-label">Agent Name</label>
+          <label className="form-label">{t('agent.create.name')}</label>
           <input
             type="text"
-            className={`form-input ${(validationErrors.name || fieldErrors?.name) ? 'warning' : ''} ${nameWarning ? 'warning' : ''}`}
+            className={`form-input ${fieldErrors?.name ? 'warning' : ''} ${nameWarning ? 'warning' : ''}`}
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
-            placeholder="Enter agent name..."
-            disabled={isAvatarNameDisabled} // Not editable for IN-LIBRARY agents, read-only mode, or Kobi
+            placeholder={t('agent.create.namePlaceholder')}
+            disabled={isAvatarNameDisabled}
           />
-          {(validationErrors.name || fieldErrors?.name) && (
-            <div className="warning-message">{validationErrors.name || fieldErrors?.name}</div>
+          {fieldErrors?.name && (
+            <div className="warning-message">{fieldErrors.name}</div>
           )}
-          {nameWarning && !validationErrors.name && !fieldErrors?.name && (
+          {nameWarning && !fieldErrors?.name && (
             <div className="warning-message">{nameWarning}</div>
           )}
         </div>
@@ -324,11 +285,11 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
         {/* Model Selection (hidden for External Agent) */}
         {!isExternalAgent && (
         <div className="form-section">
-          <label className="form-label">Agent Model</label>
+          <label className="form-label">{t('agent.create.model')}</label>
           <div className="model-selector" ref={modelDropdownRef}>
             <button
               type="button"
-              className={`model-button ${validationErrors.model ? 'error' : ''}`}
+              className="model-button"
               onClick={() => !isModelDisabled && setShowModelDropdown(!showModelDropdown)}
               disabled={isModelDisabled}
               style={isModelDisabled ? { cursor: 'not-allowed', opacity: 0.7 } : undefined}
@@ -347,7 +308,7 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
                 />
               </svg>
               <span className="model-name">
-                {availableModels.find(m => m.id === formData.model)?.name || 'Select Model'}
+                {availableModels.find(m => m.id === formData.model)?.name || t('agent.create.selectModel')}
               </span>
               <svg
                 className={`dropdown-arrow ${showModelDropdown ? 'rotated' : ''}`}
@@ -379,9 +340,9 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
                       <div className="model-info">
                         <span className="model-option-name">{model.name}</span>
                         <div className="model-badges">
-                          {(model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4')) && <span className="badge reasoning">Reasoning</span>}
-                          {model.capabilities.supports.tool_calls && <span className="badge tools">Tools</span>}
-                          {model.capabilities.supports.vision && <span className="badge files">Image</span>}
+                          {(model.capabilities.family.includes('o3') || model.capabilities.family.includes('o4')) && <span className="badge reasoning">{t('agent.create.badgeReasoning')}</span>}
+                          {model.capabilities.supports.tool_calls && <span className="badge tools">{t('agent.create.badgeTools')}</span>}
+                          {model.capabilities.supports.vision && <span className="badge files">{t('agent.create.badgeImage')}</span>}
                         </div>
                       </div>
                       {formData.model === model.id && (
@@ -395,28 +356,25 @@ const AgentBasicTab: React.FC<TabComponentProps> = ({
               </div>
             )}
           </div>
-          {validationErrors.model && (
-            <div className="error-message">{validationErrors.model}</div>
-          )}
         </div>
         )}
 
         {/* Version and Source (Read-only, only show when has value) */}
         {(agentMeta.version || agentMeta.source) && (
           <div className="form-section agent-meta-section">
-            <label className="form-label">Agent Info</label>
+            <label className="form-label">{t('agent.create.agentInfo')}</label>
             <div className="agent-meta-row">
               {agentMeta.version && (
                 <div className="agent-meta-item">
-                  <span className="agent-meta-label">Version:</span>
+                  <span className="agent-meta-label">{t('agent.create.versionLabel')}</span>
                   <span className="agent-meta-value">{agentMeta.version}</span>
                 </div>
               )}
               {agentMeta.source && (
                 <div className="agent-meta-item">
-                  <span className="agent-meta-label">Source:</span>
-                  <span className={`agent-meta-badge ${agentMeta.source === 'IN-LIBRARY' ? 'library' : 'device'}`}>
-                    {agentMeta.source === 'IN-LIBRARY' ? '📚 Library' : agentMeta.source === 'EXTERNAL' ? '🌐 External' : '💻 On Device'}
+                  <span className="agent-meta-label">{t('agent.create.sourceLabel')}</span>
+                  <span className="agent-meta-badge device">
+                    {agentMeta.source === 'EXTERNAL' ? t('agent.create.sourceExternal') : t('agent.create.sourceOnDevice')}
                   </span>
                 </div>
               )}

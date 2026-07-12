@@ -20,7 +20,6 @@ module.exports = (env, argv) => {
     target: 'web', // Explicitly set to web target, not electron-renderer
     entry: {
       main: './src/renderer/index.tsx',
-      toolbar: './src/renderer/toolbar.tsx',
       screenshot: './src/renderer/screenshot.tsx',
     },
     output: {
@@ -121,21 +120,11 @@ module.exports = (env, argv) => {
         ),
         'process.platform': JSON.stringify(process.platform),
         'process.versions': JSON.stringify(process.versions),
-        'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(
-          process.env.DEVELOPMENT_BASE_CDN_URL || '',
-        ),
-        'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(
-          process.env.PRODUCTION_BASE_CDN_URL || '',
-        ),
         'process.env.APP_NAME': JSON.stringify(appConfig.productName),
         'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
         // Expose prompt history configuration
         'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(
           process.env.HISTORY_PROMPT_QUEUE_SIZE,
-        ),
-        // Auto Update Configuration
-        'process.env.RELEASE_CDN_URL': JSON.stringify(
-          process.env.RELEASE_CDN_URL,
         ),
         'process.argv': '[]', // Provide an empty process.argv array
         'process.browser': 'true', // Mark as browser environment
@@ -154,31 +143,6 @@ module.exports = (env, argv) => {
         title: appConfig.windowTitle,
         productName: appConfig.productName,
         chunks: ['main'], // Only include JS files from the main entry
-        templateParameters: (compilation, assets, assetTags, options) => ({
-          htmlWebpackPlugin: { tags: assetTags, files: assets, options },
-          connectSrcExtra: '',
-          entryScript: '',
-        }),
-        minify: !isDevelopment
-          ? {
-              removeComments: true,
-              collapseWhitespace: true,
-              removeRedundantAttributes: true,
-              useShortDoctype: true,
-              removeEmptyAttributes: true,
-              removeStyleLinkTypeAttributes: true,
-              keepClosingSlash: true,
-              minifyJS: true,
-              minifyCSS: true,
-              minifyURLs: true,
-            }
-          : false,
-      }),
-      new HtmlWebpackPlugin({
-        template: './src/renderer/toolbar.html',
-        filename: 'toolbar.html',
-        title: `${appConfig.productName} - ToolBar`,
-        chunks: ['toolbar'], // Only include JS files from the toolbar entry
         templateParameters: (compilation, assets, assetTags, options) => ({
           htmlWebpackPlugin: { tags: assetTags, files: assets, options },
           connectSrcExtra: '',

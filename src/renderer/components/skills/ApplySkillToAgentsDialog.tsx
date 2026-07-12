@@ -1,7 +1,7 @@
 /**
  * ApplySkillToAgentsDialog Component
  *
- * A unified dialog shown after a skill is added (from device or library).
+ * A unified dialog shown after a skill is added to the local registry.
  * Displays all local agents and lets the user choose which agents to apply the skill to.
  * Agents already using the skill are pre-checked and disabled.
  */
@@ -17,7 +17,9 @@ import {
 } from '../ui/dialog'
 import { useProfileData } from '../userData/userDataProvider'
 import { useToast } from '../ui/ToastProvider'
+import { resolveChatAgent, resolveChatAgents } from '../../lib/agent'
 import { atom } from '@/atom'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface DialogState {
   open: boolean
@@ -42,6 +44,7 @@ interface AgentItem {
 }
 
 const ApplySkillToAgentsDialog: React.FC = () => {
+  const { t } = useI18n()
   const [{ open, skillName }, actions] = ApplySkillDialogAtom.use();
   const { chats } = useProfileData()
   const { showSuccess, showError } = useToast()
@@ -55,19 +58,22 @@ const ApplySkillToAgentsDialog: React.FC = () => {
     const items: AgentItem[] = []
 
     for (const chat of chats) {
-      if (chat.chat_type === 'single_agent' && chat.agent) {
-        items.push({
-          targetKey: `${chat.chat_id}:${chat.agent.name}`,
-          chatId: chat.chat_id,
-          agentName: chat.agent.name,
-          emoji: chat.agent.emoji,
-          avatar: chat.agent.avatar,
-          alreadyApplied: (chat.agent.skills || []).includes(skillName),
-        })
+      if (chat.chat_type === 'single_agent') {
+        const singleAgent = resolveChatAgent(chat)
+        if (singleAgent) {
+          items.push({
+            targetKey: `${chat.chat_id}:${singleAgent.name}`,
+            chatId: chat.chat_id,
+            agentName: singleAgent.name,
+            emoji: singleAgent.emoji,
+            avatar: singleAgent.avatar,
+            alreadyApplied: (singleAgent.skills || []).includes(skillName),
+          })
+        }
       }
 
-      if (chat.chat_type === 'multi_agent' && chat.agents) {
-        for (const agent of chat.agents) {
+      if (chat.chat_type === 'multi_agent') {
+        for (const agent of resolveChatAgents(chat)) {
           items.push({
             targetKey: `${chat.chat_id}:${agent.name}`,
             chatId: chat.chat_id,
@@ -140,27 +146,34 @@ const ApplySkillToAgentsDialog: React.FC = () => {
     }
 
     setIsApplying(true)
-    const result = await window.electronAPI.skillLibrary.applySkillToAgents(
+    const result = await window.electronAPI.skills.applySkillToAgents(
       skillName,
       toApply.map(item => ({ chatId: item.chatId, agentName: item.agentName })),
     )
     setIsApplying(false)
 
     if (!result.success && result.appliedCount === 0) {
-      showError(result.message || result.error || `Failed to apply skill "${skillName}"`)
+      showError(result.message || result.error || t('skills.apply.failed', { skillName }))
       return
     }
 
     if (result.appliedCount > 0) {
-      showSuccess(`Skill "${skillName}" applied to ${result.appliedCount} agent${result.appliedCount > 1 ? 's' : ''}`)
+      showSuccess(t('skills.apply.success', {
+        skillName,
+        count: result.appliedCount,
+        agentLabel: t(result.appliedCount > 1 ? 'mcp.apply.agentPlural' : 'mcp.apply.agentSingular'),
+      }))
     }
 
     if (result.failedCount > 0) {
-      showError(`Failed to apply skill to ${result.failedCount} agent${result.failedCount > 1 ? 's' : ''}`)
+      showError(t('skills.apply.failedCount', {
+        count: result.failedCount,
+        agentLabel: t(result.failedCount > 1 ? 'mcp.apply.agentPlural' : 'mcp.apply.agentSingular'),
+      }))
     }
 
     actions.setOpen(false)
-  }, [agentItems, selectedAgents, skillName, showSuccess, showError])
+  }, [agentItems, selectedAgents, skillName, showSuccess, showError, t])
 
   const handleSkip = useCallback(() => {
     actions.setOpen(false)
@@ -176,9 +189,9 @@ const ApplySkillToAgentsDialog: React.FC = () => {
     <Dialog open={open} onOpenChange={actions.setOpen} className="z-10000">
       <DialogContent className="w-[480px] max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Apply to Agents</DialogTitle>
+          <DialogTitle>{t('mcp.apply.title')}</DialogTitle>
           <DialogDescription>
-            Select which agents should use the skill "{skillName}".
+            {t('skills.apply.description', { skillName })}
           </DialogDescription>
         </DialogHeader>
 
@@ -193,9 +206,9 @@ const ApplySkillToAgentsDialog: React.FC = () => {
                 checked={isAllSelected}
                 readOnly
                 tabIndex={-1}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 pointer-events-none"
               />
-              <span className="text-sm text-gray-700">{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+              <span className="text-sm text-gray-700">{t(isAllSelected ? 'common.deselectAll' : 'common.selectAll')}</span>
             </div>
           </div>
         )}
@@ -203,7 +216,7 @@ const ApplySkillToAgentsDialog: React.FC = () => {
         <div className="py-3 min-h-[244px] max-h-[552px] overflow-y-auto">
           {agentItems.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-4">
-              No agents found.
+              {t('mcp.apply.noAgents')}
             </div>
           ) : (
             <div className="space-y-1">
@@ -226,7 +239,7 @@ const ApplySkillToAgentsDialog: React.FC = () => {
                     disabled={item.alreadyApplied}
                     readOnly
                     tabIndex={-1}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 pointer-events-none"
                   />
                   {item.avatar ? (
                     <img src={item.avatar} alt={item.agentName} className="w-6 h-6 rounded-full object-cover" />
@@ -238,7 +251,7 @@ const ApplySkillToAgentsDialog: React.FC = () => {
                   </span>
                   {item.alreadyApplied && (
                     <span className="text-xs text-gray-400">
-                      Applied
+                      {t('common.applied')}
                     </span>
                   )}
                 </div>
@@ -253,14 +266,18 @@ const ApplySkillToAgentsDialog: React.FC = () => {
             onClick={handleSkip}
             disabled={isApplying}
           >
-            Skip
+            {t('common.skip')}
           </button>
           <button
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={handleApply}
             disabled={isApplying || newlySelectedCount === 0}
           >
-            {isApplying ? 'Applying...' : `Apply${newlySelectedCount > 0 ? ` (${newlySelectedCount})` : ''}`}
+            {isApplying
+              ? t('mcp.apply.applying')
+              : newlySelectedCount > 0
+                ? t('mcp.apply.applyWithCount', { count: newlySelectedCount })
+                : t('mcp.apply.apply')}
           </button>
         </DialogFooter>
       </DialogContent>

@@ -3,11 +3,16 @@ import { VscMcpClient } from './vscMcpClient';
 import { BuiltinMcpClient, BUILTIN_SERVER_NAME } from './builtinMcpClient';
 import { McpServerConfig } from '../userDataADO/types';
 import { createConsoleLogger } from '../unifiedLogger';
+import { McpAuthService } from './auth/McpAuthService';
 import { BrowserWindow, ipcMain } from 'electron';
 import { execSync } from 'child_process';
 import { openkosmosPlaceholderManager, containsOpenKosmosPlaceholder } from '../userDataADO/openkosmosPlaceholders';
-import { isPluginMcpServer } from '../plugin/bridges/mcpBridge';
 import { profileCacheManager } from "../userDataADO";
+import { McpServerSettleWaiter } from './mcpServerSettleWaiter';
+import { McpAutoReconnectCoordinator } from './mcpAutoReconnectCoordinator';
+import { OperationLockManager } from './mcpOperationLock';
+
+export { BUILTIN_SERVER_NAME };
 
 /**
  * Client implementation type
@@ -22,6 +27,7 @@ interface IUnifiedMcpClient {
   getTools(): Promise<{ name: string; description?: string; inputSchema: any }[]>;
   executeTool({ toolName, toolArgs, signal }: { toolName: string; toolArgs: { [key: string]: unknown }; signal?: AbortSignal }): Promise<string>;
   cleanup(): Promise<void>;
+  on?(event: 'stateChange', listener: (state: { state: string; message?: string }) => void): this;
 }
 
 // Initialize console-only logger for MCP client manager
@@ -29,6 +35,14 @@ let advancedLogger: any;
 (async () => {
   advancedLogger = await createConsoleLogger();
 })();
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function asError(error: unknown, fallback: string): Error {
+  return error instanceof Error ? error : new Error(fallback);
+}
 
 /**
  * MCP Server status enumeration
@@ -46,15 +60,11 @@ export interface MCPServerRuntimeState {
   lastError: Error | null;
 }
 
-/**
- * Operation lock interface
- */
-interface OperationLock {
-  operation: 'connect' | 'disconnect' | 'reconnect';
-  promise: Promise<void>;
-  timestamp: number;
-  abortController?: AbortController; // Add abort controller
-}
+export const SUB_AGENT_BLOCKED_TOOLS = new Set([
+  'sub_agent',
+  'computer_use',
+  'send_to_subagent',
+]);
 
 /**
  * Connection process interface for tracking ongoing connections
@@ -95,7 +105,7 @@ export class MCPClientManager {
   private mcpClients: Map<string, IUnifiedMcpClient> = new Map(); // serverName -> Unified Client
   private clientImplementations: Map<string, ClientImplementation> = new Map(); // serverName -> implementation type
   private toolToServerMap: Map<string, string> = new Map(); // toolName -> serverName
-  private operationLocks: Map<string, OperationLock> = new Map(); // serverName -> OperationLock
+  private readonly opLock = new OperationLockManager(); // per-server connect/disconnect/reconnect serialization
   private activeConnections: Map<string, ConnectionProcess> = new Map(); // serverName -> ConnectionProcess
   private instanceId: string = Math.random().toString(36).substr(2, 9);
   private currentUserAlias: string | null = null;
@@ -108,7 +118,37 @@ export class MCPClientManager {
   private notificationTimeout: NodeJS.Timeout | null = null;
   private pendingNotification = false;
 
+  private readonly settleWaiter = new McpServerSettleWaiter(
+    (serverName) => this.runtimeStates.get(serverName)?.status,
+  );
+
+  /**
+   * Auto-reconnect coordinator. Attempts route through the per-server operation lock (see
+   * `executeReconnect`) so they never run concurrently with a manual op; the attempt is tagged so a
+   * manual connect/disconnect/reconnect supersedes (waits out) an in-flight attempt instead of being
+   * rejected with "please wait". The coordinator owns the reconnect bookkeeping.
+   */
+  private readonly autoReconnect = new McpAutoReconnectCoordinator({
+    executeReconnect: (serverName) =>
+    this.opLock.run(serverName, 'reconnect', (signal) => this._performReconnect(serverName, signal), {
+        isAutoReconnect: true,
+      }),
+    getStatus: (serverName) => this.runtimeStates.get(serverName)?.status,
+    isBuiltin: (serverName) => this.isBuiltinServer(serverName),
+    isInUse: (serverName) => this._isServerInUse(serverName),
+    setLastError: (serverName, message) => this._updateServerError(serverName, new Error(message)),
+    log: (level, message) => {
+      const fn = level === 'warning' ? advancedLogger?.warn : advancedLogger?.info;
+      fn?.call(advancedLogger, `[MCPClientManager] ${message}`, 'autoReconnect');
+    },
+  });
+
   private constructor() {
+    McpAuthService.onInteraction(({ serverName, phase }) => {
+      if (phase === 'consent-requested') {
+        this._updateServerStatus(serverName, 'needs-user-interaction');
+      }
+    });
   }
 
   // ==================== 🆕 Runtime State Management Methods ====================
@@ -130,7 +170,11 @@ export class MCPClientManager {
       this.runtimeStates.set(serverName, state);
     }
     state.status = status;
+    if (status === 'connected') {
+      this.autoReconnect.noteConnected(serverName);
+    }
     this._scheduleNotification();
+    this.settleWaiter.notify();
   }
 
   /**
@@ -207,6 +251,49 @@ export class MCPClientManager {
    */
   getMcpServerRuntimeState(serverName: string): MCPServerRuntimeState | undefined {
     return this.runtimeStates.get(serverName);
+  }
+
+  /**
+   * In-use external (non-builtin) MCP server names for the current profile.
+   * Returns an empty list before `initialize()` binds an alias.
+   */
+  getInUseServerNames(): string[] {
+    if (!this.currentUserAlias) {
+      return [];
+    }
+    return profileCacheManager
+      .getAllMcpServerInfo(this.currentUserAlias)
+      .filter((info) => info.config.in_use !== false && info.config.name !== BUILTIN_SERVER_NAME)
+      .map((info) => info.config.name);
+  }
+
+  /**
+   * Whether a server's profile config is present and still wanted (`in_use !== false`). Returns
+   * false before an alias is bound or if the config lookup throws. Feeds the coordinator's snapshot.
+   */
+  private _isServerInUse(serverName: string): boolean {
+    if (!this.currentUserAlias) {
+      return false;
+    }
+    try {
+      const info = profileCacheManager.getMcpServerInfo(this.currentUserAlias, serverName);
+      return !!info.config && info.config.in_use !== false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Wait until every named server reaches a settled connection state, or until
+   * `timeoutMs` elapses. The builtin server, duplicates, and empty names are
+   * ignored. Resolves immediately when there is nothing left to wait for.
+   *
+   * Event-driven: the internal waiter is re-evaluated whenever a server status
+   * changes through `_updateServerStatus`, so this does not poll. The timeout is
+   * a hard ceiling so a server that never settles cannot block a caller forever.
+   */
+  async waitForServersSettled(serverNames: string[], timeoutMs: number): Promise<void> {
+    await this.settleWaiter.waitForServersSettled(serverNames, timeoutMs);
   }
 
   /**
@@ -388,8 +475,10 @@ export class MCPClientManager {
     }
 
     // Remove all status validation - handled by ProfileCacheManager
-    await this._executeWithLock(serverName, 'connect', async () => {
-      await this._performConnect(serverName);
+    // Manual connect supersedes any pending auto-reconnect for this server.
+    this.autoReconnect.cancel(serverName);
+    await this.opLock.run(serverName, 'connect', async (signal) => {
+      await this._performConnect(serverName, signal);
     });
   }
 
@@ -413,8 +502,41 @@ export class MCPClientManager {
     }
 
     // Remove all status validation - handled by ProfileCacheManager
-    await this._executeWithLock(serverName, 'disconnect', async () => {
+    // Manual disconnect cancels auto-reconnect; in_use also becomes false below.
+    this.autoReconnect.cancel(serverName);
+    await this.opLock.run(serverName, 'disconnect', async () => {
       await this._performDisconnect(serverName);
+    });
+  }
+
+  /**
+   * Dispose runtime resources before an atomic persisted-config rename.
+   * Unlike disconnect(), this never mutates the server's persisted `in_use` value.
+   */
+  async disposeRuntimeForConfigRename(serverName: string): Promise<void> {
+    if (!serverName) {
+      throw new Error('Server name is required');
+    }
+
+    this.autoReconnect.cancel(serverName);
+    await this.opLock.run(serverName, 'disconnect', async () => {
+      const connectionProcess = this.activeConnections.get(serverName);
+      connectionProcess?.abortController.abort();
+
+      const clients = new Set<IUnifiedMcpClient>();
+      if (connectionProcess) clients.add(connectionProcess.client);
+      const client = this.mcpClients.get(serverName);
+      if (client) clients.add(client);
+
+      for (const runtimeClient of clients) {
+        await runtimeClient.cleanup();
+      }
+
+      this.activeConnections.delete(serverName);
+      this.mcpClients.delete(serverName);
+      this.clientImplementations.delete(serverName);
+      this._removeToolMappings(serverName);
+      this._clearServerRuntimeState(serverName);
     });
   }
 
@@ -438,8 +560,10 @@ export class MCPClientManager {
     }
 
     // Remove all status validation - handled by ProfileCacheManager
-    await this._executeWithLock(serverName, 'reconnect', async () => {
-      await this._performReconnect(serverName);
+    // Manual reconnect resets any pending auto-reconnect schedule for this server.
+    this.autoReconnect.cancel(serverName);
+    await this.opLock.run(serverName, 'reconnect', async (signal) => {
+      await this._performReconnect(serverName, signal);
     });
   }
 
@@ -501,6 +625,8 @@ export class MCPClientManager {
       return allTools;
     }
 
+    await this.refreshBuiltinTools();
+
     // 🆕 Get from internal runtimeStates
     const runtimeStates = this.getAllMcpServerRuntimeStates();
 
@@ -521,7 +647,7 @@ export class MCPClientManager {
   /**
    * 🔥 New: Get tool list visible to sub-agents
    * Filter based on SubAgentConfig's mcp_servers and builtin_tools
-   * Remove spawn_subagent / spawn_subagents to prevent recursion
+   * Remove tools that are unavailable to sub-agents.
    */
   async getToolsForSubAgent(
     mcpServers: { name: string; tools: string[] }[],
@@ -531,11 +657,6 @@ export class MCPClientManager {
   ): Promise<{ name: string; description?: string; inputSchema: any; serverName: string }[]> {
     const allTools = await this.getAllTools();
     const result: { name: string; description?: string; inputSchema: any; serverName: string }[] = [];
-
-    // Recursion prevention: exclude sub-agent spawn/control tools
-    const BLOCKED_TOOLS = new Set([
-      'sub_agent',
-    ]);
 
     // 1. Allowed external MCP server tools
     const allowedServerMap = new Map<string, Set<string>>();
@@ -547,7 +668,7 @@ export class MCPClientManager {
     }
 
     for (const tool of allTools) {
-      if (BLOCKED_TOOLS.has(tool.name)) continue;
+      if (SUB_AGENT_BLOCKED_TOOLS.has(tool.name)) continue;
 
       if (tool.serverName === BUILTIN_SERVER_NAME) {
         // Built-in tools handled separately
@@ -562,12 +683,8 @@ export class MCPClientManager {
     }
 
     // 2. Allowed built-in tools
-    const builtinToolsFromAll = allTools.filter(t => {
-      // BUILTIN_SERVER_NAME already imported above, reuse here
-      return !BLOCKED_TOOLS.has(t.name);
-    });
     // Get built-in server tools from allTools
-    const builtinAll = allTools.filter(t => t.serverName === BUILTIN_SERVER_NAME && !BLOCKED_TOOLS.has(t.name));
+    const builtinAll = allTools.filter(t => t.serverName === BUILTIN_SERVER_NAME && !SUB_AGENT_BLOCKED_TOOLS.has(t.name));
 
     if (builtinTools && builtinTools.length > 0) {
       // Only allow whitelisted built-in tools
@@ -578,7 +695,7 @@ export class MCPClientManager {
         }
       }
     } else {
-      // Empty array = no restriction, add all built-in tools (spawn already excluded)
+      // Empty array = no restriction, add all built-in tools after shared child-agent filtering.
       result.push(...builtinAll);
     }
 
@@ -609,20 +726,69 @@ export class MCPClientManager {
    * @param signal - Abort signal
    * @param agentMcpServerNames - Optional list of MCP server names bound to the calling agent.
    *   When multiple servers expose the same tool name, this is used to pick the correct one.
+   * @param strictAgentMcpServerNames - When true, do not fall back to the global tool map outside
+   *   `agentMcpServerNames`. Sub-agents use this to enforce their narrowed MCP allowlist at execution.
    */
-  async executeTool({ toolName, toolArgs, signal, agentMcpServerNames }: { toolName: string; toolArgs: { [key: string]: unknown }; signal?: AbortSignal; agentMcpServerNames?: string[] }): Promise<string> {
-    let client: IUnifiedMcpClient | undefined;
+  async executeTool({
+    toolName,
+    toolArgs,
+    signal,
+    agentMcpServerNames,
+    strictAgentMcpServerNames = false,
+  }: {
+    toolName: string;
+    toolArgs: { [key: string]: unknown };
+    signal?: AbortSignal;
+    agentMcpServerNames?: string[];
+    strictAgentMcpServerNames?: boolean;
+  }): Promise<string> {
+    const route = this.resolveToolRoute(toolName, agentMcpServerNames, strictAgentMcpServerNames);
+    const client = route?.client;
+
+    if (!client) {
+      throw new Error(`No client found for tool: ${toolName}`);
+    }
+
+    return client.executeTool({ toolName, toolArgs, signal });
+  }
+
+  /**
+   * Whether the named tool is served by the always-on builtin server.
+   *
+   * Used by the tool executor to decide whether to arm the central no-response watchdog for the
+   * same route `executeTool()` will use. This must consider the agent's scoped MCP server list:
+   * a colliding external tool selected by agent scope must not be treated as builtin just because
+   * the global fallback map currently points at the builtin server.
+   */
+  isBuiltinTool(
+    toolName: string,
+    agentMcpServerNames?: string[],
+    strictAgentMcpServerNames = false,
+  ): boolean {
+    return this.resolveToolRoute(
+      toolName,
+      agentMcpServerNames,
+      strictAgentMcpServerNames,
+    )?.serverName === BUILTIN_SERVER_NAME;
+  }
+
+  private resolveToolRoute(
+    toolName: string,
+    agentMcpServerNames?: string[],
+    strictAgentMcpServerNames = false,
+  ): { serverName: string; client: IUnifiedMcpClient } | undefined {
+    const agentSet = agentMcpServerNames && agentMcpServerNames.length > 0
+      ? new Set(agentMcpServerNames)
+      : undefined;
 
     // When the caller provides the agent's server list, prefer a server that is both
     // (a) in the agent's binding and (b) currently exposes this tool.
-    if (agentMcpServerNames && agentMcpServerNames.length > 0) {
-      const agentSet = new Set(agentMcpServerNames);
+    if (agentSet) {
       for (const [srvName, srvClient] of this.mcpClients.entries()) {
         if (!agentSet.has(srvName)) continue;
         const runtimeState = this.getAllMcpServerRuntimeStates().find(s => s.serverName === srvName);
         if (runtimeState?.tools?.some(t => t.name === toolName)) {
-          client = srvClient;
-          break;
+          return { serverName: srvName, client: srvClient };
         }
       }
     }
@@ -632,21 +798,29 @@ export class MCPClientManager {
     // in the agent's own binding list — that server should have handled it above
     // but its tools are not yet reported (disconnected / still loading).
     // This prevents cross-agent routing for identically named tools.
-    if (!client) {
+    if (!strictAgentMcpServerNames) {
       const globalServerName = this.toolToServerMap.get(toolName);
-      const agentSet = agentMcpServerNames && agentMcpServerNames.length > 0
-        ? new Set(agentMcpServerNames)
-        : undefined;
       if (!agentSet || !globalServerName || !agentSet.has(globalServerName)) {
-        client = this.getClientByToolName(toolName);
+        if (globalServerName) {
+          const globalClient = this.getClientByServerName(globalServerName);
+          if (globalClient) {
+            return { serverName: globalServerName, client: globalClient };
+          }
+        }
       }
     }
 
-    if (!client) {
-      throw new Error(`No client found for tool: ${toolName}`);
+    const builtinFallbackAllowed =
+      !strictAgentMcpServerNames ||
+      agentMcpServerNames?.includes(BUILTIN_SERVER_NAME) === true;
+    if (builtinFallbackAllowed && (toolName === 'browser' || toolName === 'memex_memory' || toolName === 'computer_use')) {
+      const builtinClient = this.mcpClients.get(BUILTIN_SERVER_NAME);
+      if (builtinClient) {
+        return { serverName: BUILTIN_SERVER_NAME, client: builtinClient };
+      }
     }
 
-    return client.executeTool({ toolName, toolArgs, signal });
+    return undefined;
   }
 
   /**
@@ -708,7 +882,7 @@ export class MCPClientManager {
         // Error already handled inside _performConnect and state updated
         advancedLogger?.error('[MCPClientManager] Background connect failed for add', 'add', {
           serverName,
-          error: error instanceof Error ? error.message : String(error)
+          error: errorMessage(error)
         });
       });
     });
@@ -730,11 +904,6 @@ export class MCPClientManager {
     // 🆕 Protect builtin server: updating builtin server not allowed
     if (serverName === BUILTIN_SERVER_NAME) {
       throw new Error(`Builtin server "${BUILTIN_SERVER_NAME}" cannot be updated`);
-    }
-
-    // 🔌 Protect plugin server: plugin-managed servers cannot be user-updated
-    if (isPluginMcpServer(serverName)) {
-      throw new Error(`Plugin server "${serverName}" cannot be updated directly. Manage it through the plugin system.`);
     }
 
     // Validate input
@@ -763,6 +932,10 @@ export class MCPClientManager {
       in_use: true
     };
 
+    // A manual update is a manual disconnect+reconnect, so it supersedes any pending
+    // or in-flight auto-reconnect before config persistence awaits can let a timer fire.
+    this.autoReconnect.cancel(serverName);
+
     // Update config in ProfileCacheManager
     const success = await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, configToUpdate);
     if (!success) {
@@ -778,18 +951,22 @@ export class MCPClientManager {
     // Use setImmediate to ensure execution after current event loop completes
     setImmediate(async () => {
       try {
-        // If server was connected, disconnect first
-        if (currentStatus !== 'disconnected') {
-          await this._performDisconnect(serverName);
-        }
+        // Serialize the disconnect+reconnect through the per-server operation lock so it
+        // cannot interleave with a concurrent manual op or an in-flight auto-reconnect.
+        await this.opLock.run(serverName, 'connect', async (signal) => {
+          // If server was connected, disconnect first
+          if (currentStatus !== 'disconnected') {
+            await this._performDisconnect(serverName);
+          }
 
-        // Connect to the server with new config
-        await this._performConnect(serverName);
+          // Connect to the server with new config
+          await this._performConnect(serverName, signal);
+        });
       } catch (error) {
         // Error already handled inside _performConnect/_performDisconnect and state updated
         advancedLogger?.error('[MCPClientManager] Background update failed', 'update', {
           serverName,
-          error: error instanceof Error ? error.message : String(error)
+          error: errorMessage(error)
         });
       }
     });
@@ -799,9 +976,8 @@ export class MCPClientManager {
    * Delete MCP server
    *
    * @param serverName - Server name
-   * @param options - Optional flags; `pluginBypass` allows plugin system to remove its own servers
    */
-  async delete(serverName: string, options?: { pluginBypass?: boolean }): Promise<void> {
+  async delete(serverName: string): Promise<void> {
 
     if (!this.currentUserAlias) {
       throw new Error('Manager not initialized with user alias');
@@ -810,11 +986,6 @@ export class MCPClientManager {
     // 🆕 Protect builtin server: deleting builtin server not allowed
     if (serverName === BUILTIN_SERVER_NAME) {
       throw new Error(`Builtin server "${BUILTIN_SERVER_NAME}" cannot be deleted`);
-    }
-
-    // 🔌 Protect plugin server: only the plugin system itself may delete plugin servers
-    if (!options?.pluginBypass && isPluginMcpServer(serverName)) {
-      throw new Error(`Plugin server "${serverName}" cannot be deleted directly. Uninstall the plugin instead.`);
     }
 
     // Validate input
@@ -853,10 +1024,21 @@ export class MCPClientManager {
       this._clearServerRuntimeState(serverName);
 
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Failed to delete MCP server');
+      const err = asError(error, 'Failed to delete MCP server');
       throw err;
     } finally {
-      // Config was deleted — no OAuth cleanup needed (auth module removed)
+      // Wipe persisted OAuth credentials so re-adding the same server
+      // later starts a clean flow. Runs in finally so a sync throw
+      // between `deleteMcpServerConfig` and any later step doesn't leave
+      // an orphan slot. Skip on stdio (no remote auth) and skip if the
+      // config wasn't actually deleted (user can retry).
+      if (configDeleted && cfgSnapshot && cfgSnapshot.transport !== 'stdio') {
+        try {
+          await McpAuthService.getInstance().clearOAuthForServer(serverName, cfgSnapshot, 'all');
+        } catch (e) {
+          advancedLogger?.warn(`[MCPClientManager] Failed to clear OAuth credentials for "${serverName}" during delete: ${errorMessage(e)}`, 'delete', { serverName });
+        }
+      }
     }
   }
 
@@ -873,12 +1055,15 @@ export class MCPClientManager {
       mcpClientCount: this.mcpClients.size,
       clientNames: Array.from(this.mcpClients.keys()),
       toolMappingCount: this.toolToServerMap.size,
-      operationLockCount: this.operationLocks.size,
+      operationLockCount: this.opLock.size,
       currentUser: this.currentUserAlias,
       instanceId: this.instanceId,
       hasBuiltinServer: this.mcpClients.has(BUILTIN_SERVER_NAME)
     };
 
+
+    this.autoReconnect.resetAll();
+    this.opLock.clear();
 
     if (resourceInventory.mcpClientCount === 0) {
     } else {
@@ -901,12 +1086,12 @@ export class MCPClientManager {
           return { serverName, success: true, duration: clientCleanupDuration, error: null };
         } catch (error) {
           const clientCleanupDuration = Date.now() - clientCleanupStart;
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const message = errorMessage(error);
 
-          if (errorMessage.includes('timeout')) {
+          if (message.includes('timeout')) {
           } else {
           }
-          return { serverName, success: false, duration: clientCleanupDuration, error: errorMessage };
+          return { serverName, success: false, duration: clientCleanupDuration, error: message };
         }
       });
 
@@ -952,11 +1137,10 @@ export class MCPClientManager {
     // Clear maps and references
     const previousMcpClientSize = this.mcpClients.size;
     const previousToolMapSize = this.toolToServerMap.size;
-    const previousOperationLockSize = this.operationLocks.size;
+    const previousOperationLockSize = this.opLock.size;
     const previousUserAlias = this.currentUserAlias;
 
     this.mcpClients.clear();
-    this.operationLocks.clear();
     this.toolToServerMap.clear();
     this.runtimeStates.clear();  // 🆕 Clear runtime state
     this.currentUserAlias = null;
@@ -976,7 +1160,7 @@ export class MCPClientManager {
     const verificationPassed =
       this.mcpClients.size === 0 &&
       this.toolToServerMap.size === 0 &&
-      this.operationLocks.size === 0 &&
+      this.opLock.size === 0 &&
       this.currentUserAlias === null;
 
     if (verificationPassed) {
@@ -1049,7 +1233,7 @@ export class MCPClientManager {
       currentUser: this.currentUserAlias,
       mcpClientCount: this.mcpClients.size,
       toolMappingCount: this.toolToServerMap.size,
-      operationLockCount: this.operationLocks.size,
+      operationLockCount: this.opLock.size,
       clientNames: Array.from(this.mcpClients.keys()),
       toolNames: Array.from(this.toolToServerMap.keys())
     };
@@ -1071,7 +1255,7 @@ export class MCPClientManager {
     const postCleanupState = {
       mcpClientCount: this.mcpClients.size,
       toolMappingCount: this.toolToServerMap.size,
-      operationLockCount: this.operationLocks.size,
+      operationLockCount: this.opLock.size,
       currentUserCleared: this.currentUserAlias === null
     };
 
@@ -1081,7 +1265,7 @@ export class MCPClientManager {
       // Force cleanup if needed
       this.mcpClients.clear();
       this.toolToServerMap.clear();
-      this.operationLocks.clear();
+      this.opLock.clear();
       this.runtimeStates.clear();  // 🆕 Clear runtime state
       this.currentUserAlias = null;
 
@@ -1135,7 +1319,7 @@ export class MCPClientManager {
         this._updateServerError(BUILTIN_SERVER_NAME, null);
 
       } else {
-        const error = result instanceof Error ? result : new Error('Failed to connect to builtin server');
+        const error = asError(result, 'Failed to connect to builtin server');
         throw error;
       }
     } catch (error) {
@@ -1145,11 +1329,11 @@ export class MCPClientManager {
 
   /**
    * Start connection asynchronously (don't wait for result)
-   * Modified to use _executeWithLock to prevent race conditions with manual connect calls
+   * Modified to use the operation lock to prevent race conditions with manual connect calls
    */
   private _startConnectionAsync(serverName: string): void {
-    this._executeWithLock(serverName, 'connect', async () => {
-      await this._performConnect(serverName);
+    this.opLock.run(serverName, 'connect', async (signal) => {
+      await this._performConnect(serverName, signal);
     }).catch(error => {
       // Ignore "currently connecting" errors as that's the desired behavior (deduplication)
       if (error.message && error.message.includes('is currently connecting')) {
@@ -1160,56 +1344,19 @@ export class MCPClientManager {
   }
 
   /**
-   * Execute operation with lock
-   */
-  private async _executeWithLock(
-    serverName: string,
-    operation: 'connect' | 'disconnect' | 'reconnect',
-    action: () => Promise<void>
-  ): Promise<void> {
-    // Check if operation is already in progress
-    const existingLock = this.operationLocks.get(serverName);
-    if (existingLock) {
-      throw new Error(`Server "${serverName}" is currently ${existingLock.operation}ing, please wait`);
-    }
-
-    // Create abort controller for cancellation
-    const abortController = new AbortController();
-
-    const lockPromise = action();
-    const lock: OperationLock = {
-      operation,
-      promise: lockPromise,
-      timestamp: Date.now(),
-      abortController
-    };
-
-    this.operationLocks.set(serverName, lock);
-
-    try {
-      await lockPromise;
-    } finally {
-      this.operationLocks.delete(serverName);
-    }
-  }
-
-  /**
    * Force cancel ongoing connection process for a server
    */
   private async _forceCancelConnection(serverName: string): Promise<void> {
     const cancelId = `cancel_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
     try {
-      // 1. Cancel operation lock if exists
-      const operationLock = this.operationLocks.get(serverName);
-      if (operationLock) {
-        if (operationLock.abortController) {
-          operationLock.abortController.abort();
-        }
-        this.operationLocks.delete(serverName);
-      }
+      // The per-server operation lock lifecycle is owned by OperationLockManager.run
+      // (the enclosing opLock.run for the active connect/disconnect/reconnect). This
+      // force-cancel only tears down the in-flight connection process and client; it
+      // must NOT release the operation lock, or the enclosing op loses its
+      // serialization guarantee mid-flight.
 
-      // 2. Cancel active connection process if exists
+      // 1. Cancel active connection process if exists
       const connectionProcess = this.activeConnections.get(serverName);
       if (connectionProcess) {
         connectionProcess.abortController.abort();
@@ -1223,7 +1370,7 @@ export class MCPClientManager {
         this.activeConnections.delete(serverName);
       }
 
-      // 3. Remove client and mappings if they exist
+      // 2. Remove client and mappings if they exist
       const client = this.mcpClients.get(serverName);
       if (client) {
         try {
@@ -1244,11 +1391,14 @@ export class MCPClientManager {
   /**
    * Perform connect operation
    */
-  private async _performConnect(serverName: string): Promise<void> {
+  private async _performConnect(serverName: string, operationSignal?: AbortSignal): Promise<void> {
     const connectId = `connect_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
     if (!this.currentUserAlias) {
       throw new Error('Manager not initialized with user alias');
+    }
+    if (operationSignal?.aborted) {
+      return;
     }
 
     // 🆕 Use dynamic import to avoid circular dependency
@@ -1296,6 +1446,22 @@ export class MCPClientManager {
           advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in env', '_performConnect', { serverName });
         }
       }
+
+      // Replace placeholders in headers
+      if (serverConfig.headers && typeof serverConfig.headers === 'object') {
+        const headerEntries = Object.entries(serverConfig.headers);
+        let hasPlaceholder = false;
+        for (const [, value] of headerEntries) {
+          if (typeof value === 'string' && containsOpenKosmosPlaceholder(value)) {
+            hasPlaceholder = true;
+            break;
+          }
+        }
+        if (hasPlaceholder) {
+          serverConfig.headers = openkosmosPlaceholderManager.replacePlaceholdersInObject(serverConfig.headers, { alias: this.currentUserAlias });
+          advancedLogger?.info('[MCPClientManager] Replaced OpenKosmos placeholders in headers', '_performConnect', { serverName });
+        }
+      }
     }
 
     // 🆕 Refactored: Use internal methods to update state
@@ -1303,12 +1469,15 @@ export class MCPClientManager {
 
     // Create abort controller for this connection
     const abortController = new AbortController();
+    const onOperationAbort = () => abortController.abort();
+    operationSignal?.addEventListener('abort', onOperationAbort, { once: true });
     let client: IUnifiedMcpClient | null = null;
 
     try {
       // Create new client - use hybrid mode based on transport type
       const implementation = this._determineImplementation(serverConfig);
       client = this._createClient(serverConfig, implementation);
+      this._registerClientStateHandlers(serverName, client);
 
       // Track this connection process
       const connectionProcess: ConnectionProcess = {
@@ -1328,13 +1497,16 @@ export class MCPClientManager {
       // Attempt connection with cancellation support
       const result = await this._connectWithCancellation(client, abortController.signal);
 
-      if (abortController.signal.aborted) {
+      if (abortController.signal.aborted || operationSignal?.aborted) {
         return;
       }
 
       if (result === 'connected') {
         // Get tools list
         const tools = await client.getTools();
+        if (operationSignal?.aborted) {
+          return;
+        }
 
         if (!tools || tools.length === 0) {
           // No tools available - set error state
@@ -1368,7 +1540,7 @@ export class MCPClientManager {
 
       } else {
         // Connection failed
-        const error = result instanceof Error ? result : new Error('Connection failed');
+        const error = asError(result, 'Connection failed');
         // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerError(serverName, error);
         this._updateServerTools(serverName, []); // Clear tools list for error state
@@ -1382,14 +1554,16 @@ export class MCPClientManager {
     } catch (error) {
       // Check if this was a cancellation
       if (abortController.signal.aborted) {
-        // Don't update status to error for cancelled connections
-        // 🆕 Refactored: Use internal methods to update runtime state
-        this._updateServerStatus(serverName, 'disconnected');
+        if (!operationSignal?.aborted) {
+          // Don't update status to error for cancelled connections
+          // 🆕 Refactored: Use internal methods to update runtime state
+          this._updateServerStatus(serverName, 'disconnected');
+        }
         return;
       }
 
       // Exception handling
-      const err = error instanceof Error ? error : new Error('Connection failed');
+      const err = asError(error, 'Connection failed');
       // 🆕 Refactored: Use internal methods to update runtime state
       this._updateServerError(serverName, err);
       this._updateServerTools(serverName, []); // Clear tools list for error state
@@ -1405,6 +1579,7 @@ export class MCPClientManager {
       return; // Explicitly return to prevent any further execution
     } finally {
       // Clean up connection tracking
+      operationSignal?.removeEventListener('abort', onOperationAbort);
       this.activeConnections.delete(serverName);
 
       // If connection failed and client was created, clean it up
@@ -1482,7 +1657,7 @@ export class MCPClientManager {
       }
     } catch (error) {
       // Log cleanup error but don't fail the disconnect operation
-      disconnectError = error instanceof Error ? error : new Error('Cleanup failed during disconnect');
+      disconnectError = asError(error, 'Cleanup failed during disconnect');
     }
 
     try {
@@ -1491,7 +1666,7 @@ export class MCPClientManager {
       await profileCacheManager.updateMcpServerConfig(this.currentUserAlias, serverName, { in_use: false });
     } catch (error) {
       // Log config update error but don't fail the disconnect operation
-      const configError = error instanceof Error ? error : new Error('Config update failed during disconnect');
+      const configError = asError(error, 'Config update failed during disconnect');
       if (!disconnectError) {
         disconnectError = configError;
       }
@@ -1516,7 +1691,7 @@ export class MCPClientManager {
    * Perform reconnect operation
    * 🔧 Fix: If no existing client instance, perform a full connect operation to recreate the instance
    */
-  private async _performReconnect(serverName: string): Promise<void> {
+  private async _performReconnect(serverName: string, operationSignal?: AbortSignal): Promise<void> {
 
     if (!this.currentUserAlias) {
       throw new Error('Manager not initialized with user alias');
@@ -1528,7 +1703,11 @@ export class MCPClientManager {
     if (!client) {
       // 🆕 When no existing client instance, perform full connect to recreate and connect
       // This fixes the issue where reconnect fails in error state due to missing client instance
-      await this._performConnect(serverName);
+      await this._performConnect(serverName, operationSignal);
+      return;
+    }
+
+    if (operationSignal?.aborted) {
       return;
     }
 
@@ -1539,10 +1718,16 @@ export class MCPClientManager {
     try {
       // Reuse existing client, call connectToServer() to reconnect
       const result = await client.connectToServer();
+      if (operationSignal?.aborted) {
+        return;
+      }
 
       if (result === 'connected') {
         // Get tools
         const tools = await client.getTools();
+        if (operationSignal?.aborted) {
+          return;
+        }
 
         if (tools && tools.length > 0) {
           // Success
@@ -1568,7 +1753,7 @@ export class MCPClientManager {
         }
       } else {
         // Connection failed
-        const error = result instanceof Error ? result : new Error('Reconnection failed');
+        const error = asError(result, 'Reconnection failed');
         // 🆕 Refactored: Use internal methods to update runtime state
         this._updateServerError(serverName, error);
         this._updateServerTools(serverName, []); // Clear tools list for error state
@@ -1578,9 +1763,12 @@ export class MCPClientManager {
         return;
       }
     } catch (error) {
+      if (operationSignal?.aborted) {
+        return;
+      }
       // Exception occurred
       this._removeToolMappings(serverName);
-      const err = error instanceof Error ? error : new Error('Reconnect failed');
+      const err = asError(error, 'Reconnect failed');
       // 🆕 Refactored: Use internal methods to update runtime state
       this._updateServerError(serverName, err);
       this._updateServerTools(serverName, []); // Clear tools list for error state
@@ -1602,6 +1790,34 @@ export class MCPClientManager {
     for (const tool of tools) {
       this.toolToServerMap.set(tool.name, serverName);
     }
+  }
+
+  async refreshBuiltinTools(): Promise<void> {
+    const builtinClient = this.mcpClients.get(BUILTIN_SERVER_NAME);
+    const builtinState = this.runtimeStates.get(BUILTIN_SERVER_NAME);
+    if (!builtinClient || builtinState?.status !== 'connected') {
+      return;
+    }
+
+    const tools = await builtinClient.getTools();
+    if (this.haveSameToolNames(builtinState.tools, tools)) {
+      return;
+    }
+
+    this._updateToolMappings(BUILTIN_SERVER_NAME, tools);
+    this._updateServerTools(BUILTIN_SERVER_NAME, tools);
+  }
+
+  private haveSameToolNames(
+    currentTools: { name: string }[],
+    nextTools: { name: string }[],
+  ): boolean {
+    if (currentTools.length !== nextTools.length) {
+      return false;
+    }
+
+    const currentNames = new Set(currentTools.map((tool) => tool.name));
+    return nextTools.every((tool) => currentNames.has(tool.name));
   }
 
   /**
@@ -1630,6 +1846,26 @@ export class MCPClientManager {
     }
 
     return new VscMcpClient(serverConfig);
+  }
+
+  private _registerClientStateHandlers(serverName: string, client: IUnifiedMcpClient): void {
+    client.on?.('stateChange', (state) => {
+      if (state.state !== 'error') {
+        return;
+      }
+
+      const wasAwaitingUserInteraction =
+        this.runtimeStates.get(serverName)?.status === 'needs-user-interaction';
+      this._removeToolMappings(serverName);
+      this._updateServerTools(serverName, []);
+      const causeMessage = state.message || 'MCP client entered error state';
+      this._updateServerError(serverName, new Error(causeMessage));
+      this._updateServerStatus(serverName, 'error');
+
+      // A previously-connected, in-use server that dropped is recovered automatically. The
+      // coordinator captures the cause first (so the hint composes onto it), then gates eligibility.
+      this.autoReconnect.onServerError(serverName, causeMessage, { wasAwaitingUserInteraction });
+    });
   }
 
   /**

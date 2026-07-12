@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { StartupValidationResult } from '../../types/startupValidationTypes';
 import { createLogger } from '../../lib/utilities/logger';
 import { AuthManagerProxy } from "../../lib/auth/authManagerProxy";
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const logger = createLogger('[AutoLoginSingleUser]');
 
@@ -16,6 +17,8 @@ export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({
   onSuccess,
   onFailure
 }) => {
+  const { t } = useI18n();
+
   useEffect(() => {
     const autoLoginSingleUser = async () => {
       try {
@@ -61,8 +64,8 @@ export const AutoLoginSingleUser: React.FC<AutoLoginSingleUserProps> = ({
             <div className="absolute inset-0 border-4 border-primary-500/30 rounded-full"></div>
             <div className="absolute inset-0 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <h2 className="text-xl font-semibold text-neutral-700 mb-2">Signing In...</h2>
-          <p className="text-neutral-500 text-sm">Loading your profile...</p>
+          <h2 className="text-xl font-semibold text-neutral-700 mb-2">{t('auth.signingIn')}</h2>
+          <p className="text-neutral-500 text-sm">{t('auth.loadingProfile')}</p>
         </div>
       </div>
     </div>

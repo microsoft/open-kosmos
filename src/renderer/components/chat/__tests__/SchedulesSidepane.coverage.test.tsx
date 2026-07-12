@@ -20,9 +20,9 @@ const mocks = vi.hoisted(() => {
   const useProfileData = vi.fn(() => ({ chats: [] }));
   const useNavigate = vi.fn(() => vi.fn());
   const getScheduledSessionDisplayState = vi.fn(() => 'completed');
+  const getScheduledSessionInterruptionReason = vi.fn(() => undefined as string | undefined);
 
-  const getChatSessions = vi.fn();
-  const getMoreChatSessions = vi.fn();
+  const getAllScheduledSessions = vi.fn();
 
   return {
     scheduleSidepaneHide,
@@ -34,8 +34,8 @@ const mocks = vi.hoisted(() => {
     useProfileData,
     useNavigate,
     getScheduledSessionDisplayState,
-    getChatSessions,
-    getMoreChatSessions,
+    getAllScheduledSessions,
+    getScheduledSessionInterruptionReason,
   };
 });
 
@@ -43,7 +43,6 @@ const mocks = vi.hoisted(() => {
 vi.mock('../chat-side.atom', () => ({
   ScheduleSidepaneAtom: { use: mocks.scheduleSidepaneUse },
   WorkspaceExplorerAtom: { use: vi.fn(() => [false, {}]) },
-  InlinePreviewAtom: { use: vi.fn(() => [null, {}]) },
 }));
 
 vi.mock('../../menu/ChatSessionDropdownMenu', () => ({
@@ -65,6 +64,7 @@ vi.mock('../../userData/userDataProvider', () => ({
 
 vi.mock('../SchedulesSidepane.utils', () => ({
   getScheduledSessionDisplayState: mocks.getScheduledSessionDisplayState,
+  getScheduledSessionInterruptionReason: mocks.getScheduledSessionInterruptionReason,
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -88,14 +88,12 @@ function makeSession(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 function setupElectronAPI(opts: {
-  getChatSessions?: ReturnType<typeof vi.fn>;
-  getMoreChatSessions?: ReturnType<typeof vi.fn>;
+  getAllScheduledSessions?: ReturnType<typeof vi.fn>;
   extras?: Record<string, unknown>;
 } = {}) {
   (window as unknown as Record<string, unknown>).electronAPI = {
     profile: {
-      getChatSessions: opts.getChatSessions ?? mocks.getChatSessions,
-      getMoreChatSessions: opts.getMoreChatSessions ?? mocks.getMoreChatSessions,
+      getAllScheduledSessions: opts.getAllScheduledSessions ?? mocks.getAllScheduledSessions,
       onChatSessionStoreSessionCreated: vi.fn(() => vi.fn()),
       onChatSessionStoreMetadataPatched: vi.fn(() => vi.fn()),
       onChatSessionStoreSessionDeleted: vi.fn(() => vi.fn()),
@@ -123,10 +121,11 @@ describe('SchedulesSidepane', () => {
     mocks.useProfileData.mockReturnValue({ chats: [] });
     mocks.useNavigate.mockReturnValue(vi.fn());
     mocks.getScheduledSessionDisplayState.mockReturnValue('completed');
+    mocks.getScheduledSessionInterruptionReason.mockReturnValue(undefined);
 
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [], hasMore: false, total: 0 },
     });
   });
 
@@ -151,7 +150,7 @@ describe('SchedulesSidepane', () => {
   it('shows loading state initially when fetching', async () => {
     let resolvePromise!: (v: unknown) => void;
     const pending = new Promise((res) => { resolvePromise = res; });
-    mocks.getChatSessions.mockReturnValue(pending);
+    mocks.getAllScheduledSessions.mockReturnValue(pending);
     setupElectronAPI();
 
     await act(async () => {
@@ -160,7 +159,7 @@ describe('SchedulesSidepane', () => {
 
     expect(screen.getByText('Loading scheduled runs')).toBeTruthy();
     // resolve to avoid hanging
-    resolvePromise({ success: true, data: { sessions: [], hasMore: false, nextMonthIndex: 0 } });
+    resolvePromise({ success: true, data: { sessions: [], hasMore: false, total: 0 } });
   });
 
   it('closes when close button is clicked', async () => {
@@ -188,9 +187,9 @@ describe('SchedulesSidepane', () => {
 
   it('renders sessions from electronAPI', async () => {
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -202,7 +201,7 @@ describe('SchedulesSidepane', () => {
   });
 
   it('renders error state when API fails', async () => {
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: false,
       error: 'Network error',
     });
@@ -216,32 +215,12 @@ describe('SchedulesSidepane', () => {
     expect(screen.getByText('Network error')).toBeTruthy();
   });
 
-  it('shows sessions from profile data cache', async () => {
-    mocks.getChatSessions.mockResolvedValue({
-      success: true,
-      data: { sessions: [], hasMore: false, nextMonthIndex: 0 },
-    });
-    mocks.useProfileData.mockReturnValue({
-      chats: [{
-        chat_id: 'chat-1',
-        chatSessions: [makeSession({ schedulerJobId: 'job-abc' })],
-      }],
-    });
-    setupElectronAPI();
-
-    await act(async () => {
-      render(<SchedulesSidepane />);
-    });
-
-    expect(screen.getByText('Test Session')).toBeTruthy();
-  });
-
   it('shows ExecutingIcon for running state', async () => {
     mocks.getScheduledSessionDisplayState.mockReturnValue('running');
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -254,10 +233,11 @@ describe('SchedulesSidepane', () => {
 
   it('shows InterruptedIcon for interrupted state', async () => {
     mocks.getScheduledSessionDisplayState.mockReturnValue('interrupted');
+    mocks.getScheduledSessionInterruptionReason.mockReturnValue('MCP server not ready');
     const session = makeSession({ schedulerCompletedAt: '2024-01-15T11:00:00Z' });
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -266,14 +246,15 @@ describe('SchedulesSidepane', () => {
     });
 
     expect(screen.getByText(/Interrupted/)).toBeTruthy();
+    expect(screen.getByText(/MCP server not ready/)).toBeTruthy();
   });
 
   it('shows failed text for failed state', async () => {
     mocks.getScheduledSessionDisplayState.mockReturnValue('failed');
     const session = makeSession({ schedulerError: 'Timeout' });
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -288,9 +269,9 @@ describe('SchedulesSidepane', () => {
   it('calls onSelectSession when session is clicked', async () => {
     const onSelectSession = vi.fn();
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -303,14 +284,17 @@ describe('SchedulesSidepane', () => {
   });
 
   it('loads more sessions on scroll to bottom', async () => {
-    mocks.getChatSessions.mockResolvedValue({
-      success: true,
-      data: { sessions: [makeSession()], hasMore: true, nextMonthIndex: 1 },
-    });
-    mocks.getMoreChatSessions.mockResolvedValue({
-      success: true,
-      data: { sessions: [], hasMore: false, nextMonthIndex: 0 },
-    });
+    // First call returns one session with hasMore: true
+    // Second call (on scroll) returns empty with hasMore: false
+    mocks.getAllScheduledSessions
+      .mockResolvedValueOnce({
+        success: true,
+        data: { sessions: [makeSession()], hasMore: true, total: 2 },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { sessions: [makeSession({ chatSession_id: 'session-2', title: 'Session 2' })], hasMore: false, total: 2 },
+      });
     setupElectronAPI();
 
     await act(async () => {
@@ -327,13 +311,20 @@ describe('SchedulesSidepane', () => {
       });
     }
 
-    expect(mocks.getMoreChatSessions).toHaveBeenCalled();
+    // Should have called getAllScheduledSessions twice (initial + load more)
+    expect(mocks.getAllScheduledSessions).toHaveBeenCalledTimes(2);
+    // Second call should have offset
+    expect(mocks.getAllScheduledSessions).toHaveBeenLastCalledWith(
+      'testuser',
+      'chat-1',
+      expect.objectContaining({ offset: 1 }),
+    );
   });
 
   it('shows all loaded hint when scrolled to bottom with no more items', async () => {
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [makeSession()], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [makeSession()], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -356,9 +347,9 @@ describe('SchedulesSidepane', () => {
 
   it('handles session with unread status styling', async () => {
     const session = makeSession({ readStatus: 'unread' });
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -374,9 +365,9 @@ describe('SchedulesSidepane', () => {
   it('handles active session styling', async () => {
     mocks.useCurrentChatSessionId.mockReturnValue('session-1');
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
     setupElectronAPI();
 
@@ -401,7 +392,7 @@ describe('SchedulesSidepane', () => {
   });
 
   it('handles exception from getChatSessions', async () => {
-    mocks.getChatSessions.mockRejectedValue(new Error('Unexpected error'));
+    mocks.getAllScheduledSessions.mockRejectedValue(new Error('Unexpected error'));
     setupElectronAPI();
 
     await act(async () => {
@@ -415,15 +406,15 @@ describe('SchedulesSidepane', () => {
     let createdCallback: ((data: unknown) => void) | null = null;
     const unsubCreated = vi.fn();
 
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [], hasMore: false, total: 0 },
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
       profile: {
-        getChatSessions: mocks.getChatSessions,
-        getMoreChatSessions: mocks.getMoreChatSessions,
+        getAllScheduledSessions: mocks.getAllScheduledSessions,
+
         onChatSessionStoreSessionCreated: vi.fn((cb) => {
           createdCallback = cb;
           return unsubCreated;
@@ -450,15 +441,15 @@ describe('SchedulesSidepane', () => {
     let deletedCallback: ((data: unknown) => void) | null = null;
 
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
       profile: {
-        getChatSessions: mocks.getChatSessions,
-        getMoreChatSessions: mocks.getMoreChatSessions,
+        getAllScheduledSessions: mocks.getAllScheduledSessions,
+
         onChatSessionStoreSessionCreated: vi.fn(() => vi.fn()),
         onChatSessionStoreMetadataPatched: vi.fn(() => vi.fn()),
         onChatSessionStoreSessionDeleted: vi.fn((cb) => {
@@ -486,15 +477,15 @@ describe('SchedulesSidepane', () => {
     let patchedCallback: ((data: unknown) => void) | null = null;
 
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
       profile: {
-        getChatSessions: mocks.getChatSessions,
-        getMoreChatSessions: mocks.getMoreChatSessions,
+        getAllScheduledSessions: mocks.getAllScheduledSessions,
+
         onChatSessionStoreSessionCreated: vi.fn(() => vi.fn()),
         onChatSessionStoreMetadataPatched: vi.fn((cb) => {
           patchedCallback = cb;
@@ -522,15 +513,15 @@ describe('SchedulesSidepane', () => {
     let patchedCallback: ((data: unknown) => void) | null = null;
 
     const session = makeSession();
-    mocks.getChatSessions.mockResolvedValue({
+    mocks.getAllScheduledSessions.mockResolvedValue({
       success: true,
-      data: { sessions: [session], hasMore: false, nextMonthIndex: 0 },
+      data: { sessions: [session], hasMore: false, total: 0 },
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
       profile: {
-        getChatSessions: mocks.getChatSessions,
-        getMoreChatSessions: mocks.getMoreChatSessions,
+        getAllScheduledSessions: mocks.getAllScheduledSessions,
+
         onChatSessionStoreSessionCreated: vi.fn(() => vi.fn()),
         onChatSessionStoreMetadataPatched: vi.fn((cb) => {
           patchedCallback = cb;

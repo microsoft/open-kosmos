@@ -5,9 +5,10 @@ import { getModelById } from '../../lib/models/ghcModels';
 import { agentChatIpc } from '../../lib/chat/agentChatIpc';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[ContextBadge]');
 
-// 🔄 Added: define ContextStats interface (consistent with the interface in AgentChat)
+// ContextStats mirrors the interface in AgentChat.
 interface ContextStats {
   totalMessages: number      // Total message count
   contextMessages: number    // Message count after compression
@@ -29,6 +30,7 @@ function formatTokenCount(tokens: number): string {
 }
 
 export const ContextBadge: React.FC = () => {
+  const { t } = useI18n();
   const { currentModel } = useAgentConfig();
   const [contextTokens, setContextTokens] = useState<number>(0);
   const [modelContextWindow, setModelContextWindow] = useState<number>(0);
@@ -190,12 +192,16 @@ export const ContextBadge: React.FC = () => {
     <Badge
       variant={variant}
       className="text-xs"
-      title={`Context usage: ${contextTokens.toLocaleString()} / ${modelContextWindow.toLocaleString()} tokens (${(utilizationRatio * 100).toFixed(1)}%)`}
+      title={t('status.context.title', {
+        used: contextTokens.toLocaleString(),
+        window: modelContextWindow.toLocaleString(),
+        percent: (utilizationRatio * 100).toFixed(1),
+      })}
     >
       {loading ? (
-        'context: loading...'
+        t('status.context.loading')
       ) : (
-        `context: ${contextText}/${windowText}`
+        t('status.context.label', { used: contextText, window: windowText })
       )}
     </Badge>
   );

@@ -7,6 +7,19 @@
 import { useState, useEffect } from 'react';
 import { featureFlagCacheManager } from './featureFlagCacheManager';
 
+export interface FeatureFlagState {
+  enabled: boolean;
+  initialized: boolean;
+}
+
+function readFeatureFlagState(flagName: string): FeatureFlagState {
+  const initialized = featureFlagCacheManager.isInitialized;
+  return {
+    enabled: initialized ? featureFlagCacheManager.isEnabled(flagName) : false,
+    initialized,
+  };
+}
+
 /**
  * Check whether a single feature flag is enabled
  *
@@ -22,18 +35,19 @@ import { featureFlagCacheManager } from './featureFlagCacheManager';
  * ```
  */
 export function useFeatureFlag(flagName: string): boolean {
-  const [enabled, setEnabled] = useState(() =>
-    featureFlagCacheManager.isEnabled(flagName)
-  );
+  return useFeatureFlagState(flagName).enabled;
+}
+
+export function useFeatureFlagState(flagName: string): FeatureFlagState {
+  const [state, setState] = useState(() => readFeatureFlagState(flagName));
 
   useEffect(() => {
-    // Re-check after initialization
-    if (featureFlagCacheManager.isInitialized) {
-      setEnabled(featureFlagCacheManager.isEnabled(flagName));
-    }
+    const update = () => setState(readFeatureFlagState(flagName));
+    update();
+    return featureFlagCacheManager.subscribe(update);
   }, [flagName]);
 
-  return enabled;
+  return state;
 }
 
 /**
@@ -60,9 +74,9 @@ export function useFeatureFlags(): Record<string, boolean> {
   );
 
   useEffect(() => {
-    if (featureFlagCacheManager.isInitialized) {
-      setFlags(featureFlagCacheManager.getAllFlags());
-    }
+    const update = () => setFlags(featureFlagCacheManager.getAllFlags());
+    update();
+    return featureFlagCacheManager.subscribe(update);
   }, []);
 
   return flags;
