@@ -27,7 +27,15 @@ const containsFiles = (relativePath) => {
       : true,
   )
 }
-const ignoredManifestDirectories = new Set(['.git', 'node_modules', 'coverage', 'dist', 'dist-vite', 'release'])
+const ignoredManifestDirectories = new Set([
+  '.git',
+  'node_modules',
+  'coverage',
+  'dist',
+  'dist-vite',
+  'release',
+  'vite-pack',
+])
 const ignoredManifestFiles = new Set([
   'public-release-scan-report.md',
   'public-release-ref-report.md',
@@ -255,8 +263,8 @@ for (const entry of fs.readdirSync(workflowDir, { withFileTypes: true })) {
   if (/(?:pull-requests|checks|actions|id-token):\s*write/i.test(content)) {
     failures.push(`${relativePath} grants a disallowed write permission`)
   }
-  if (relativePath !== '.github/workflows/release.yml' && /contents:\s*write/i.test(content)) {
-    failures.push(`${relativePath} grants contents: write outside the release workflow`)
+  if (/contents:\s*write/i.test(content)) {
+    failures.push(`${relativePath} grants contents: write`)
   }
   if (/(?:secrets\.|vars\.|azure|cdn|discord|self-hosted|gim-home|ai-microsoft)/i.test(content)) {
     failures.push(`${relativePath} contains internal infrastructure, secret, or runner configuration`)

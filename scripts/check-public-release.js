@@ -119,6 +119,7 @@ const REMOVED_PATHS = [
   'azure-bot',
   '.github/workflows/deploy-azure-bot.yml',
   '.github/workflows/pr-events-notify-kosmos-dev-for-luna.yml',
+  '.github/workflows/release.yml',
   'src/main/lib/analytics',
   'src/main/lib/assetsFetcher',
   'src/main/lib/azureCli',

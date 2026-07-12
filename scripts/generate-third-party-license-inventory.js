@@ -4,7 +4,15 @@ const path = require('path')
 const root = path.resolve(__dirname, '..')
 const summaryPath = path.join(root, 'docs/third-party-license-inventory.json')
 const inventoryPath = path.join(root, 'docs/third-party-license-inventory.csv')
-const ignoredDirectories = new Set(['.git', 'node_modules', 'coverage', 'dist', 'dist-vite', 'release'])
+const ignoredDirectories = new Set([
+  '.git',
+  'node_modules',
+  'coverage',
+  'dist',
+  'dist-vite',
+  'release',
+  'vite-pack',
+])
 
 function findLockfiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -94,7 +102,7 @@ const packages = [...packageMap.values()].map(({ lockfile, ...record }) => ({
 packages.sort((left, right) =>
   left.name.localeCompare(right.name) ||
   left.version.localeCompare(right.version) ||
-  left.lockfile.localeCompare(right.lockfile),
+  left.lockfiles.join(';').localeCompare(right.lockfiles.join(';')),
 )
 
 const manifestOnlyDependencies = findManifests(root).flatMap((manifestPath) => {
@@ -121,7 +129,7 @@ const manifestOnlyDependencies = findManifests(root).flatMap((manifestPath) => {
         requestedVersion,
         kind,
         manifest: path.relative(root, manifestPath).split(path.sep).join('/'),
-        license: 'UNKNOWN',
+        license: kind === 'peer' ? 'HOST-PROVIDED' : 'UNKNOWN',
       }))
   )
 })
@@ -140,6 +148,8 @@ const evidence = {
   packageCount: packages.length,
   unknownLicenseCount: packages.filter((entry) => entry.license === 'UNKNOWN').length,
   manifestOnlyDependencyCount: manifestOnlyDependencies.length,
+  unknownManifestLicenseCount: manifestOnlyDependencies
+    .filter((entry) => entry.license === 'UNKNOWN').length,
   inventoryFile: path.relative(root, inventoryPath).split(path.sep).join('/'),
 }
 

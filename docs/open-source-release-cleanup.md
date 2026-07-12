@@ -480,14 +480,17 @@ This brand migration does not authorize retaining `www.kosmos-ai.com` or Kosmos 
 
 ### Existing GitHub Actions reuse and cleanup
 
-The current GitHub Actions are the baseline for the public repository. Reuse generic validation and packaging workflows rather than deleting and rebuilding all CI.
+The current GitHub Actions are the baseline for public pull-request validation.
+Retain generic validation workflows, but do not provide repository-managed release
+automation until signing, notarization, secret ownership, and release permissions
+have explicit approval.
 
 - [x] Retain and adapt the existing PR workflows for unit tests, type checking, file length, internationalization, design-system validation, bundle size, and E2E testing.
 - [x] Delete `deploy-azure-bot.yml` with the Azure Bot product.
 - [x] Delete `pr-events-notify-kosmos-dev-for-luna.yml` and its employee-specific Discord webhook/channel automation.
-- [x] Reuse the existing `release.yml` structure, but remove Kosmos CDN defaults, PM Studio service secrets, removed-feature environment variables, internal repository targets, and any organization-only assumptions.
-- [x] Remove Azure OIDC login, tenant/subscription/resource IDs, private environments, private package feeds, internal webhooks, employee-specific automation, and obsolete secret names from retained workflows.
-- [ ] Review signing and notarization inputs separately; retain the existing release steps only when the public repository has approved secret ownership and release permissions.
+- [x] Delete `release.yml`; release candidates are built locally until publication automation receives explicit approval.
+- [x] Remove Azure OIDC login, tenant/subscription/resource IDs, private environments, private package feeds, internal webhooks, employee-specific automation, obsolete secret names, and release secrets from retained workflows.
+- [ ] Review signing and notarization inputs separately before adding any replacement release workflow.
 - [x] Use least-privilege GitHub Actions permissions, pin third-party actions, avoid untrusted-event interpolation, and document which jobs are safe for forked pull requests.
 - [x] Verify PR validation can build and test without organization secrets, internal runners, Azure credentials, Kosmos infrastructure, or Microsoft tenant access.
 
@@ -562,7 +565,7 @@ snapshot. The ranges are exhaustive across all 134 inventory entries.
 | `OSR-079` | `G3`, `G9` | README attribution retention plus member approval |
 | `OSR-080..081` | `G5`, `G7`, `G9` | Third-party notices and high-risk redistribution review |
 | `OSR-082..085` | `G1`, `G5`, `G9` | Historical/sample/generated content and non-text artifact inspection |
-| `OSR-086..090` | `G1`, `G2`, `G4` | Retained public CI and release workflow sanitization |
+| `OSR-086..090` | `G1`, `G2`, `G4` | Retained public PR validation and release-workflow removal |
 | `OSR-091` | `G7`, `G9` | Signing/notarization secret ownership; pending externally |
 | `OSR-092..093` | `G1`, `G4` | Actions permissions, pinning, fork safety, and secret-free validation |
 | `OSR-094` | `G1`, `G5`, `G6` | PM Studio final static gate |
@@ -641,7 +644,7 @@ Every match must be deleted, replaced with a neutral public example, or recorded
 - [ ] The README retains the approved team-member introduction.
 - [x] Existing installations either migrate safely to the OpenKosmos user-data/log/cache paths or follow an explicitly approved clean-install policy.
 - [x] Retained PR workflows run without internal runners or organization secrets and enforce the approved test, build, coverage, and security gates.
-- [x] The sanitized release workflow contains no Kosmos CDN defaults, PM Studio service secrets, Azure Bot deployment, private targets, or removed-feature configuration.
+- [x] No repository release workflow can publish artifacts or consume release secrets.
 - [x] Offline startup and core local workflows succeed.
 
 ### Engineering checks
@@ -661,6 +664,6 @@ Every match must be deleted, replaced with a neutral public example, or recorded
 | Engineering | Repository maintainer | `EV-FINAL-01-REPOSITORY` is repository-green | Review the final PR and grant engineering release approval | Pending |
 | Security | Security owner | Zero-findings source/artifact scans; 18 stale refs inventoried | Review history/refs, dependency audit findings, permissions, and credential-rotation evidence | Pending |
 | Privacy | Privacy owner | Tenant, telemetry, and remote-channel code removed | Complete the public data-flow and telemetry review | Pending |
-| Legal/Open Source | Legal/Open Source owner | Canonical template checks and generated dependency inventory | Approve copyright/trademark/icon/model/native-binary redistribution and resolve seven unknown license entries | Pending |
+| Legal/Open Source | Legal/Open Source owner | Canonical template checks and generated dependency inventory with zero unknown license entries | Approve copyright/trademark/icon/model/native-binary redistribution and the host-provided peer dependency boundary | Pending |
 | Infrastructure | Hosting and identity owners | Repository callers and deployment workflows removed | Decommission Azure/CDN/bot/app-registration resources and rotate every affected credential | Pending |
 | Release | Release owner | OpenKosmos arm64 app packages; metadata and extracted `app.asar` scans pass | Delete/approve the 18 stale refs, provide approved signing/notarization credentials, inspect signed artifacts, and grant release approval | Pending |

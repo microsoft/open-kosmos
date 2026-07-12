@@ -59,6 +59,10 @@ describe('public release static gate', () => {
     expect(REMOVED_PATHS).toContain('public/indexeddb-test.html');
   });
 
+  it('prevents repository release automation from returning', () => {
+    expect(REMOVED_PATHS).toContain('.github/workflows/release.yml');
+  });
+
   it('accepts OpenKosmos identity without accepting the retired standalone brand', () => {
     expect(scanContent('fixture.txt', 'OpenKosmos openkosmos-app open-kosmos', [])).toEqual([]);
     const retiredName = ['Kos', 'mos'].join('');

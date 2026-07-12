@@ -138,7 +138,7 @@ dist
 dist/
 dist-vite/
 vite-pack/
-build/
+build/*
 # But keep important build configuration files
 !build/entitlements.mac.plist
 !build/*.plist

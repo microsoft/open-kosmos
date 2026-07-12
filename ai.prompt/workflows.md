@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-07-13 -->
+<!-- Last verified: 2026-07-12 -->
 
 # Workflows
 
@@ -111,14 +111,10 @@ npm run dist:publish:mac
 
 macOS builds use hardened runtime and notarization via `scripts/notarize.js`.
 
-Release workflow note:
-- `.github/workflows/release.yml` publishes OpenKosmos only. Do not add secondary-brand publish jobs to the release action.
-- OpenKosmos release jobs must write MCP credential secrets (`REDDIT_CLIENT_*`, `DATA_AI_API_KEY`, `UNWRAP_ACCESS_TOKEN`, `TAVILY_API_KEY`) to `.env.local`; both `webpack.main.config.js` (`npm run build`) and `scripts/vite/defines.ts` (`npm run build:vite`) compile these main-process env variables into packaged builds so `@OPENKOSMOS_*` MCP placeholders resolve at runtime.
-- Windows release jobs are split by architecture.
-- Windows x64 builds run on `windows-latest`.
-- Windows ARM64 builds run on `windows-11-arm`.
-- Each Windows release job publishes only its own target architecture instead of cross-building both architectures on one runner.
-- `windows-11-arm` availability depends on the repository's GitHub Actions plan and runner entitlement; if unavailable, the release workflow must either use a self-hosted ARM64 runner or temporarily fall back to x64 cross-build plus the sharp `afterPack` guard.
+The repository intentionally has no release workflow. Maintainers build release
+candidates locally with the commands above. Adding publication automation requires
+an explicit security and release review covering signing, notarization, permissions,
+secret ownership, runner trust, and artifact retention.
 
 ---
 
