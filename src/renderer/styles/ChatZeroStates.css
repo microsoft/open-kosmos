@@ -16,7 +16,7 @@
 
 /* Greeting */
 .chat-zero-states-greeting {
-  color: var(--Theme-Color-Foreground-Primary-750, #322D29);
+  color: var(--Theme-Color-Foreground-Primary-750, var(--color-warm-800));
   font-feature-settings: 'calt' off;
   font-size: 20px;
   font-style: normal;
@@ -53,7 +53,7 @@
 
 .quick-start-list::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
 }
 
 .quick-start-list::-webkit-scrollbar-thumb:hover {
@@ -70,9 +70,9 @@
   align-items: center;
   gap: 12px;
 
-  border-radius: 36px;
-  border: 1px solid var(--stroke-card-onPrimary-rest, rgba(0, 0, 0, 0.12));
-  background: var(--Background_0, #FFF);
+  border-radius: var(--radius-card-xl);
+  border: 1px solid var(--stroke-card-onPrimary-rest, var(--color-border-strong));
+  background: var(--Background_0, var(--color-white));
 
   cursor: pointer;
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
@@ -80,14 +80,14 @@
 }
 
 .quick-start-card:hover {
-  border-color: var(--stroke-card-onPrimary-hover, rgba(0, 0, 0, 0.2));
+  border-color: var(--stroke-card-onPrimary-hover, var(--color-border-strongest));
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
 }
 
 .quick-start-card:focus {
   outline: none;
-  border-color: var(--stroke-card-onPrimary-focus, #0078D4);
+  border-color: var(--stroke-card-onPrimary-focus);
   box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
 }
 
@@ -96,27 +96,11 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
-/* Quick Start Card Image */
-.quick-start-card-image {
-  height: 120px;
-  align-self: stretch;
-
-  border-radius: 24px;
-  background-color: lightgray;
-  background-position: 50%;
-  background-size: cover;
-  background-repeat: no-repeat;
-}
-
-.quick-start-card-image-placeholder {
-  background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
-}
-
 /* Quick Start Card Title */
 .quick-start-card-title {
   align-self: stretch;
 
-  color: var(--foreground-ctrl-neutral-primary-rest, #272320);
+  color: var(--foreground-ctrl-neutral-primary-rest, var(--color-warm-900));
 
   /* Semantic/Ramp/Item header */
   font-size: var(--text-ramp-itemHeader-fontSize, 14px);
@@ -130,7 +114,7 @@
 .quick-start-card-description {
   align-self: stretch;
 
-  color: #6B6561;
+  color: var(--color-warm-500);
 
   /* Semantic/Label/Control */
   font-size: var(--text-ramp-itemBody-fontSize, 14px);

@@ -31,8 +31,8 @@ index da9830fc..8555f889 100644
              extra["group_allow_from"] = yuanbao_group_allow_from
  
 +    # OpenKosmos
-+    openkosmos_url = os.getenv("OpenKosmos_URL")
-+    openkosmos_token = os.getenv("OpenKosmos_TOKEN")
++    openkosmos_url = os.getenv("OPENKOSMOS_URL")
++    openkosmos_token = os.getenv("OPENKOSMOS_TOKEN")
 +    if openkosmos_url and openkosmos_token:
 +        if Platform.OpenKosmos not in config.platforms:
 +            config.platforms[Platform.OpenKosmos] = PlatformConfig()
@@ -52,7 +52,7 @@ index 827ec01b..78981387 100644
                         "BLUEBUBBLES_ALLOWED_USERS",
                         "QQ_ALLOWED_USERS",
                         "YUANBAO_ALLOWED_USERS",
-+                       "OpenKosmos_ALLOWED_USERS",
++                       "OPENKOSMOS_ALLOWED_USERS",
                         "GATEWAY_ALLOWED_USERS")
          )
          _allow_all = os.getenv("GATEWAY_ALLOW_ALL_USERS", "").lower() in ("true", "1", "yes") or any(
@@ -62,7 +62,7 @@ index 827ec01b..78981387 100644
                         "QQ_ALLOW_ALL_USERS",
 -                       "YUANBAO_ALLOW_ALL_USERS")
 +                       "YUANBAO_ALLOW_ALL_USERS",
-+                       "OpenKosmos_ALLOW_ALL_USERS")
++                       "OPENKOSMOS_ALLOW_ALL_USERS")
          )
          if not _any_allowlist and not _allow_all:
              logger.warning(
@@ -84,7 +84,7 @@ index 827ec01b..78981387 100644
              Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
              Platform.QQBOT: "QQ_ALLOWED_USERS",
              Platform.YUANBAO: "YUANBAO_ALLOWED_USERS",
-+            Platform.OpenKosmos: "OpenKosmos_ALLOWED_USERS",
++            Platform.OpenKosmos: "OPENKOSMOS_ALLOWED_USERS",
          }
          platform_group_env_map = {
              Platform.TELEGRAM: "TELEGRAM_GROUP_ALLOWED_USERS",
@@ -92,7 +92,7 @@ index 827ec01b..78981387 100644
              Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOW_ALL_USERS",
              Platform.QQBOT: "QQ_ALLOW_ALL_USERS",
              Platform.YUANBAO: "YUANBAO_ALLOW_ALL_USERS",
-+            Platform.OpenKosmos: "OpenKosmos_ALLOW_ALL_USERS",
++            Platform.OpenKosmos: "OPENKOSMOS_ALLOW_ALL_USERS",
          }
  
          # Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
@@ -100,7 +100,7 @@ index 827ec01b..78981387 100644
                  Platform.WEIXIN:   "WEIXIN_ALLOWED_USERS",
                  Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
                  Platform.QQBOT:    "QQ_ALLOWED_USERS",
-+                Platform.OpenKosmos:   "OpenKosmos_ALLOWED_USERS",
++                Platform.OpenKosmos:   "OPENKOSMOS_ALLOWED_USERS",
              }
              if os.getenv(platform_env_map.get(platform, ""), "").strip():
                  return "ignore"

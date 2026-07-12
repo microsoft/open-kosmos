@@ -11,9 +11,15 @@ vi.mock('../../../styles/ServerCard.css', () => ({}))
 vi.mock('../../../styles/McpServerListView.css', () => ({}))
 
 vi.mock('../McpServerCard', () => ({
-  default: ({ serverName, isSelected }: any) => (
+  default: ({ serverName, isSelected, onConnect, onDisconnect, onReconnect, onDelete, onEdit, onMenuToggle }: any) => (
     <div data-testid={`server-card-${serverName}`} data-selected={isSelected}>
       {serverName}
+      <button data-testid={`connect-${serverName}`} onClick={onConnect}>connect</button>
+      <button data-testid={`disconnect-${serverName}`} onClick={onDisconnect}>disconnect</button>
+      <button data-testid={`reconnect-${serverName}`} onClick={onReconnect}>reconnect</button>
+      <button data-testid={`delete-${serverName}`} onClick={onDelete}>delete</button>
+      <button data-testid={`edit-${serverName}`} onClick={onEdit}>edit</button>
+      <button data-testid={`menu-${serverName}`} onClick={onMenuToggle}>menu</button>
     </div>
   ),
 }))
@@ -294,7 +300,7 @@ describe('McpServerListView - mcpServerOperations effect', () => {
 })
 
 describe('McpServerListView - selected server sync', () => {
-  it('clears selected server when filtered list is empty and selected exists', async () => {
+  it('preserves search query when user typing filters out selected server', async () => {
     const onSelectServer = vi.fn()
     const server = makeServer({ name: 'solo-server' })
     render(
@@ -309,9 +315,9 @@ describe('McpServerListView - selected server sync', () => {
     onSelectServer.mockClear()
     fireEvent.change(screen.getByTestId('search-box'), { target: { value: 'zzz-no-match' } })
     await waitFor(() => {
-      // Clears search to reveal the selected server
-      expect(screen.getByTestId('search-box')).toHaveValue('')
+      expect(screen.getByTestId('search-box')).toHaveValue('zzz-no-match')
     })
+    expect(onSelectServer).not.toHaveBeenCalledWith(null)
   })
 
   it('applies selected class to the selected server wrapper', async () => {
@@ -354,5 +360,126 @@ describe('McpServerListView - server status states', () => {
         expect(screen.getByTestId(`server-card-${label}-server`)).toBeInTheDocument()
       })
     })
+  })
+})
+
+describe('McpServerListView - server card action callbacks', () => {
+  it('wires connect/disconnect/reconnect/delete/edit callbacks to the server name', () => {
+    const onConnect = vi.fn()
+    const onDisconnect = vi.fn()
+    const onReconnect = vi.fn()
+    const onDelete = vi.fn()
+    const onEdit = vi.fn()
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[makeServer({ name: 'act' })]}
+        onSelectServer={vi.fn()}
+        onConnect={onConnect}
+        onDisconnect={onDisconnect}
+        onReconnect={onReconnect}
+        onDelete={onDelete}
+        onEdit={onEdit}
+      />
+    )
+    fireEvent.click(screen.getByTestId('connect-act'))
+    expect(onConnect).toHaveBeenCalledWith('act')
+    fireEvent.click(screen.getByTestId('disconnect-act'))
+    expect(onDisconnect).toHaveBeenCalledWith('act')
+    fireEvent.click(screen.getByTestId('reconnect-act'))
+    expect(onReconnect).toHaveBeenCalledWith('act')
+    fireEvent.click(screen.getByTestId('delete-act'))
+    expect(onDelete).toHaveBeenCalledWith('act')
+    fireEvent.click(screen.getByTestId('edit-act'))
+    expect(onEdit).toHaveBeenCalledWith('act')
+  })
+
+  it('calls onMcpServerMenuToggle with the server name when the menu button is clicked', () => {
+    const onMcpServerMenuToggle = vi.fn()
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[makeServer({ name: 'mt' })]}
+        onSelectServer={vi.fn()}
+        onMcpServerMenuToggle={onMcpServerMenuToggle}
+      />
+    )
+    fireEvent.click(screen.getByTestId('menu-mt'))
+    expect(onMcpServerMenuToggle).toHaveBeenCalledWith('mt', expect.anything())
+  })
+
+  it('does not throw when the menu button is clicked without an onMcpServerMenuToggle handler', () => {
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[makeServer({ name: 'nm' })]}
+        onSelectServer={vi.fn()}
+      />
+    )
+    expect(() => fireEvent.click(screen.getByTestId('menu-nm'))).not.toThrow()
+  })
+
+  it('falls back to a "Server N" label when a server has no name', () => {
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[makeServer({ name: undefined as any })]}
+        onSelectServer={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('server-card-Server 1')).toBeInTheDocument()
+  })
+})
+
+describe('McpServerListView - selection sync edge cases', () => {
+  it('clears a stale selection when the server list is empty', () => {
+    const onSelectServer = vi.fn()
+    const stale = makeServer({ name: 'stale' })
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[]}
+        onSelectServer={onSelectServer}
+        selectedServer={stale}
+      />
+    )
+    expect(onSelectServer).toHaveBeenCalledWith(null)
+  })
+
+  it('selects first filtered server when user typing excludes current selection', async () => {
+    const onSelectServer = vi.fn()
+    const alpha = makeServer({ name: 'alpha' })
+    const beta = makeServer({ name: 'beta' })
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[alpha, beta]}
+        onSelectServer={onSelectServer}
+        selectedServer={alpha}
+      />
+    )
+    await waitFor(() => screen.getByTestId('search-box'))
+    onSelectServer.mockClear()
+    fireEvent.change(screen.getByTestId('search-box'), { target: { value: 'beta' } })
+    await waitFor(() => {
+      expect(onSelectServer).toHaveBeenCalledWith(beta)
+    })
+  })
+
+  it('selects the first filtered server when the selected one is no longer in the list', () => {
+    const onSelectServer = vi.fn()
+    const alpha = makeServer({ name: 'alpha' })
+    const beta = makeServer({ name: 'beta' })
+    const gone = makeServer({ name: 'gone' })
+    render(
+      <McpServerListView
+        {...defaultProps}
+        servers={[alpha, beta]}
+        onSelectServer={onSelectServer}
+        selectedServer={gone}
+      />
+    )
+    // sortedServers reverses regular servers => [beta, alpha]; first is beta
+    expect(onSelectServer).toHaveBeenCalledWith(beta)
   })
 })

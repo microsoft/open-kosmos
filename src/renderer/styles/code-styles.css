@@ -1,0 +1,69 @@
+/* ===========================================================================
+   code-styles.css — SYNTAX / CODE-RENDERING TOKEN REGISTRY
+   ---------------------------------------------------------------------------
+   The single, INDEPENDENT home for every color used to render CODE: code-block
+   and code/file-viewer surfaces, inline code, line-number gutters, editor
+   accents, and the JSON-viewer syntax theme.
+
+   This is the ONE sanctioned exception to the project rule "all color lives in
+   the global token manager (globals.css @theme / :root)". Code/editor colors
+   come from external editor themes (VS Code Dark+, One Dark) and a fixed
+   JSON-viewer scheme; they are deliberately INDEPENDENT of the project brand /
+   semantic palette so the highlight scheme never drifts when the app is
+   rebranded. Every value here is therefore a self-contained literal — no
+   `var(--color-*)` reference into the global registry.
+
+   The per-token Prism highlight palette itself (keyword/string/comment/...) is
+   owned by the vendored `react-syntax-highlighter` `oneDark` theme used in
+   CodeBlockContent.tsx; that is the sanctioned single highlight scheme. This
+   registry holds the surrounding code-rendering chrome we color via CSS.
+
+   Loaded app-wide and in the screenshot window via globals.css `@import`, so
+   `var(--syntax-*)` resolves everywhere globals.css is present.
+
+   GOVERNANCE: this file is a token-DEFINITION registry and is exempt from the
+   design-system hex gate (scripts/check-design-tokens.js). Raw hex / fixed
+   editor values are allowed HERE ONLY. Definitions only — no component rules.
+   =========================================================================== */
+:root {
+  /* --- Editor surfaces (fixed dark, theme-independent) --- */
+  --syntax-surface: #1e1e1e; /* VS Code dark base (also absorbs Apple near-black) */
+  --syntax-surface-raised: #252526; /* VS Code dark raised panel */
+  --syntax-surface-onedark: #282c34; /* One Dark base (OverlayFileViewer) */
+  --syntax-surface-onedark-raised: #21252b; /* One Dark raised gutter panel */
+
+  /* --- Code block body (One Dark) --- */
+  --syntax-block-bg: #282c34; /* = rgb(40, 44, 52) */
+  --syntax-block-text: #abb2bf; /* = rgb(171, 178, 191) One Dark default text */
+
+  /* --- Code-block gutter / line numbers (One Dark) --- */
+  --syntax-gutter-border: #3e4451;
+  --syntax-line-number: #636d83;
+
+  /* --- Editor accent tokens (VS Code Dark+) --- */
+  --syntax-type: #4ec9b0; /* type / class teal (terminal prompt) */
+  --syntax-keyword: #569cd6; /* keyword blue (write-file icon) */
+
+  /* --- Inline code (chat prose).
+     Values are the resolved brand-warm colors (warm-800 / warm-200) captured at
+     extraction time, inlined as literals to keep the scheme self-contained. The
+     *-dark pair is the dark-mode treatment and is wired in the dark-mode slice. */
+  --syntax-inline-bg: #edd5c4;
+  --syntax-inline-text: #322d29; /* was var(--color-warm-800) */
+  --syntax-inline-bg-dark: rgba(255, 255, 255, 0.12);
+  --syntax-inline-text-dark: #e2ddd9; /* was var(--color-warm-200) */
+
+  /* --- File-viewer rendered-markdown inline code (`<code>` in
+     .file-viewer-markdown-content) --- */
+  --syntax-md-inline-text: #d946ef;
+
+  /* --- JSON-viewer syntax theme (fixed scheme). Values were the project
+     indigo / violet / success / warning / neutral tokens, inlined here so the
+     code-viewer theme is independent of the brand palette. --- */
+  --syntax-json-key: #4f46e5; /* was var(--color-indigo-600) */
+  --syntax-json-string: oklch(62.7% 0.194 149.214); /* was var(--color-success-600) */
+  --syntax-json-number: oklch(66.6% 0.179 58.318); /* was var(--color-warning-600) */
+  --syntax-json-boolean: #7c3aed; /* was var(--color-violet-600) */
+  --syntax-json-null: #7c3aed; /* was var(--color-violet-600) */
+  --syntax-json-bracket: #404040; /* was var(--color-neutral-700) */
+}

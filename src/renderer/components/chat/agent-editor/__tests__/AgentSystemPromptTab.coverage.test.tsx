@@ -7,6 +7,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, act } from '@testing-library/react';
 import AgentSystemPromptTab from '../AgentSystemPromptTab';
 import type { TabComponentProps, AgentConfig } from '../types';
+import type { AgentSystemPromptFile } from '@shared/types/agentSystemPrompt';
 
 // ---- hoisted mock vars ----
 
@@ -20,8 +21,13 @@ const { mockShowError, mockShowSuccess } = vi.hoisted(() => ({
 vi.mock('../../../../styles/Agent.css', () => ({}));
 
 vi.mock('../MarkdownEditor', () => ({
-  default: ({ value, onChange, showPreview, onTogglePreview, readOnly }: any) => (
-    <div data-testid="markdown-editor" data-show-preview={String(showPreview)} data-readonly={String(readOnly)}>
+  default: ({ value, onChange, showPreview, onTogglePreview, readOnly, emptyTips }: any) => (
+    <div
+      data-testid="markdown-editor"
+      data-show-preview={String(showPreview)}
+      data-readonly={String(readOnly)}
+      data-empty-tips={(emptyTips ?? []).join('|')}
+    >
       <textarea
         data-testid="editor-textarea"
         value={value}
@@ -44,6 +50,8 @@ vi.mock('../../../ui/ToastProvider', () => ({
 
 // ---- helpers ----
 
+const prompt = (base: string, agents = '') => ({ 'Base.md': base, 'AGENTS.md': agents });
+
 function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     id: 'agent-1',
@@ -51,7 +59,7 @@ function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     emoji: '🤖',
     role: 'assistant',
     model: 'gpt-4.1',
-    systemPrompt: 'You are a helpful assistant.',
+    systemPrompt: prompt('You are a helpful assistant.'),
     mcpServers: [],
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -59,10 +67,14 @@ function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   };
 }
 
-function renderTab(overrides: Partial<TabComponentProps> = {}) {
+type RenderTabOverrides = Partial<TabComponentProps> & {
+  promptFile?: AgentSystemPromptFile;
+}
+
+function renderTab(overrides: RenderTabOverrides = {}) {
   const props: TabComponentProps = {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: createAgent(),
     onSave: vi.fn(async () => createAgent()),
     onDataChange: vi.fn(),
@@ -70,7 +82,7 @@ function renderTab(overrides: Partial<TabComponentProps> = {}) {
     readOnly: false,
     ...overrides,
   };
-  return render(<AgentSystemPromptTab {...props} />);
+  return render(<AgentSystemPromptTab {...props} promptFile={overrides.promptFile} />);
 }
 
 // ---- tests ----
@@ -94,8 +106,28 @@ describe('AgentSystemPromptTab - basic rendering', () => {
     expect(screen.getByTestId('markdown-editor')).toBeInTheDocument();
   });
 
+  it('renders Agent Identity guidance by default', () => {
+    renderTab();
+    expect(screen.getByText('Agent Identity')).toBeInTheDocument();
+    expect(screen.getByText(/Define who this agent is/)).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-editor')).toHaveAttribute(
+      'data-empty-tips',
+      expect.stringContaining('Agent Identity defines who this agent is.'),
+    );
+  });
+
+  it('renders Project Context guidance for AGENTS.md', () => {
+    renderTab({ promptFile: 'AGENTS.md' });
+    expect(screen.getByText('Project Context')).toBeInTheDocument();
+    expect(screen.getByText(/Define what this agent works on/)).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-editor')).toHaveAttribute(
+      'data-empty-tips',
+      expect.stringContaining('Project Context defines what this agent works on.'),
+    );
+  });
+
   it('loads systemPrompt from agentData', async () => {
-    renderTab({ agentData: createAgent({ systemPrompt: 'Hello from agent' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Hello from agent') }) });
     await waitFor(() => {
       expect(screen.getByTestId('editor-textarea')).toHaveValue('Hello from agent');
     });
@@ -130,7 +162,7 @@ describe('AgentSystemPromptTab - mode=add default prompt', () => {
   it('does not set default prompt in add mode when agentData.systemPrompt is explicit empty string', async () => {
     renderTab({
       mode: 'add',
-      agentData: createAgent({ systemPrompt: '' }),
+      agentData: createAgent({ systemPrompt: prompt('') }),
     });
     await waitFor(() => {
       expect(screen.getByTestId('editor-textarea')).toHaveValue('');
@@ -143,8 +175,8 @@ describe('AgentSystemPromptTab - cachedData', () => {
 
   it('prefers cachedData systemPrompt over agentData', async () => {
     renderTab({
-      agentData: createAgent({ systemPrompt: 'original' }),
-      cachedData: { systemPrompt: 'cached-prompt' },
+      agentData: createAgent({ systemPrompt: prompt('original') }),
+      cachedData: { systemPrompt: prompt('cached-prompt') },
     });
     await waitFor(() => {
       expect(screen.getByTestId('editor-textarea')).toHaveValue('cached-prompt');
@@ -155,24 +187,112 @@ describe('AgentSystemPromptTab - cachedData', () => {
 describe('AgentSystemPromptTab - onDataChange notifications', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('notifies onDataChange after initialization', async () => {
+  it('does not notify onDataChange during initialization', async () => {
     const onDataChange = vi.fn();
     renderTab({ onDataChange });
-    await waitFor(() => {
-      expect(onDataChange).toHaveBeenCalledWith('prompt', expect.objectContaining({ systemPrompt: expect.any(String) }), expect.any(Boolean));
-    });
+    expect(screen.getByTestId('editor-textarea')).toHaveValue('You are a helpful assistant.');
+    expect(onDataChange).not.toHaveBeenCalled();
   });
 
   it('calls onDataChange with hasChanges=true when content changes', async () => {
     const onDataChange = vi.fn();
-    renderTab({ onDataChange, agentData: createAgent({ systemPrompt: 'original' }) });
-    await waitFor(() => expect(onDataChange).toHaveBeenCalled());
-    onDataChange.mockClear();
+    renderTab({ onDataChange, agentData: createAgent({ systemPrompt: prompt('original') }) });
 
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'changed' } });
     await waitFor(() => {
-      expect(onDataChange).toHaveBeenCalledWith('prompt', { systemPrompt: 'changed' }, true);
+      expect(onDataChange).toHaveBeenCalledWith('prompt', { systemPrompt: prompt('changed') }, true);
     });
+  });
+
+  it('preserves AGENTS.md when editing Base.md', async () => {
+    const onDataChange = vi.fn();
+    renderTab({ onDataChange, agentData: createAgent({ systemPrompt: prompt('original', 'agents prompt') }) });
+
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'changed base' } });
+
+    await waitFor(() => {
+      expect(onDataChange).toHaveBeenCalledWith(
+        'prompt',
+        { systemPrompt: prompt('changed base', 'agents prompt') },
+        true,
+      );
+    });
+  });
+
+  it('loads and edits AGENTS.md without dropping Base.md', async () => {
+    const onDataChange = vi.fn();
+    renderTab({
+      onDataChange,
+      agentData: createAgent({ systemPrompt: prompt('base prompt', 'original agents') }),
+      promptFile: 'AGENTS.md',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-textarea')).toHaveValue('original agents');
+    });
+    onDataChange.mockClear();
+
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'changed agents' } });
+
+    await waitFor(() => {
+      expect(onDataChange).toHaveBeenCalledWith(
+        'prompt',
+        { systemPrompt: prompt('base prompt', 'changed agents') },
+        true,
+      );
+    });
+  });
+
+  it('keeps Base.md dirty state when opening AGENTS.md with cached prompt data', async () => {
+    const onDataChange = vi.fn();
+    renderTab({
+      onDataChange,
+      agentData: createAgent({ systemPrompt: prompt('base original', 'agents original') }),
+      cachedData: { systemPrompt: prompt('base changed', 'agents original') },
+      promptFile: 'AGENTS.md',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-textarea')).toHaveValue('agents original');
+    });
+
+    expect(onDataChange).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'agents changed' } });
+
+    await waitFor(() => {
+      expect(onDataChange).toHaveBeenCalledWith(
+        'prompt',
+        { systemPrompt: prompt('base changed', 'agents changed') },
+        true,
+      );
+    });
+  });
+
+  it('switches prompt files without copying Base.md into AGENTS.md or marking dirty', async () => {
+    const onDataChange = vi.fn();
+    const agentData = createAgent({ systemPrompt: prompt('base content', 'agents content') });
+    const { rerender } = renderTab({ onDataChange, agentData, promptFile: 'Base.md' });
+
+    expect(screen.getByTestId('editor-textarea')).toHaveValue('base content');
+
+    rerender(
+      <AgentSystemPromptTab
+        mode="update"
+        chatId="agent-1"
+        agentData={agentData}
+        onSave={vi.fn(async () => agentData)}
+        onDataChange={onDataChange}
+        cachedData={null}
+        readOnly={false}
+        promptFile="AGENTS.md"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-textarea')).toHaveValue('agents content');
+    });
+    expect(onDataChange).not.toHaveBeenCalled();
   });
 });
 
@@ -238,10 +358,10 @@ describe('AgentSystemPromptTab - readOnly mode', () => {
     expect(screen.queryByText('Polish with AI')).not.toBeInTheDocument();
   });
 
-  it('shows library agent restriction warning in readOnly', async () => {
+  it('shows the generic restriction warning in readOnly', async () => {
     renderTab({ readOnly: true });
     await waitFor(() => {
-      expect(screen.getByText(/Library Agent's system prompt cannot be modified/)).toBeInTheDocument();
+      expect(screen.getByText(/This system prompt cannot be modified/)).toBeInTheDocument();
     });
   });
 
@@ -266,7 +386,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
   });
 
   it('Polish with AI button is disabled when prompt is empty', async () => {
-    renderTab({ agentData: createAgent({ systemPrompt: '' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('') }) });
     await waitFor(() => {
       const btn = screen.getByText('Polish with AI').closest('button')!;
       expect(btn).toBeDisabled();
@@ -274,7 +394,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
   });
 
   it('Polish with AI button has title when prompt empty', async () => {
-    renderTab({ agentData: createAgent({ systemPrompt: '' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('') }) });
     await waitFor(() => {
       const btn = screen.getByText('Polish with AI').closest('button')!;
       expect(btn.title).toBe('Enter a prompt first');
@@ -282,7 +402,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
   });
 
   it('shows error when prompt is whitespace-only on optimize', async () => {
-    renderTab({ agentData: createAgent({ systemPrompt: '   ' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('   ') }) });
     // Manually trigger by changing text to have content, then clearing
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: '' } });
     // The button should be disabled, we can't click it via normal flow
@@ -298,7 +418,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
         warnings: [],
       },
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Original prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Original prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -306,8 +426,33 @@ describe('AgentSystemPromptTab - AI optimization', () => {
     });
 
     await waitFor(() => {
-      expect((window as any).electronAPI.llm.improveSystemPrompt).toHaveBeenCalledWith('Original prompt');
+      expect((window as any).electronAPI.llm.improveSystemPrompt).toHaveBeenCalledWith('Original prompt', { promptFile: 'Base.md' });
       expect(screen.getByTestId('editor-textarea')).toHaveValue('Improved prompt text');
+    });
+  });
+
+  it('passes AGENTS.md to improveSystemPrompt for Project Context polish', async () => {
+    (window as any).electronAPI.llm.improveSystemPrompt = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        improvedPrompt: 'Improved context',
+        warnings: [],
+      },
+    });
+    renderTab({
+      promptFile: 'AGENTS.md',
+      agentData: createAgent({ systemPrompt: prompt('Base prompt', 'Context prompt') }),
+    });
+    await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Polish with AI'));
+    });
+
+    await waitFor(() => {
+      expect((window as any).electronAPI.llm.improveSystemPrompt).toHaveBeenCalledWith('Context prompt', { promptFile: 'AGENTS.md' });
+      expect(screen.getByTestId('editor-textarea')).toHaveValue('Improved context');
     });
   });
 
@@ -320,7 +465,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
         warnings: ['Warning: something minor'],
       },
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -337,7 +482,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
     (window as any).electronAPI.llm.improveSystemPrompt = vi.fn().mockReturnValue(
       new Promise((res) => { resolveIpc = res; })
     );
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     act(() => {
@@ -354,7 +499,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
 
   it('shows error when ipcResult is falsy (API not available)', async () => {
     (window as any).electronAPI.llm.improveSystemPrompt = vi.fn().mockResolvedValue(null);
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -372,7 +517,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
       success: false,
       error: 'Service unavailable',
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -390,7 +535,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
         errors: ['Validation failed', 'Missing context'],
       },
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -402,7 +547,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
 
   it('handles thrown error during optimization', async () => {
     (window as any).electronAPI.llm.improveSystemPrompt = vi.fn().mockRejectedValue(new Error('Network error'));
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -417,7 +562,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
       success: false,
       error: 'Fail',
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -439,7 +584,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
         warnings: ['some warning'],
       },
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {
@@ -458,7 +603,7 @@ describe('AgentSystemPromptTab - AI optimization', () => {
         success: false,
       },
     });
-    renderTab({ agentData: createAgent({ systemPrompt: 'Test prompt' }) });
+    renderTab({ agentData: createAgent({ systemPrompt: prompt('Test prompt') }) });
     await waitFor(() => expect(screen.getByText('Polish with AI')).toBeInTheDocument());
 
     await act(async () => {

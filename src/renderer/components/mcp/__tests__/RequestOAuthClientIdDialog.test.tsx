@@ -102,8 +102,10 @@ describe('RequestOAuthClientIdDialog', () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://localhost:3000/callback');
     });
 
-    // "Copied" text appears temporarily
-    expect(screen.getByText('Copied')).toBeInTheDocument();
+    // "Copied" text appears temporarily after the clipboard promise resolves.
+    await waitFor(() => {
+      expect(screen.getByText('Copied')).toBeInTheDocument();
+    });
   });
 
   it('shows setup URL button when setupUrl is provided', async () => {
@@ -168,6 +170,18 @@ describe('RequestOAuthClientIdDialog', () => {
     expect(mockRespondClientId).toHaveBeenCalledWith('req-1', { cancelled: true });
   });
 
+  it('does not respond when cancelling an empty request id payload', async () => {
+    await renderComp();
+
+    await act(async () => {
+      mockOnRequestClientId!(makePayload({ requestId: '' }));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(mockRespondClientId).not.toHaveBeenCalled();
+  });
+
   it('closes dialog after Cancel', async () => {
     await renderComp();
 
@@ -180,6 +194,18 @@ describe('RequestOAuthClientIdDialog', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+  });
+
+  it('cancels when the dialog close button triggers onOpenChange(false)', async () => {
+    await renderComp();
+
+    await act(async () => {
+      mockOnRequestClientId!(makePayload());
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(mockRespondClientId).toHaveBeenCalledWith('req-1', { cancelled: true });
   });
 
   it('Save & Continue button is disabled when clientId is empty', async () => {
@@ -287,6 +313,30 @@ describe('RequestOAuthClientIdDialog', () => {
     await act(async () => { mockOnRequestClientId!(p2); });
 
     // Cancel first — no second dialog since duplicate requestId was rejected
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('ignores duplicate requestId already waiting in the queue', async () => {
+    await renderComp();
+
+    const p1 = makePayload({ requestId: 'r1', serverName: 'Server1' });
+    const p2 = makePayload({ requestId: 'r2', serverName: 'Server2' });
+    const p3 = makePayload({ requestId: 'r2', serverName: 'Server2-dup' });
+
+    await act(async () => { mockOnRequestClientId!(p1); });
+    await act(async () => { mockOnRequestClientId!(p2); });
+    await act(async () => { mockOnRequestClientId!(p3); });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Server2/).length).toBeGreaterThan(0);
+    });
+
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => {

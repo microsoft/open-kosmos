@@ -23,15 +23,14 @@ const ContentContainer: React.FC<ContentContainerProps> = ({
 
   // 🔥 Handle edit Agent - navigate to the settings page
   const handleEditAgentInternal = useCallback(
-    (chatId: string, initialTab?: 'basic' | 'mcp' | 'skills' | 'schedules' | 'prompt' | 'context') => {
+    (chatId: string, initialTab?: 'basic' | 'mcp' | 'skills' | 'schedules' | 'prompt') => {
       // Tab route mapping - kept in sync with tabToRouteMap in AgentChatEditingView
       const tabToRouteMap: Record<string, string> = {
         'basic': 'basic',
         'mcp': 'mcp_servers',
         'skills': 'skills',
         'schedules': 'schedules',
-        'prompt': 'system_prompt',
-        'context': 'context_enhancement'
+        'prompt': 'system_prompt'
       };
 
       const routeTab = initialTab ? tabToRouteMap[initialTab] || 'basic' : 'basic';

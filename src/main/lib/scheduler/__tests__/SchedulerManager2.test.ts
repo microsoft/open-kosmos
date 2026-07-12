@@ -1,17 +1,39 @@
 import type { CronWatchdogTaskRuntimeMeta } from '../cronWatchdog';
 
+const { schedulerLoggerMock } = vi.hoisted(() => ({
+  schedulerLoggerMock: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock('node-cron', async () => ({
   schedule: vi.fn(() => ({
     stop: vi.fn(),
   })),
 }));
 
+vi.mock('../../mcpRuntime/mcpClientManager', () => ({
+  mcpClientManager: {
+    waitForServersSettled: vi.fn(async () => undefined),
+    getMcpServerRuntimeState: vi.fn(() => undefined),
+    getInUseServerNames: vi.fn(() => []),
+  },
+}));
+
+vi.mock('../../mcpRuntime/builtinMcpClient', () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+}));
+
 vi.mock('../../unifiedLogger', async () => ({
-  createLogger: vi.fn(() => ({
+  createConsoleLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
   })),
+  createLogger: vi.fn(() => schedulerLoggerMock),
 }));
 
 vi.mock('../../chat/agentChatManager', async () => ({
@@ -63,10 +85,6 @@ vi.mock('../schedulerRuntimeStateStore', async () => ({
   },
 }));
 
-vi.mock('../../remoteChannel/schedulerNotifier', async () => ({
-  notifyScheduledJobCompletion: vi.fn(),
-}));
-
 vi.mock('../../userDataADO/pathUtils', async () => ({
   generateChatSessionId: vi.fn(() => 'preallocated-session-id'),
 }));
@@ -78,7 +96,7 @@ const defaultJob = {
   scheduleType: 'cron' as const,
   cronExpression: '0 * * * *',
   enabled: true,
-  agentId: 'agent-1',
+  chat_id: 'agent-1',
   message: 'hello',
   status: 'pending' as const,
 };
@@ -746,54 +764,6 @@ describe('SchedulerManager - alias switch', () => {
   });
 });
 
-describe('SchedulerManager - notifyOnCompletion', () => {
-  beforeEach(async () => {
-    vi.resetModules();
-    vi.resetAllMocks();
-    await setupMocks();
-  });
-
-  afterEach(async () => {
-    try {
-      const { schedulerManager } = await import('../SchedulerManager');
-      await schedulerManager.dispose('manual-debug');
-    } catch {
-      // ignore
-    }
-  });
-
-  it('does not notify when notifyOnCompletion is false', async () => {
-    const { scheduleStore } = await import('../scheduleStore');
-    const { notifyScheduledJobCompletion } = await import('../../remoteChannel/schedulerNotifier');
-
-    const noNotifyJob = { ...defaultJob, notifyOnCompletion: false };
-    vi.mocked(scheduleStore.getJob).mockResolvedValue(noNotifyJob);
-
-    const { schedulerManager } = await import('../SchedulerManager');
-    await schedulerManager.initialize('alice');
-    await schedulerManager.runJobNow('job-1');
-
-    expect(notifyScheduledJobCompletion).not.toHaveBeenCalled();
-  });
-
-  it('does notify when notifyOnCompletion is true', async () => {
-    const { scheduleStore } = await import('../scheduleStore');
-    const { notifyScheduledJobCompletion } = await import('../../remoteChannel/schedulerNotifier');
-
-    const notifyJob = { ...defaultJob, notifyOnCompletion: true };
-    vi.mocked(scheduleStore.getJob).mockResolvedValue(notifyJob);
-
-    const { agentChatManager } = await import('../../chat/agentChatManager');
-    vi.mocked(agentChatManager.runScheduledJob).mockResolvedValue({ success: true, chatSessionId: 'sess-x', messagesCount: 1 });
-
-    const { schedulerManager } = await import('../SchedulerManager');
-    await schedulerManager.initialize('alice');
-    await schedulerManager.runJobNow('job-1');
-
-    expect(notifyScheduledJobCompletion).toHaveBeenCalled();
-  });
-});
-
 describe('SchedulerManager - toggleJobsByAgent no-alias path', () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -863,6 +833,22 @@ describe('SchedulerManager - cron job registration with missing expression', () 
     expect(nodeCron.schedule).not.toHaveBeenCalled();
   });
 
+  it('passes explicit timezone option to cron.schedule', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([defaultJob]);
+
+    const nodeCron = await import('node-cron');
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    expect(nodeCron.schedule).toHaveBeenCalledWith(
+      defaultJob.cronExpression,
+      expect.any(Function),
+      expect.objectContaining({ timezone: expect.any(String) }),
+    );
+  });
+
   it('handles cron.schedule throwing and logs the error', async () => {
     const { scheduleStore } = await import('../scheduleStore');
     vi.mocked(scheduleStore.listJobs).mockResolvedValue([defaultJob]);
@@ -910,7 +896,7 @@ describe('SchedulerManager - once-job failure in non-caught path', () => {
       cronExpression: undefined,
       runAt: '2026-05-11T13:00:00.000Z',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -970,6 +956,61 @@ describe('SchedulerManager - heartbeat with active cron tasks', () => {
     // No error thrown = heartbeat ran ok
   });
 
+  it('heartbeat log includes rssBytes and heapUsedBytes', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-11T12:00:00.000Z'));
+    vi.spyOn(process, 'memoryUsage').mockReturnValue({
+      rss: 128 * 1024 * 1024,
+      heapTotal: 96 * 1024 * 1024,
+      heapUsed: 64 * 1024 * 1024,
+      external: 8 * 1024 * 1024,
+      arrayBuffers: 1024 * 1024,
+    });
+
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([defaultJob]);
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    vi.advanceTimersByTime(60_000);
+
+    const heartbeatCalls = vi.mocked(schedulerLoggerMock.info).mock.calls.filter(
+      (call) => call[0] === 'scheduler.heartbeat'
+    );
+
+    const payload = heartbeatCalls[0][2] as any;
+    expect(payload.rssBytes).toBe(128 * 1024 * 1024);
+    expect(payload.heapUsedBytes).toBe(64 * 1024 * 1024);
+  });
+
+  it('warns when heartbeat RSS exceeds the memory pressure threshold', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-11T12:00:00.000Z'));
+    vi.spyOn(process, 'memoryUsage').mockReturnValue({
+      rss: 3 * 1024 * 1024 * 1024,
+      heapTotal: 768 * 1024 * 1024,
+      heapUsed: 512 * 1024 * 1024,
+      external: 8 * 1024 * 1024,
+      arrayBuffers: 1024 * 1024,
+    });
+
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.listJobs).mockResolvedValue([defaultJob]);
+
+    const { schedulerManager } = await import('../SchedulerManager');
+    await schedulerManager.initialize('alice');
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(schedulerLoggerMock.warn).toHaveBeenCalledWith(
+      'scheduler.heartbeat.memory-pressure',
+      'heartbeat',
+      {
+        rssMB: 3072,
+        heapUsedMB: 512,
+        activeTaskCount: 1,
+      }
+    );
+  });
   it('heartbeat watchdog triggers executeJob for a missed cron occurrence', async () => {
     // Set time at 06:02 — job registered at 06:00, heartbeat fires, watchdog finds 06:01 occurrence
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:02:00.000Z'));
@@ -1079,7 +1120,7 @@ describe('SchedulerManager - once-job fires via setTimeout', () => {
       cronExpression: undefined,
       runAt: '2026-05-11T12:01:00.000Z', // 60s in the future
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -1169,7 +1210,7 @@ describe('SchedulerManager - once-job with very long delay (> MAX_TIMEOUT_MS)', 
       cronExpression: undefined,
       runAt: '2126-05-11T12:00:00.000Z', // 100 years away
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };

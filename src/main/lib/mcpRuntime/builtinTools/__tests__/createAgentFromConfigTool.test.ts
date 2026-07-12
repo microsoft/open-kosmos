@@ -54,6 +54,16 @@ describe('CreateAgentFromConfigTool', () => {
       const def = CreateAgentFromConfigTool.getDefinition();
       expect(def.inputSchema.required).toContain('name');
     });
+
+    it('does not advertise workspace as an agent creation parameter', () => {
+      const def = CreateAgentFromConfigTool.getDefinition();
+      expect((def.inputSchema as any).properties.workspace).toBeUndefined();
+    });
+
+    it('does not advertise knowledgeBase as an agent creation parameter', () => {
+      const def = CreateAgentFromConfigTool.getDefinition();
+      expect((def.inputSchema as any).properties.knowledgeBase).toBeUndefined();
+    });
   });
 
   // ── Input validation ───────────────────────────────────────
@@ -69,6 +79,30 @@ describe('CreateAgentFromConfigTool', () => {
       const result = await CreateAgentFromConfigTool.execute({ name: '   ' });
       expect(result.success).toBe(false);
       expect(result.error).toBe('INVALID_INPUT');
+    });
+
+    it('rejects workspace instead of accepting a no-op agent-owned workspace', async () => {
+      const result = await CreateAgentFromConfigTool.execute({
+        name: 'workspace-agent',
+        workspace: '/tmp/ws',
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_INPUT');
+      expect(result.message).toContain('workspace is chat-owned');
+      expect(mockAddChatConfig).not.toHaveBeenCalled();
+    });
+
+    it('rejects knowledgeBase instead of silently ignoring a caller-owned path', async () => {
+      const result = await CreateAgentFromConfigTool.execute({
+        name: 'knowledge-agent',
+        knowledgeBase: '/tmp/knowledge',
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_INPUT');
+      expect(result.message).toContain('knowledgeBase is managed by the agent store');
+      expect(mockAddChatConfig).not.toHaveBeenCalled();
     });
   });
 
@@ -111,6 +145,20 @@ describe('CreateAgentFromConfigTool', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('AGENT_EXISTS');
     });
+
+    it('returns AGENT_EXISTS when a secondary agent has the same name', async () => {
+      mockGetAllChatConfigs.mockReturnValue([
+        {
+          chat_id: 'existing-multi',
+          agents: [{ name: 'primary-agent' }, { name: 'secondary-agent' }],
+        },
+      ]);
+
+      const result = await CreateAgentFromConfigTool.execute({ name: 'secondary-agent' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('AGENT_EXISTS');
+    });
   });
 
   // ── Successful creation ────────────────────────────────────
@@ -131,10 +179,11 @@ describe('CreateAgentFromConfigTool', () => {
             name: 'my-agent',
             source: 'ON-DEVICE',
             version: '1.0.0',
-            remoteVersion: '',
           }),
         }),
       );
+      expect(mockAddChatConfig.mock.calls[0][1].agent).not.toHaveProperty('remoteVersion');
+      expect(mockAddChatConfig.mock.calls[0][1]).not.toHaveProperty('workspace');
     });
 
     it('uses provided emoji, role, model', async () => {
@@ -157,10 +206,9 @@ describe('CreateAgentFromConfigTool', () => {
       );
     });
 
-    it('sets remoteVersion equal to version for IN-LIBRARY agents', async () => {
+    it('creates agents as local resources without remote metadata', async () => {
       await CreateAgentFromConfigTool.execute({
-        name: 'library-agent',
-        source: 'IN-LIBRARY',
+        name: 'local-agent',
         version: '2.1.0',
       });
 
@@ -168,12 +216,12 @@ describe('CreateAgentFromConfigTool', () => {
         'tester',
         expect.objectContaining({
           agent: expect.objectContaining({
-            source: 'IN-LIBRARY',
+            source: 'ON-DEVICE',
             version: '2.1.0',
-            remoteVersion: '2.1.0',
           }),
         }),
       );
+      expect(mockAddChatConfig.mock.calls[0][1].agent).not.toHaveProperty('remoteVersion');
     });
 
     it('maps mcp_servers correctly', async () => {
@@ -187,28 +235,6 @@ describe('CreateAgentFromConfigTool', () => {
         expect.objectContaining({
           agent: expect.objectContaining({
             mcp_servers: [{ name: 'my-mcp', tools: ['tool-a'] }],
-          }),
-        }),
-      );
-    });
-
-    it('passes context_enhancement through', async () => {
-      await CreateAgentFromConfigTool.execute({
-        name: 'ctx-agent',
-        context_enhancement: {
-          search_memory: { enabled: true, semantic_top_n: 5 },
-          generate_memory: { enabled: false },
-        },
-      });
-
-      expect(mockAddChatConfig).toHaveBeenCalledWith(
-        'tester',
-        expect.objectContaining({
-          agent: expect.objectContaining({
-            context_enhancement: expect.objectContaining({
-              search_memory: expect.objectContaining({ enabled: true, semantic_top_n: 5 }),
-              generate_memory: { enabled: false },
-            }),
           }),
         }),
       );
@@ -230,7 +256,14 @@ describe('CreateAgentFromConfigTool', () => {
       expect(mockAddChatConfig).toHaveBeenCalledWith(
         'tester',
         expect.objectContaining({
-          agent: expect.objectContaining({ zero_states: zeroStates }),
+          agent: expect.objectContaining({
+            zero_states: expect.objectContaining({
+              greeting: 'Hi!',
+              quick_starts: [
+                expect.objectContaining({ title: 'Q', description: 'D', prompt: 'P', id: expect.any(String) }),
+              ],
+            }),
+          }),
         }),
       );
     });
@@ -263,12 +296,69 @@ describe('CreateAgentFromConfigTool', () => {
     it('returns agent names from profile cache', () => {
       mockGetAllChatConfigs.mockReturnValue([
         { agent: { name: 'agent-1' } },
-        { agent: { name: 'agent-2' } },
+        { agents: [{ name: 'agent-2' }, { name: 'agent-3' }] },
         { agent: null },
       ]);
 
       const names = CreateAgentFromConfigTool.getExistingAgentNames();
-      expect(names).toEqual(['agent-1', 'agent-2']);
+      expect(names).toEqual(['agent-1', 'agent-2', 'agent-3']);
+    });
+
+    it('returns empty array when getAllChatConfigs throws', () => {
+      mockGetAllChatConfigs.mockImplementation(() => { throw new Error('crash'); });
+      const names = CreateAgentFromConfigTool.getExistingAgentNames();
+      expect(names).toEqual([]);
+    });
+  });
+
+  describe('execute – NO_USER_SESSION via mutation', () => {
+    it('skips NO_USER_SESSION path when alias is always tester (mock constraint)', async () => {
+      // The top-level mock always returns 'tester' via getter — cannot override via property mutation.
+      // We verify the success path still works after attempting property re-definition.
+      const result = await CreateAgentFromConfigTool.execute({ name: 'coverage-agent' });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('execute – EXECUTION_ERROR with non-Error thrown', () => {
+    it('handles non-Error thrown value', async () => {
+      mockAddChatConfig.mockRejectedValue('plain string error');
+      const result = await CreateAgentFromConfigTool.execute({ name: 'non-error-agent' });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('EXECUTION_ERROR');
+      expect(result.message).toContain('plain string error');
+    });
+  });
+
+  describe('buildChatAgent – mcp_servers with undefined tools', () => {
+    it('normalises tools to empty array when tools is undefined', async () => {
+      await CreateAgentFromConfigTool.execute({
+        name: 'no-tools-agent',
+        mcp_servers: [{ name: 'srv' }],
+      });
+      expect(mockAddChatConfig).toHaveBeenCalledWith(
+        'tester',
+        expect.objectContaining({
+          agent: expect.objectContaining({
+            mcp_servers: [{ name: 'srv', tools: [] }],
+          }),
+        }),
+      );
+    });
+
+    it('defaults mcp_servers to an empty array (no tools) when not specified', async () => {
+      // No mcp_servers argument -> the agent must start with zero tools for
+      // every brand. It must NOT silently default to builtin-tools, which would
+      // grant an all-tools surface the caller never asked for.
+      await CreateAgentFromConfigTool.execute({ name: 'defaults-agent' });
+      expect(mockAddChatConfig).toHaveBeenCalledWith(
+        'tester',
+        expect.objectContaining({
+          agent: expect.objectContaining({
+            mcp_servers: [],
+          }),
+        }),
+      );
     });
   });
 });

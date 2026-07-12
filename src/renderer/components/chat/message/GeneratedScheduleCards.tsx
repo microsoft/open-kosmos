@@ -9,14 +9,15 @@ import { describeCronExpression } from '../../../lib/scheduler/cronDescriptions'
 import { showScheduledRunStartedToast } from '../../../lib/scheduler/showScheduledRunStartedToast';
 import { useToast } from '../../ui/ToastProvider';
 import { ScheduleSidepaneAtom } from '../chat-side.atom';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 interface GeneratedScheduleCardsProps {
   scheduleIds: string[];
 }
 
-const formatRunSummary = (job: SchedulerJob | undefined): string => {
+const formatRunSummary = (job: SchedulerJob | undefined, fallback: string): string => {
   if (!job) {
-    return 'Schedule found in response';
+    return fallback;
   }
 
   if (job.scheduleType === 'once' && job.runAt) {
@@ -33,10 +34,11 @@ const formatRunSummary = (job: SchedulerJob | undefined): string => {
     return describeCronExpression(job.cronExpression);
   }
 
-  return 'Schedule found in response';
+  return fallback;
 };
 
 export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ scheduleIds }) => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { showToast, showSuccess, showError } = useToast();
   const currentChatId = useCurrentChatId();
@@ -95,31 +97,32 @@ export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ 
       if (response?.success) {
         showScheduledRunStartedToast({
           result: response.data,
-          agentId: jobsById[jobId]?.agentId,
+          chatId: jobsById[jobId]?.chat_id,
           navigate,
           showToast,
           showSuccess,
+          t,
         });
         scheduleSidepaneActions.effectiveShow();
         return;
       }
 
-      showError('Failed to run schedule: ' + (response?.error || 'Unknown error'));
+      showError(t('chat.schedule.runFailed', { error: response?.error || t('common.unknownError') }));
     } catch (error) {
-      showError('Failed to run schedule: ' + (error instanceof Error ? error.message : String(error)));
+      showError(t('chat.schedule.runFailed', { error: error instanceof Error ? error.message : String(error) }));
     } finally {
       setRunningJobId((current) => (current === jobId ? null : current));
     }
-  }, [jobsById, navigate, showError, showSuccess, showToast]);
+  }, [jobsById, navigate, showError, showSuccess, showToast, t]);
 
   const handleManage = useCallback(() => {
     if (!effectiveChatId) {
-      showError('Unable to open schedules for this chat.');
+      showError(t('chat.schedule.openFailed'));
       return;
     }
 
     navigate(`/agent/chat/${effectiveChatId}/settings/schedules`);
-  }, [effectiveChatId, navigate, showError]);
+  }, [effectiveChatId, navigate, showError, t]);
 
   if (normalizedScheduleIds.length === 0) {
     return null;
@@ -139,8 +142,8 @@ export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ 
                   <CalendarClock size={18} strokeWidth={1.8} />
                 </span>
                 <div className="message-schedule-card-copy">
-                  <span className="message-schedule-card-label">Schedule</span>
-                  <span className="message-schedule-card-title">{job?.name || 'Scheduled task'}</span>
+                  <span className="message-schedule-card-label">{t('chat.schedule.cardLabel')}</span>
+                  <span className="message-schedule-card-title">{job?.name || t('chat.schedule.defaultTaskSentence')}</span>
                 </div>
               </div>
               {loading && !job && (
@@ -150,11 +153,11 @@ export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ 
 
             <div className="message-schedule-card-body">
               <div className="message-schedule-card-row">
-                <span className="message-schedule-card-row-label">Runs</span>
-                <span className="message-schedule-card-row-value">{formatRunSummary(job)}</span>
+                <span className="message-schedule-card-row-label">{t('chat.schedule.runs')}</span>
+                <span className="message-schedule-card-row-value">{formatRunSummary(job, t('chat.schedule.foundInResponse'))}</span>
               </div>
               <div className="message-schedule-card-row">
-                <span className="message-schedule-card-row-label">Job ID</span>
+                <span className="message-schedule-card-row-label">{t('chat.schedule.jobId')}</span>
                 <span className="message-schedule-card-id">{scheduleId}</span>
               </div>
             </div>
@@ -167,7 +170,7 @@ export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ 
                 disabled={isRunning || !job}
               >
                 {isRunning ? <Loader2 size={14} className="message-schedule-card-button-spinner" /> : <Play size={14} strokeWidth={2} />}
-                Run now
+                {t('chat.schedule.runNow')}
               </button>
               <button
                 type="button"
@@ -176,7 +179,7 @@ export const GeneratedScheduleCards: React.FC<GeneratedScheduleCardsProps> = ({ 
                 disabled={!effectiveChatId}
               >
                 <Settings2 size={14} strokeWidth={2} />
-                Manage
+                {t('common.manage')}
               </button>
             </div>
           </div>

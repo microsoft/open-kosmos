@@ -2,10 +2,9 @@
  * profileCacheManager.settings.coverage.test.ts
  *
  * Covers the settings CRUD delegation methods (lines 1344-1435) that were
- * * missing coverage: updateRemoteChannelsConfig,
- * updatePrimaryAgent, updateFreDone, getFreDone, getBrowserControlSettings,
- * updateBrowserControlSettings, getDevToolsMcpSettings, updateDevToolsMcpSettings,
- * archiveChatConfig, unarchiveChatConfig,
+ * updatePrimaryChat, updateFreDone, getFreDone, getDevToolsMcpSettings,
+ * updateDevToolsMcpSettings,
+ * getSyncSettings, updateSyncSettings, archiveChatConfig, unarchiveChatConfig,
  * getArchivedAgents, saveChatSession, deleteChatSession, getChatSessions,
  * getChatSessionsAsync, getChatSessionFile.
  */
@@ -22,12 +21,6 @@ vi.mock('electron', async () => ({
 vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
-
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({ cacheQuickStartImages: vi.fn() })),
-  },
-}));
 
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
@@ -78,10 +71,6 @@ vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
   },
 }));
 
-vi.mock('../../plugin/pluginManager', async () => ({
-  pluginManager: { initialize: vi.fn().mockResolvedValue({ errors: [] }) },
-}));
-
 
 vi.mock('../../chat/agentChatManager', async () => ({
   agentChatManager: { initialize: vi.fn().mockResolvedValue(undefined) },
@@ -91,30 +80,26 @@ vi.mock('../../featureFlags/featureFlagManager', async () => ({
   featureFlagManager: { isEnabled: vi.fn(() => false) },
 }));
 
-vi.mock('../../remoteChannel/credentialStore', async () => ({
-  credentialStore: { hasCredential: vi.fn().mockResolvedValue(false) },
-}));
-
 vi.mock('../../startup/lazy', async () => ({
   getExternalAgentService: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: { getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })) },
-}));
 
 // Mock the delegated CRUD modules
 vi.mock('../profileSettingsCrud', async () => ({
   getConfirmationSettings: vi.fn(() => ({})),
   updateConfirmationSettings: vi.fn().mockResolvedValue(true),
-  updateRemoteChannelsConfig: vi.fn().mockResolvedValue(true),
-  updatePrimaryAgent: vi.fn().mockResolvedValue(true),
+  getVoiceInputSettings: vi.fn(() => ({})),
+  updateVoiceInputSettings: vi.fn().mockResolvedValue(true),
+  updatePrimaryChat: vi.fn().mockResolvedValue(true),
   updateFreDone: vi.fn().mockResolvedValue(true),
   getFreDone: vi.fn(() => false),
-  getBrowserControlSettings: vi.fn(() => ({})),
-  updateBrowserControlSettings: vi.fn().mockResolvedValue(true),
   getDevToolsMcpSettings: vi.fn(() => ({})),
   updateDevToolsMcpSettings: vi.fn().mockResolvedValue(true),
+  getSyncSettings: vi.fn(() => ({})),
+  updateSyncSettings: vi.fn().mockResolvedValue(true),
+  getCodingAgentSettings: vi.fn(() => ({ cli: 'claude' })),
+  updateCodingAgentSettings: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../profileArchiveManager', async () => ({
@@ -142,15 +127,9 @@ function freshManager(): ProfileCacheManager {
 }
 
 describe('ProfileCacheManager — settings CRUD delegation', () => {
-  it('updateRemoteChannelsConfig delegates to settingsCrud', async () => {
+  it('updatePrimaryChat delegates to settingsCrud', async () => {
     const mgr = freshManager();
-    const result = await mgr.updateRemoteChannelsConfig('alice', {} as any);
-    expect(result).toBe(true);
-  });
-
-  it('updatePrimaryAgent delegates to settingsCrud', async () => {
-    const mgr = freshManager();
-    const result = await mgr.updatePrimaryAgent('alice', 'AgentX');
+    const result = await mgr.updatePrimaryChat('alice', 'chat_x');
     expect(result).toBe(true);
   });
 
@@ -166,15 +145,15 @@ describe('ProfileCacheManager — settings CRUD delegation', () => {
     expect(typeof result).toBe('boolean');
   });
 
-  it('getBrowserControlSettings delegates to settingsCrud', () => {
+  it('getCodingAgentSettings delegates to settingsCrud', () => {
     const mgr = freshManager();
-    const result = mgr.getBrowserControlSettings('alice');
-    expect(result).toBeDefined();
+    const result = mgr.getCodingAgentSettings('alice');
+    expect(result).toEqual({ cli: 'claude' });
   });
 
-  it('updateBrowserControlSettings delegates to settingsCrud', async () => {
+  it('updateCodingAgentSettings delegates to settingsCrud', async () => {
     const mgr = freshManager();
-    const result = await mgr.updateBrowserControlSettings('alice', {} as any);
+    const result = await mgr.updateCodingAgentSettings('alice', { cli: 'codex' });
     expect(result).toBe(true);
   });
 
@@ -190,6 +169,17 @@ describe('ProfileCacheManager — settings CRUD delegation', () => {
     expect(result).toBe(true);
   });
 
+  it('getSyncSettings delegates to settingsCrud', () => {
+    const mgr = freshManager();
+    const result = mgr.getSyncSettings('alice');
+    expect(result).toBeDefined();
+  });
+
+  it('updateSyncSettings delegates to settingsCrud', async () => {
+    const mgr = freshManager();
+    const result = await mgr.updateSyncSettings('alice', {} as any);
+    expect(result).toBe(true);
+  });
 });
 
 describe('ProfileCacheManager — archive operations delegation', () => {
@@ -252,12 +242,5 @@ describe('ProfileCacheManager — getCachedAliases', () => {
     const aliases = mgr.getCachedAliases();
     expect(aliases).toContain('alice');
     expect(aliases).toContain('bob');
-  });
-});
-
-describe('ProfileCacheManager — cleanupMem0Resources', () => {
-  it('resolves without error', async () => {
-    const mgr = freshManager();
-    await expect(mgr.cleanupMem0Resources()).resolves.not.toThrow();
   });
 });

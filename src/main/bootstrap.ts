@@ -1,94 +1,29 @@
-import { app } from 'electron';
-import * as path from 'path';
-
 /**
- * Bootstrap - Brand-Specific User Data Path Configuration
+ * Bootstrap - Main Process Entry Point
  *
- * This file MUST be the entry point (configured in webpack.main.config.js)
- * to ensure user data paths are set BEFORE any other modules cache them.
- *
- * ============================================================================
- * ENVIRONMENT VARIABLES (injected at build time via webpack.DefinePlugin)
- * ============================================================================
- *
- * process.env.APP_NAME       → productName from config.json
- *                              e.g. "OpenKosmos"
- *
- * process.env.APP_ID         → appId from config.json (used as Windows AUMID)
- *                              e.g. "com.openkosmos-ai-studio"
- *
- * process.env.USER_DATA_NAME → userDataName from config.json
- *                              e.g. "openkosmos-app"
- *
- * process.env.BRAND_NAME     → Brand folder name
- *                              e.g. "openkosmos"
+ * This file is the entry point for the main process (configured in
+ * webpack.main.config.js and electron.vite.config.ts).
  *
  * ============================================================================
- * USER DATA PATH RESOLUTION
+ * IMPORT ORDER IS LOAD-BEARING — DO NOT REORDER
  * ============================================================================
  *
- * Windows:
- *   app.getPath('appData') = C:\Users\<user>\AppData\Roaming
- *   userData = C:\Users\<user>\AppData\Roaming\openkosmos-app
+ * `./bootstrapUserData` configures app.setName() / app.setPath('userData', ...)
+ * and MUST be imported BEFORE `./main`. ES modules evaluate imports in source
+ * order, before the importer's own body, and `./main` reads
+ * app.getPath('userData') at load time (module-level singletons, ElectronApp
+ * instantiation). Under the Vite/Rolldown dev bundle the entire `./main` graph
+ * is inlined and evaluated ahead of any code that lives in THIS file's body, so
+ * the userData setup had to be moved into a dedicated module to guarantee it
+ * runs first. See src/main/bootstrapUserData.ts for the full rationale.
  *
- * macOS:
- *   app.getPath('appData') = ~/Library/Application Support
- *   userData = ~/Library/Application Support/openkosmos-app
- *
- * Linux:
- *   app.getPath('appData') = ~/.config
- *   userData = ~/.config/openkosmos-app
- *
- * ============================================================================
- * WHY THIS IS IMPORTANT
- * ============================================================================
- *
- * 1. Timing: Must run before ANY module calls app.getPath('userData')
- * 2. Electron Default: Without this, Electron uses the package.json "name" field
- *
+ * Keep these as static side-effect imports (no dynamic import) — the repo's
+ * check-mixed-imports guard forbids mixing static and dynamic import() for the
+ * same module, and static import is what gives us the ordering guarantee.
  */
-// ============================================================================
-// E2E TEST OVERRIDE: Allow tests to specify an exact userData path at runtime.
-//
-// process.env.USER_DATA_NAME is replaced by webpack DefinePlugin at build time,
-// so runtime env vars with that name are ignored. We use a separate env var
-// (OpenKosmos_TEST_USER_DATA_PATH) that webpack does NOT replace, giving E2E tests
-// full control over the userData directory for isolation.
-// ============================================================================
-const testUserDataOverride = (() => {
-  try {
-    // Access the raw process.env at runtime (not DefinePlugin-replaced)
-    return process['env']['OpenKosmos_TEST_USER_DATA_PATH'];
-  } catch {
-    return undefined;
-  }
-})();
 
-if (testUserDataOverride) {
-  console.log(`[Bootstrap] E2E Test Mode — overriding userData to: ${testUserDataOverride}`);
-  if (process.env.APP_NAME) {
-    app.setName(process.env.APP_NAME);
-  }
-  app.setPath('userData', testUserDataOverride);
-} else if (process.env.APP_NAME) {
-  console.log(`[Bootstrap] Setting App Name to: ${process.env.APP_NAME}`);
-  app.setName(process.env.APP_NAME);
+// Stage 1: brand-specific userData path setup (must run before anything reads userData).
+import './bootstrapUserData';
 
-  // USER_DATA_NAME determines the folder name under AppData/Application Support.
-  // This is separate from APP_NAME to allow flexibility (no spaces in folder name).
-  const userDataName = process.env.USER_DATA_NAME || process.env.APP_NAME;
-  const customUserDataPath = path.join(app.getPath('appData'), userDataName);
-  console.log(`[Bootstrap] Setting User Data Path to: ${customUserDataPath}`);
-  app.setPath('userData', customUserDataPath);
-}
-
-// On Windows, set the App User Model ID (AUMID) so that system notifications
-// display the correct app name instead of the Electron default "electron.app.<productName>".
-// This must be called before the first BrowserWindow is created.
-if (process.platform === 'win32' && process.env.APP_ID) {
-  console.log(`[Bootstrap] Setting App User Model ID to: ${process.env.APP_ID}`);
-  app.setAppUserModelId(process.env.APP_ID);
-}
-
-// Import the original main entry point
+// Stage 2: the original main entry point.
 import './main';

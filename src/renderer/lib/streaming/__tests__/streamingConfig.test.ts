@@ -18,6 +18,7 @@ describe('DEFAULT constants', () => {
     expect(DEFAULT_STREAMING_V2_CONFIG.batchSize).toBe(10);
     expect(DEFAULT_STREAMING_V2_CONFIG.batchDelay).toBe(5);
     expect(DEFAULT_STREAMING_V2_CONFIG.performanceTracking).toBe(true);
+    expect(DEFAULT_STREAMING_V2_CONFIG.fallbackToV1OnError).toBe(true);
     expect(DEFAULT_STREAMING_V2_CONFIG.maxRetries).toBe(3);
     expect(DEFAULT_STREAMING_V2_CONFIG.showStreamingMetrics).toBe(false);
     expect(DEFAULT_STREAMING_V2_CONFIG.enableAdaptiveOptimization).toBe(true);
@@ -199,6 +200,14 @@ describe('StreamingConfigManager', () => {
     it('isDebugModeEnabled falls back to global for unknown agent', () => {
       expect(manager.isDebugModeEnabled('unknown')).toBe(DEFAULT_STREAMING_V2_CONFIG.debugMode);
     });
+
+    it('isDebugModeEnabled falls back to global when agent config omits streamingV2', () => {
+      manager.updateGlobalConfig({ debugMode: true });
+      manager.updateAgentConfig('agent-missing-streaming-v2', {
+        performance: { ...DEFAULT_PERFORMANCE_CONFIG, targetFPS: 90 },
+      });
+      expect(manager.isDebugModeEnabled('agent-missing-streaming-v2')).toBe(true);
+    });
   });
 
   describe('Config listeners', () => {
@@ -260,6 +269,64 @@ describe('StreamingConfigManager', () => {
       // Just check it does not throw
       expect(() => vi.advanceTimersByTime(30001)).not.toThrow();
     });
+
+    it('throttles optimization checks after the first three intervals until a minute passes', async () => {
+      const checkSpy = vi.spyOn(manager as any, 'checkAndOptimizePerformance').mockImplementation(() => {});
+
+      await vi.advanceTimersByTimeAsync(40000);
+      expect(checkSpy).toHaveBeenCalledTimes(3);
+
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(checkSpy).toHaveBeenCalledTimes(4);
+    });
+
+    it('does not optimize when memory usage stays between the high and low thresholds', () => {
+      const memoryDescriptor = Object.getOwnPropertyDescriptor(performance, 'memory');
+      const memMock = {
+        usedJSHeapSize: 50 * 1024 * 1024,
+        jsHeapSizeLimit: 100 * 1024 * 1024,
+      };
+      Object.defineProperty(performance, 'memory', { get: () => memMock, configurable: true });
+
+      const beforeGlobal = manager.getGlobalConfig();
+      const beforePerformance = manager.getPerformanceConfig();
+
+      (manager as any).checkAndOptimizePerformance();
+
+      expect(manager.getGlobalConfig()).toEqual(beforeGlobal);
+      expect(manager.getPerformanceConfig()).toEqual(beforePerformance);
+
+      if (memoryDescriptor) {
+        Object.defineProperty(performance, 'memory', memoryDescriptor);
+      } else {
+        Reflect.deleteProperty(performance as object, 'memory');
+      }
+    });
+  });
+});
+
+describe('StreamingConfigManager without window', () => {
+  it('skips browser-only performance monitoring setup when window is unavailable', () => {
+    const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    Object.defineProperty(globalThis, 'window', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      new StreamingConfigManager();
+      expect(intervalSpy).not.toHaveBeenCalled();
+    } finally {
+      intervalSpy.mockRestore();
+      if (windowDescriptor) {
+        Object.defineProperty(globalThis, 'window', windowDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis as object, 'window');
+      }
+    }
   });
 });
 

@@ -4,6 +4,8 @@
  * 🔧 Supports spaces in paths and names
  */
 
+import type { TranslationKey, TranslationParams } from '@/lib/i18n';
+
 // Regex: matches [@workspace:relative-path] format (backward compatible)
 export const workspaceMentionRegex = /\[@workspace:([^\]]+)\]/g;
 
@@ -45,6 +47,10 @@ export interface ContextOption {
   relativePath?: string;   // workspace-relative path (optional; default options have none)
   fileName: string;        // file name (for display)
   description?: string;    // additional description
+  fileNameKey?: TranslationKey;
+  fileNameParams?: TranslationParams;
+  descriptionKey?: TranslationKey;
+  descriptionParams?: TranslationParams;
   value?: string;          // actual value (for matching the Roo-Code interface)
 }
 
@@ -57,13 +63,17 @@ export function getDefaultMenuOptions(): ContextOption[] {
     {
       type: ContextMenuOptionType.KnowledgeBase,
       fileName: 'Add Knowledge File',
+      fileNameKey: 'chat.context.addKnowledgeFile',
       description: 'Browse and select knowledge base files',
+      descriptionKey: 'chat.context.addKnowledgeFileDescription',
       value: undefined // no value means the file picker needs to be opened
     },
     {
       type: ContextMenuOptionType.ChatSession,
       fileName: 'Add Chat Session File',
+      fileNameKey: 'chat.context.addChatSessionFile',
       description: 'Browse and select current chat session deliverables',
+      descriptionKey: 'chat.context.addChatSessionFileDescription',
       value: undefined // no value means the file picker needs to be opened
     }
   ];
@@ -194,6 +204,10 @@ export function insertMention(
     } else if (mentionValue.startsWith('@chat-session:')) {
       prefix = '@chat-session:';
       path = mentionValue.substring('@chat-session:'.length);
+    } else if (mentionValue.startsWith('@workspace:')) {
+      // Backward compatible with old format
+      prefix = '@workspace:';
+      path = mentionValue.substring('@workspace:'.length);
     } else {
       // Determine prefix based on sourceType
       if (sourceType === MentionSourceType.KnowledgeBase) {

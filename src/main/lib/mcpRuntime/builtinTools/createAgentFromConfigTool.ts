@@ -9,17 +9,24 @@
  * 4. Call ProfileCacheManager to add the Agent to the user's configuration
  */
 
+import { randomUUID } from 'crypto';
 import { BuiltinToolDefinition } from './types';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatAgents } from '../../userDataADO/agentAccessor';
 import { generateChatId as generateRuntimeChatId } from '../../utilities/idFactory';
 import {
   ChatConfig,
   ChatAgent,
   AgentMcpServer,
-  ContextEnhancement,
-  DEFAULT_CONTEXT_ENHANCEMENT,
   DEFAULT_CHAT_AGENT
 } from '../../userDataADO/types/profile';
+import {
+  AGENT_SYSTEM_PROMPT_AGENTS_FILE,
+  AGENT_SYSTEM_PROMPT_BASE_FILE,
+  normalizeAgentSystemPrompt,
+  setAgentSystemPromptFile,
+  type AgentSystemPrompt,
+} from '@shared/types/agentSystemPrompt';
 
 /**
  * Agent MCP Server configuration input interface
@@ -32,26 +39,6 @@ interface AgentMcpServerInput {
 }
 
 /**
- * Context Enhancement configuration input interface
- */
-interface ContextEnhancementInput {
-  /** Memory search configuration */
-  search_memory?: {
-    /** Whether to enable memory search */
-    enabled?: boolean;
-    /** Semantic similarity threshold, range [0,1] */
-    semantic_similarity_threshold?: number;
-    /** Number of top-N results for semantic similarity */
-    semantic_top_n?: number;
-  };
-  /** Memory generation configuration */
-  generate_memory?: {
-    /** Whether to enable memory generation */
-    enabled?: boolean;
-  };
-}
-
-/**
  * Tool input arguments interface
  */
 interface CreateAgentFromConfigArgs {
@@ -59,7 +46,7 @@ interface CreateAgentFromConfigArgs {
   name: string;
   /** Agent emoji (optional, default 🤖) */
   emoji?: string;
-  /** Agent avatar URL (optional, only for IN-LIBRARY agents; ON-DEVICE agents should leave this empty) */
+  /** Agent avatar URL (optional) */
   avatar?: string;
   /** Agent role description (optional, default Assistant) */
   role?: string;
@@ -67,26 +54,21 @@ interface CreateAgentFromConfigArgs {
   model?: string;
   /** List of MCP servers dedicated to this agent (optional) */
   mcp_servers?: AgentMcpServerInput[];
-  /** System prompt (optional) */
-  system_prompt?: string;
-  /** Context Enhancement configuration (optional) */
-  context_enhancement?: ContextEnhancementInput;
+  /** System prompt file map (optional; legacy string is accepted and stored as Base.md) */
+  system_prompt?: AgentSystemPrompt | string;
+  /** Agent Identity prompt content. Updates Base.md without touching AGENTS.md. */
+  agent_identity_prompt?: string;
+  /** Project Context prompt content. Updates AGENTS.md without touching Base.md. */
+  project_context_prompt?: string;
   /** List of skill names for the agent (optional) */
   skills?: string[];
-  /** Agent workspace directory path (optional; empty means system auto-sets default path) */
-  workspace?: string;
-  /** Knowledge Base directory path (optional, default: workspace/knowledge) */
-  knowledgeBase?: string;
   /** Agent version (optional, default 1.0.0) */
   version?: string;
-  /** Agent source (optional, default ON-DEVICE) */
-  source?: 'IN-LIBRARY' | 'ON-DEVICE';
-  /** 🆕 Remote CDN version number (only for IN-LIBRARY; should be empty string for ON-DEVICE) */
-  remoteVersion?: string;
   /** 🆕 Zero States configuration (optional, for initial chat experience) */
   zero_states?: {
     greeting?: string;
     quick_starts?: Array<{
+      id?: string;
       title: string;
       image?: string;
       description: string;
@@ -131,7 +113,7 @@ export class CreateAgentFromConfigTool {
           },
           avatar: {
             type: 'string',
-            description: 'The avatar image URL for the agent (optional, only used for IN-LIBRARY agents, should be empty for ON-DEVICE agents)'
+            description: 'The optional avatar image URL for this local agent'
           },
           role: {
             type: 'string',
@@ -163,40 +145,26 @@ export class CreateAgentFromConfigTool {
             }
           },
           system_prompt: {
-            type: 'string',
-            description: 'The system prompt that defines the agent\'s behavior and personality (optional)'
-          },
-          context_enhancement: {
-            type: 'object',
-            description: 'Context enhancement settings for memory search and generation (optional)',
-            properties: {
-              search_memory: {
+            anyOf: [
+              {
                 type: 'object',
                 properties: {
-                  enabled: {
-                    type: 'boolean',
-                    description: 'Enable memory search'
-                  },
-                  semantic_similarity_threshold: {
-                    type: 'number',
-                    description: 'Semantic similarity threshold (0-1)'
-                  },
-                  semantic_top_n: {
-                    type: 'number',
-                    description: 'Number of top results to retrieve'
-                  }
-                }
+                  'Base.md': { type: 'string' },
+                  'AGENTS.md': { type: 'string' },
+                },
+                additionalProperties: false,
               },
-              generate_memory: {
-                type: 'object',
-                properties: {
-                  enabled: {
-                    type: 'boolean',
-                    description: 'Enable memory generation'
-                  }
-                }
-              }
-            }
+              { type: 'string' },
+            ],
+            description: 'System prompt files for the agent. Use {"Base.md":"...","AGENTS.md":"..."} for full content; omitted files default to empty on create. Legacy string input is accepted as Base.md.'
+          },
+          agent_identity_prompt: {
+            type: 'string',
+            description: 'Safe shortcut for Base.md / Agent Identity content. Prefer this when setting only who the agent is.'
+          },
+          project_context_prompt: {
+            type: 'string',
+            description: 'Safe shortcut for AGENTS.md / Project Context content. Prefer this when setting only what the agent works on and how to work in that context.'
           },
           skills: {
             type: 'array',
@@ -205,26 +173,9 @@ export class CreateAgentFromConfigTool {
               type: 'string'
             }
           },
-          workspace: {
-            type: 'string',
-            description: 'The workspace directory path for this agent (optional, system will set default path if empty or not provided)'
-          },
           version: {
             type: 'string',
             description: 'Agent version (optional, defaults to 1.0.0)'
-          },
-          source: {
-            type: 'string',
-            enum: ['IN-LIBRARY', 'ON-DEVICE'],
-            description: 'Agent source (optional, defaults to ON-DEVICE)'
-          },
-          knowledgeBase: {
-            type: 'string',
-            description: 'The knowledge base directory path for this agent (optional, defaults to workspace/knowledge)'
-          },
-          remoteVersion: {
-            type: 'string',
-            description: 'Remote CDN version (only for IN-LIBRARY sources, should be empty string for ON-DEVICE)'
           },
           zero_states: {
             type: 'object',
@@ -279,7 +230,9 @@ export class CreateAgentFromConfigTool {
    * Build ChatAgent from input arguments
    */
   private static buildChatAgent(args: CreateAgentFromConfigArgs): ChatAgent {
-    // Build mcp_servers array; empty by default (all tools) when not specified
+    // Build mcp_servers from the provided config. When no mcp_servers are
+    // specified, default to an empty array (no tools): an agent that was never
+    // granted any servers must not silently receive builtin-tools.
     const mcpServers: AgentMcpServer[] = args.mcp_servers
       ? args.mcp_servers.map(server => ({
           name: server.name,
@@ -287,20 +240,14 @@ export class CreateAgentFromConfigTool {
         }))
       : [];
 
-    // Build context_enhancement
-    const contextEnhancement: ContextEnhancement = {
-      search_memory: {
-        enabled: args.context_enhancement?.search_memory?.enabled ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.enabled,
-        semantic_similarity_threshold: args.context_enhancement?.search_memory?.semantic_similarity_threshold ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.semantic_similarity_threshold,
-        semantic_top_n: args.context_enhancement?.search_memory?.semantic_top_n ?? DEFAULT_CONTEXT_ENHANCEMENT.search_memory.semantic_top_n
-      },
-      generate_memory: {
-        enabled: args.context_enhancement?.generate_memory?.enabled ?? DEFAULT_CONTEXT_ENHANCEMENT.generate_memory.enabled
-      }
-    };
-
     const finalVersion = args.version || '1.0.0';
-    const finalSource = args.source || 'ON-DEVICE';
+    let systemPrompt = normalizeAgentSystemPrompt(args.system_prompt);
+    if (args.agent_identity_prompt !== undefined) {
+      systemPrompt = setAgentSystemPromptFile(systemPrompt, AGENT_SYSTEM_PROMPT_BASE_FILE, args.agent_identity_prompt);
+    }
+    if (args.project_context_prompt !== undefined) {
+      systemPrompt = setAgentSystemPromptFile(systemPrompt, AGENT_SYSTEM_PROMPT_AGENTS_FILE, args.project_context_prompt);
+    }
 
     return {
       name: args.name.trim(),
@@ -308,19 +255,21 @@ export class CreateAgentFromConfigTool {
       avatar: args.avatar || '',
       role: args.role || 'Assistant',
       model: args.model || DEFAULT_CHAT_AGENT.model,
-      // 🆕 Added: version and source fields; use args values if specified, otherwise use defaults
       version: finalVersion,
-      source: finalSource,
-      // 🆕 Added: remoteVersion field
-      // For IN-LIBRARY source: remoteVersion equals version (both are CDN library version)
-      // For ON-DEVICE source: remoteVersion should be an empty string
-      remoteVersion: finalSource === 'IN-LIBRARY' ? finalVersion : '',
+      source: 'ON-DEVICE',
       mcp_servers: mcpServers,
-      system_prompt: args.system_prompt || '',
-      context_enhancement: contextEnhancement,
+      system_prompt: systemPrompt,
       skills: args.skills || [],
       // 🆕 Added: zero_states field
       zero_states: args.zero_states
+        ? {
+            ...args.zero_states,
+            quick_starts: args.zero_states.quick_starts?.map(qs => ({
+              ...qs,
+              id: qs.id || randomUUID().slice(0, 8),
+            })),
+          }
+        : undefined
     };
   }
 
@@ -341,6 +290,22 @@ export class CreateAgentFromConfigTool {
         };
       }
 
+      if (Object.prototype.hasOwnProperty.call(args as object, 'workspace')) {
+        return {
+          success: false,
+          message: 'Invalid input: workspace is chat-owned and derived from the chat id; it cannot be set through agent creation.',
+          error: 'INVALID_INPUT'
+        };
+      }
+
+      if (Object.prototype.hasOwnProperty.call(args as object, 'knowledgeBase')) {
+        return {
+          success: false,
+          message: 'Invalid input: knowledgeBase is managed by the agent store and cannot be set through agent creation.',
+          error: 'INVALID_INPUT'
+        };
+      }
+
       const agentName = args.name.trim();
 
       // Get the current user alias
@@ -356,7 +321,7 @@ export class CreateAgentFromConfigTool {
       // Check if an agent with the same name already exists
       const existingChats = profileCacheManager.getAllChatConfigs(currentUserAlias);
       const existingAgent = existingChats.find(chat =>
-        chat.agent && chat.agent.name === agentName
+        getChatAgents(chat).some(agent => agent?.name === agentName)
       );
 
       if (existingAgent) {
@@ -373,18 +338,11 @@ export class CreateAgentFromConfigTool {
       // Build ChatAgent
       const chatAgent = this.buildChatAgent(args);
 
-      // Build ChatConfig
-      // 🔄 workspace is now at the agent level; chatSessions has been removed (loaded dynamically at runtime)
-      // If workspace is provided, use the provided value; otherwise empty string,
-      // and profileCacheManager.addChatConfig will automatically set the default path
+      // Build ChatConfig. Workspace is chat-owned and derived by addChatConfig.
       const chatConfig: ChatConfig = {
         chat_id: chatId,
         chat_type: 'single_agent',
-        agent: {
-          ...chatAgent,
-          workspace: args.workspace ?? '',
-          knowledge: { knowledgeBase: args.knowledgeBase ?? '' }
-        }
+        agent: chatAgent,
       };
 
       // Add the Agent to the user's configuration
@@ -429,8 +387,8 @@ export class CreateAgentFromConfigTool {
 
       const chats = profileCacheManager.getAllChatConfigs(currentUserAlias);
       return chats
-        .filter(chat => chat.agent?.name)
-        .map(chat => chat.agent!.name);
+        .flatMap(chat => getChatAgents(chat).map(agent => agent?.name))
+        .filter((name): name is string => !!name);
     } catch (error) {
       return [];
     }

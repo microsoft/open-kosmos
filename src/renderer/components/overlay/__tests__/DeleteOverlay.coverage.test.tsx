@@ -33,7 +33,7 @@ const {
   const mockGetCurrentChatId = vi.fn(() => 'agent-1');
   const mockProfileDataManager = {
     getCache: vi.fn(() => ({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [{ agent: { name: 'Kobi' }, chat_id: 'kobi-chat-1' }],
     })),
     refresh: vi.fn(() => Promise.resolve()),
@@ -83,6 +83,7 @@ vi.mock('@renderer/lib/chat/startNewChatFor', () => ({
   startNewChatFor: mockStartNewChatFor,
 }));
 
+
 vi.mock('@renderer/lib/chat/agentChatSessionCacheManager', () => ({
   agentChatSessionCacheManager: {
     getCurrentChatId: mockGetCurrentChatId,
@@ -123,6 +124,22 @@ function ChatSessionController({ id = 'session-1', name = 'TestSession', isCurre
 describe('DeleteOverlay — confirm flows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // vi.clearAllMocks() clears call history but NOT implementations set via
+    // mockResolvedValue/mockRejectedValue. The failure-path tests below override
+    // these persistently, so without restoring the baselines here a later test
+    // (e.g. the empty-fallback case) would inherit a leaked rejection and diverge
+    // into the error path. Re-establish the hoisted defaults so every test is
+    // order-independent.
+    mockDeleteChatConfig.mockResolvedValue({ success: true });
+    mockDeleteChatSession.mockResolvedValue({ success: true });
+    mockStartNewChatFor.mockResolvedValue({ success: true, chatSessionId: 'new-session-id' });
+    mockGetCurrentChatId.mockReturnValue('agent-1');
+    mockProfileDataManager.refresh.mockResolvedValue(undefined);
+    mockProfileDataManager.getCache.mockReturnValue({
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
+      chats: [{ agent: { name: 'Kobi' }, chat_id: 'kobi-chat-1' }],
+    });
+    mockLocation.pathname = '/agent/chat/agent-1';
     (window as any).electronAPI = undefined;
   });
 
@@ -139,7 +156,7 @@ describe('DeleteOverlay — confirm flows', () => {
       </WithStore>,
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete' })); });
 
     expect(mockDeleteChatConfig).toHaveBeenCalledWith('agent-1');
     expect(mockShowSuccess).toHaveBeenCalledWith(expect.stringContaining('TestAgent'));
@@ -154,7 +171,7 @@ describe('DeleteOverlay — confirm flows', () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockLocation.pathname = '/other';
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [{ agent: { name: 'Kobi' }, chat_id: 'kobi-chat-1' }],
     });
 
@@ -169,7 +186,7 @@ describe('DeleteOverlay — confirm flows', () => {
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     // Start the confirm action (don't await yet — it has internal setTimeout)
     const clickPromise = act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
     // Advance past the 100ms cleanup delay
     await act(async () => { vi.runAllTimersAsync(); });
@@ -201,7 +218,7 @@ describe('DeleteOverlay — confirm flows', () => {
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
 
     expect(mockNavigate).toHaveBeenCalled();
@@ -214,8 +231,8 @@ describe('DeleteOverlay — confirm flows', () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockLocation.pathname = '/other';
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
-      chats: [], // no Kobi chat
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
+      chats: [], // no chats remain, so neither the primary chat nor a fallback resolves
     });
 
     wrap(
@@ -226,7 +243,7 @@ describe('DeleteOverlay — confirm flows', () => {
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     const clickPromise = act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
     await act(async () => { vi.runAllTimersAsync(); });
     await clickPromise;
@@ -244,7 +261,7 @@ describe('DeleteOverlay — confirm flows', () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockLocation.pathname = '/other';
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [{ agent: { name: 'Kobi' }, chat_id: 'kobi-1' }],
     });
     mockStartNewChatFor.mockResolvedValue({ success: false });
@@ -257,7 +274,7 @@ describe('DeleteOverlay — confirm flows', () => {
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     const clickPromise = act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
     await act(async () => { vi.runAllTimersAsync(); });
     await clickPromise;
@@ -282,13 +299,32 @@ describe('DeleteOverlay — confirm flows', () => {
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
 
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Not found'));
   });
 
-  // ── Agent delete: exception thrown ───────────────────────────────────────
+  it('shows "Unknown error" when agent delete fails without an error message', async () => {
+    mockDeleteChatConfig.mockResolvedValue({ success: false });
+    mockGetCurrentChatId.mockReturnValue('other');
+    mockLocation.pathname = '/settings';
+
+    wrap(
+      <WithStore>
+        <AgentController id="agent-1" name="Agent" />
+        <DeleteOverlay />
+      </WithStore>,
+    );
+    await act(async () => { fireEvent.click(screen.getByTestId('open')); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(
+      'Failed to delete: Unknown error',
+    );
+  });
 
   it('shows error when deleteChatConfig throws', async () => {
     mockDeleteChatConfig.mockRejectedValue(new Error('crash'));
@@ -303,10 +339,31 @@ describe('DeleteOverlay — confirm flows', () => {
     );
     await act(async () => { fireEvent.click(screen.getByTestId('open')); });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
 
     expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('crash'));
+  });
+
+  it('shows generic error when agent delete throws a non-Error', async () => {
+    mockDeleteChatConfig.mockRejectedValue('weird');
+    mockGetCurrentChatId.mockReturnValue('other');
+    mockLocation.pathname = '/settings';
+
+    wrap(
+      <WithStore>
+        <AgentController id="agent-1" name="Agent" />
+        <DeleteOverlay />
+      </WithStore>,
+    );
+    await act(async () => { fireEvent.click(screen.getByTestId('open')); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(
+      'Failed to delete: An unknown error occurred',
+    );
   });
 
   // ── Chat-session delete ──────────────────────────────────────────────────
@@ -314,7 +371,7 @@ describe('DeleteOverlay — confirm flows', () => {
   it('deletes non-current chat session', async () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [],
     });
     (window as any).electronAPI = {
@@ -339,7 +396,7 @@ describe('DeleteOverlay — confirm flows', () => {
   it('switches to new session before deleting current chat session', async () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [],
     });
     (window as any).electronAPI = {
@@ -357,7 +414,7 @@ describe('DeleteOverlay — confirm flows', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
 
-    expect(mockStartNewChatFor).toHaveBeenCalledWith('agent-1', undefined);
+    expect(mockStartNewChatFor).toHaveBeenCalledWith('agent-1');
     expect(mockDeleteChatSession).toHaveBeenCalled();
     expect(mockShowSuccess).toHaveBeenCalled();
   });
@@ -403,7 +460,7 @@ describe('DeleteOverlay — confirm flows', () => {
   it('shows error when deleteChatSession fails', async () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [],
     });
     mockDeleteChatSession.mockResolvedValue({ success: false, error: 'DB error' });
@@ -428,7 +485,7 @@ describe('DeleteOverlay — confirm flows', () => {
   it('skips removeAgentChatInstance when API is not available', async () => {
     mockGetCurrentChatId.mockReturnValue('agent-1');
     mockProfileDataManager.getCache.mockReturnValue({
-      profile: { alias: 'user', primaryAgent: 'Kobi' },
+      profile: { alias: 'user', primaryChat: 'chat_kobi' },
       chats: [],
     });
     (window as any).electronAPI = {}; // no agentChat
@@ -449,12 +506,68 @@ describe('DeleteOverlay — confirm flows', () => {
 
   // ── confirm with no id (guard) ────────────────────────────────────────────
 
-  it('does nothing when confirm is called with no id', async () => {
-    // Access atom directly with zero state (id=null)
-    const [, actions] = DeleteConfirmAtom.getState?.() ?? [null, null];
-    // Just verify calling confirm without opening does nothing
-    wrap(<DeleteOverlay />);
-    // overlay stays closed
-    expect(screen.queryByText('Delete Agent')).not.toBeInTheDocument();
+  it('returns early when confirm is invoked with no id', async () => {
+    function DirectConfirmController() {
+      const [, actions] = DeleteConfirmAtom.use();
+      return (
+        <button
+          data-testid="confirm-direct"
+          onClick={() =>
+            actions.confirm(
+              { showSuccess: mockShowSuccess, showError: mockShowError },
+              mockNavigate,
+              '/x',
+            )
+          }
+        >
+          Confirm
+        </button>
+      );
+    }
+    wrap(
+      <WithStore>
+        <DirectConfirmController />
+        <DeleteOverlay />
+      </WithStore>,
+    );
+    await act(async () => { fireEvent.click(screen.getByTestId('confirm-direct')); });
+    // zero state has id=null → guard returns before any delete/toast
+    expect(mockDeleteChatConfig).not.toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockShowSuccess).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Kobi and empty chats when profile fields are missing', async () => {
+    mockGetCurrentChatId.mockReturnValue('other'); // not deleting current chat
+    mockLocation.pathname = '/agent/chat/agent-1/session-x'; // on deleted agent route → needsSwitch
+    mockProfileDataManager.getCache.mockReturnValue({ profile: { alias: 'user' } }); // no primaryAgent, no chats
+
+    wrap(
+      <WithStore>
+        <AgentController id="agent-1" name="Agent" />
+        <DeleteOverlay />
+      </WithStore>,
+    );
+    await act(async () => { fireEvent.click(screen.getByTestId('open')); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    });
+
+    // No Kobi chat resolved from the empty fallback → no navigation, still succeeds
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockShowSuccess).toHaveBeenCalled();
+  });
+
+  it('closes via Escape (onOpenChange)', async () => {
+    wrap(
+      <WithStore>
+        <AgentController id="agent-1" name="EscAgent" />
+        <DeleteOverlay />
+      </WithStore>,
+    );
+    await act(async () => { fireEvent.click(screen.getByTestId('open')); });
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    await act(async () => { fireEvent.keyDown(document, { key: 'Escape' }); });
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
   });
 });

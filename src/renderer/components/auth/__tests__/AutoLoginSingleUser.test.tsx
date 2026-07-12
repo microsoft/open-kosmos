@@ -136,6 +136,24 @@ describe('AutoLoginSingleUser', () => {
     expect(detail.error).toBe('IPC failed');
   });
 
+  it('wraps non-Error auto-login failures for the failure callback', async () => {
+    mockSetCurrentAuth.mockRejectedValue('plain failure');
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    const onFailure = vi.fn();
+    const result = makeValidationResult([{ authData: fakeAuthData }]);
+
+    await act(async () => {
+      render(<AutoLoginSingleUser startupValidationResult={result} onFailure={onFailure} />);
+    });
+
+    expect(onFailure).toHaveBeenCalledWith(expect.any(Error));
+    expect(onFailure.mock.calls[0][0].message).toBe('plain failure');
+    const failEvent = dispatchSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'autoLogin:failed',
+    );
+    expect((failEvent![0] as CustomEvent).detail.error).toBe('Auto login failed');
+  });
+
   it('handles validUser present but authData is null', async () => {
     const onFailure = vi.fn();
     const result = makeValidationResult([{ authData: null }]);

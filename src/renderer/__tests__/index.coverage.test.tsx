@@ -25,6 +25,7 @@ const {
   mockModelCacheGetInfo,
   mockCreateRoot,
   mockRootRender,
+  mockAppDataGetConfig,
 } = vi.hoisted(() => {
   const mockRootRender = vi.fn();
   const mockCreateRoot = vi.fn(() => ({ render: mockRootRender }));
@@ -43,6 +44,7 @@ const {
     mockModelCacheGetInfo: vi.fn().mockReturnValue({ size: 0 }),
     mockCreateRoot,
     mockRootRender,
+    mockAppDataGetConfig: vi.fn().mockReturnValue({}),
   };
 });
 
@@ -77,6 +79,12 @@ vi.mock('../lib/models/modelCacheManager', () => ({
 vi.mock('../lib/featureFlags', () => ({
   featureFlagCacheManager: {
     initialize: (...args: unknown[]) => mockFeatureFlagInit(...args),
+  },
+}));
+
+vi.mock('../lib/userData/appDataManager', () => ({
+  appDataManager: {
+    getConfig: (...args: unknown[]) => mockAppDataGetConfig(...args),
   },
 }));
 

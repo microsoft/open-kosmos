@@ -15,9 +15,10 @@ import type { SchedulerJob } from '@shared/ipc/scheduler';
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../ipc/scheduler', () => ({
+vi.mock('../../../ipc/scheduler', () => ({
   schedulerApi: {
-    getJobSessions: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    getJobSessions: vi.fn().mockResolvedValue({ success: true, data: { sessions: [], total: 0, hasMore: false } }),
+    cleanupAllSessionHistory: vi.fn().mockResolvedValue({ success: true, data: { totalDeleted: 0, jobsProcessed: 0, orphansDeleted: 0, errors: 0 } }),
   },
 }));
 
@@ -27,7 +28,7 @@ vi.mock('../../lib/scheduler/cronDescriptions', () => ({
 
 // CSS imports fail in happy-dom — stub them out
 vi.mock('../../styles/ContentView.css', () => ({}));
-vi.mock('../../styles/SettingsShared.css', () => ({}));
+vi.mock('../../styles/ToolbarSettingsView.css', () => ({}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,7 +42,7 @@ function makeJob(overrides: Partial<SchedulerJob> = {}): SchedulerJob {
     scheduleType: 'cron',
     cronExpression: '0 9 * * 1',
     enabled: true,
-    agentId: 'agent-1',
+    chat_id: 'agent-1',
     message: 'Run the report',
     status: 'pending',
     ...overrides,
@@ -62,6 +63,7 @@ function renderView(jobs: SchedulerJob[] = [], extra: Record<string, any> = {}) 
         onDelete={noop}
         onUpdate={noop}
         onRunNow={asyncNoop}
+        chatId="agent-1"
         {...extra}
       />
     </MemoryRouter>
@@ -119,8 +121,8 @@ describe('SchedulesContentView — with jobs', () => {
     expect(screen.getByText('My Agent')).toBeTruthy();
   });
 
-  it('falls back to agentId when name is not in agentNames map', () => {
-    renderView([makeJob({ agentId: 'unknown-agent' })]);
+  it('falls back to chatId when name is not in agentNames map', () => {
+    renderView([makeJob({ chat_id: 'unknown-agent' })]);
     expect(screen.getByText('unknown-agent')).toBeTruthy();
   });
 

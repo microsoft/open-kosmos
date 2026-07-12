@@ -31,12 +31,12 @@
 .about-brand-name {
   font-size: 16px;
   font-weight: 600;
-  color: var(--smtc-foreground-content-neutral-primary, #000000db);
+  color: var(--smtc-foreground-content-neutral-primary, var(--color-black));
 }
 
 /* Hyperlink */
 .about-link {
-  color: var(--smtc-foreground-content-brand-primary, #0067b8);
+  color: var(--smtc-foreground-content-brand-primary, var(--color-primary-700));
   text-decoration: none;
   font-size: 13px;
   cursor: pointer;
@@ -55,7 +55,7 @@
 
 .about-version-status-text {
   font-size: 13px;
-  color: var(--smtc-foreground-content-neutral-primary, #000000db);
+  color: var(--smtc-foreground-content-neutral-primary, var(--color-black));
 }
 
 /* Version detail small text */
@@ -65,36 +65,9 @@
   color: var(--smtc-foreground-content-neutral-secondary, rgba(0, 0, 0, 0.56));
 }
 
-/* "Install Update Now" button */
-.about-update-btn {
-  box-sizing: border-box;
-  display: inline-flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  margin-left: 8px;
-  padding: 0 8px;
-  gap: 8px;
-  height: 32px;
-  background: #FFE6D3;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.about-update-btn:hover {
-  background: #ffd9bf;
-}
-
 /* Copyright / legal text row */
 .about-legal-text {
   font-size: 13px;
-  color: var(--smtc-foreground-content-neutral-primary, #000000db);
+  color: var(--smtc-foreground-content-neutral-primary, var(--color-black));
   line-height: 1.5;
 }

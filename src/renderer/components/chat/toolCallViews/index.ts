@@ -10,7 +10,7 @@ import { WriteFileToolCallView } from './WriteFileToolCallView';
 import { CreateScheduleToolCallView } from './CreateScheduleToolCallView';
 import { GetScheduleToolCallView } from './GetScheduleToolCallView';
 import { UpdateScheduleToolCallView } from './UpdateScheduleToolCallView';
-import { SubAgentToolCallView, ParallelSubAgentsToolCallView } from './SubAgentToolCallView';
+import { SubAgentToolCallView } from './SubAgentToolCallView';
 import { CodingAgentToolCallView } from './CodingAgentToolCallView';
 
 export * from './types';
@@ -21,7 +21,7 @@ export { WriteFileToolCallView } from './WriteFileToolCallView';
 export { CreateScheduleToolCallView } from './CreateScheduleToolCallView';
 export { GetScheduleToolCallView } from './GetScheduleToolCallView';
 export { UpdateScheduleToolCallView } from './UpdateScheduleToolCallView';
-export { SubAgentToolCallView, ParallelSubAgentsToolCallView } from './SubAgentToolCallView';
+export { SubAgentToolCallView } from './SubAgentToolCallView';
 export { CodingAgentToolCallView } from './CodingAgentToolCallView';
 
 /**
@@ -58,15 +58,9 @@ export const getToolCallView = (
     case 'present_deliverables':
       return null;
 
-    // Sub-Agent tool views
+    // Ad-hoc Sub-Agent tool view
     case 'sub_agent':
-    case 'spawn_subagent':
-    case 'spawn_adhoc_subagent':
       return SubAgentToolCallView;
-
-    case 'spawn_subagents':
-    case 'spawn_adhoc_subagents':
-      return ParallelSubAgentsToolCallView;
 
     case 'coding_agent':
       return CodingAgentToolCallView;

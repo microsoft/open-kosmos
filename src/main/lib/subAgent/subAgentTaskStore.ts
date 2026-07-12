@@ -331,6 +331,56 @@ export class SubAgentTaskStore {
     }
   }
 
+  public deleteTasksForChat(userAlias: string, parentChatId: string): number {
+    const deletedTaskIds = new Set<string>();
+
+    for (const [taskId, entry] of this.tasksById) {
+      if (entry.userAlias === userAlias && entry.file.parentChatId === parentChatId) {
+        if (entry.flushTimer) clearTimeout(entry.flushTimer);
+        this.tasksById.delete(taskId);
+        deletedTaskIds.add(taskId);
+      }
+    }
+
+    const baseDir = this.getBaseDir(userAlias);
+    if (!fs.existsSync(baseDir)) {
+      return deletedTaskIds.size;
+    }
+
+    try {
+      const monthDirs = fs.readdirSync(baseDir).filter(d => /^\d{6}$/.test(d));
+      for (const monthDir of monthDirs) {
+        const dirPath = path.join(baseDir, monthDir);
+        const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          const filePath = path.join(dirPath, file);
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const taskFile = JSON.parse(content) as SubAgentTaskFile;
+            if (taskFile.parentChatId !== parentChatId) {
+              continue;
+            }
+            fs.rmSync(filePath, { force: true });
+            deletedTaskIds.add(taskFile.taskId || file.replace(/\.json$/, ''));
+          } catch (err) {
+            logger.warn('[SubAgentTaskStore] Failed to delete task file for chat', 'deleteTasksForChat', {
+              parentChatId,
+              filePath,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn('[SubAgentTaskStore] Failed to scan task files for chat deletion', 'deleteTasksForChat', {
+        parentChatId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return deletedTaskIds.size;
+  }
+
   // ─── Private ───
 
   private async generateTitleAsync(taskId: string, taskDescription: string): Promise<void> {

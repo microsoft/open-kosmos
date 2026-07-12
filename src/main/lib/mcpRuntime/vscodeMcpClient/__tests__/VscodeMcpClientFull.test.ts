@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { EventEmitter } from 'events';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VscodeMcpClient } from '../VscodeMcpClient';
+import { TOOL_IDLE_TIMEOUT_MS, MCP_CONNECT_TIMEOUT_MS, MCP_CONTROL_REQUEST_TIMEOUT_MS, IDLE_TIMEOUT_ESCALATION_THRESHOLD } from '../../toolTimeoutPolicy';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -83,12 +84,22 @@ async function connectSuccess(client: VscodeMcpClient, tools = [], resources = [
   };
 
   await client.connect();
+  await new Promise((resolve) => setImmediate(resolve));
 }
 
 beforeEach(() => {
   transport = new FakeTransport();
   mockCreateFromVscodeConfig.mockReset();
   mockCreateFromVscodeConfig.mockReturnValue(transport);
+});
+
+afterEach(async () => {
+  // Flush any fire-and-forget background responses (e.g. the non-awaited
+  // discoverResources reply) so a deferred setImmediate cannot fire on the NEXT
+  // test's freshly-assigned shared transport and pollute it.
+  if (!vi.isFakeTimers()) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 });
 
 // ── constructor / getters ────────────────────────────────────────────────────
@@ -111,6 +122,14 @@ describe('initial state', () => {
 
   it('getResources returns empty array before connect', () => {
     expect(makeClient().getResources()).toEqual([]);
+  });
+});
+
+describe('internal guards', () => {
+  it('setupTransportHandlers is a no-op when transport is null', () => {
+    const c = makeClient();
+    // No transport has been created yet; the guard must return without throwing.
+    expect(() => (c as any).setupTransportHandlers()).not.toThrow();
   });
 });
 
@@ -153,21 +172,25 @@ describe('connect — happy path', () => {
     expect((c as any).currentState.state).toBe('starting');
   });
 
-  it('tools/list failure is swallowed, resources still discovered', async () => {
+  it('fails the connection when required tools/list returns an error', async () => {
+    let stopped = false;
+    transport.stopImpl = async () => {
+      stopped = true;
+      transport.state = { state: 'stopped' };
+    };
     transport.sendImpl = (msg: string) => {
       const req = JSON.parse(msg);
       if (req.method === 'initialize') {
         setImmediate(() => transport.respond(req.id, { capabilities: {} }));
       } else if (req.method === 'tools/list') {
         setImmediate(() => transport.respondError(req.id, -32000, 'tools not supported'));
-      } else if (req.method === 'resources/list') {
-        setImmediate(() => transport.respond(req.id, { resources: [] }));
       }
     };
     const c = makeClient();
-    await c.connect();
-    expect(c.getState().state).toBe('running');
+    await expect(c.connect()).rejects.toThrow('tools not supported');
+    expect(c.getState().state).toBe('error');
     expect(c.getTools()).toEqual([]);
+    expect(stopped).toBe(true);
   });
 
   it('resources/list failure is swallowed, tools still discovered', async () => {
@@ -186,6 +209,59 @@ describe('connect — happy path', () => {
     expect(c.getState().state).toBe('running');
   });
 
+  it('does not include resources/list in the connect budget', async () => {
+    let resourcesListId: number | undefined;
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'initialize') {
+        setImmediate(() => transport.respond(req.id, { capabilities: {} }));
+      } else if (req.method === 'tools/list') {
+        setImmediate(() => transport.respond(req.id, { tools: [] }));
+      } else if (req.method === 'resources/list') {
+        resourcesListId = req.id;
+      }
+    };
+
+    const c = makeClient({ timeout: 5000 });
+    const connectPromise = c.connect();
+    const result = await Promise.race([
+      connectPromise.then(() => 'connected'),
+      new Promise((resolve) => setTimeout(() => resolve('timed-out'), 100)),
+    ]);
+
+    try {
+      expect(result).toBe('connected');
+      expect(c.getState().state).toBe('running');
+      expect(resourcesListId).toBeDefined();
+    } finally {
+      if (resourcesListId !== undefined) {
+        transport.respond(resourcesListId, { resources: [] });
+      }
+      await connectPromise;
+    }
+  });
+
+  it('falls back to empty arrays and default timeout when fields are absent', async () => {
+    // timeout:undefined exercises the `|| 30000` default; missing tools/resources
+    // fields exercise the `|| []` fallbacks in discovery.
+    const c = makeClient({ timeout: undefined });
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'initialize') {
+        setImmediate(() => transport.respond(req.id, { capabilities: {} }));
+      } else if (req.method === 'tools/list') {
+        setImmediate(() => transport.respond(req.id, {}));
+      } else if (req.method === 'resources/list') {
+        setImmediate(() => transport.respond(req.id, {}));
+      }
+    };
+    await c.connect();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(c.getState().state).toBe('running');
+    expect(c.getTools()).toEqual([]);
+    expect(c.getResources()).toEqual([]);
+  });
+
   it('emits stateChange events', async () => {
     const c = makeClient();
     const states: string[] = [];
@@ -193,6 +269,31 @@ describe('connect — happy path', () => {
     await connectSuccess(c);
     expect(states).toContain('starting');
     expect(states).toContain('running');
+  });
+
+  it('keeps a slow tools/list inside the 2-minute connect budget instead of the control timeout', async () => {
+    const c = makeClient({ timeout: 50 });
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'initialize') {
+        setImmediate(() => transport.respond(req.id, { capabilities: {} }));
+      }
+      // tools/list intentionally left unanswered
+    };
+    vi.useFakeTimers();
+    try {
+      const connectPromise = c.connect();
+      const assertion = expect(connectPromise).rejects.toThrow(/MCP connection timed out/);
+
+      await vi.advanceTimersByTimeAsync(50 + 10);
+      expect(c.getState().state).toBe('starting');
+
+      await vi.advanceTimersByTimeAsync(MCP_CONNECT_TIMEOUT_MS - 50);
+      await assertion;
+      expect(c.getState().state).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('emits log events', async () => {
@@ -211,6 +312,27 @@ describe('connect — failures', () => {
     transport.startImpl = async () => { throw new Error('spawn failed'); };
     const c = makeClient();
     await expect(c.connect()).rejects.toThrow('spawn failed');
+    expect(c.getState().state).toBe('error');
+  });
+
+  it('stringifies a non-Error thrown during connect', async () => {
+    // Exercises the `String(error)` arm of the connect catch block.
+    transport.startImpl = async () => { throw 'plain string failure'; };
+    const c = makeClient();
+    await expect(c.connect()).rejects.toThrow('plain string failure');
+    expect(c.getState().state).toBe('error');
+  });
+
+  it('wraps a non-Error initialize rejection', async () => {
+    // Exercises the `new Error(String(error))` arm of initializeMcp's catch.
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'initialize') {
+        return Promise.reject('non-error-initialize');
+      }
+    };
+    const c = makeClient();
+    await expect(c.connect()).rejects.toThrow(/Failed to initialize MCP server/);
     expect(c.getState().state).toBe('error');
   });
 
@@ -277,6 +399,44 @@ describe('connect — failures', () => {
     let err: Error | undefined;
     try { await c.connect(); } catch (e) { err = e as Error; }
     expect(err!.message).toContain(uniqueStderr);
+  });
+
+  it('fails the connection with a timeout when a step never completes', async () => {
+    // transport starts, but initialize never gets a response: the connect budget
+    // is the only thing that can settle connect().
+    transport.sendImpl = () => {};
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; transport.state = { state: 'stopped' }; };
+    const c = makeClient();
+    vi.useFakeTimers();
+    try {
+      const connectPromise = c.connect();
+      const assertion = expect(connectPromise).rejects.toThrow(/connection timed out/i);
+      await vi.advanceTimersByTimeAsync(MCP_CONNECT_TIMEOUT_MS + 10);
+      await assertion;
+      expect(c.getState().state).toBe('error');
+      expect(c.getState().message).toMatch(/connection timed out/i);
+      // Teardown must stop the child process so it does not linger.
+      expect(stopped).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still reports a timeout error when teardown stop() throws', async () => {
+    transport.sendImpl = () => {};
+    transport.stopImpl = async () => { throw new Error('stop failed'); };
+    const c = makeClient();
+    vi.useFakeTimers();
+    try {
+      const connectPromise = c.connect();
+      const assertion = expect(connectPromise).rejects.toThrow(/connection timed out/i);
+      await vi.advanceTimersByTimeAsync(MCP_CONNECT_TIMEOUT_MS + 10);
+      await assertion;
+      expect(c.getState().state).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -391,12 +551,161 @@ describe('callTool', () => {
     await expect(callPromise).rejects.toThrow('Request aborted');
   });
 
-  it('times out after configured timeout', async () => {
-    const c = makeClient({ timeout: 50 });
+  it('fails only the request and keeps the connection on a single idle timeout', async () => {
+    const c = makeClient();
     await connectSuccess(c);
-    // Don't respond
+    // Never respond, so only the idle watchdog can settle the call.
+    const sent: any[] = [];
+    transport.sendImpl = (msg: string) => { sent.push(JSON.parse(msg)); };
+    let stopped = false;
+    transport.stopImpl = async () => {
+      stopped = true;
+      transport.state = { state: 'stopped' };
+    };
+    vi.useFakeTimers();
+    try {
+      const callPromise = c.callTool('slow', {});
+      const assertion = expect(callPromise).rejects.toThrow(/produced no response/);
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+      await assertion;
+      // A single hung tool must NOT tear down the connection.
+      expect(stopped).toBe(false);
+      expect(c.getState()).toMatchObject({ state: 'running' });
+      // Best-effort cancellation is sent for the timed-out request.
+      expect(sent.some((m) => m.method === 'notifications/cancelled')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('escalates to a connection reset after repeated consecutive idle timeouts', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
     transport.sendImpl = () => {};
-    await expect(c.callTool('slow', {})).rejects.toThrow(/Request timeout/);
+    let stopCount = 0;
+    transport.stopImpl = async () => {
+      stopCount++;
+      transport.state = { state: 'stopped' };
+    };
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < IDLE_TIMEOUT_ESCALATION_THRESHOLD; i++) {
+        const callPromise = c.callTool(`slow${i}`, {});
+        const assertion = expect(callPromise).rejects.toThrow(/produced no response/);
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+        await assertion;
+      }
+      // Only the Nth consecutive timeout resets the connection.
+      expect(stopCount).toBe(1);
+      expect(c.getState()).toMatchObject({
+        state: 'error',
+        message: expect.stringMatching(/produced no response/)
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves the idle error and error state when escalation stop() throws', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    transport.sendImpl = () => {};
+    transport.stopImpl = async () => { throw new Error('stop failed'); };
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < IDLE_TIMEOUT_ESCALATION_THRESHOLD; i++) {
+        const callPromise = c.callTool(`slow${i}`, {});
+        const assertion = expect(callPromise).rejects.toThrow(/produced no response/);
+        await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 10);
+        await assertion;
+      }
+      expect(c.getState()).toMatchObject({
+        state: 'error',
+        message: expect.stringMatching(/produced no response/)
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the idle countdown when the server sends activity', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let callId: number | undefined;
+    let progressToken: string | number | undefined;
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'tools/call') {
+        callId = req.id;
+        progressToken = req.params?._meta?.progressToken;
+      }
+    };
+    vi.useFakeTimers();
+    try {
+      const callPromise = c.callTool('streamy', {});
+      // Advance to just before the idle limit, then deliver server activity.
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      transport.notify('notifications/progress', { progressToken, progress: 1 });
+      // Without the reset this next advance would trip the watchdog; it must not.
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      transport.respond(callId!, { ok: true });
+      await expect(callPromise).resolves.toEqual({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reset one tool idle countdown from another concurrent tool response', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    const calls = new Map<string, { id: number; progressToken: string | number }>();
+    transport.sendImpl = (msg: string) => {
+      const req = JSON.parse(msg);
+      if (req.method === 'tools/call') {
+        calls.set(req.params.name, {
+          id: req.id,
+          progressToken: req.params._meta.progressToken,
+        });
+      }
+    };
+
+    vi.useFakeTimers();
+    try {
+      const silentPromise = c.callTool('silent', {});
+      silentPromise.catch(() => {});
+      const activePromise = c.callTool('active', {});
+
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      const active = calls.get('active')!;
+      transport.notify('notifications/progress', { progressToken: active.progressToken, progress: 1 });
+      transport.respond(active.id, { ok: true });
+      await expect(activePromise).resolves.toEqual({ ok: true });
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(silentPromise).rejects.toThrow(/produced no response/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reset the idle countdown from a progress notification without a matching token', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    transport.sendImpl = () => {};
+
+    vi.useFakeTimers();
+    try {
+      const callPromise = c.callTool('silent', {});
+      callPromise.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      transport.notify('notifications/progress', { progress: 1 });
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(callPromise).rejects.toThrow(/produced no response/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects when transport send throws synchronously', async () => {
@@ -411,6 +720,206 @@ describe('callTool', () => {
     await connectSuccess(c);
     transport.sendImpl = () => Promise.reject(new Error('async send failure'));
     await expect(c.callTool('x', {})).rejects.toThrow('async send failure');
+  });
+});
+
+// ── unmatched JSON-RPC error responses ───────────────────────────────────────
+
+describe('unmatched JSON-RPC error responses', () => {
+  it('fails the connection fast on a lost-session error with an empty id', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    transport.sendImpl = () => {}; // never reply through the normal path
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; transport.state = { state: 'stopped' }; };
+
+    const callPromise = c.callTool('teams_send', {});
+    const assertion = expect(callPromise).rejects.toThrow(/Session not found/);
+    // Upstream proxy answer: error, empty id → previously dropped as a notification.
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: '',
+      error: { code: -32001, message: 'Session not found' },
+    }));
+    await assertion;
+    await Promise.resolve();
+    expect(stopped).toBe(true);
+    expect(c.getState()).toMatchObject({ state: 'error' });
+  });
+
+  it('fails only the single in-flight request for an ambiguous unmatched error', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    transport.sendImpl = () => {};
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; };
+
+    const callPromise = c.callTool('lonely', {});
+    // Error object with neither message nor code → exercises the description fallbacks.
+    const assertion = expect(callPromise).rejects.toThrow(/unknown error \(n\/a\)/);
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: '',
+      error: {},
+    }));
+    await assertion;
+    // The connection is kept; only the request failed.
+    expect(stopped).toBe(false);
+    expect(c.getState()).toMatchObject({ state: 'running' });
+  });
+
+  it('ignores an ambiguous unmatched error when no request is in flight', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; };
+
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: '',
+      error: { code: -32000, message: 'orphan error' },
+    }));
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    expect(c.getState()).toMatchObject({ state: 'running' });
+  });
+
+  it('does not reject an unrelated request for a stale error carrying a concrete id', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; };
+
+    // One unrelated request is in flight; capture its real id so we can settle it later.
+    let survivorId: number | undefined;
+    transport.sendImpl = (msg: string) => { survivorId = JSON.parse(msg).id; };
+    const callPromise = c.callTool('survivor', {});
+    let settled = false;
+    callPromise.then(() => { settled = true; }, () => { settled = true; });
+
+    // A late error for a DIFFERENT, already-removed request id arrives (not connection-lost).
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: 999,
+      error: { code: -32000, message: 'late reply for a dead request' },
+    }));
+    await Promise.resolve();
+
+    // The unrelated request is untouched and the connection stays up.
+    expect(settled).toBe(false);
+    expect(stopped).toBe(false);
+    expect(c.getState()).toMatchObject({ state: 'running' });
+
+    // Settle the survivor so the test leaves no dangling request.
+    transport.respond(survivorId as number, { ok: true });
+    await expect(callPromise).resolves.toMatchObject({ ok: true });
+  });
+});
+
+// ── matched JSON-RPC error responses ─────────────────────────────────────────
+
+describe('matched JSON-RPC error responses', () => {
+  it('fails the whole connection on a matched lost-session error (not just the one request)', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; transport.state = { state: 'stopped' }; };
+
+    // Capture the real id the client assigned to this request so the proxy can echo it.
+    let reqId: number | undefined;
+    transport.sendImpl = (msg: string) => { reqId = JSON.parse(msg).id; };
+
+    const callPromise = c.callTool('teams_send', {});
+    const assertion = expect(callPromise).rejects.toThrow(/Session not found/);
+
+    // The proxy answers THIS request's id with a fatal session error.
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: reqId,
+      error: { code: -32001, message: 'Session not found' },
+    }));
+
+    await assertion;
+    await Promise.resolve();
+    // The connection is failed and torn down so the manager can auto-reconnect.
+    expect(stopped).toBe(true);
+    expect(c.getState()).toMatchObject({ state: 'error' });
+  });
+
+  it('rejects only the request for a matched non-connection-lost business error', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; };
+
+    let reqId: number | undefined;
+    transport.sendImpl = (msg: string) => { reqId = JSON.parse(msg).id; };
+
+    const callPromise = c.callTool('do_thing', {});
+    const assertion = expect(callPromise).rejects.toThrow(/MCP Error: boom \(-32000\)/);
+
+    transport.emit('message', JSON.stringify({
+      jsonrpc: '2.0',
+      id: reqId,
+      error: { code: -32000, message: 'boom' },
+    }));
+
+    await assertion;
+    // The connection stays up; only the request failed (unchanged behavior).
+    expect(stopped).toBe(false);
+    expect(c.getState()).toMatchObject({ state: 'running' });
+  });
+});
+
+// ── connection-failure / cancellation internals (defensive branches) ─────────
+
+describe('failConnection and cancellation internals', () => {
+  it('sendCancellationNotification is a no-op when the transport is already gone', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    (c as any).transport = null;
+    // Must not throw even though there is no transport to send through.
+    expect(() => (c as any).sendCancellationNotification(1, 'reason')).not.toThrow();
+  });
+
+  it('swallows a rejected cancellation notification (Error and non-Error)', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+
+    transport.sendImpl = () => Promise.reject(new Error('send blew up'));
+    (c as any).sendCancellationNotification(1, 'err-reason');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    transport.sendImpl = () => Promise.reject('string failure');
+    (c as any).sendCancellationNotification(2, 'str-reason');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Connection stays healthy: a best-effort cancel failure is non-fatal.
+    expect(c.getState()).toMatchObject({ state: 'running' });
+  });
+
+  it('failConnection returns after rejecting pending requests when the transport is null', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    (c as any).transport = null;
+    (c as any).failConnection(new Error('already torn down'));
+    expect(c.getState()).toMatchObject({ state: 'error', message: 'already torn down' });
+  });
+
+  it('logs and recovers when transport.stop rejects with a non-Error during failConnection', async () => {
+    const c = makeClient();
+    await connectSuccess(c);
+    let stopped = false;
+    transport.stopImpl = async () => { stopped = true; throw 'stop string failure'; };
+
+    (c as any).failConnection(new Error('fatal'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(stopped).toBe(true);
+    expect(c.getState()).toMatchObject({ state: 'error', message: 'fatal' });
   });
 });
 
@@ -439,6 +948,28 @@ describe('readResource', () => {
     await c.connect();
     const result = await c.readResource('res://a');
     expect(result.contents[0].text).toBe('data');
+  });
+
+  it('uses the fixed short timeout for control requests regardless of legacy config', async () => {
+    const c = makeClient({ timeout: 1 });
+    await connectSuccess(c);
+    transport.sendImpl = () => {};
+
+    vi.useFakeTimers();
+    try {
+      let settled = false;
+      const readPromise = c.readResource('res://silent').finally(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(settled).toBe(false);
+
+      const assertion = expect(readPromise).rejects.toThrow(`Request timeout: resources/read (${MCP_CONTROL_REQUEST_TIMEOUT_MS}ms)`);
+      await vi.advanceTimersByTimeAsync(MCP_CONTROL_REQUEST_TIMEOUT_MS + 10);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -6,15 +6,22 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, Folder, FileText } from 'lucide-react';
+import { Folder, FileText } from 'lucide-react';
 import {
   UserInputField,
   validateUserInputValue,
   convertUserInputValue
 } from '../../lib/utilities/processUserInputPlaceholder';
-import '../../styles/Modal.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import './UserInputModal.css';
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[UserInputModal]');
 
 interface UserInputModalProps {
@@ -45,6 +52,7 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
   onSubmit,
   onSkip
 }) => {
+  const { t } = useI18n();
   const [formData, setFormData] = useState<FormData>({});
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -201,14 +209,14 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
                 value={value}
                 onChange={(e) => handleInputChange(field.key, e.target.value)}
                 className={`user-input-control folder-input ${error ? 'error' : ''}`}
-                placeholder="Select a folder..."
+                placeholder={t('mcp.userInput.selectFolderPlaceholder')}
                 readOnly
               />
               <button
                 type="button"
                 onClick={() => handleFolderSelect(field.key)}
                 className="folder-select-btn"
-                title="Select folder"
+                title={t('mcp.userInput.selectFolder')}
               >
                 <Folder size={16} />
               </button>
@@ -229,14 +237,14 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
                 value={value}
                 onChange={(e) => handleInputChange(field.key, e.target.value)}
                 className={`user-input-control folder-input ${error ? 'error' : ''}`}
-                placeholder="Select a file..."
+                placeholder={t('mcp.userInput.selectFilePlaceholder')}
                 readOnly
               />
               <button
                 type="button"
                 onClick={() => handleFileSelect(field.key)}
                 className="folder-select-btn"
-                title="Select file"
+                title={t('mcp.userInput.selectFile')}
               >
                 <FileText size={16} />
               </button>
@@ -253,11 +261,11 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
         switch (field.type) {
           case 'INT':
             inputType = 'number';
-            placeholder = 'Enter integer value...';
+            placeholder = t('mcp.userInput.enterInteger');
             break;
           case 'DOUBLE':
             inputType = 'number';
-            placeholder = 'Enter decimal value...';
+            placeholder = t('mcp.userInput.enterDecimal');
             break;
           case 'BOOLEAN':
             return (
@@ -271,15 +279,15 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
                   onChange={(e) => handleInputChange(field.key, e.target.value)}
                   className={`user-input-control boolean-select ${error ? 'error' : ''}`}
                 >
-                  <option value="">Select value...</option>
-                  <option value="true">True</option>
-                  <option value="false">False</option>
+                  <option value="">{t('mcp.userInput.selectValue')}</option>
+                  <option value="true">{t('interactive.true')}</option>
+                  <option value="false">{t('interactive.false')}</option>
                 </select>
                 {error && <div className="input-error">{error}</div>}
               </div>
             );
           default:
-            placeholder = 'Enter value...';
+            placeholder = t('mcp.userInput.enterValue');
         }
 
         return (
@@ -300,39 +308,27 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </div>
         );
     }
-  }, [formData, errors, handleFileSelect, handleInputChange, handleFolderSelect]);
-
-  if (!isOpen) {
-    return null;
-  }
+  }, [formData, errors, handleFileSelect, handleInputChange, handleFolderSelect, t]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container user-input-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Modal Header - uses unified modal-header structure */}
-        <div className="modal-header">
-          <h2 className="modal-title">Configure {serverName}</h2>
-          <button
-            className="model-btn-close"
-            onClick={onClose}
-            aria-label="Close"
-            type="button"
-          >
-            <X size={12} />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-[560px]">
+        {/* Header */}
+        <DialogHeader>
+          <DialogTitle>{t('mcp.userInput.configureTitle', { name: serverName })}</DialogTitle>
+        </DialogHeader>
 
-        {/* Modal Body - uses unified modal-body structure */}
-        <div className="modal-body">
+        {/* Body */}
+        <div className="mt-2 max-h-[60vh] overflow-y-auto">
           <p className="modal-description">
-            This MCP server requires some configuration. Please fill in the required information below.
+            {t('mcp.userInput.description')}
             {contact && (
               <>
-                {' '}If you encounter any issues during the configuration process, contact{' '}
+                {' '}{t('mcp.userInput.contactPrefix')}{' '}
                 <a href={`mailto:${contact}`} className="contact-link">
                   {contact}
                 </a>
-                {' '}for assistance.
+                {' '}{t('mcp.userInput.contactSuffix')}
               </>
             )}
           </p>
@@ -342,15 +338,15 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer - uses unified modal-footer structure */}
-        <div className="modal-footer">
+        {/* Footer */}
+        <DialogFooter className="mt-6">
           <button
             className="btn-secondary"
             onClick={handleSkip}
             disabled={isSubmitting}
             type="button"
           >
-            Skip, Set Up Later
+            {t('mcp.userInput.skipLater')}
           </button>
           <button
             className="btn-primary"
@@ -358,11 +354,11 @@ const UserInputModal: React.FC<UserInputModalProps> = ({
             disabled={isSubmitting}
             type="button"
           >
-            {isSubmitting ? 'Configuring...' : 'Confirm and Continue'}
+            {isSubmitting ? t('mcp.userInput.configuring') : t('mcp.userInput.confirmContinue')}
           </button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

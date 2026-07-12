@@ -10,7 +10,7 @@
  *   2. Then run this script to sync to the TypeScript file
  *
  * Example:
- *   OpenKosmos_AUTH_FILE="..." node scripts/test-github-copilot-models.js
+ *   OPENKOSMOS_AUTH_FILE="..." node scripts/test-github-copilot-models.js
  *   node scripts/sync-ghc-models.js
  */
 

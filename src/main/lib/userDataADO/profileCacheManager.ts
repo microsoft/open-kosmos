@@ -9,33 +9,31 @@ import {
   ChatConfig,
   ChatConfigRuntime,
   ChatAgent,
-  ChatSkillSnapshot,
   ChatSession,
   StarredChatSessionIndexItem,
   McpServerConfig,
-  SubAgentConfig,
-  SubAgentIndex,
+  HookDefinition,
   isProfileV2,
-  RemoteChannelsConfig,
-  BrowserControlSettings,
+  VoiceInputSettings,
   DevToolsMcpSettings,
+  CodingAgentSettings,
+  SyncSettings,
   ConfirmationSettings,
+  BrowserSettings,
+  MemexSettings,
+  ComputerUseSettings,
+  DEFAULT_COMPUTER_USE_SETTINGS,
 } from './types/profile';
-import type { ChannelStatusInfo } from '../remoteChannel/types';
 import { ChatSessionFile } from './chatSessionFileOps';
 import { chatSessionManager } from './chatSessionManager';
-import { getDefaultWorkspacePath, isDefaultWorkspacePath } from './pathUtils';
 import { getExternalAgentService } from '../../startup/lazy';
 import { chatSessionStore } from '../chat/chatSessionStore';
 import { BRAND_NAME } from '@shared/constants/branding';
 import { BUILTIN_DEFAULTS_VERSION } from '../../../shared/constants/builtinSkills';
 import {
   sanitizeProfileV2,
-  sanitizeSubAgents,
   sanitizeStarredChatSessions,
   buildStarredChatSessionIndexItem,
-  sanitizeChatSkillSnapshot,
-  clearSkillSnapshotsForAffectedChats,
   createDefaultChat,
   generateChatId,
 } from './profileSanitizer';
@@ -46,26 +44,57 @@ import {
   isDefaultProfile,
   isDefaultChatConfig,
 } from './profileMigration';
+import { stripInlineChatAgentsForDisk, runAgentStoreMigrations, seedNewProfileAgents, syncInlineChatAgentsToStore } from './agentExtraction';
+import { getRegistryAgentsByIds, getAllRegistryAgents, clearRegistry } from './agentStoreManager';
+import type { AgentConfig } from './types/agentStore';
+import { setAccessorAgentResolver } from './agentAccessor';
+import {
+  emitSidecarChangeEvents,
+  buildRendererProfilePayload,
+  mapChatSessionProjection,
+  findNotificationTargetWindow,
+} from './profileNotificationHelpers';
+import { attachDerivedChatWorkspaces, stripDerivedChatWorkspacesForDisk } from './chatWorkspaceDerivation';
+import { backupProfileDirectoryBeforeMutation } from './profileBackupManager';
+import { findAgentlessActiveChatIds } from './profileRelationshipGuards';
 import * as settingsCrud from './profileSettingsCrud';
 import type { SettingsCrudContext } from './profileSettingsCrud';
 import * as archiveOps from './profileArchiveManager';
 import type { ArchiveContext } from './profileArchiveManager';
+import { skillsConfigManager } from './skillsConfigManager';
+import { chatSkillSnapshotStore } from './chatSkillSnapshotStore';
 import * as entityCrud from './profileEntityCrud';
 import type { EntityCrudContext } from './profileEntityCrud';
+import * as hookCrud from './profileHookCrud';
 import * as chatCrud from './profileChatCrud';
 import type { ChatCrudContext } from './profileChatCrud';
 import * as chatSessionOps from './profileChatSessionOps';
 import type { ChatSessionOpsContext } from './profileChatSessionOps';
+import { mcpConfigManager } from './mcpConfigManager';
+import { hooksConfigManager } from './hooksConfigManager';
+import { fingerprintProfileForDirtyCheck, tryCommitMcpServers, tryCommitSkills, tryCommitHooks, loadSkillRegistryForProfile, loadHookRegistryForProfile } from './profileMcpHandoff';
+import { writeFileAtomicallyWithRetry } from './atomicFileWrite';
 import { ghcModelsManager } from "../llm/ghcModelsManager";
 import { mcpClientManager } from "../mcpRuntime/mcpClientManager";
-import { pluginManager } from "../plugin/pluginManager";
 import { agentChatManager } from "../chat/agentChatManager";
-import { credentialStore } from "../remoteChannel/credentialStore";
 
 /**
  * MCP Server status enumeration
  */
 export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting' | 'needs-user-interaction';
+
+export function getChangedTopLevelKeys(before: unknown, after: unknown): string[] {
+  if (!before || !after || typeof before !== 'object' || typeof after !== 'object') {
+    return [];
+  }
+
+  const beforeRecord = before as Record<string, unknown>;
+  const afterRecord = after as Record<string, unknown>;
+  const keys = new Set([...Object.keys(beforeRecord), ...Object.keys(afterRecord)]);
+  return Array.from(keys)
+    .filter((key) => JSON.stringify(beforeRecord[key]) !== JSON.stringify(afterRecord[key]))
+    .sort();
+}
 
 /**
  * Runtime state for MCP servers (memory-only, not persisted to profile.json)
@@ -123,16 +152,12 @@ function getElectronApp() {
  * type definitions, integrity migration, frontend sync
  * (ProfileCacheManager ↔ ProfileDataManager IPC), and the Feature Manager pattern.
  */
-interface IRemoteChannelManager {
-  initialize(alias: string): Promise<void>;
-  startChannel(channelId: string): Promise<void>;
-  setStatusChangeListener(listener: (info: ChannelStatusInfo) => void): void;
-  setBindingChangeListener(listener: (info: { channelId: string; bound: boolean }) => void): void;
-}
-
 export class ProfileCacheManager {
   private static instance: ProfileCacheManager;
   private cache: Map<string, ProfileV2> = new Map();
+  // Fingerprint of durable profile.json, excluding mcp_servers and updatedAt.
+  private lastProfileFingerprint: Map<string, string> = new Map();
+  private profileBackupFailedAliases = new Set<string>();
   private profileDataManager: any = null; // Frontend ProfileDataManager instance
   // 🆕 Refactored: MCP runtime state is now managed directly by mcpClientManager; no longer cached here
   private currentUserAlias: string | null = null; // Current user alias
@@ -145,13 +170,20 @@ export class ProfileCacheManager {
   private batchedUpdates = new Set<string>(); // Tracks user aliases with pending updates
 
   private mainWindow: BrowserWindow | null = null; // Reference to the main window
-  private getRemoteChannelManager: (() => Promise<IRemoteChannelManager>) | null = null;
 
   // Data-change detection — disabled; all notifications are sent directly
   // private lastSentSnapshots: Map<string, DataSnapshot> = new Map(); // user alias -> last sent data snapshot
 
   private constructor() {
     this.initializeProfileDataManager();
+    // Accessor SSOT: resolve a chat's agent_ids from the active profile's
+    // registry so main consumers see agents even though the cached profile keeps
+    // only ids. Bound to the current user's profile dir.
+    setAccessorAgentResolver((ids) =>
+      this.currentUserAlias
+        ? getRegistryAgentsByIds(this.getProfileDirectoryPath(this.currentUserAlias), ids)
+        : [],
+    );
   }
 
   static getInstance(): ProfileCacheManager {
@@ -161,20 +193,16 @@ export class ProfileCacheManager {
     return ProfileCacheManager.instance;
   }
 
+  public getCurrentUserAlias(): string | null {
+    return this.currentUserAlias;
+  }
+
   /**
    * Set the main window reference.
    * @param window Main window instance
    */
   public setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
-  }
-
-  /**
-   * Inject the lazy getter for Remote Channel Manager.
-   * Called by main.ts before handleProfile.
-   */
-  setRemoteChannelManagerGetter(getter: () => Promise<IRemoteChannelManager>): void {
-    this.getRemoteChannelManager = getter;
   }
 
   /**
@@ -201,6 +229,30 @@ export class ProfileCacheManager {
   }
 
   /**
+   * Snapshot the registered agents for an alias from the in-memory registry hot
+   * cache. Feeds the granular `agents:changed` push and the `agents:getAll`
+   * pull for the normalized renderer agent cache. Encapsulates the private
+   * profile-dir resolution so IPC callers do not need it.
+   */
+  getRegisteredAgents(alias: string): AgentConfig[] {
+    return getAllRegistryAgents(this.getProfileDirectoryPath(alias));
+  }
+
+  /**
+   * Emit the per-sidecar change events (agents/skills/hooks) to a window. Thin
+   * wrapper over {@link emitSidecarChangeEvents} that supplies the current
+   * store-backed slices; kept as a method so performNotification and unit tests
+   * can invoke it with just (window, alias). See profileNotificationHelpers.ts.
+   */
+  private emitSidecarChangeEvents(targetWindow: BrowserWindow, alias: string): void {
+    emitSidecarChangeEvents(targetWindow.webContents, alias, {
+      agents: this.getRegisteredAgents(alias),
+      skills: skillsConfigManager.getSkills(alias),
+      hooks: hooksConfigManager.getHooks(alias),
+    });
+  }
+
+  /**
    * Get the profile.json file path.
    */
   private getProfileFilePath(alias: string): string {
@@ -221,11 +273,24 @@ export class ProfileCacheManager {
    */
   private async readProfileFromFile(alias: string): Promise<ProfileV2 | null> {
     try {
+      const profileDir = this.getProfileDirectoryPath(alias);
       const profilePath = this.getProfileFilePath(alias);
 
       if (!fs.existsSync(profilePath)) {
         return null;
       }
+
+      const backupResult = await backupProfileDirectoryBeforeMutation(profileDir, alias);
+      if (!backupResult.success) {
+        this.profileBackupFailedAliases.add(alias);
+        logger.error(
+          '[ProfileCacheManager] Refusing to load mutable profile path because startup backup failed',
+          'readProfileFromFile',
+          { alias, error: backupResult.error },
+        );
+        return null;
+      }
+      this.profileBackupFailedAliases.delete(alias);
 
       const content = await fs.promises.readFile(profilePath, 'utf-8');
 
@@ -239,17 +304,107 @@ export class ProfileCacheManager {
 
       // Check whether the data is in V2 format
       if (!isProfileV2(rawProfile)) {
+        logger.error(
+          '[ProfileCacheManager] Existing profile.json is not a valid V2 profile; refusing to treat it as a new user',
+          'readProfileFromFile',
+          { alias },
+        );
         return null;
       }
 
-      // V2 format: verify and ensure integrity of chatSessions fields
-      const sanitizedProfile = await this.ensureV2ProfileIntegrity(alias, rawProfile as ProfileV2);
-      return sanitizedProfile;
+      const legacySlice = Array.isArray((rawProfile as ProfileV2).mcp_servers)
+        ? (rawProfile as ProfileV2).mcp_servers
+        : undefined;
+      await mcpConfigManager.resolveFromDisk(alias, legacySlice);
+      (rawProfile as ProfileV2).mcp_servers = [...mcpConfigManager.getServers(alias)];
+
+      // Hydrate the global skill registry (skills.json) into memory BEFORE the mcp.json
+      // gate below (mirrors the MCP resolveFromDisk) so an early return on mcp.json failure
+      // can't leave the registry empty and let a later CRUD drop legacy skills. Memory-only.
+      const legacySkillSlice = Array.isArray((rawProfile as ProfileV2).skills)
+        ? (rawProfile as ProfileV2).skills
+        : undefined;
+      await skillsConfigManager.resolveFromDisk(alias, legacySkillSlice);
+
+      // Hydrate hooks.json into memory too, so an early return can't drop legacy
+      // hooks. Only the list is hydrated here; `hooksEnabled` stays on the body.
+      const legacyHookSlice = Array.isArray((rawProfile as ProfileV2).hooks)
+        ? (rawProfile as ProfileV2).hooks
+        : undefined;
+      await hooksConfigManager.resolveFromDisk(alias, legacyHookSlice);
+
+      // Seed mcp.json before any profile write can strip the legacy slice.
+      const initialServersCommitted = await tryCommitMcpServers(
+        alias,
+        mcpConfigManager.getServers(alias),
+        'readProfileFromFile',
+        '[ProfileCacheManager] Failed to persist mcp.json during profile load; keeping existing profile.json intact',
+      );
+      if (!initialServersCommitted) {
+        return this.sanitizeKeepingProfileIntact(rawProfile as ProfileV2, alias);
+      }
+
+      // null = the migration write failed (see loadSkillRegistryForProfile); keep
+      // profile.json intact instead of falling through to the default-reset catch-all.
+      const loadedSkills = await loadSkillRegistryForProfile(alias, rawProfile as ProfileV2);
+      if (!loadedSkills) {
+        return this.sanitizeKeepingProfileIntact(rawProfile as ProfileV2, alias);
+      }
+      (rawProfile as ProfileV2).skills = loadedSkills.skills;
+
+      // Same migration handoff for the global Agent Hook library (hooks.json).
+      const loadedHooks = await loadHookRegistryForProfile(alias, rawProfile as ProfileV2);
+      if (!loadedHooks) {
+        // Mirror the mcp.json / skills.json failure paths: this early return skips
+        // ensureV2ProfileIntegrity(), so without sanitizing here the returned profile
+        // would still expose orphaned retired-plugin agent bindings (plugin--* in an
+        // agent's mcp_servers, which acts as an allowlist and would zero its tools).
+        return this.sanitizeKeepingProfileIntact(rawProfile as ProfileV2, alias);
+      }
+      (rawProfile as ProfileV2).hooks = loadedHooks.hooks;
+
+      // V2 format: verify and ensure integrity of chatSessions fields. Force a profile.json
+      // rewrite when either sidecar migration stripped a legacy slice.
+      const sanitizedProfile = await this.ensureV2ProfileIntegrity(alias, rawProfile as ProfileV2, loadedSkills.needsProfileRewrite || loadedHooks.needsProfileRewrite);
+
+      await tryCommitMcpServers(
+        alias,
+        sanitizedProfile.mcp_servers ?? [],
+        'readProfileFromFile',
+        '[ProfileCacheManager] Failed to persist post-migration mcp.json during profile load; keeping previously committed MCP server configs',
+      );
+      delete (sanitizedProfile as Partial<ProfileV2>).mcp_servers;
+
+      // Strip the registry from the cached profile (mirroring mcp_servers); loadForAlias
+      // already persisted skills.json and the renderer payload re-injects it.
+      delete (sanitizedProfile as Partial<ProfileV2>).skills;
+
+      // Strip the hook list too (loadForAlias already persisted hooks.json and the
+      // renderer re-injects it); keep hooksEnabled, which stays in profile.json.
+      delete (sanitizedProfile as Partial<ProfileV2>).hooks;
+
+      // Strip inline agent/agents from the cached profile (keeping agent_ids).
+      // The standalone store is the SSOT; memory holds ids only. Chat workspace is
+      // derived in memory from alias + chat_id and is not persisted in profile.json.
+      const cachedProfile = attachDerivedChatWorkspaces(
+        alias,
+        stripInlineChatAgentsForDisk(this.getProfileDirectoryPath(alias), sanitizedProfile),
+      );
+
+      this.lastProfileFingerprint.set(
+        alias,
+        fingerprintProfileForDirtyCheck(stripDerivedChatWorkspacesForDisk(this.sanitizeProfile(cachedProfile))),
+      );
+      return cachedProfile;
     } catch (error) {
+      logger.error(
+        '[ProfileCacheManager] Failed to read existing profile.json',
+        'readProfileFromFile',
+        { alias, error: error instanceof Error ? error.message : String(error) },
+      );
       return null;
     }
   }
-
 
   /**
    * Sanitize and validate the profile data structure (V2 only).
@@ -262,58 +417,75 @@ export class ProfileCacheManager {
     }
   }
 
+  /**
+   * Sanitize a profile on a load FAILURE path (e.g. mcp.json / skills.json / hooks.json
+   * could not be persisted) where we deliberately keep profile.json on disk intact.
+   *
+   * These paths return early, before ensureV2ProfileIntegrity() runs, so without this
+   * the returned profile would skip sanitizeProfileV2() and still expose orphaned
+   * retired-plugin MCP servers / skills (source:'PLUGIN' or plugin--* bindings). We
+   * therefore strip them in-memory here via the single source of truth
+   * (sanitizeProfileV2), WITHOUT writing to disk. sanitizeProfileV2 never throws (it
+   * has its own internal fallback), so this cannot escalate the failure path into the
+   * profile-resetting outer catch.
+   */
+  private sanitizeKeepingProfileIntact(profile: ProfileV2, alias: string): ProfileV2 {
+    const sanitized = sanitizeProfileV2(profile);
+    // Preserve alias (sanitizeProfileV2 may produce empty string from raw data).
+    sanitized.alias = profile.alias || alias;
+    return sanitized;
+  }
+
   async syncStarredChatSessionIndex(
     alias: string,
     chatId: string,
     session: Partial<ChatSession>,
     options?: { notifyRenderer?: boolean },
   ): Promise<boolean> {
-    const cachedProfile = this.cache.get(alias);
-    if (!cachedProfile || !session.chatSession_id) {
-      return false;
-    }
-
-    const currentItems = cachedProfile['starred-chat-sessions'] || [];
-    const existingItem = currentItems.find((item) => item.chatSessionId === session.chatSession_id);
-    const shouldRemove = session.starred === false;
-    const shouldTrack = session.starred === true || !!existingItem;
-
-    if (!shouldRemove && !shouldTrack) {
-      return false;
-    }
-
-    let nextItems = currentItems.filter((item) => item.chatSessionId !== session.chatSession_id);
-    if (!shouldRemove) {
-      const nextItem = buildStarredChatSessionIndexItem(cachedProfile, chatId, session, existingItem?.starredAt);
-      if (!nextItem) {
+    return entityCrud.withProfileWriteLock(alias, async () => {
+      const cachedProfile = this.cache.get(alias);
+      if (!cachedProfile || !session.chatSession_id) {
         return false;
       }
-      nextItems = [nextItem, ...nextItems].sort(
-        (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime(),
+
+      const currentItems = cachedProfile['starred-chat-sessions'] || [];
+      const existingItem = currentItems.find((item) => item.chatSessionId === session.chatSession_id);
+      const shouldRemove = session.starred === false;
+      const shouldTrack = session.starred === true || !!existingItem;
+
+      if (!shouldRemove && !shouldTrack) {
+        return false;
+      }
+
+      let nextItems = currentItems.filter((item) => item.chatSessionId !== session.chatSession_id);
+      if (!shouldRemove) {
+        const nextItem = buildStarredChatSessionIndexItem(cachedProfile, chatId, session, existingItem?.starredAt);
+        if (!nextItem) {
+          return false;
+        }
+        nextItems = [nextItem, ...nextItems].sort(
+          (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime(),
+        );
+      }
+
+      if (JSON.stringify(currentItems) === JSON.stringify(nextItems)) {
+        return false;
+      }
+
+      const nextProfile: ProfileV2 = {
+        ...cachedProfile,
+        'starred-chat-sessions': nextItems,
+      };
+
+      return entityCrud.writeProfileThenCommitCache(
+        this.entityCtx(),
+        alias,
+        cachedProfile,
+        nextProfile,
+        true,
+        options?.notifyRenderer !== false,
       );
-    }
-
-    if (JSON.stringify(currentItems) === JSON.stringify(nextItems)) {
-      return false;
-    }
-
-    const nextProfile: ProfileV2 = {
-      ...cachedProfile,
-      'starred-chat-sessions': nextItems,
-    };
-
-    this.cache.set(alias, nextProfile);
-    const saved = await this.writeProfileToFile(alias, nextProfile);
-    if (!saved) {
-      this.cache.set(alias, cachedProfile);
-      return false;
-    }
-
-    if (options?.notifyRenderer !== false) {
-      await this.notifyProfileDataManager(alias, true);
-    }
-
-    return true;
+    });
   }
 
   async removeStarredChatSessionIndex(
@@ -321,34 +493,32 @@ export class ProfileCacheManager {
     chatSessionId: string,
     options?: { notifyRenderer?: boolean },
   ): Promise<boolean> {
-    const cachedProfile = this.cache.get(alias);
-    if (!cachedProfile) {
-      return false;
-    }
+    return entityCrud.withProfileWriteLock(alias, async () => {
+      const cachedProfile = this.cache.get(alias);
+      if (!cachedProfile) {
+        return false;
+      }
 
-    const currentItems = cachedProfile['starred-chat-sessions'] || [];
-    const nextItems = currentItems.filter((item) => item.chatSessionId !== chatSessionId);
-    if (nextItems.length === currentItems.length) {
-      return false;
-    }
+      const currentItems = cachedProfile['starred-chat-sessions'] || [];
+      const nextItems = currentItems.filter((item) => item.chatSessionId !== chatSessionId);
+      if (nextItems.length === currentItems.length) {
+        return false;
+      }
 
-    const nextProfile: ProfileV2 = {
-      ...cachedProfile,
-      'starred-chat-sessions': nextItems,
-    };
+      const nextProfile: ProfileV2 = {
+        ...cachedProfile,
+        'starred-chat-sessions': nextItems,
+      };
 
-    this.cache.set(alias, nextProfile);
-    const saved = await this.writeProfileToFile(alias, nextProfile);
-    if (!saved) {
-      this.cache.set(alias, cachedProfile);
-      return false;
-    }
-
-    if (options?.notifyRenderer !== false) {
-      await this.notifyProfileDataManager(alias, true);
-    }
-
-    return true;
+      return entityCrud.writeProfileThenCommitCache(
+        this.entityCtx(),
+        alias,
+        cachedProfile,
+        nextProfile,
+        true,
+        options?.notifyRenderer !== false,
+      );
+    });
   }
 
   /**
@@ -417,16 +587,24 @@ export class ProfileCacheManager {
    *
    * ═══════════════════════════════════════════════════════════════════
    */
-  private async ensureV2ProfileIntegrity(alias: string, profile: ProfileV2): Promise<ProfileV2> {
+  private async ensureV2ProfileIntegrity(alias: string, profile: ProfileV2, forceSave = false): Promise<ProfileV2> {
     try {
 
-      let needsSave = false;
+      let needsSave = forceSave;
       // 🔧 Deep copy: isolate the original profile to prevent accidental mutation through shared nested references.
       // See [Deep-copy rule] above.
       const profileCopy: ProfileV2 = JSON.parse(JSON.stringify(profile));
 
       // Part 1: One-time Migrations (version-controlled via profileMigrationVersion)
       if (applyProfileMigrations(profileCopy)) {
+        needsSave = true;
+      }
+
+      // Run all agent-store migrations for this load (mirror inline agents into the
+      // store, hydrate chats, heal agent_ids, consolidate workspace dirs, relocate
+      // knowledge, refresh the registry). Store-only repairs self-persist, while
+      // returning true keeps this load's healed profile snapshot durable too.
+      if (await runAgentStoreMigrations(this.getProfileDirectoryPath(alias), profileCopy, profile)) {
         needsSave = true;
       }
 
@@ -438,39 +616,54 @@ export class ProfileCacheManager {
 
       // Part 2: Built-in Defaults Migration (version-controlled via builtinDefaultsVersion)
       if (applyBuiltinDefaultsMigrations(profileCopy)) {
+        // Persist Part-2's inline builtin-defaults mutations to the store, or the disk write strips them while the version bumps. See syncInlineChatAgentsToStore.
+        const builtinDefaultsSyncFailures: string[] = [];
+        await syncInlineChatAgentsToStore(this.getProfileDirectoryPath(alias), profileCopy, builtinDefaultsSyncFailures);
+        if (builtinDefaultsSyncFailures.length > 0) {
+          logger.warn('[ProfileCacheManager] Built-in defaults store sync failed; migration will retry on next load', 'ensureV2ProfileIntegrity', {
+            alias,
+            agentIds: builtinDefaultsSyncFailures,
+          });
+          return profile;
+        }
         needsSave = true;
       }
 
       // Part 3: Normalize via sanitizeProfileV2 (single source of truth for schema + defaults)
-      // Pre-fill workspace paths (requires alias context, cannot be done in sanitizeProfileV2)
-      for (const chat of profileCopy.chats) {
-        if (chat.agent) {
-          const ws = chat.agent.workspace;
-          if (!ws || typeof ws !== 'string' || ws.trim() === '') {
-            chat.agent.workspace = getDefaultWorkspacePath(alias, chat.chat_id);
-          }
-        }
-      }
       // Apply sanitizeProfileV2 to normalize all fields and fill defaults
       const normalizedCopy = sanitizeProfileV2(profileCopy);
       // Preserve alias (sanitizeProfileV2 may produce empty string from raw data)
       normalizedCopy.alias = profileCopy.alias || alias;
+      const diskNormalizedCopy = stripDerivedChatWorkspacesForDisk(normalizedCopy);
 
       // Detect whether normalization changed anything
       const originalJson = JSON.stringify(profile);
-      const normalizedJson = JSON.stringify(normalizedCopy);
+      const normalizedJson = JSON.stringify(diskNormalizedCopy);
       if (originalJson !== normalizedJson) {
         needsSave = true;
       }
       // Use the normalized copy from here on
-      Object.assign(profileCopy, normalizedCopy);
+      Object.assign(profileCopy, attachDerivedChatWorkspaces(alias, normalizedCopy));
 
       // If there were any modifications, persist to file immediately
       if (needsSave) {
+        const changedTopLevelKeys = getChangedTopLevelKeys(profile, profileCopy);
         profileCopy.updatedAt = new Date().toISOString();
 
+        if (mcpConfigManager.hasServersLoaded(alias) && !await tryCommitMcpServers(alias, profileCopy.mcp_servers ?? [], 'ensureV2ProfileIntegrity', '[ProfileCacheManager] Failed to persist post-migration mcp.json before profile write')) {
+          return profile;
+        }
+
+        // Skills durability is enforced at the writeProfileToFile choke point below
+        // (it commits skills.json before stripping), so no separate pre-commit here.
         const saveSuccess = await this.writeProfileToFile(alias, profileCopy);
         if (saveSuccess) {
+          logger.info('[ProfileCacheManager] Profile integrity changes persisted', 'ensureV2ProfileIntegrity', {
+            alias,
+            changedTopLevelKeys,
+            previousComputerUseEnabled: profile.computerUse?.enabled === true,
+            nextComputerUseEnabled: profileCopy.computerUse?.enabled === true,
+          });
           // 🔧 Fix: do NOT notify the frontend here. ensureV2ProfileIntegrity is only responsible for migration and persistence.
           // Notifying the frontend is handled by handleProfile after updating the cache.
           // Calling notifyProfileDataManager here would cause the frontend to receive stale data (cache not yet updated).
@@ -480,17 +673,19 @@ export class ProfileCacheManager {
       return profileCopy;
     } catch (error) {
       // Return minimal safe config
+      const fallbackChat = createDefaultChat();
       return {
         version: '2.0.0',
         createdAt: profile.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         alias: profile.alias || alias,
         freDone: false,
-        primaryAgent: 'Kobi',
+        primaryChat: fallbackChat.chat_id,
         mcp_servers: profile.mcp_servers || [],
         skills: profile.skills || [],
         'starred-chat-sessions': Array.isArray(profile['starred-chat-sessions']) ? profile['starred-chat-sessions'] : [],
-        chats: [createDefaultChat()]
+        computerUse: { ...DEFAULT_COMPUTER_USE_SETTINGS },
+        chats: [fallbackChat]
       };
     }
   }
@@ -499,27 +694,112 @@ export class ProfileCacheManager {
   // Utility methods (createDefaultChat, generateChatId) extracted to ./profileSanitizer.ts
 
   /**
-   * Write profile to file
+   * Persist `profile.json` only. A pending MCP handoff is retried first so a
+   * legacy top-level `mcp_servers` slice is never stripped before `mcp.json` exists.
    */
   private async writeProfileToFile(alias: string, profile: ProfileV2): Promise<boolean> {
+    const profileDir = this.getProfileDirectoryPath(alias);
+    const profilePath = this.getProfileFilePath(alias);
     try {
-      const profileDir = this.getProfileDirectoryPath(alias);
-      const profilePath = this.getProfileFilePath(alias);
-
       // Ensure the directory exists
       this.ensureDirectoryExists(profileDir);
 
       // Clean and validate the data structure to ensure it conforms to the template schema
       const sanitizedProfile = this.sanitizeProfile(profile);
+      const now = new Date().toISOString();
 
-      // Update the timestamp
-      sanitizedProfile.updatedAt = new Date().toISOString();
+      if (this.profileBackupFailedAliases.has(alias)) {
+        logger.error(
+          '[ProfileCacheManager] Refusing to write profile because startup backup failed',
+          'writeProfileToFile',
+          { alias },
+        );
+        return false;
+      }
 
-      // Write file — the sanitized, template-conforming data is now written
-      await fs.promises.writeFile(profilePath, JSON.stringify(sanitizedProfile, null, 2), 'utf-8');
+      const agentlessChatIds = findAgentlessActiveChatIds(sanitizedProfile);
+      if (agentlessChatIds.length > 0) {
+        logger.error(
+          '[ProfileCacheManager] Refusing to write profile with agentless active chats',
+          'writeProfileToFile',
+          { alias, chatIds: agentlessChatIds },
+        );
+        return false;
+      }
+
+      if (!mcpConfigManager.hasPersistedServers(alias) && mcpConfigManager.hasServersLoaded(alias)) {
+        const serversCommitted = await tryCommitMcpServers(
+          alias,
+          sanitizedProfile.mcp_servers ?? mcpConfigManager.getServers(alias),
+          'writeProfileToFile',
+          '[ProfileCacheManager] Failed to persist mcp.json before stripping profile.json; aborting profile write',
+        );
+        if (!serversCommitted) {
+          return false;
+        }
+      }
+
+      // Symmetric guard for the global skill registry: never strip the legacy inline
+      // skills slice below until skills.json durably holds it (mirrors the mcp.json gate).
+      if (!skillsConfigManager.hasPersistedSkills(alias) && skillsConfigManager.hasSkillsLoaded(alias)) {
+        const skillsCommitted = await tryCommitSkills(
+          alias,
+          sanitizedProfile.skills ?? skillsConfigManager.getSkills(alias),
+          'writeProfileToFile',
+          '[ProfileCacheManager] Failed to persist skills.json before stripping profile.json; aborting profile write',
+        );
+        if (!skillsCommitted) {
+          return false;
+        }
+      }
+
+      // Symmetric guard for the hook library: never strip the legacy inline hooks slice below until hooks.json durably holds it.
+      if (!hooksConfigManager.hasPersistedHooks(alias) && hooksConfigManager.hasHooksLoaded(alias)) {
+        const hooksCommitted = await tryCommitHooks(
+          alias,
+          sanitizedProfile.hooks ?? hooksConfigManager.getHooks(alias),
+          'writeProfileToFile',
+          '[ProfileCacheManager] Failed to persist hooks.json before stripping profile.json; aborting profile write',
+        );
+        if (!hooksCommitted) {
+          return false;
+        }
+      }
+
+      // Strip inline agent/agents from the disk copy (keeping agent_ids) once the
+      // store durably holds them — same pattern as mcp_servers/skills/hooks. Seeding
+      // happens upstream (integrity extract / CRUD sync); this is a read-only gate.
+      const diskProfile = stripDerivedChatWorkspacesForDisk(stripInlineChatAgentsForDisk(profileDir, sanitizedProfile));
+
+      // Top-level mcp_servers (mcp.json) and the global skill registry (skills.json)
+      // are both stripped here; profile.json carries neither. Per-agent bindings stay.
+      const profileFingerprint = fingerprintProfileForDirtyCheck(diskProfile);
+      if (this.lastProfileFingerprint.get(alias) !== profileFingerprint) {
+        const profileToWrite = { ...diskProfile } as Partial<ProfileV2>;
+        delete profileToWrite.mcp_servers;
+        delete profileToWrite.skills;
+        // Strip the hook *list* (hooks.json); keep the master switch hooksEnabled.
+        delete profileToWrite.hooks;
+        profileToWrite.updatedAt = now;
+        await writeFileAtomicallyWithRetry(profilePath, JSON.stringify(profileToWrite, null, 2), {
+          onRetry: ({ attempt, error, delayMs }) => {
+            logger.warn(
+              '[ProfileCacheManager] Transient profile.json rename failure; retrying',
+              'writeProfileToFile',
+              { alias, attempt, delayMs, code: error.code },
+            );
+          },
+        });
+        this.lastProfileFingerprint.set(alias, profileFingerprint);
+      }
 
       return true;
     } catch (error) {
+      logger.error(
+        '[ProfileCacheManager] Failed to write profile.json',
+        'writeProfileToFile',
+        { alias, error: error instanceof Error ? error.message : String(error) },
+      );
       return false;
     }
   }
@@ -577,32 +857,13 @@ export class ProfileCacheManager {
   private async performNotification(alias: string, forceImmediate = false): Promise<void> {
     try {
 
-      // Get main window reference and send IPC notification
-      // Prefer the explicitly set mainWindow; otherwise try to locate one
-      let targetWindow: BrowserWindow | null | undefined = this.mainWindow;
-
-      if (!targetWindow || targetWindow.isDestroyed()) {
-        const windows = BrowserWindow.getAllWindows();
-        // Try to match by title (multi-brand compatible)
-        const appTitle = process.env.APP_NAME; // "OpenKosmos" (App Name may not match Window Title)
-
-        // Window lookup strategy:
-        // 1. Exact title match "OpenKosmos AI Studio" (default / legacy)
-        // 2. Title contains "OpenKosmos" 
-        // 3. Fall back to the only open window
-
-        targetWindow = windows.find((window: BrowserWindow) => {
-          const title = window.title;
-          return title === 'OpenKosmos AI Studio' ||
-                 (appTitle && title === appTitle) || // Fallback to provided APP_NAME
-                 title.includes('OpenKosmos');
-        });
-
-        // Still not found, but there is only one window — assume it is the main window
-        if (!targetWindow && windows.length === 1) {
-           targetWindow = windows[0];
-        }
-      }
+      // Get main window reference and send IPC notification.
+      // Prefer the explicitly set mainWindow; otherwise locate one by brand title.
+      const targetWindow = findNotificationTargetWindow(
+        this.mainWindow,
+        () => BrowserWindow.getAllWindows(),
+        process.env.APP_NAME, // May not match window title.
+      );
 
       if (targetWindow && !targetWindow.isDestroyed() && targetWindow.webContents) {
         const profile = this.cache.get(alias);
@@ -610,7 +871,9 @@ export class ProfileCacheManager {
         // 🔥 New architecture: load chatSessions for each chat from chatSessionManager.
         // chatSessions are no longer stored in profile.json; they must be loaded dynamically.
         // Use ChatConfigRuntime type to include runtime chatSessions.
-        let profileWithChatSessions: (Omit<ProfileV2, 'chats'> & { chats: ChatConfigRuntime[] }) | null = profile ? JSON.parse(JSON.stringify(profile)) : null;
+        let profileWithChatSessions: (Omit<ProfileV2, 'chats'> & { chats: ChatConfigRuntime[] }) | null = profile
+          ? attachDerivedChatWorkspaces(alias, JSON.parse(JSON.stringify(profile)))
+          : null;
 
         if (profileWithChatSessions && profileWithChatSessions.chats && profileWithChatSessions.chats.length > 0) {
           try {
@@ -622,20 +885,7 @@ export class ProfileCacheManager {
               try {
                 const result = await chatSessionStore.getChatSessionsProjection(alias, chat.chat_id);
                 // Assign the loaded sessions to chat.chatSessions
-                profileToUpdate.chats[index].chatSessions = result.sessions.map((s: any) => ({
-                  chatSession_id: s.chatSession_id,
-                  last_updated: s.last_updated,
-                  title: s.title,
-                  readStatus: s.readStatus,
-                  ...(typeof s.starred === 'boolean' ? { starred: s.starred } : {}),
-                  ...(s.starredAt ? { starredAt: s.starredAt } : {}),
-                  ...(s.schedulerJobId ? { schedulerJobId: s.schedulerJobId } : {}),
-                  ...(s.schedulerExecutionStatus ? { schedulerExecutionStatus: s.schedulerExecutionStatus } : {}),
-                  ...(s.schedulerStartedAt ? { schedulerStartedAt: s.schedulerStartedAt } : {}),
-                  ...(s.schedulerCompletedAt ? { schedulerCompletedAt: s.schedulerCompletedAt } : {}),
-                  ...(s.schedulerError ? { schedulerError: s.schedulerError } : {}),
-                  source: s.source ? { ...s.source } : undefined,
-                }));
+                profileToUpdate.chats[index].chatSessions = result.sessions.map(mapChatSessionProjection);
               } catch (loadError) {
                 logger.warn('[ProfileCacheManager] Failed to load chatSessions for chat', 'performNotification', {
                   alias,
@@ -655,18 +905,29 @@ export class ProfileCacheManager {
               error: error instanceof Error ? error.message : String(error)
             });
             // If loading fails, fall back to the original profile (chatSessions may be empty)
-            profileWithChatSessions = profile ? JSON.parse(JSON.stringify(profile)) : null;
+            profileWithChatSessions = profile ? attachDerivedChatWorkspaces(alias, JSON.parse(JSON.stringify(profile))) : null;
           }
         }
 
         const messageData = {
           alias,
-          profile: profileWithChatSessions ? {
-            ...profileWithChatSessions,
-            alias: this.currentUserAlias || alias // ensure the profile includes the alias field
-          } : null,
+          // Renderer wire body: buildRendererProfilePayload strips chats to
+          // `agent_ids` only when durable (else keeps inline); mcp/skills/hooks re-attached.
+          profile: profileWithChatSessions
+            ? buildRendererProfilePayload(profileWithChatSessions, this.currentUserAlias || alias, {
+                mcp_servers: mcpConfigManager.getServers(alias),
+                skills: skillsConfigManager.getSkills(alias),
+                hooks: hooksConfigManager.getHooks(alias),
+              }, this.getRegisteredAgents(alias))
+            : null,
           timestamp: Date.now()
         };
+
+        // Granular per-sidecar change events (Phase 1 of renderer normalization,
+        // see docs/sidecar-renderer-normalization-tech-doc.md). Emitted BEFORE the
+        // agent_ids-only profile push (Phase 4) so the store-backed client caches
+        // are fresh when the renderer resolves agents against them.
+        this.emitSidecarChangeEvents(targetWindow, alias);
 
         // Send profile update notification
         targetWindow.webContents.send('profile:cacheUpdated', messageData);
@@ -683,25 +944,6 @@ export class ProfileCacheManager {
   // 🔧 Cleanup: all data-change detection methods removed.
   // All notifications are now sent directly to the frontend without any filtering.
 
-  /**
-   * Update the in_use status of an MCP server.
-   */
-  updateMcpServerInUse(alias: string, serverName: string, inUse: boolean): void {
-    try {
-      const profile = this.cache.get(alias);
-      if (!profile) {
-        return;
-      }
-
-      const serverIndex = profile.mcp_servers.findIndex(server => server.name === serverName);
-      if (serverIndex >= 0) {
-        profile.mcp_servers[serverIndex].in_use = inUse;
-        this.cache.set(alias, profile);
-      }
-    } catch (error) {
-    }
-  }
-
   // isDefaultProfile and isDefaultChatConfig extracted to ./profileMigration.ts
 
   /**
@@ -709,6 +951,7 @@ export class ProfileCacheManager {
    */
   private createDefaultProfile(alias: string): ProfileV2 {
     const now = new Date().toISOString();
+    const defaultChat = createDefaultChat();
 
     return {
       version: '2.0.0',
@@ -716,13 +959,14 @@ export class ProfileCacheManager {
       updatedAt: now,
       alias,
       freDone: false,
-      primaryAgent: 'Kobi',
+      primaryChat: defaultChat.chat_id,
       mcp_servers: [],
       skills: [],
       'starred-chat-sessions': [],
+      computerUse: { ...DEFAULT_COMPUTER_USE_SETTINGS },
       builtinDefaultsVersion: BUILTIN_DEFAULTS_VERSION,
       profileMigrationVersion: PROFILE_MIGRATION_VERSION,
-      chats: [createDefaultChat()]
+      chats: [defaultChat]
     };
   }
 
@@ -731,184 +975,196 @@ export class ProfileCacheManager {
    * - If a local profile.json exists, load the existing config
    * - If no local profile.json exists, create a default profile
    *
-   * 🚀 Performance: MCP, Mem0, and AgentChat initialization is moved to background parallel execution
+   * 🚀 Performance: MCP and AgentChat initialization is moved to background parallel execution
    * No longer blocks profile loading; the window can display faster
    */
   async handleProfile(alias: string, options?: { notifyRenderer?: boolean }): Promise<ProfileV2 | null> {
-    console.time('[ProfileCacheManager] handleProfile');
-    try {
-      const shouldNotifyRenderer = options?.notifyRenderer ?? true;
+    return entityCrud.withProfileWriteLock(alias, async () => {
+      try {
+        const shouldNotifyRenderer = options?.notifyRenderer ?? true;
 
-      // Set the current user alias
-      this.currentUserAlias = alias;
+        // Set the current user alias
+        this.currentUserAlias = alias;
+        await this.cleanupLegacyRemoteCredentials(alias);
 
-      // Check whether a local profile.json exists
-      let profile = await this.readProfileFromFile(alias);
+        // Check whether a local profile.json exists
+        let profile = await this.readProfileFromFile(alias);
 
-      if (profile) {
-        // Case 1: profile.json exists — load the existing config
+        if (profile) {
+          // Case 1: profile.json exists — load the existing config
 
-        // Update the cache
-        this.cache.set(alias, profile);
+          // Update the cache
+          this.cache.set(alias, profile);
 
-        // Notify the frontend ProfileDataManager to sync data (immediate for profile updates)
-        if (shouldNotifyRenderer) {
-          await this.notifyProfileDataManager(alias, true);
+          // Notify the frontend ProfileDataManager to sync data (immediate for profile updates)
+          if (shouldNotifyRenderer) {
+            await this.notifyProfileDataManager(alias, true);
+          }
+
+          // 🚀 Background parallel initialization of MCP, AgentChat (non-blocking)
+          this.initializeBackgroundServices(alias);
+
+          return profile;
+        } else {
+          const profilePath = this.getProfileFilePath(alias);
+          if (fs.existsSync(profilePath)) {
+            if (this.profileBackupFailedAliases.has(alias)) {
+              logger.error(
+                '[ProfileCacheManager] Refusing default-profile recovery because startup backup failed',
+                'handleProfile',
+                { alias },
+              );
+              return null;
+            }
+            await this.backupUnreadableProfile(alias, profilePath);
+          }
+
+          // Create the new V2 config
+          const newProfileV2 = this.createDefaultProfile(alias);
+          const profileDir = this.getProfileDirectoryPath(alias);
+
+          // Seed the default chat's agent(s) into the store + stamp agent_ids BEFORE
+          // the first write/push (matches migrated-profile shape). A failed store write
+          // would strip the inline agent yet leave agent_ids at a missing agent.json, so
+          // abort creation (return null) and let a later load retry cleanly.
+          const seedFailedAgentIds: string[] = [];
+          await seedNewProfileAgents(profileDir, newProfileV2, seedFailedAgentIds);
+          if (seedFailedAgentIds.length > 0) {
+            logger.error('[ProfileCacheManager] Aborting first-run profile creation: agent store seed failed', 'handleProfile', { alias, seedFailedAgentIds });
+            return null;
+          }
+
+          // Create the profile.json file
+          const success = await this.writeProfileToFile(alias, newProfileV2);
+          if (!success) {
+            return null;
+          }
+
+          // Resolve first so default-profile recovery never clobbers valid mcp.json.
+          await mcpConfigManager.resolveFromDisk(alias, newProfileV2.mcp_servers ?? []);
+          await tryCommitMcpServers(
+            alias,
+            mcpConfigManager.getServers(alias),
+            'handleProfile',
+            '[ProfileCacheManager] Failed to persist mcp.json during default profile creation; continuing with runtime MCP server configs',
+          );
+          delete (newProfileV2 as Partial<ProfileV2>).mcp_servers;
+
+          // Seed skills.json the same way, then strip skills from the cached profile.
+          await skillsConfigManager.loadForAlias(alias, newProfileV2);
+          delete (newProfileV2 as Partial<ProfileV2>).skills;
+
+          // Seed hooks.json the same way, then strip the list; hooksEnabled stays on newProfileV2.
+          await hooksConfigManager.loadForAlias(alias, newProfileV2);
+          delete (newProfileV2 as Partial<ProfileV2>).hooks;
+
+          // Update the cache after profile.json exists on disk. Strip inline
+          // agents (keeping agent_ids) so the cache matches the load-path shape.
+          const cachedProfile = attachDerivedChatWorkspaces(alias, stripInlineChatAgentsForDisk(profileDir, newProfileV2));
+          this.cache.set(alias, cachedProfile);
+
+          // Notify the frontend ProfileDataManager to sync data (immediate for profile updates)
+          if (shouldNotifyRenderer) {
+            await this.notifyProfileDataManager(alias, true);
+          }
+
+          // 🚀 Background parallel initialization of MCP, AgentChat (non-blocking)
+          this.initializeBackgroundServices(alias);
+
+          return cachedProfile;
         }
-
-        // 🚀 Background parallel initialization of MCP, Mem0, AgentChat (non-blocking)
-        this.initializeBackgroundServices(alias);
-
-        console.timeEnd('[ProfileCacheManager] handleProfile');
-        return profile;
-      } else {
-        // Case 2: profile.json does not exist — create a V2-format default config for this new user
-
-        // Create the new V2 config
-        const newProfileV2 = this.createDefaultProfile(alias);
-
-        // Update the cache
-        this.cache.set(alias, newProfileV2);
-
-        // Notify the frontend ProfileDataManager to sync data (immediate for profile updates)
-        if (shouldNotifyRenderer) {
-          await this.notifyProfileDataManager(alias, true);
-        }
-
-        // Create the profile.json file
-        const success = await this.writeProfileToFile(alias, newProfileV2);
-        if (!success) {
-          console.timeEnd('[ProfileCacheManager] handleProfile');
-          return null;
-        }
-
-        // 🚀 Background parallel initialization of MCP, Mem0, AgentChat (non-blocking)
-        this.initializeBackgroundServices(alias);
-
-        console.timeEnd('[ProfileCacheManager] handleProfile');
-        return newProfileV2;
+      } catch (error) {
+        return null;
       }
+    });
+  }
+
+  private async backupUnreadableProfile(alias: string, profilePath: string): Promise<void> {
+    const backupPath = `${profilePath}.corrupt-${Date.now()}`;
+    try {
+      await fs.promises.copyFile(profilePath, backupPath);
+      logger.error(
+        '[ProfileCacheManager] Existing profile.json could not be read; backed up original content before creating a default profile',
+        'handleProfile',
+        { alias, backupPath },
+      );
     } catch (error) {
-      console.timeEnd('[ProfileCacheManager] handleProfile');
-      return null;
+      logger.error(
+        '[ProfileCacheManager] Failed to back up unreadable profile.json before overwriting',
+        'handleProfile',
+        { alias, error: error instanceof Error ? error.message : String(error) },
+      );
     }
+  }
+
+  private async cleanupLegacyRemoteCredentials(alias: string): Promise<void> {
+    const credentialsDir = path.join(this.getProfileDirectoryPath(alias), 'credentials');
+    const credentialPaths = [
+      path.join(credentialsDir, 'teams_bindingToken.enc'),
+      path.join(credentialsDir, 'teams_boundUserId.enc'),
+    ];
+    const results = await Promise.allSettled(
+      credentialPaths.map((credentialPath) => fs.promises.rm(credentialPath, { force: true })),
+    );
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        logger.warn('[ProfileCacheManager] Failed to remove legacy remote credential', 'cleanupLegacyRemoteCredentials', {
+          alias,
+          credentialPath: credentialPaths[index],
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
+      }
+    });
   }
 
   /**
    * 🚀 Background service initialization
-   * MCP, Mem0, and AgentChat are initialized in parallel without blocking the main flow
+   * MCP and AgentChat are initialized in parallel without blocking the main flow
    */
   private initializeBackgroundServices(alias: string): void {
-    console.time('[ProfileCacheManager] backgroundServices');
-
     // Use Promise.allSettled to run all initializations in parallel without blocking each other
     Promise.allSettled([
       // Initialize GhcModelsManager (model list cache)
       (async () => {
-        console.time('[ProfileCacheManager] ghcModelsManager.initialize');
         try {
           await ghcModelsManager.initialize(alias);
-          console.timeEnd('[ProfileCacheManager] ghcModelsManager.initialize');
         } catch (modelsError) {
-          console.timeEnd('[ProfileCacheManager] ghcModelsManager.initialize');
           logger.error(`[ProfileCacheManager] GhcModelsManager initialization failed: ${modelsError instanceof Error ? modelsError.message : String(modelsError)}`);
         }
       })(),
 
       // Initialize MCPClientManager
       (async () => {
-        console.time('[ProfileCacheManager] mcpClientManager.initialize');
         try {
           this.mcpClientManager = mcpClientManager;
           await mcpClientManager.initialize(alias);
-          console.timeEnd('[ProfileCacheManager] mcpClientManager.initialize');
         } catch (mcpError) {
-          console.timeEnd('[ProfileCacheManager] mcpClientManager.initialize');
           logger.error(`[ProfileCacheManager] MCP initialization failed: ${mcpError instanceof Error ? mcpError.message : String(mcpError)}`);
-        }
-      })(),
-
-      // Initialize PluginManager
-      (async () => {
-        console.time('[ProfileCacheManager] pluginManager.initialize');
-        try {
-          const result = await pluginManager.initialize(alias);
-          console.timeEnd('[ProfileCacheManager] pluginManager.initialize');
-          if (result.errors.length > 0) {
-            logger.warn(`[ProfileCacheManager] Plugin initialization had ${result.errors.length} error(s): ${result.errors.map(e => e.message).join('; ')}`);
-          }
-        } catch (pluginError) {
-          console.timeEnd('[ProfileCacheManager] pluginManager.initialize');
-          logger.error(`[ProfileCacheManager] Plugin initialization failed: ${pluginError instanceof Error ? pluginError.message : String(pluginError)}`);
         }
       })(),
 
       // Initialize AgentChatManager
       (async () => {
-        console.time('[ProfileCacheManager] agentChatManager.initialize');
         try {
           await agentChatManager.initialize(alias);
-          console.timeEnd('[ProfileCacheManager] agentChatManager.initialize');
         } catch (agentError) {
-          console.timeEnd('[ProfileCacheManager] agentChatManager.initialize');
           logger.error(`[ProfileCacheManager] AgentChatManager initialization failed: ${agentError instanceof Error ? agentError.message : String(agentError)}`);
         }
       })(),
 
-      // Initialize Remote Channel
+      // Initialize External Agent service
       (async () => {
-        console.time('[ProfileCacheManager] remoteChannel.initialize');
-        try {
-          if (!featureFlagManager.isEnabled('openkosmosFeatureRemoteChannel')) {
-            console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
-            return;
-          }
-
-          if (!this.getRemoteChannelManager) {
-            logger.warn('[ProfileCacheManager] Remote channel manager getter not injected, skipping');
-            console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
-            return;
-          }
-
-          const manager = await this.getRemoteChannelManager();
-
-          await manager.initialize(alias);
-
-          const { broadcastRemoteChannelStatus, broadcastBindingChanged } = await import('../remoteChannel/remoteChannelIPC');
-          manager.setStatusChangeListener(broadcastRemoteChannelStatus);
-          manager.setBindingChangeListener(broadcastBindingChanged);
-
-          const hasToken = await credentialStore.hasCredential(alias, 'teams', 'bindingToken');
-          if (hasToken) {
-            logger.debug('[ProfileCacheManager] Auto-starting Teams channel (has binding token)...');
-            await manager.startChannel('teams');
-          }
-
-          console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
-        } catch (error) {
-          console.timeEnd('[ProfileCacheManager] remoteChannel.initialize');
-          logger.error(`[ProfileCacheManager] Remote channel initialization failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      })(),
-
-      // Initialize External Agent service (independent from RemoteChannel)
-      (async () => {
-        console.time('[ProfileCacheManager] externalAgent?.initialize');
         try {
           if (!featureFlagManager.isEnabled('openkosmosFeatureExternalAgent')) {
-            console.timeEnd('[ProfileCacheManager] externalAgent?.initialize');
             return;
           }
 
           await getExternalAgentService(alias);
-          console.timeEnd('[ProfileCacheManager] externalAgent?.initialize');
         } catch (error) {
-          console.timeEnd('[ProfileCacheManager] externalAgent?.initialize');
           logger.error(`[ProfileCacheManager] External Agent initialization failed: ${error instanceof Error ? error.message : String(error)}`);
         }
       })()
     ]).then((results) => {
-      console.timeEnd('[ProfileCacheManager] backgroundServices');
       const failed = results.filter(r => r.status === 'rejected');
       if (failed.length > 0) {
         logger.warn(`[ProfileCacheManager] ${failed.length} background services failed to initialize`);
@@ -920,7 +1176,8 @@ export class ProfileCacheManager {
 
 
   // ========================================
-  // MCP Server, Skill, Sub-Agent CRUD — delegated to ./profileEntityCrud.ts
+  // MCP Server, Skill & Sub-Agent CRUD — delegated to ./profileEntityCrud.ts.
+  // Installed global MCP servers are owned by ./mcpConfigManager.ts (mcp.json).
   // ========================================
 
   private entityCtx(): EntityCrudContext {
@@ -944,32 +1201,32 @@ export class ProfileCacheManager {
   async deleteMcpServerConfig(alias: string, serverName: string): Promise<boolean> {
     return entityCrud.deleteMcpServerConfig(this.entityCtx(), alias, serverName);
   }
-  async addSkill(alias: string, skillConfig: { name: string; description: string; version: string; remoteVersion?: string; source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN' }): Promise<boolean> {
-    return entityCrud.addSkill(this.entityCtx(), alias, skillConfig);
+  async addSkill(alias: string, skillConfig: { name: string; description: string; version: string; remoteVersion?: string; source: 'IN-LIBRARY' | 'ON-DEVICE' }): Promise<boolean> {
+    return entityCrud.addSkillConfig(this.entityCtx(), alias, skillConfig);
   }
   async updateSkill(alias: string, skillName: string, updates: { description?: string; version?: string; remoteVersion?: string }): Promise<boolean> {
-    return entityCrud.updateSkill(this.entityCtx(), alias, skillName, updates);
+    return entityCrud.updateSkillConfig(this.entityCtx(), alias, skillName, updates);
   }
   async deleteSkill(alias: string, skillName: string): Promise<boolean> {
-    return entityCrud.deleteSkill(this.entityCtx(), alias, skillName);
+    return entityCrud.deleteSkillConfig(this.entityCtx(), alias, skillName);
   }
-  async getSubAgents(): Promise<SubAgentConfig[] | SubAgentIndex[]> {
-    return entityCrud.getSubAgents(this.entityCtx());
+  getHooks(alias: string): HookDefinition[] {
+    return hookCrud.getHooks(this.entityCtx(), alias);
   }
-  getSubAgentIndex(alias?: string): SubAgentIndex[] {
-    return entityCrud.getSubAgentIndex(this.entityCtx(), alias);
+  isHooksEnabled(alias: string): boolean {
+    return hookCrud.isHooksEnabled(this.entityCtx(), alias);
   }
-  async addSubAgent(alias: string, config: SubAgentConfig): Promise<boolean> {
-    return entityCrud.addSubAgent(this.entityCtx(), alias, config);
+  async setHooksEnabled(alias: string, enabled: boolean): Promise<boolean> {
+    return hookCrud.setHooksEnabled(this.entityCtx(), alias, enabled);
   }
-  async updateSubAgent(alias: string, name: string, updates: Partial<SubAgentConfig>): Promise<boolean> {
-    return entityCrud.updateSubAgent(this.entityCtx(), alias, name, updates);
+  async addHook(alias: string, hook: HookDefinition): Promise<boolean> {
+    return hookCrud.addHook(this.entityCtx(), alias, hook);
   }
-  async deleteSubAgent(alias: string, name: string): Promise<boolean> {
-    return entityCrud.deleteSubAgent(this.entityCtx(), alias, name);
+  async updateHook(alias: string, hookId: string, updates: Partial<Omit<HookDefinition, 'id' | 'createdAt' | 'updatedAt'>>): Promise<boolean> {
+    return hookCrud.updateHook(this.entityCtx(), alias, hookId, updates);
   }
-  async syncSubAgentIndex(alias: string): Promise<void> {
-    return entityCrud.syncSubAgentIndex(this.entityCtx(), alias);
+  async deleteHook(alias: string, hookId: string): Promise<boolean> {
+    return hookCrud.deleteHook(this.entityCtx(), alias, hookId);
   }
 
   /**
@@ -986,6 +1243,7 @@ export class ProfileCacheManager {
       notifyProfileDataManager: (alias, immediate?) => immediate !== undefined
         ? this.notifyProfileDataManager(alias, immediate)
         : this.notifyProfileDataManager(alias),
+      getProfileDirectoryPath: (alias) => this.getProfileDirectoryPath(alias),
     };
   }
 
@@ -1015,10 +1273,6 @@ export class ProfileCacheManager {
     return this.cache.get(alias) || null;
   }
 
-  async updateChatSkillSnapshot(alias: string, chatId: string, skillSnapshot?: ChatSkillSnapshot | null, options?: { notifyRenderer?: boolean }): Promise<boolean> {
-    return chatCrud.updateChatSkillSnapshot(this.chatCrudCtx(), alias, chatId, skillSnapshot, options);
-  }
-
   /**
    * Force-notify the frontend ProfileDataManager to sync the cached data
    */
@@ -1043,7 +1297,7 @@ export class ProfileCacheManager {
       if (hadCache) {
         const userProfile = this.cache.get(alias);
         const profileDetails = userProfile
-          ? `hasChats=${!!userProfile.chats}, mcpServersCount=${userProfile.mcp_servers?.length || 0}, version=${userProfile.version}`
+          ? `hasChats=${!!userProfile.chats}, mcpServersCount=${mcpConfigManager.getServers(alias).length}, version=${userProfile.version}`
           : 'no profile data';
 
         // Phase 2: Clear user cache
@@ -1056,10 +1310,13 @@ export class ProfileCacheManager {
 
       // Phase 3: Clear user runtime states (including MCP servers)
       this.clearUserRuntimeStates(alias);
-
-      // Phase 4: Clean up resources for user sign-out or profile switching
-      this.cleanupMem0Resources().catch(error => {
-      });
+      mcpConfigManager.clearCache(alias);
+      // Drop the cached global skill registry and per-chat skill snapshots for this user.
+      skillsConfigManager.clearForAlias(alias);
+      chatSkillSnapshotStore.clearForAlias(alias);
+      // Drop the cached global Agent Hook library for this user (no per-chat snapshots).
+      hooksConfigManager.clearForAlias(alias);
+      clearRegistry(this.getProfileDirectoryPath(alias));
     } else {
 
       // Phase 1: Inventory all cached users
@@ -1080,10 +1337,13 @@ export class ProfileCacheManager {
       for (const user of cachedUsers) {
         this.clearUserRuntimeStates(user);
       }
-
-      // Phase 4: Clean up resources for complete application cleanup
-      this.cleanupMem0Resources().catch(error => {
-      });
+      mcpConfigManager.clearCache();
+      // Drop all cached global skill registries and per-chat skill snapshots.
+      skillsConfigManager.clearAll();
+      chatSkillSnapshotStore.clearAll();
+      // Drop all cached global Agent Hook libraries (no per-chat snapshots).
+      hooksConfigManager.clearAll();
+      clearRegistry();
     }
   }
 
@@ -1098,6 +1358,52 @@ export class ProfileCacheManager {
    * Runtime state management methods
    * 🆕 Refactored: these methods now delegate to mcpClientManager; runtimeStates are no longer maintained inside profileCacheManager
    */
+
+  /**
+   * Update MCP server runtime status
+   * 🆕 Refactored: delegates to mcpClientManager
+   * @deprecated This method is kept for backward compatibility; state is now managed internally by mcpClientManager
+   */
+  updateMcpServerStatus(alias: string, serverName: string, status: MCPServerStatus): void {
+    // 🆕 Refactored: state is now managed internally by mcpClientManager
+    // This method retains an empty implementation for backward compatibility
+    // mcpClientManager automatically notifies the frontend when state changes
+    logger.debug('[ProfileCacheManager] updateMcpServerStatus called (deprecated, delegated to mcpClientManager)', 'updateMcpServerStatus', {
+      alias,
+      serverName,
+      status
+    });
+  }
+
+  /**
+   * Update MCP server tools
+   * 🆕 Refactored: delegates to mcpClientManager
+   * @deprecated This method is kept for backward compatibility; the tool list is now managed internally by mcpClientManager
+   */
+  updateMcpServerTools(alias: string, serverName: string, tools: { name: string; description?: string; inputSchema: any }[]): void {
+    // 🆕 Refactored: the tool list is now managed internally by mcpClientManager
+    // This method retains an empty implementation for backward compatibility
+    logger.debug('[ProfileCacheManager] updateMcpServerTools called (deprecated, delegated to mcpClientManager)', 'updateMcpServerTools', {
+      alias,
+      serverName,
+      toolCount: tools.length
+    });
+  }
+
+  /**
+   * Update MCP server last error
+   * 🆕 Refactored: delegates to mcpClientManager
+   * @deprecated This method is kept for backward compatibility; errors are now managed internally by mcpClientManager
+   */
+  updateMcpServerError(alias: string, serverName: string, error: Error | null): void {
+    // 🆕 Refactored: errors are now managed internally by mcpClientManager
+    // This method retains an empty implementation for backward compatibility
+    logger.debug('[ProfileCacheManager] updateMcpServerError called (deprecated, delegated to mcpClientManager)', 'updateMcpServerError', {
+      alias,
+      serverName,
+      hasError: error !== null
+    });
+  }
 
   /**
    * Get MCP server runtime state
@@ -1157,33 +1463,13 @@ export class ProfileCacheManager {
   }
 
   /**
-   * Cleanup resources
-   * Called during application shutdown or user sign-out
-   */
-  async cleanupMem0Resources(): Promise<void> {
-    const cleanupStart = Date.now();
-    const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-
-    try {
-
-      // ProfileCacheManager only clears local cache state (already handled elsewhere)
-      // e.g. clearCache(), clearUserRuntimeStates(), etc.
-
-      const cleanupDuration = Date.now() - cleanupStart;
-    } catch (error) {
-      const cleanupDuration = Date.now() - cleanupStart;
-    }
-  }
-
-  /**
    * Get combined server info (config + runtime state)
    */
   getMcpServerInfo(alias: string, serverName: string): {
     config: McpServerConfig | null;
     runtime: MCPServerRuntimeState | null;
   } {
-    const profile = this.getCachedProfile(alias);
-    const config = profile?.mcp_servers.find(server => server.name === serverName) || null;
+    const config = mcpConfigManager.getServerInfo(alias, serverName);
     const runtime = this.getMcpServerRuntimeState(alias, serverName);
 
     return { config, runtime };
@@ -1196,12 +1482,7 @@ export class ProfileCacheManager {
     config: McpServerConfig;
     runtime: MCPServerRuntimeState | null;
   }> {
-    const profile = this.getCachedProfile(alias);
-    if (!profile) {
-      return [];
-    }
-
-    return profile.mcp_servers.map(config => ({
+    return mcpConfigManager.getServers(alias).map(config => ({
       config,
       runtime: this.getMcpServerRuntimeState(alias, config.name)
     }));
@@ -1252,11 +1533,14 @@ export class ProfileCacheManager {
   async updateConfirmationSettings(alias: string, settings: Partial<ConfirmationSettings>): Promise<boolean> {
     return settingsCrud.updateConfirmationSettings(this.settingsCtx(), alias, settings);
   }
-  async updateRemoteChannelsConfig(alias: string, config: Partial<RemoteChannelsConfig>): Promise<boolean> {
-    return settingsCrud.updateRemoteChannelsConfig(this.settingsCtx(), alias, config);
+  getVoiceInputSettings(alias: string): VoiceInputSettings {
+    return settingsCrud.getVoiceInputSettings(this.settingsCtx(), alias);
   }
-  async updatePrimaryAgent(alias: string, agentName: string): Promise<boolean> {
-    return settingsCrud.updatePrimaryAgent(this.settingsCtx(), alias, agentName);
+  async updateVoiceInputSettings(alias: string, settings: Partial<VoiceInputSettings>): Promise<boolean> {
+    return settingsCrud.updateVoiceInputSettings(this.settingsCtx(), alias, settings);
+  }
+  async updatePrimaryChat(alias: string, chatId: string): Promise<boolean> {
+    return settingsCrud.updatePrimaryChat(this.settingsCtx(), alias, chatId);
   }
   async updateFreDone(alias: string, freDone: boolean): Promise<boolean> {
     return settingsCrud.updateFreDone(this.settingsCtx(), alias, freDone);
@@ -1264,17 +1548,41 @@ export class ProfileCacheManager {
   getFreDone(alias: string): boolean {
     return settingsCrud.getFreDone(this.settingsCtx(), alias);
   }
-  getBrowserControlSettings(alias: string): BrowserControlSettings {
-    return settingsCrud.getBrowserControlSettings(this.settingsCtx(), alias);
-  }
-  async updateBrowserControlSettings(alias: string, settings: Partial<BrowserControlSettings>): Promise<boolean> {
-    return settingsCrud.updateBrowserControlSettings(this.settingsCtx(), alias, settings);
-  }
   getDevToolsMcpSettings(alias: string): DevToolsMcpSettings {
     return settingsCrud.getDevToolsMcpSettings(this.settingsCtx(), alias);
   }
   async updateDevToolsMcpSettings(alias: string, settings: Partial<DevToolsMcpSettings>): Promise<boolean> {
     return settingsCrud.updateDevToolsMcpSettings(this.settingsCtx(), alias, settings);
+  }
+  getCodingAgentSettings(alias: string): CodingAgentSettings {
+    return settingsCrud.getCodingAgentSettings(this.settingsCtx(), alias);
+  }
+  async updateCodingAgentSettings(alias: string, settings: Partial<CodingAgentSettings>): Promise<boolean> {
+    return settingsCrud.updateCodingAgentSettings(this.settingsCtx(), alias, settings);
+  }
+  getSyncSettings(alias: string): SyncSettings {
+    return settingsCrud.getSyncSettings(this.settingsCtx(), alias);
+  }
+  async updateSyncSettings(alias: string, settings: Partial<SyncSettings>): Promise<boolean> {
+    return settingsCrud.updateSyncSettings(this.settingsCtx(), alias, settings);
+  }
+  getBrowserSettings(alias: string): BrowserSettings {
+    return settingsCrud.getBrowserSettings(this.settingsCtx(), alias);
+  }
+  async updateBrowserSettings(alias: string, settings: Partial<BrowserSettings>): Promise<boolean> {
+    return settingsCrud.updateBrowserSettings(this.settingsCtx(), alias, settings);
+  }
+  getMemexSettings(alias: string): MemexSettings {
+    return settingsCrud.getMemexSettings(this.settingsCtx(), alias);
+  }
+  async updateMemexSettings(alias: string, settings: Partial<MemexSettings>): Promise<boolean> {
+    return settingsCrud.updateMemexSettings(this.settingsCtx(), alias, settings);
+  }
+  getComputerUseSettings(alias: string): ComputerUseSettings {
+    return settingsCrud.getComputerUseSettings(this.settingsCtx(), alias);
+  }
+  async updateComputerUseSettings(alias: string, settings: Partial<ComputerUseSettings>): Promise<boolean> {
+    return settingsCrud.updateComputerUseSettings(this.settingsCtx(), alias, settings);
   }
 
   // ========================================
@@ -1327,6 +1635,7 @@ export class ProfileCacheManager {
   async deleteChatSession(alias: string, chatId: string, chatSessionId: string): Promise<boolean> {
     return chatSessionOps.deleteChatSession(this.chatSessionCtx(), alias, chatId, chatSessionId);
   }
+  /** @deprecated Use getChatSessionsAsync instead */
   getChatSessions(alias: string, chatId: string): ChatSession[] {
     return chatSessionOps.getChatSessions(alias, chatId);
   }

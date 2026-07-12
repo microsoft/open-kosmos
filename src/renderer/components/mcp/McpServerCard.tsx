@@ -4,6 +4,7 @@ import React from 'react'
 import { MoreHorizontal } from 'lucide-react';
 import '../../styles/ServerCard.css';
 import { useMCPServers } from '../userData/userDataProvider'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface ServerCardProps {
   serverName: string
@@ -33,6 +34,7 @@ const ServerCard: React.FC<ServerCardProps> = ({
   isMenuOpen = false,
   isSelected = false
 }) => {
+  const { t } = useI18n()
   const { servers, tools } = useMCPServers()
 
   // Find the server by name
@@ -42,9 +44,6 @@ const ServerCard: React.FC<ServerCardProps> = ({
   // 🆕 Check if this is the built-in server
   const BUILTIN_SERVER_NAME = 'builtin-tools'
   const isBuiltinServer = server.name === BUILTIN_SERVER_NAME
-
-  // 🔌 Check if this is a plugin server (source === 'PLUGIN' or name starts with 'plugin:')
-  const isPluginServer = server.source === 'PLUGIN' || server.name.startsWith('plugin--')
 
   const isOperating = operationState?.isOperating || false
   const currentOperation = operationState?.operation
@@ -122,7 +121,7 @@ const ServerCard: React.FC<ServerCardProps> = ({
     : currentState === 'needs-user-interaction'
       ? 'connecting'
       : currentState
-  const statusLabel = currentState === 'needs-user-interaction' ? 'needs sign-in' : currentState
+  const statusLabel = currentState === 'needs-user-interaction' ? t('mcp.server.needsSignIn') : currentState
 
 
   return (
@@ -132,8 +131,7 @@ const ServerCard: React.FC<ServerCardProps> = ({
           <div className="server-name-group">
             <div className="server-title-row">
               <h4 className="server-name">{serverName}</h4>
-              {isBuiltinServer && <span className="builtin-badge">Built-in</span>}
-              {isPluginServer && <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)', opacity: 0.85 }}>Plugin</span>}
+              {isBuiltinServer && <span className="builtin-badge">{t('common.builtIn')}</span>}
             </div>
             {/* Row 2: version and source */}
             {(server.version || server.source) && (
@@ -142,10 +140,7 @@ const ServerCard: React.FC<ServerCardProps> = ({
                   <span className="server-version-badge">v{server.version}</span>
                 )}
                 {server.source && (
-                  <span className="server-source-badge">{server.source}</span>
-                )}
-                {/[/\\]agency(?:\.exe)?$/.test(server.command) && (
-                  <span className="server-source-badge" style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>M365</span>
+                  <span className="server-source-badge">ON-DEVICE</span>
                 )}
               </div>
             )}
@@ -154,24 +149,24 @@ const ServerCard: React.FC<ServerCardProps> = ({
               <span className={`server-status ${statusClass}`}>{statusLabel}</span>
               {currentState === 'connected' && (
                 <span className="tools-badge">
-                  tools: {serverTools.length}
+                  {t('mcp.server.toolsCount', { count: serverTools.length })}
                 </span>
               )}
               {hasError && (currentState === 'error' || currentState === 'needs-user-interaction') && (
-                <span className="error-indicator" title={error || 'Connection error'}>
+                <span className="error-indicator" title={error || t('common.connectionError')}>
                   ⚠️
                 </span>
               )}
             </div>
           </div>
         </div>
-        {/* Menu Button - 🆕 built-in and plugin servers do not show the menu button */}
-        {!isBuiltinServer && !isPluginServer && (
+        {/* Menu Button - 🆕 built-in servers do not show the menu button */}
+        {!isBuiltinServer && (
           <div className={`server-menu-container ${isMenuOpen ? 'menu-open' : ''}`}>
             <button
               className="server-menu-btn"
               onClick={onMenuToggle}
-              title="More options"
+              title={t('common.moreOptions')}
             >
               <MoreHorizontal size={16} strokeWidth={1.5} />
             </button>

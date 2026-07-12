@@ -5,7 +5,6 @@ const mockRmSync = vi.fn();
 const mockLstatSync = vi.fn();
 const mockUnlinkSync = vi.fn();
 const mockGetPath = vi.fn();
-const mockIsPluginSkill = vi.fn(() => false);
 
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
@@ -18,10 +17,6 @@ vi.mock('../../../../shared/constants/builtinSkills', async () => ({
   BUILTIN_SKILL_NAMES: ['skill-creator'],
   BUILTIN_DEFAULTS_VERSION: 1,
   BUILTIN_SKILL_CHANGELOG: { 1: ['skill-creator'] },
-}));
-
-vi.mock('../../plugin/bridges/skillBridge', async () => ({
-  isPluginSkill: (...args: unknown[]) => mockIsPluginSkill(...args),
 }));
 
 vi.mock('fs', async () => ({
@@ -47,22 +42,6 @@ describe('deleteInstalledSkill — extended coverage', () => {
     mockRmSync.mockImplementation(() => undefined);
     mockUnlinkSync.mockImplementation(() => undefined);
     mockLstatSync.mockReturnValue({ isSymbolicLink: () => false });
-    mockIsPluginSkill.mockReturnValue(false);
-  });
-
-  it('rejects plugin skills unless pluginBypass is set', async () => {
-    mockIsPluginSkill.mockReturnValue(true);
-    const result = await deleteInstalledSkill('tester', 'plugin-skill');
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('PLUGIN_SKILL');
-    expect(mockDeleteSkill).not.toHaveBeenCalled();
-  });
-
-  it('allows plugin skills to be deleted with pluginBypass', async () => {
-    mockIsPluginSkill.mockReturnValue(true);
-    mockDeleteSkill.mockResolvedValue(true);
-    const result = await deleteInstalledSkill('tester', 'plugin-skill', { pluginBypass: true });
-    expect(result.success).toBe(true);
   });
 
   it('removes symlink via unlinkSync instead of rmSync', async () => {

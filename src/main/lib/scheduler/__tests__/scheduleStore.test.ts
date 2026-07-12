@@ -12,6 +12,12 @@ vi.mock('node-cron', async () => ({
 }));
 
 vi.mock('../../unifiedLogger', async () => ({
+  createConsoleLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
   createLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -38,7 +44,7 @@ const cronJob = {
   scheduleType: 'cron' as const,
   cronExpression: '0 * * * *',
   enabled: true,
-  agentId: 'agent-1',
+  chat_id: 'agent-1',
   message: 'hello',
   status: 'pending' as const,
 };
@@ -50,7 +56,7 @@ const onceJob = {
   scheduleType: 'once' as const,
   runAt: '2026-05-01T12:00:00.000Z',
   enabled: true,
-  agentId: 'agent-1',
+  chat_id: 'agent-1',
   message: 'hello',
   status: 'pending' as const,
 };
@@ -114,8 +120,8 @@ describe('ScheduleStore', () => {
 
     it('generates an id when not provided', async () => {
       await store.initialize('alice');
-      const { name, description, scheduleType, cronExpression, enabled, agentId, message, status } = cronJob;
-      const result = await store.createJob('alice', { name, description, scheduleType, cronExpression, enabled, agentId, message, status });
+      const { name, description, scheduleType, cronExpression, enabled, chat_id, message, status } = cronJob;
+      const result = await store.createJob('alice', { name, description, scheduleType, cronExpression, enabled, chat_id, message, status });
       expect(result.id).toMatch(/^sched_/);
     });
 
@@ -142,7 +148,7 @@ describe('ScheduleStore', () => {
 
     it('throws on empty agentId', async () => {
       await store.initialize('alice');
-      await expect(store.createJob('alice', { ...cronJob, agentId: '  ' })).rejects.toThrow('agentId is required');
+      await expect(store.createJob('alice', { ...cronJob, chat_id: '  ' })).rejects.toThrow('chat_id is required');
     });
 
     it('throws on invalid cron expression', async () => {
@@ -150,6 +156,11 @@ describe('ScheduleStore', () => {
       vi.mocked(cron.validate).mockReturnValue(false);
       await store.initialize('alice');
       await expect(store.createJob('alice', { ...cronJob, cronExpression: 'INVALID' })).rejects.toThrow('Invalid cron');
+    });
+
+    it('throws on missing cron expression', async () => {
+      await store.initialize('alice');
+      await expect(store.createJob('alice', { ...cronJob, cronExpression: '  ' })).rejects.toThrow('cronExpression is required');
     });
 
     it('throws on missing runAt for once job', async () => {
@@ -270,6 +281,16 @@ describe('ScheduleStore', () => {
       const result = await store.markJobExecutionStarted('alice', cronJob.id, '2026-05-11T12:00:00.000Z');
       expect(result?.lastRunAt).toBe('2026-05-11T12:00:00.000Z');
     });
+
+    it('logs a null update payload when start update cannot apply', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+      store.updateJob = vi.fn(async () => null);
+
+      const result = await store.markJobExecutionStarted('alice', cronJob.id, '2026-05-11T12:00:00.000Z');
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('markJobExecutionCompleted', () => {
@@ -287,12 +308,32 @@ describe('ScheduleStore', () => {
       expect(result?.lastFinishedAt).toBe('2026-05-11T12:00:00.000Z');
     });
 
+    it('logs a null cron completion payload when update cannot apply', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+      store.updateJob = vi.fn(async () => null);
+
+      const result = await store.markJobExecutionCompleted('alice', cronJob.id, '2026-05-11T12:00:00.000Z');
+
+      expect(result).toBeNull();
+    });
+
     it('marks a once job as completed (sets completed)', async () => {
       await store.initialize('alice');
       await store.createJob('alice', { ...onceJob });
       const result = await store.markJobExecutionCompleted('alice', onceJob.id, '2026-05-01T12:05:00.000Z');
       expect(result?.status).toBe('completed');
       expect(result?.enabled).toBe(false);
+    });
+
+    it('logs a null once completion payload when update cannot apply', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...onceJob });
+      store.updateJob = vi.fn(async () => null);
+
+      const result = await store.markJobExecutionCompleted('alice', onceJob.id, '2026-05-01T12:05:00.000Z');
+
+      expect(result).toBeNull();
     });
   });
 
@@ -310,12 +351,32 @@ describe('ScheduleStore', () => {
       expect(result?.status).toBe('failed');
     });
 
+    it('logs a null cron failure payload when update cannot apply', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+      store.updateJob = vi.fn(async () => null);
+
+      const result = await store.markJobExecutionFailed('alice', cronJob.id, '2026-05-11T12:00:00.000Z');
+
+      expect(result).toBeNull();
+    });
+
     it('marks a once job as failed', async () => {
       await store.initialize('alice');
       await store.createJob('alice', { ...onceJob });
       const result = await store.markJobExecutionFailed('alice', onceJob.id, '2026-05-01T12:05:00.000Z');
       expect(result?.status).toBe('failed');
       expect(result?.enabled).toBe(false);
+    });
+
+    it('logs a null once failure payload when update cannot apply', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...onceJob });
+      store.updateJob = vi.fn(async () => null);
+
+      const result = await store.markJobExecutionFailed('alice', onceJob.id, '2026-05-01T12:05:00.000Z');
+
+      expect(result).toBeNull();
     });
   });
 
@@ -344,7 +405,7 @@ describe('ScheduleStore', () => {
 
     it('filters by agentId', async () => {
       await store.initialize('alice');
-      await store.createJob('alice', { ...cronJob, agentId: 'agent-1' });
+      await store.createJob('alice', { ...cronJob, chat_id: 'agent-1' });
       const all = await store.listJobs('alice');
       const filtered = await store.listJobs('alice', 'agent-x');
       expect(all).toHaveLength(1);
@@ -377,6 +438,74 @@ describe('ScheduleStore', () => {
       vi.mocked(scheduleSettingsManager.readScheduleMonth).mockResolvedValue({ schedulerJobs: [] });
       await store.initialize('alice');
       expect(await store.listJobs('alice')).toHaveLength(0);
+    });
+
+    it('keeps cached jobs for other aliases when initializing a new alias', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+
+      await store.initialize('bob');
+
+      expect(await store.listJobs('alice')).toHaveLength(1);
+      expect(await store.listJobs('bob')).toHaveLength(0);
+    });
+  });
+
+  describe('internal edge branches', () => {
+    it('reuses the singleton instance after the module-level store is created', async () => {
+      const { ScheduleStore } = await import('../scheduleStore');
+
+      expect(ScheduleStore.getInstance()).toBe(ScheduleStore.getInstance());
+    });
+
+    it('returns null when an update loses its cached aggregate before the queued task runs', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+      store.enqueueOnJob = async (_jobId: string, task: () => Promise<unknown>) => {
+        store.jobsById.delete(cronJob.id);
+        return task();
+      };
+
+      const result = await store.updateJob('alice', cronJob.id, { name: 'Lost job' });
+
+      expect(result).toBeNull();
+    });
+
+    it('returns false when a delete loses its cached aggregate before the queued task runs', async () => {
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+      store.enqueueOnJob = async (_jobId: string, task: () => Promise<unknown>) => {
+        store.jobsById.delete(cronJob.id);
+        return task();
+      };
+
+      const result = await store.deleteJob('alice', cronJob.id);
+
+      expect(result).toBe(false);
+    });
+
+    it('ignores removal from a missing month index', () => {
+      expect(() => store.removeAggregateFromMonthIndex('alice', '202604', cronJob.id)).not.toThrow();
+    });
+
+    it('ignores flushes for missing cached jobs', async () => {
+      await expect(store.flushJob(cronJob.id)).resolves.toBeUndefined();
+    });
+
+    it('leaves a dirty revision when the job changes during flush', async () => {
+      const { scheduleSettingsManager } = await import('../../userDataADO/scheduleSettingsManager');
+      vi.mocked(scheduleSettingsManager.upsertScheduleJob as any).mockImplementation(async (_alias: string, job: typeof cronJob) => {
+        const aggregate = store.jobsById.get(job.id);
+        aggregate.runtime.revision += 1;
+      });
+
+      await store.initialize('alice');
+      await store.createJob('alice', { ...cronJob });
+
+      const aggregate = store.jobsById.get(cronJob.id);
+      expect(aggregate.runtime.dirty).toBe(true);
+      expect(aggregate.runtime.persistedRevision).toBe(0);
+      expect(aggregate.runtime.revision).toBe(2);
     });
   });
 

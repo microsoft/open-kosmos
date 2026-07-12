@@ -1,9 +1,10 @@
 import React, { useLayoutEffect } from 'react';
 import { FolderOpen, Trash2, RefreshCw } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
-import { useProfileDataRefresh, useSkills } from '../userData/userDataProvider';
+import { useProfileDataRefresh } from '../userData/userDataProvider';
 import { isBuiltinSkill } from '../../../shared/constants/builtinSkills';
 import { adjustAnchoredDropdownToViewport, AnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface SkillDropdownMenuProps {
   skillMenuRef: React.RefObject<HTMLDivElement>;
@@ -20,19 +21,10 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
 }) => {
   const { showSuccess, showError, showToast } = useToast();
   const { refresh } = useProfileDataRefresh();
-  const { skills } = useSkills();
+  const { t } = useI18n();
   const [isDev, setIsDev] = React.useState(false);
 
-  // Get current skill info
-  const currentSkill = skills.find(skill => skill.name === skillName);
-  const isOnDeviceSkill = currentSkill?.source === 'ON-DEVICE';
   const isBuiltin = isBuiltinSkill(skillName);
-  const isPlugin = currentSkill?.source === 'PLUGIN' || skillName.startsWith('plugin--');
-  
-  // Plugin skills are fully managed by the plugin lifecycle — no menu needed
-  if (isPlugin) {
-    return null;
-  }
 
   // Detect dev mode
   React.useEffect(() => {
@@ -53,11 +45,11 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
   // Determine menu text based on platform
   const getOpenInExplorerText = () => {
     if (isWindows) {
-      return 'Open in File Explorer';
+      return t('common.openInFileExplorer');
     } else if (isMac) {
-      return 'Open in Finder';
+      return t('common.openInFinder');
     } else {
-      return 'Open in File Manager';
+      return t('common.openInFileManager');
     }
   };
 
@@ -79,16 +71,16 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
 
     try {
       // Check if API is available
-      if (!window.electronAPI?.skillLibrary?.updateSkillFromDevice) {
-        showError('Update skill from device API not available');
+      if (!window.electronAPI?.skills?.updateSkillFromDevice) {
+        showError(t('skills.menu.updateApiUnavailable'));
         return;
       }
 
       // Call main process IPC handler to select and update zip file
-      const result = await window.electronAPI.skillLibrary.updateSkillFromDevice(skillName);
+      const result = await window.electronAPI.skills.updateSkillFromDevice(skillName);
 
       if (result.success) {
-        showSuccess(`Skill "${result.skillName}" updated successfully`);
+        showSuccess(t('skills.menu.updatedSuccess', { name: result.skillName }));
 
         // Refresh skills list
         setTimeout(() => {
@@ -107,8 +99,8 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
       }
       // When result.error === 'File selection canceled' or 'User cancelled the operation', show no toast
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to update skill from device: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('skills.menu.updateFromDeviceFailed', { error: errorMessage }));
     }
 
     onClose();
@@ -128,18 +120,18 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
     try {
       // Open Skill folder via IPC
       if (!window.electronAPI?.skills?.openSkillFolder) {
-        showError('Open folder API not available');
+        showError(t('skills.menu.openFolderApiUnavailable'));
         return;
       }
 
       const result = await window.electronAPI.skills.openSkillFolder(skillName);
 
       if (!result.success) {
-        showError(`Failed to open folder: ${result.error || 'Unknown error'}`);
+        showError(t('skills.menu.openFolderFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to open folder: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('skills.menu.openFolderFailed', { error: errorMessage }));
     }
 
     onClose();
@@ -166,16 +158,15 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
           <span className="dropdown-menu-item-text">{getOpenInExplorerText()}</span>
         </button>
       )}
-      {/* Only show Update option for ON-DEVICE type Skills */}
-      {isOnDeviceSkill && (
+      {!isBuiltin && (
         <button
           className="dropdown-menu-item"
           onClick={handleUpdate}
           role="menuitem"
-          title="Update from a local .zip, .skill, folder, or SKILL.md artifact"
+          title={t('skills.menu.updateFromDeviceTitle')}
         >
           <span className="dropdown-menu-item-icon"><RefreshCw size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Update from Device...</span>
+          <span className="dropdown-menu-item-text">{t('skills.menu.updateFromDevice')}</span>
         </button>
       )}
       {/* Built-in skills cannot be deleted */}
@@ -186,7 +177,7 @@ const SkillDropdownMenu: React.FC<SkillDropdownMenuProps> = ({
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Trash2 size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Delete</span>
+          <span className="dropdown-menu-item-text">{t('common.delete')}</span>
         </button>
       )}
     </div>

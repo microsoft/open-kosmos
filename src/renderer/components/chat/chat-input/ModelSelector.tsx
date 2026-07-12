@@ -4,6 +4,7 @@ import { useAgentConfig } from '../../userData/userDataProvider';
 import { getModelById, getModelCapabilities } from '@/lib/models/ghcModels';
 import { useAvailableModels } from '@/lib/models/useAvailableModels';
 import { useScrollSelectedIntoView } from '@/lib/hooks/useScrollSelectedIntoView';
+import { useI18n } from '@/lib/i18n/useI18n';
 
 interface Props {
   currentChatId: string | null;
@@ -13,6 +14,7 @@ interface Props {
 
 function Selector(props: Props) {
   const { currentChatId, shouldLockComposeUi, setSupportsImages } = props;
+  const { t } = useI18n();
 
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
@@ -140,10 +142,10 @@ function Selector(props: Props) {
         className="model-button"
         onClick={() => setShowModelDropdown(!showModelDropdown)}
         disabled={isLoading || shouldLockComposeUi}
-        title="Select AI Model"
+        title={t('chat.model.selectAiModel')}
       >
         <span className="model-name">
-          {currentModelInfo?.name || 'Select Model'}
+          {currentModelInfo?.name || t('agent.create.selectModel')}
         </span>
         <svg
           className={`dropdown-arrow ${showModelDropdown ? 'rotated' : ''
@@ -179,13 +181,13 @@ function Selector(props: Props) {
                   <div className="model-badges">
                     {(model.capabilities.family.includes('o3') ||
                       model.capabilities.family.includes('o4')) && (
-                        <span className="badge reasoning">Reasoning</span>
+                        <span className="badge reasoning">{t('agent.create.badgeReasoning')}</span>
                       )}
                     {model.capabilities.supports.tool_calls && (
-                      <span className="badge tools">Tools</span>
+                      <span className="badge tools">{t('agent.create.badgeTools')}</span>
                     )}
                     {model.capabilities.supports.vision && (
-                      <span className="badge files">Image</span>
+                      <span className="badge files">{t('agent.create.badgeImage')}</span>
                     )}
                   </div>
                 </div>

@@ -7,6 +7,7 @@
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 import { parse } from 'node-html-parser';
 import { WebFetchToolArgs, WebContentResult, WebFetchToolResult } from '@shared/types/toolCallArgs';
+import type { ToolExecutionContext } from '../../subAgent/types';
 
 export type FetchWebContentToolArgs = WebFetchToolArgs;
 export type FetchWebContentToolResult = WebFetchToolResult;
@@ -122,7 +123,7 @@ export class FetchWebContentTool {
    * Execute the web content fetching tool
    * Static method, supports direct LLM invocation
    */
-  static async execute(args: FetchWebContentToolArgs, options?: { signal?: AbortSignal }): Promise<FetchWebContentToolResult> {
+  static async execute(args: FetchWebContentToolArgs, options?: { signal?: AbortSignal; executionContext?: ToolExecutionContext | null }): Promise<FetchWebContentToolResult> {
 
     // 1. Validate arguments
     const validation = this.validateArgs(args);
@@ -132,17 +133,19 @@ export class FetchWebContentTool {
 
     const {
       urls,
-      timeoutSeconds = 30,
       maxContentSize = 1024 * 1024 // 1MB
     } = args;
 
-    // Convert to milliseconds
-    const timeoutMs = timeoutSeconds * 1000;
+    // Fixed internal per-request timeout (ms). Not agent-configurable: the unified
+    // 10-minute no-response watchdog governs overall tool runtime; this only bounds a
+    // single HTTP request so a dead endpoint fails fast.
+    const timeoutMs = 30000;
 
     // Use a fixed User-Agent
     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
     const externalSignal = options?.signal;
+    const reportActivity = options?.executionContext?.reportActivity;
 
     const errors: string[] = [];
     const results: WebContentResult[] = [];
@@ -151,7 +154,7 @@ export class FetchWebContentTool {
       // 2. Fetch URLs in parallel
 
       const fetchPromises = urls.map(async (url, index) => {
-        return this.fetchSingleUrl(url, timeoutMs, maxContentSize, userAgent, index, externalSignal);
+        return this.fetchSingleUrl(url, timeoutMs, maxContentSize, userAgent, index, externalSignal, reportActivity);
       });
 
       const fetchResults = await Promise.allSettled(fetchPromises);
@@ -217,7 +220,8 @@ export class FetchWebContentTool {
     maxContentSize: number,
     userAgent: string,
     urlIndex: number,
-    externalSignal?: AbortSignal
+    externalSignal?: AbortSignal,
+    reportActivity?: () => void
   ): Promise<{ webContent?: WebContentResult, error?: string }> {
     try {
 
@@ -289,7 +293,7 @@ export class FetchWebContentTool {
       }
 
       // Get content
-      const rawContent = await response.text();
+      const rawContent = await this.readResponseText(response, maxContentSize, reportActivity);
 
       // Check actual content size
       if (rawContent.length > maxContentSize) {
@@ -357,6 +361,45 @@ export class FetchWebContentTool {
     }
   }
 
+  private static async readResponseText(
+    response: Response,
+    maxContentSize: number,
+    reportActivity?: () => void
+  ): Promise<string> {
+    if (!response.body) {
+      const text = await response.text();
+      reportActivity?.();
+      return text;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let rawContent = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        reportActivity?.();
+        rawContent += decoder.decode(value, { stream: true });
+        if (rawContent.length > maxContentSize) {
+          throw new Error(`Content too large: ${rawContent.length} characters`);
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    rawContent += decoder.decode();
+    if (rawContent.length > maxContentSize) {
+      throw new Error(`Content too large: ${rawContent.length} characters`);
+    }
+
+    return rawContent;
+  }
+
   /**
    * Merge all fetched content
    */
@@ -417,13 +460,6 @@ export class FetchWebContentTool {
             minItems: 1,
             maxItems: 20
           },
-          timeoutSeconds: {
-            type: 'number',
-            description: 'Request timeout in seconds (default: 30, range: 5-60)',
-            minimum: 5,
-            maximum: 60,
-            default: 30
-          },
           maxContentSize: {
             type: 'number',
             description: 'Maximum content size per URL in bytes (default: 1MB = 1048576, max: 10MB)',
@@ -458,13 +494,6 @@ export class FetchWebContentTool {
       const url = args.urls[i];
       if (typeof url !== 'string' || !isValidUrl(url)) {
         return { isValid: false, error: `URL at index ${i} is invalid: ${url}` };
-      }
-    }
-
-    // Validate timeoutSeconds
-    if (args.timeoutSeconds !== undefined) {
-      if (typeof args.timeoutSeconds !== 'number' || args.timeoutSeconds < 5 || args.timeoutSeconds > 60) {
-        return { isValid: false, error: 'timeoutSeconds must be a number between 5 and 60 seconds' };
       }
     }
 

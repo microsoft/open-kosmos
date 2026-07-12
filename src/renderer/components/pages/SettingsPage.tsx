@@ -7,9 +7,9 @@ import {
   McpAddMenuDropdown,
   SkillsAddMenuDropdown,
   SkillDropdownMenu,
-  SubAgentsAddMenuDropdown,
 } from '../menu';
 import { useProfileData, useChats, useProfileDataRefresh } from '../userData/userDataProvider';
+import { resolveChatAgent } from '../../lib/agent';
 import { useToast } from '../ui/ToastProvider';
 import {
   Dialog,
@@ -20,8 +20,6 @@ import {
   DialogFooter,
 } from '../ui/dialog';
 import ApplySkillToAgentsDialog from '../skills/ApplySkillToAgentsDialog';
-import SubAgentDropdownMenu from '../subAgents/SubAgentDropdownMenu';
-import ApplySubAgentToAgentsDialog from '../subAgents/ApplySubAgentToAgentsDialog';
 import {
   ANCHORED_DROPDOWN_SIZE_PRESETS,
   AnchoredDropdownPosition,
@@ -31,10 +29,12 @@ import '../../styles/ContentView.css';
 import '../../styles/DropdownMenu.css';
 import ResizableDivider from '../ui/ResizableDivider';
 import { profileDataManager } from "../../lib/userData";
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
   const isMac = window.electronAPI?.platform === 'darwin';
 
   // MCP Server dropdown menu state management
@@ -101,63 +101,9 @@ const SettingsPage: React.FC = () => {
     serverName: null,
   });
 
-  // Sub-Agents add menu state management
-  const [subAgentsAddMenuState, setSubAgentsAddMenuState] = useState<{
-    isOpen: boolean;
-    position: AnchoredDropdownPosition | null;
-  }>({
-    isOpen: false,
-    position: null,
-  });
-  const subAgentsAddMenuRef = useRef<HTMLDivElement>(null);
-
-  // Sub-Agent dropdown menu state management
-  const [subAgentMenuState, setSubAgentMenuState] = useState<{
-    isOpen: boolean;
-    subAgentName: string | null;
-    position: AnchoredDropdownPosition | null;
-  }>({
-    isOpen: false,
-    subAgentName: null,
-    position: null,
-  });
-  const subAgentMenuRef = useRef<HTMLDivElement>(null);
-
-  // Delete sub-agent confirmation dialog state
-  const [deleteSubAgentDialog, setDeleteSubAgentDialog] = useState<{
-    isOpen: boolean;
-    subAgentName: string | null;
-    usedByAgents: string[];
-  }>({
-    isOpen: false,
-    subAgentName: null,
-    usedByAgents: [],
-  });
-
-  // Apply sub-agent to agents dialog state
-  const [applySubAgentDialogState, setApplySubAgentDialogState] = useState<{
-    open: boolean;
-    subAgentName: string;
-  }>({ open: false, subAgentName: '' });
-
   // Hook dependencies
   const { chats } = useProfileData();
   const { showSuccess, showError } = useToast();
-
-  // Global event listener for subAgents:applyToAgents
-  useEffect(() => {
-    const handleApplySubAgentToAgents = (event: CustomEvent<{ subAgentName: string }>) => {
-      const { subAgentName } = event.detail;
-      if (subAgentName) {
-        setApplySubAgentDialogState({ open: true, subAgentName });
-      }
-    };
-
-    window.addEventListener('subAgents:applyToAgents', handleApplySubAgentToAgents as EventListener);
-    return () => {
-      window.removeEventListener('subAgents:applyToAgents', handleApplySubAgentToAgents as EventListener);
-    };
-  }, []);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -189,18 +135,6 @@ const SettingsPage: React.FC = () => {
         !skillMenuRef.current.contains(event.target as Node)
       ) {
         setSkillMenuState({ isOpen: false, skillName: null, position: null });
-      }
-      if (
-        subAgentsAddMenuRef.current &&
-        !subAgentsAddMenuRef.current.contains(event.target as Node)
-      ) {
-        setSubAgentsAddMenuState({ isOpen: false, position: null });
-      }
-      if (
-        subAgentMenuRef.current &&
-        !subAgentMenuRef.current.contains(event.target as Node)
-      ) {
-        setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
       }
     };
 
@@ -301,101 +235,14 @@ const SettingsPage: React.FC = () => {
     setSkillMenuState({ isOpen: false, skillName: null, position: null });
   };
 
-  // Sub-Agents add menu handler functions
-  const handleSubAgentsAddMenuToggle = (buttonElement: HTMLElement) => {
-    setSubAgentsAddMenuState((prevState) => {
-      if (prevState.isOpen) {
-        return { isOpen: false, position: null };
-      }
-
-      const position = getAnchoredDropdownPosition(
-        buttonElement,
-        ANCHORED_DROPDOWN_SIZE_PRESETS.subAgentsAddMenu,
-      );
-      return { isOpen: true, position };
-    });
-  };
-
-  const handleSubAgentsAddMenuClose = () => {
-    setSubAgentsAddMenuState({ isOpen: false, position: null });
-  };
-
-  // Sub-Agent menu handler functions
-  const handleSubAgentMenuToggle = (
-    subAgentName: string,
-    buttonElement: HTMLElement,
-  ) => {
-    if (subAgentMenuState.isOpen && subAgentMenuState.subAgentName === subAgentName) {
-      setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
-    } else {
-      const position = getAnchoredDropdownPosition(
-        buttonElement,
-        ANCHORED_DROPDOWN_SIZE_PRESETS.subAgentMenu,
-      );
-      setSubAgentMenuState({ isOpen: true, subAgentName, position });
-    }
-  };
-
-  const handleSubAgentMenuClose = () => {
-    setSubAgentMenuState({ isOpen: false, subAgentName: null, position: null });
-  };
-
-  // Handle sub-agent deletion - open confirmation dialog
-  const handleDeleteSubAgent = useCallback(
-    (subAgentName: string) => {
-      const usedByAgents = chats
-        .filter((chat) => chat.agent?.sub_agents?.includes(subAgentName))
-        .map((chat) => chat.agent?.name || 'Unknown Agent');
-
-      setDeleteSubAgentDialog({
-        isOpen: true,
-        subAgentName,
-        usedByAgents,
-      });
-    },
-    [chats],
-  );
-
-  // Confirm sub-agent deletion
-  const handleConfirmDeleteSubAgent = useCallback(async () => {
-    const { subAgentName } = deleteSubAgentDialog;
-    if (!subAgentName) return;
-
-    try {
-      if (!window.electronAPI?.subAgent?.delete) {
-        showError('Sub-agent deletion API not available');
-        return;
-      }
-
-      const result = await window.electronAPI.subAgent.delete(subAgentName);
-
-      if (result.success) {
-        showSuccess(`Sub-agent "${subAgentName}" deleted successfully`);
-        await profileDataManager.refresh();
-        window.dispatchEvent(new CustomEvent('subAgents:refreshList'));
-      } else {
-        showError(`Failed to delete sub-agent: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'An unknown error occurred';
-      showError(`Failed to delete: ${errorMessage}`);
-    } finally {
-      setDeleteSubAgentDialog({
-        isOpen: false,
-        subAgentName: null,
-        usedByAgents: [],
-      });
-    }
-  }, [deleteSubAgentDialog, showSuccess, showError]);
-
   // Handle skill deletion - open confirmation dialog
   const handleDeleteSkill = useCallback(
     (skillName: string) => {
       // Find all agents using this skill
       const usedByAgents = chats
-        .filter((chat) => chat.agent?.skills?.includes(skillName))
-        .map((chat) => chat.agent?.name || 'Unknown Agent');
+        .map((chat) => resolveChatAgent(chat))
+        .filter((agent) => agent?.skills?.includes(skillName))
+        .map((agent) => agent?.name || t('settings.page.unknownAgent'));
 
       // Open confirmation dialog
       setDeleteSkillDialog({
@@ -404,7 +251,7 @@ const SettingsPage: React.FC = () => {
         usedByAgents,
       });
     },
-    [chats],
+    [chats, t],
   );
 
   // Confirm skill deletion
@@ -414,25 +261,25 @@ const SettingsPage: React.FC = () => {
 
     try {
       if (!window.electronAPI?.skills?.deleteSkill) {
-        showError('Skill deletion API not available');
+        showError(t('settings.page.skillDeletionApiUnavailable'));
         return;
       }
 
       const result = await window.electronAPI.skills.deleteSkill(skillName);
 
       if (result.success) {
-        showSuccess(`Skill "${skillName}" deleted successfully`);
+        showSuccess(t('settings.page.skillDeleted', { name: skillName }));
         // Refresh profile data
         await profileDataManager.refresh();
       } else {
         showError(
-          `Failed to delete skill: ${result.error || 'Unknown error'}`,
+          t('settings.page.skillDeleteFailed', { error: result.error || t('common.unknownError') }),
         );
       }
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : 'An unknown error occurred';
-      showError(`Failed to delete: ${errorMessage}`);
+        error instanceof Error ? error.message : t('settings.page.unknownErrorOccurred');
+      showError(t('settings.page.deleteFailed', { error: errorMessage }));
     } finally {
       // Close dialog
       setDeleteSkillDialog({
@@ -441,13 +288,13 @@ const SettingsPage: React.FC = () => {
         usedByAgents: [],
       });
     }
-  }, [deleteSkillDialog, showSuccess, showError]);
+  }, [deleteSkillDialog, showSuccess, showError, t]);
 
   // MCP Server action handler functions
   const handleMcpServerConnect = useCallback(async (serverName: string) => {
     try {
       if (!window.electronAPI?.profile?.connectMcpServer) {
-        showError('MCP connect API not available');
+        showError(t('settings.page.mcpConnectApiUnavailable'));
         return;
       }
 
@@ -458,39 +305,39 @@ const SettingsPage: React.FC = () => {
         // Refresh data
         await profileDataManager.refresh();
       } else {
-        showError(`Failed to connect server: ${result.error || 'Unknown error'}`);
+        showError(t('settings.page.mcpConnectFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to connect server: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('settings.page.mcpConnectFailed', { error: errorMessage }));
     }
-  }, [showError, showSuccess]);
+  }, [showError, t]);
 
   const handleMcpServerDisconnect = useCallback(async (serverName: string) => {
     try {
       if (!window.electronAPI?.profile?.disconnectMcpServer) {
-        showError('MCP disconnect API not available');
+        showError(t('settings.page.mcpDisconnectApiUnavailable'));
         return;
       }
 
       const result = await window.electronAPI.profile.disconnectMcpServer(serverName);
       if (result.success) {
-        showSuccess(`Server "${serverName}" disconnected successfully`);
+        showSuccess(t('settings.page.mcpDisconnected', { name: serverName }));
         // Refresh data
         await profileDataManager.refresh();
       } else {
-        showError(`Failed to disconnect server: ${result.error || 'Unknown error'}`);
+        showError(t('settings.page.mcpDisconnectFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to disconnect server: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('settings.page.mcpDisconnectFailed', { error: errorMessage }));
     }
-  }, [showError, showSuccess]);
+  }, [showError, showSuccess, t]);
 
   const handleMcpServerReconnect = useCallback(async (serverName: string) => {
     try {
       if (!window.electronAPI?.profile?.reconnectMcpServer) {
-        showError('MCP reconnect API not available');
+        showError(t('settings.page.mcpReconnectApiUnavailable'));
         return;
       }
 
@@ -501,13 +348,13 @@ const SettingsPage: React.FC = () => {
         // Refresh data
         await profileDataManager.refresh();
       } else {
-        showError(`Failed to reconnect server: ${result.error || 'Unknown error'}`);
+        showError(t('settings.page.mcpReconnectFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to reconnect server: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('settings.page.mcpReconnectFailed', { error: errorMessage }));
     }
-  }, [showError, showSuccess]);
+  }, [showError, t]);
 
   // Handle MCP server deletion - open confirmation dialog
   const handleMcpServerDelete = useCallback((serverName: string) => {
@@ -525,21 +372,21 @@ const SettingsPage: React.FC = () => {
 
     try {
       if (!window.electronAPI?.profile?.deleteMcpServer) {
-        showError('MCP delete API not available');
+        showError(t('settings.page.mcpDeleteApiUnavailable'));
         return;
       }
 
       const result = await window.electronAPI.profile.deleteMcpServer(serverName);
       if (result.success) {
-        showSuccess(`Server "${serverName}" deleted successfully`);
+        showSuccess(t('settings.page.mcpDeleted', { name: serverName }));
         // Refresh data
         await profileDataManager.refresh();
       } else {
-        showError(`Failed to delete server: ${result.error || 'Unknown error'}`);
+        showError(t('settings.page.mcpDeleteFailed', { error: result.error || t('common.unknownError') }));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showError(`Failed to delete server: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showError(t('settings.page.mcpDeleteFailed', { error: errorMessage }));
     } finally {
       // Close dialog
       setDeleteMcpDialog({
@@ -547,7 +394,7 @@ const SettingsPage: React.FC = () => {
         serverName: null,
       });
     }
-  }, [deleteMcpDialog, showError, showSuccess]);
+  }, [deleteMcpDialog, showError, showSuccess, t]);
 
   const handleMcpServerEdit = useCallback((serverName: string) => {
     // Navigate to edit page
@@ -562,20 +409,11 @@ const SettingsPage: React.FC = () => {
       handleDeleteSkill(skillName);
     };
 
-    const handleDeleteSubAgentEvent = (event: CustomEvent) => {
-      const { subAgentName } = event.detail;
-      handleDeleteSubAgent(subAgentName);
-    };
-
     // Only register skill:delete event listener
     // MCP-related events are handled by their respective View components to avoid duplicate listeners
     window.addEventListener(
       'skill:delete',
       handleDeleteSkillEvent as EventListener,
-    );
-    window.addEventListener(
-      'subAgent:delete',
-      handleDeleteSubAgentEvent as EventListener,
     );
 
     return () => {
@@ -583,12 +421,8 @@ const SettingsPage: React.FC = () => {
         'skill:delete',
         handleDeleteSkillEvent as EventListener,
       );
-      window.removeEventListener(
-        'subAgent:delete',
-        handleDeleteSubAgentEvent as EventListener,
-      );
     };
-  }, [handleDeleteSkill, handleDeleteSubAgent]);
+  }, [handleDeleteSkill]);
 
   // Record path before entering settings page
   useEffect(() => {
@@ -650,15 +484,10 @@ const SettingsPage: React.FC = () => {
     // Skills handlers - use local implementation
     onSkillsAddMenuToggle: handleSkillsAddMenuToggle,
     onSkillMenuToggle: handleSkillMenuToggle,
-
-    // Sub-Agent handlers - use local implementation
-    onSubAgentsAddMenuToggle: handleSubAgentsAddMenuToggle,
-    onSubAgentMenuToggle: handleSubAgentMenuToggle,
-    subAgentMenuState: subAgentMenuState,
   };
 
   return (
-    <div className="h-full flex flex-col  bg-[#FFFBF8]">
+    <div className="h-full flex flex-col  bg-warm-50">
       {isMac && <div className="mac-titlebar-region" aria-hidden="true" />}
 
       <div className="flex-1 flex min-h-0">
@@ -714,25 +543,6 @@ const SettingsPage: React.FC = () => {
         />
       )}
 
-      {/* Global Sub-Agents add dropdown menu - floating at SettingsPage level */}
-      {subAgentsAddMenuState.isOpen && subAgentsAddMenuState.position && (
-        <SubAgentsAddMenuDropdown
-          subAgentsAddMenuRef={subAgentsAddMenuRef}
-          position={subAgentsAddMenuState.position}
-          onClose={handleSubAgentsAddMenuClose}
-        />
-      )}
-
-      {/* Global Sub-Agent dropdown menu - floating at SettingsPage level */}
-      {subAgentMenuState.isOpen && subAgentMenuState.position && subAgentMenuState.subAgentName && (
-        <SubAgentDropdownMenu
-          subAgentMenuRef={subAgentMenuRef}
-          subAgentName={subAgentMenuState.subAgentName}
-          position={subAgentMenuState.position}
-          onClose={handleSubAgentMenuClose}
-        />
-      )}
-
       {/* Delete Skill Confirmation Dialog */}
       <Dialog
         open={deleteSkillDialog.isOpen}
@@ -748,19 +558,19 @@ const SettingsPage: React.FC = () => {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-left">Delete Skill</DialogTitle>
+            <DialogTitle className="text-left">{t('settings.page.deleteSkillTitle')}</DialogTitle>
             <DialogDescription className="text-left">
-              Are you sure you want to delete {deleteSkillDialog.skillName}?
+              {t('settings.page.deleteSkillDescription', { name: deleteSkillDialog.skillName || '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             {deleteSkillDialog.usedByAgents.length > 0 && (
-              <p className="text-sm text-muted-foreground mb-4">
-                This skill is currently being used by {deleteSkillDialog.usedByAgents.length} agent(s): {deleteSkillDialog.usedByAgents.join(', ')}
+              <p className="text-sm text-neutral-500 mb-4">
+                {t('settings.page.skillUsedByAgents', { count: deleteSkillDialog.usedByAgents.length, agents: deleteSkillDialog.usedByAgents.join(', ') })}
               </p>
             )}
-            <p className="text-sm text-destructive">
-              This action cannot be undone. After deletion, agents will no longer be able to use this skill.
+            <p className="text-sm text-danger-600">
+              {t('settings.page.deleteSkillWarning')}
             </p>
           </div>
           <DialogFooter>
@@ -774,13 +584,13 @@ const SettingsPage: React.FC = () => {
                 })
               }
             >
-              No
+              {t('common.no')}
             </button>
             <button
-              className="btn-primary bg-destructive hover:bg-destructive/90"
+              className="btn-danger"
               onClick={handleConfirmDeleteSkill}
             >
-              Delete
+              {t('common.delete')}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -788,66 +598,6 @@ const SettingsPage: React.FC = () => {
 
       {/* Apply Skill to Agents Dialog */}
       <ApplySkillToAgentsDialog />
-
-      {/* Apply Sub-Agent to Agents Dialog */}
-      <ApplySubAgentToAgentsDialog
-        open={applySubAgentDialogState.open}
-        onOpenChange={(open) => setApplySubAgentDialogState(prev => ({ ...prev, open }))}
-        subAgentName={applySubAgentDialogState.subAgentName}
-      />
-
-      {/* Delete Sub-Agent Confirmation Dialog */}
-      <Dialog
-        open={deleteSubAgentDialog.isOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDeleteSubAgentDialog({
-              isOpen: false,
-              subAgentName: null,
-              usedByAgents: [],
-            });
-          }
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-left">Delete Sub-Agent</DialogTitle>
-            <DialogDescription className="text-left">
-              Are you sure you want to delete {deleteSubAgentDialog.subAgentName}?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            {deleteSubAgentDialog.usedByAgents.length > 0 && (
-              <p className="text-sm text-muted-foreground mb-4">
-                This sub-agent is currently being used by {deleteSubAgentDialog.usedByAgents.length} agent(s): {deleteSubAgentDialog.usedByAgents.join(', ')}
-              </p>
-            )}
-            <p className="text-sm text-destructive">
-              This action cannot be undone. After deletion, agents will no longer be able to use this sub-agent.
-            </p>
-          </div>
-          <DialogFooter>
-            <button
-              className="btn-secondary"
-              onClick={() =>
-                setDeleteSubAgentDialog({
-                  isOpen: false,
-                  subAgentName: null,
-                  usedByAgents: [],
-                })
-              }
-            >
-              No
-            </button>
-            <button
-              className="btn-primary bg-destructive hover:bg-destructive/90"
-              onClick={handleConfirmDeleteSubAgent}
-            >
-              Delete
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete MCP Server Confirmation Dialog */}
       <Dialog
@@ -863,14 +613,14 @@ const SettingsPage: React.FC = () => {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-left">Delete MCP Server</DialogTitle>
+            <DialogTitle className="text-left">{t('settings.page.deleteMcpTitle')}</DialogTitle>
             <DialogDescription className="text-left">
-              Are you sure you want to delete {deleteMcpDialog.serverName}?
+              {t('settings.page.deleteMcpDescription', { name: deleteMcpDialog.serverName || '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-destructive">
-              This action cannot be undone. The MCP server configuration will be permanently deleted.
+            <p className="text-sm text-danger-600">
+              {t('settings.page.deleteMcpWarning')}
             </p>
           </div>
           <DialogFooter>
@@ -883,13 +633,13 @@ const SettingsPage: React.FC = () => {
                 })
               }
             >
-              No
+              {t('common.no')}
             </button>
             <button
-              className="btn-primary bg-destructive hover:bg-destructive/90"
+              className="btn-danger"
               onClick={handleConfirmDeleteMcp}
             >
-              Delete
+              {t('common.delete')}
             </button>
           </DialogFooter>
         </DialogContent>

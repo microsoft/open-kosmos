@@ -1,13 +1,15 @@
 import { applySkillToAgents } from '../../skill/applySkillToAgents';
 import { installAndActivateSkill } from '../../skill/installAndActivateSkill';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatPrimaryAgent } from '../../userDataADO/agentAccessor';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 import { BuiltinToolDefinition } from './types';
 import { BuiltinToolsManager } from './builtinToolsManager';
 
 interface ApplySkillToAgentsArgs {
   skill_name?: string;
   path?: string;
-  source?: 'device' | 'library';
+  source?: 'device';
   agent_chat_ids?: string[];
   agent_names?: string[];
   apply_to_all?: boolean;
@@ -21,14 +23,14 @@ export class ApplySkillToAgentsTool {
       description:
         'Apply a skill to one or more agents. ' +
         'If the skill is already globally installed, it is applied directly. ' +
-        'If not installed, provide path (source=device) or skill_name (source=library) to install it first, then apply. ' +
+        'If not installed, provide a local path to install it first, then apply. ' +
         'When no agent targeting is specified, defaults to the current agent in the active chat.',
       inputSchema: {
         type: 'object',
         properties: {
           skill_name: {
             type: 'string',
-            description: 'Skill name. Used both as the installed-skill identifier and as the library skill name when source=library.',
+            description: 'Installed skill name.',
           },
           path: {
             type: 'string',
@@ -36,8 +38,8 @@ export class ApplySkillToAgentsTool {
           },
           source: {
             type: 'string',
-            enum: ['device', 'library'],
-            description: 'Installation source for uninstalled skills. Defaults to device when path is provided, otherwise library.',
+            enum: ['device'],
+            description: 'Installation source for uninstalled skills.',
           },
           agent_chat_ids: {
             type: 'array',
@@ -80,15 +82,11 @@ export class ApplySkillToAgentsTool {
     }
 
     // ---------- Check if skill is globally installed ----------
-    const profile = profileCacheManager.getCachedProfile(currentUserAlias);
-    const isInstalled = profile && Array.isArray(profile.skills) &&
-      profile.skills.some(s => s.name === skillName);
+    const isInstalled = skillsConfigManager.hasSkill(currentUserAlias, skillName);
 
     // ---------- If not installed, install first ----------
     if (!isInstalled) {
-      const sourceType = args.source || (args.path ? 'device' : 'library');
-
-      if (sourceType === 'device' && (!args.path || !args.path.trim())) {
+      if (!args.path || !args.path.trim()) {
         return {
           success: false,
           message: `Skill "${skillName}" is not installed. Provide a path with source=device to install from a local artifact.`,
@@ -98,9 +96,7 @@ export class ApplySkillToAgentsTool {
 
       const installResult = await installAndActivateSkill({
         userAlias: currentUserAlias,
-        source: sourceType === 'device'
-          ? { type: 'device-path', value: args.path!.trim() }
-          : { type: 'library-name', value: skillName },
+        source: { type: 'device-path', value: args.path.trim() },
         requestSource: 'chat-tool',
         activation: { mode: 'install-only' },
       });
@@ -139,7 +135,7 @@ export class ApplySkillToAgentsTool {
       }
 
       const agentName = chatConfig.chat_type === 'single_agent'
-        ? chatConfig.agent?.name
+        ? getChatPrimaryAgent(chatConfig)?.name
         : undefined;
 
       const result = await applySkillToAgents(currentUserAlias, {

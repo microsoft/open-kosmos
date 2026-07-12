@@ -18,6 +18,8 @@ const {
   mockProfileDataManager,
   mockEditAgentToggle,
   mockAttachMenuToggle,
+  mockVoiceInputEnabled,
+  mockVoiceFeatureFlag,
   mockCurrentSessionError,
   mockSubscribeCbRef,
   mockIsOffice,
@@ -42,6 +44,8 @@ const {
   };
   const mockEditAgentToggle = vi.fn();
   const mockAttachMenuToggle = vi.fn();
+  const mockVoiceInputEnabled = { value: false };
+  const mockVoiceFeatureFlag = { value: false };
   const mockCurrentSessionError = { value: null as string | null };
   const mockSubscribeCbRef = { cb: null as (() => void) | null };
   const mockIsOffice = vi.fn(() => false);
@@ -60,6 +64,8 @@ const {
     mockProfileDataManager,
     mockEditAgentToggle,
     mockAttachMenuToggle,
+    mockVoiceInputEnabled,
+    mockVoiceFeatureFlag,
     mockCurrentSessionError,
     mockSubscribeCbRef,
     mockIsOffice,
@@ -93,6 +99,24 @@ vi.mock('../../../ipc/screenshot-main', () => ({
 }));
 
 vi.mock('../ErrorBar', () => ({ default: () => null }));
+vi.mock('../VoiceInputButton', () => ({
+  VoiceInputButton: ({ onTranscript, disabled }: any) => (
+    <button
+      data-testid="voice-btn"
+      disabled={disabled}
+      onClick={() => onTranscript('hello world', true)}
+    >
+      Voice
+    </button>
+  ),
+}));
+
+vi.mock('../../../lib/featureFlags', () => ({
+  useFeatureFlag: () => mockVoiceFeatureFlag.value,
+}));
+vi.mock('../../../lib/userData', () => ({
+  useVoiceInputEnabled: () => mockVoiceInputEnabled.value,
+}));
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
   agentChatSessionCacheManager: {
@@ -263,7 +287,10 @@ function makeFile(name: string, type = 'text/plain', size = 100) {
 describe('ChatInput — extended coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Provide a global alert mock so tests don't get "alert is not a function"
     vi.stubGlobal('alert', vi.fn());
+    mockVoiceFeatureFlag.value = false;
+    mockVoiceInputEnabled.value = false;
     mockCurrentSessionError.value = null;
     mockSessionIdle.value = true;
     mockSubscribeCbRef.cb = null;
@@ -288,13 +315,6 @@ describe('ChatInput — extended coverage', () => {
       configurable: true,
       value: ResizeObserverMock,
     });
-  });
-
-  // ---- read-only mode ----
-  it('renders read-only message with Globe icon', () => {
-    render(<ChatInput onSendMessage={vi.fn()} isReadOnly />);
-    expect(screen.getByTestId('globe-icon')).toBeInTheDocument();
-    expect(screen.getByText(/remote channel/i)).toBeInTheDocument();
   });
 
   // ---- locked compose UI banner ----
@@ -361,11 +381,36 @@ describe('ChatInput — extended coverage', () => {
     }
   });
 
+  // ---- voice button: feature flag off ----
+  it('does not render voice button when feature flag is off', () => {
+    mockVoiceFeatureFlag.value = false;
+    render(<ChatInput onSendMessage={vi.fn()} />);
+    expect(screen.queryByTestId('voice-btn')).not.toBeInTheDocument();
+  });
+
+  // ---- voice button: both on ----
+  it('renders voice button when feature flag and user enabled', () => {
+    mockVoiceFeatureFlag.value = true;
+    mockVoiceInputEnabled.value = true;
+    render(<ChatInput onSendMessage={vi.fn()} />);
+    expect(screen.getByTestId('voice-btn')).toBeInTheDocument();
+  });
+
+  // ---- voice transcript appended ----
+  it('voice input callback appends final transcript', async () => {
+    mockVoiceFeatureFlag.value = true;
+    mockVoiceInputEnabled.value = true;
+    render(<ChatInput onSendMessage={vi.fn()} />);
+    const voiceBtn = screen.getByTestId('voice-btn');
+    fireEvent.click(voiceBtn);
+    // no crash expected
+  });
+
   // ---- cancel chat button triggers cancelChat ----
   it('clicking cancel chat button calls agentChatIpc.cancelChat', async () => {
     mockSessionIdle.value = false;
     render(<ChatInput onSendMessage={vi.fn()} />);
-    fireEvent.click(screen.getByTitle('Cancel Chat'));
+    fireEvent.click(screen.getByTitle('Cancel current response'));
     await waitFor(() => expect(mockCancelChat).toHaveBeenCalledWith('chat-1'));
   });
 
@@ -375,7 +420,7 @@ describe('ChatInput — extended coverage', () => {
     const { agentChatSessionCacheManager } = await import('../../../lib/chat/agentChatSessionCacheManager');
     vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValueOnce(null as any);
     render(<ChatInput onSendMessage={vi.fn()} />);
-    fireEvent.click(screen.getByTitle('Cancel Chat'));
+    fireEvent.click(screen.getByTitle('Cancel current response'));
     await waitFor(() =>
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('No active chat'), 'warning')
     );

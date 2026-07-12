@@ -1,9 +1,9 @@
 /**
  * Global Branding Constants
- * Injected at build time via Webpack DefinePlugin
+ * OpenKosmos-only branding constants.
  */
 
-// Define types for global env vars injected by webpack
+// Define types for global env vars injected by webpack.
 declare global {
   namespace NodeJS {
     interface ProcessEnv {
@@ -15,7 +15,7 @@ declare global {
 }
 
 export const APP_NAME = process.env.APP_NAME || 'OpenKosmos';
-export const BRAND_NAME = process.env.BRAND_NAME || 'openkosmos';
+export const BRAND_NAME = 'openkosmos';
 export const BRAND_CONFIG = process.env.BRAND_CONFIG || {};
 
 export const getWindowTitle = () => (BRAND_CONFIG.windowTitle || `${APP_NAME} AI Studio`);

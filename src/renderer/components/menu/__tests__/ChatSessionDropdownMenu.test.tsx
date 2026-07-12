@@ -12,6 +12,26 @@ vi.mock('../../auth/AuthProvider', () => ({
   }),
 }));
 
+vi.mock('../../../lib/chat/agentChatIpc', () => ({
+  agentChatIpc: {
+    cancelChatSession: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../../ipc/scheduler', () => ({
+  schedulerApi: {
+    runJobNow: vi.fn().mockResolvedValue({ success: true }),
+  },
+}));
+
+vi.mock('../../ui/ToastProvider', () => ({
+  useToast: () => ({
+    showToast: vi.fn(),
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../lib/utilities/dropdownPosition', async () => ({
   adjustAnchoredDropdownToViewport: vi.fn(),
   getAnchoredDropdownPosition: vi.fn().mockReturnValue({ top: 12, left: 24, triggerTop: 8, triggerRight: 120 }),
@@ -75,9 +95,24 @@ describe('ChatSessionDropdownMenu – Copy File Path', () => {
     expect(screen.getByText('Copy File Path')).toBeInTheDocument();
   });
 
-  it('hides Copy File Path in the schedule menu', async () => {
+  it('shows Copy File Path in the schedule menu', async () => {
     await renderMenu('schedule');
-    expect(screen.queryByText('Copy File Path')).not.toBeInTheDocument();
+    expect(screen.getByText('Copy File Path')).toBeInTheDocument();
+  });
+
+  it('copies the file path from the schedule menu', async () => {
+    await renderMenu('schedule');
+
+    fireEvent.click(screen.getByText('Copy File Path'));
+
+    await waitFor(() => {
+      expect(window.electronAPI?.chatSessionOps?.getChatSessionFilePath).toHaveBeenCalledWith(
+        'demo-user',
+        'chat-1',
+        'session-1',
+      );
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/tmp/chat-session.json');
+    });
   });
 
   it('copies the chat session file path to the clipboard', async () => {

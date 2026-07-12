@@ -1,4 +1,5 @@
 import { profileDataManager } from "../userData";
+import { resolveChatAgent } from '../agent/resolveChatAgent';
 /**
  * Workspace Search Service - Renderer side
  * Calls the main process file search functionality via IPC
@@ -102,7 +103,7 @@ export async function quickSearchFiles(
     let workspacePath: string | undefined;
     try {
       const currentChatConfig: any = profileDataManager.getCurrentChat?.();
-      workspacePath = currentChatConfig?.agent?.workspace;
+      workspacePath = currentChatConfig?.workspace ?? resolveChatAgent(currentChatConfig)?.workspace;
 
     } catch (error) {
     }

@@ -3,6 +3,8 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { WithStore } from '../../../atom';
+import { appDataManager } from '../../../lib/userData/appDataManager';
 
 // ── hoisted mock variables ────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => {
@@ -62,6 +64,11 @@ function setupElectronAPI(tasks: unknown[] = [], opts: { listError?: boolean } =
   };
 }
 
+function renderWithLanguage(ui: React.ReactElement, language: 'en' | 'zh-CN' = 'en') {
+  (appDataManager as any).cache = { uiLanguage: language };
+  return render(<WithStore>{ui}</WithStore>);
+}
+
 // ── import after mocks ────────────────────────────────────────────────────────
 import SubAgentTasksSidepane from '../SubAgentTasksSidepane';
 
@@ -69,6 +76,7 @@ import SubAgentTasksSidepane from '../SubAgentTasksSidepane';
 describe('SubAgentTasksSidepane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (appDataManager as any).cache = { uiLanguage: 'en' };
     mocks.atomUse.mockReturnValue([
       { visible: true, selectedTaskId: null },
       { hide: mocks.hide, backToList: mocks.backToList, selectTask: mocks.selectTask },
@@ -112,15 +120,15 @@ describe('SubAgentTasksSidepane', () => {
       expect(spinSvg).toBeTruthy();
     });
 
-    it('completed → CompletedIcon: dark filled circle (fill #272320)', async () => {
+    it('completed → CompletedIcon: dark filled circle (fill var(--color-warm-900))', async () => {
       const task = makeTask({ taskId: 't-comp', status: 'completed' });
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
-      // CompletedIcon contains a path with fill="#272320"
+      // CompletedIcon contains a path with fill="var(--color-warm-900)"
       const paths = document.querySelectorAll('svg path');
       const filled = Array.from(paths).find(
-        (p) => p.getAttribute('fill') === '#272320'
+        (p) => p.getAttribute('fill') === 'var(--color-warm-900)'
       );
       expect(filled).toBeTruthy();
     });
@@ -130,10 +138,10 @@ describe('SubAgentTasksSidepane', () => {
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
-      // CancelledIcon: circle stroke #6B7280 and cross paths with stroke #4B5563
+      // CancelledIcon: circle stroke var(--color-neutral-500) and cross paths with stroke var(--color-neutral-600)
       const circles = document.querySelectorAll('svg circle');
       const greyCir = Array.from(circles).find(
-        (c) => c.getAttribute('stroke') === '#6B7280'
+        (c) => c.getAttribute('stroke') === 'var(--color-neutral-500)'
       );
       expect(greyCir).toBeTruthy();
     });
@@ -143,13 +151,27 @@ describe('SubAgentTasksSidepane', () => {
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
-      // FailedIcon circle has stroke="#DC2626"
+      // FailedIcon circle has stroke="var(--color-danger-600)"
       const circles = document.querySelectorAll('svg circle');
       const redCir = Array.from(circles).find(
-        (c) => c.getAttribute('stroke') === '#DC2626'
+        (c) => c.getAttribute('stroke') === 'var(--color-danger-600)'
       );
       expect(redCir).toBeTruthy();
     });
+  });
+
+  it('localizes task status summaries', async () => {
+    setupElectronAPI([
+      makeTask({ taskId: 't-run', status: 'running', endTime: undefined, turnCount: 5 }),
+      makeTask({ taskId: 't-fail', status: 'failed', turnCount: 2 }),
+      makeTask({ taskId: 't-can', status: 'cancelled', turnCount: 4 }),
+    ]);
+
+    await act(async () => { renderWithLanguage(<SubAgentTasksSidepane />, 'zh-CN'); });
+
+    expect(screen.getByText(/^运行中 · /).textContent).toMatch(/ · 5 轮$/);
+    expect(screen.getByText(/^失败 · /)).toBeTruthy();
+    expect(screen.getByText(/^已取消 · /).textContent).toMatch(/ · 4 轮$/);
   });
 
   // ── TaskCard subtitle text ─────────────────────────────────────────────────
@@ -199,40 +221,40 @@ describe('SubAgentTasksSidepane', () => {
 
   // ── TaskCard title color ───────────────────────────────────────────────────
   describe('TaskCard title color per status', () => {
-    it('failed → title color is red (#B91C1C)', async () => {
+    it('failed → title color is red (var(--color-danger-700))', async () => {
       const task = makeTask({ taskId: 't-fail', status: 'failed', title: 'FailTask' });
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
       const titleEl = screen.getByText('FailTask');
-      expect(titleEl.style.color).toBe('#B91C1C');
+      expect(titleEl.style.color).toBe('var(--color-danger-700)');
     });
 
-    it('cancelled → title color is grey (#6B7280)', async () => {
+    it('cancelled → title color is grey (var(--color-neutral-500))', async () => {
       const task = makeTask({ taskId: 't-can', status: 'cancelled', title: 'CancelTask' });
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
       const titleEl = screen.getByText('CancelTask');
-      expect(titleEl.style.color).toBe('#6B7280');
+      expect(titleEl.style.color).toBe('var(--color-neutral-500)');
     });
 
-    it('running → title color is default (#374151)', async () => {
+    it('running → title color is default (var(--color-neutral-700))', async () => {
       const task = makeTask({ taskId: 't-run', status: 'running', title: 'RunTask', endTime: undefined });
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
       const titleEl = screen.getByText('RunTask');
-      expect(titleEl.style.color).toBe('#374151');
+      expect(titleEl.style.color).toBe('var(--color-neutral-700)');
     });
 
-    it('completed → title color is default (#374151)', async () => {
+    it('completed → title color is default (var(--color-neutral-700))', async () => {
       const task = makeTask({ taskId: 't-comp', status: 'completed', title: 'DoneTask' });
       setupElectronAPI([task]);
       await act(async () => { render(<SubAgentTasksSidepane />); });
 
       const titleEl = screen.getByText('DoneTask');
-      expect(titleEl.style.color).toBe('#374151');
+      expect(titleEl.style.color).toBe('var(--color-neutral-700)');
     });
   });
 

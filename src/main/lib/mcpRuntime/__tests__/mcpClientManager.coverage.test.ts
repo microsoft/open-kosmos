@@ -20,7 +20,6 @@ const {
   mockContainsOpenKosmosPlaceholder,
   mockReplacePlaceholders,
   mockReplacePlaceholdersInObject,
-  mockIsPluginMcpServer,
   mockVscConnect,
   mockVscGetTools,
   mockVscExecuteTool,
@@ -44,7 +43,6 @@ const {
   const mockContainsOpenKosmosPlaceholder = vi.fn(() => false);
   const mockReplacePlaceholders = vi.fn((s: string) => s);
   const mockReplacePlaceholdersInObject = vi.fn((o: any) => o);
-  const mockIsPluginMcpServer = vi.fn(() => false);
   const mockVscConnect = vi.fn(() => Promise.resolve('connected'));
   const mockVscGetTools = vi.fn(() =>
     Promise.resolve([{ name: 'tool1', description: 'desc', inputSchema: {} }])
@@ -71,7 +69,6 @@ const {
     mockContainsOpenKosmosPlaceholder,
     mockReplacePlaceholders,
     mockReplacePlaceholdersInObject,
-    mockIsPluginMcpServer,
     mockVscConnect,
     mockVscGetTools,
     mockVscExecuteTool,
@@ -128,10 +125,6 @@ vi.mock('../../userDataADO/openkosmosPlaceholders', () => ({
     replacePlaceholders: (...a: any[]) => mockReplacePlaceholders(...a),
     replacePlaceholdersInObject: (...a: any[]) => mockReplacePlaceholdersInObject(...a),
   },
-}));
-
-vi.mock('../../plugin/bridges/mcpBridge', () => ({
-  isPluginMcpServer: (...a: any[]) => mockIsPluginMcpServer(...a),
 }));
 
 vi.mock('../vscMcpClient', () => ({
@@ -197,7 +190,6 @@ describe('MCPClientManager', () => {
     mockBuiltinConnect.mockResolvedValue('connected');
     mockBuiltinGetTools.mockResolvedValue([{ name: 'builtin_tool', description: 'builtin', inputSchema: {} }]);
     mockBuiltinCleanup.mockResolvedValue(undefined);
-    mockIsPluginMcpServer.mockReturnValue(false);
     mockContainsOpenKosmosPlaceholder.mockReturnValue(false);
     mockGetAllWindows.mockReturnValue([]);
     (MCPClientManager as any).instance = null;
@@ -323,11 +315,7 @@ describe('MCPClientManager', () => {
     it('throws if operation already in progress', async () => {
       const mgr = getManager();
       await mgr.initialize('alice');
-      (mgr as any).operationLocks.set('test-server', {
-        operation: 'connect',
-        promise: new Promise(() => {}),
-        timestamp: Date.now(),
-      });
+      void (mgr as any).opLock.run('test-server', 'connect', () => new Promise<void>(() => {}));
       await expect(mgr.connect('test-server')).rejects.toThrow('currently connecting');
     });
 
@@ -424,6 +412,64 @@ describe('MCPClientManager', () => {
       });
       await expect(mgr.disconnect('test-server')).resolves.not.toThrow();
       expect(mgr.getMcpServerRuntimeState('test-server')?.status).toBe('disconnected');
+    });
+  });
+
+  describe('disposeRuntimeForConfigRename', () => {
+    it('rejects an empty server name', async () => {
+      const mgr = getManager();
+      await expect(mgr.disposeRuntimeForConfigRename('')).rejects.toThrow('Server name is required');
+    });
+
+    it('cleans active runtime state without updating persisted configuration', async () => {
+      const mgr = getManager();
+      const abort = vi.fn();
+      const cleanup = vi.fn().mockResolvedValue(undefined);
+      const client = { cleanup };
+
+      (mgr as any).activeConnections.set('legacy-server', {
+        serverName: 'legacy-server',
+        abortController: { abort },
+        client,
+        startTime: Date.now(),
+      });
+      (mgr as any).mcpClients.set('legacy-server', client);
+      (mgr as any).clientImplementations.set('legacy-server', 'vscodeMcpClient');
+      (mgr as any).toolToServerMap.set('legacy-tool', 'legacy-server');
+      (mgr as any).runtimeStates.set('legacy-server', {
+        serverName: 'legacy-server',
+        status: 'connected',
+        tools: [],
+        lastError: null,
+      });
+
+      await mgr.disposeRuntimeForConfigRename('legacy-server');
+
+      expect(abort).toHaveBeenCalledOnce();
+      expect(cleanup).toHaveBeenCalledOnce();
+      expect((mgr as any).activeConnections.has('legacy-server')).toBe(false);
+      expect((mgr as any).mcpClients.has('legacy-server')).toBe(false);
+      expect((mgr as any).clientImplementations.has('legacy-server')).toBe(false);
+      expect((mgr as any).toolToServerMap.has('legacy-tool')).toBe(false);
+      expect(mgr.getMcpServerRuntimeState('legacy-server')).toBeUndefined();
+      expect(mockUpdateMcpServerConfig).not.toHaveBeenCalled();
+    });
+
+    it('propagates cleanup failures and keeps runtime state for retry', async () => {
+      const mgr = getManager();
+      const client = { cleanup: vi.fn().mockRejectedValue(new Error('cleanup failed')) };
+      (mgr as any).mcpClients.set('legacy-server', client);
+      (mgr as any).runtimeStates.set('legacy-server', {
+        serverName: 'legacy-server',
+        status: 'connected',
+        tools: [],
+        lastError: null,
+      });
+
+      await expect(mgr.disposeRuntimeForConfigRename('legacy-server')).rejects.toThrow('cleanup failed');
+
+      expect((mgr as any).mcpClients.get('legacy-server')).toBe(client);
+      expect(mgr.getMcpServerRuntimeState('legacy-server')?.status).toBe('connected');
     });
   });
 
@@ -544,6 +590,51 @@ describe('MCPClientManager', () => {
       expect(tools.some(t => t.name === 'tool1')).toBe(true);
     });
 
+    it('refreshes builtin server tools and routing when the advertised inventory changes', async () => {
+      mockBuiltinGetTools
+        .mockResolvedValueOnce([
+          { name: 'builtin_tool', description: 'builtin', inputSchema: {} },
+          { name: 'browser', description: 'browser', inputSchema: {} },
+        ])
+        .mockResolvedValueOnce([
+          { name: 'builtin_tool', description: 'builtin', inputSchema: {} },
+        ]);
+
+      const mgr = getManager();
+      await mgr.initialize('alice');
+
+      expect(mgr.getClientByToolName('browser')).toBeTruthy();
+
+      const tools = await mgr.getAllTools();
+
+      expect(tools.some(t => t.name === 'browser')).toBe(false);
+      expect(mgr.getClientByToolName('browser')).toBeUndefined();
+      expect(tools.some(t => t.name === 'builtin_tool')).toBe(true);
+    });
+
+    it('does not refresh builtin tools before the builtin server is connected', async () => {
+      const mgr = getManager();
+
+      await mgr.refreshBuiltinTools();
+
+      expect(mockBuiltinGetTools).not.toHaveBeenCalled();
+    });
+
+    it('does not update builtin mappings when advertised tool names are unchanged', async () => {
+      mockBuiltinGetTools.mockResolvedValue([
+        { name: 'builtin_tool', description: 'builtin v2', inputSchema: { type: 'object' } },
+      ]);
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      const updateToolMappingsSpy = vi.spyOn(mgr as any, '_updateToolMappings');
+      const updateServerToolsSpy = vi.spyOn(mgr as any, '_updateServerTools');
+
+      await mgr.refreshBuiltinTools();
+
+      expect(updateToolMappingsSpy).not.toHaveBeenCalled();
+      expect(updateServerToolsSpy).not.toHaveBeenCalled();
+    });
+
     it('excludes tools from disconnected servers', async () => {
       const mgr = getManager();
       (mgr as any).currentUserAlias = 'alice';
@@ -590,12 +681,13 @@ describe('MCPClientManager', () => {
       expect(result.map(t => t.name)).toContain('tool_b');
     });
 
-    it('always excludes sub_agent', async () => {
+    it('always excludes sub_agent and send_to_subagent (unified tool names)', async () => {
       const mgr = getManager();
-      setupRuntimeState(mgr, 'ext-server', ['sub_agent', 'safe_tool']);
+      setupRuntimeState(mgr, 'ext-server', ['sub_agent', 'send_to_subagent', 'safe_tool']);
 
       const result = await mgr.getToolsForSubAgent([{ name: 'ext-server', tools: [] }]);
       expect(result.some(t => t.name === 'sub_agent')).toBe(false);
+      expect(result.some(t => t.name === 'send_to_subagent')).toBe(false);
       expect(result.some(t => t.name === 'safe_tool')).toBe(true);
     });
 
@@ -754,14 +846,6 @@ describe('MCPClientManager', () => {
         .rejects.toThrow('cannot be updated');
     });
 
-    it('throws for plugin server', async () => {
-      const mgr = getManager();
-      await mgr.initialize('alice');
-      mockIsPluginMcpServer.mockReturnValueOnce(true);
-      await expect(mgr.update('plugin-server', makeServerConfig({ name: 'plugin-server' }) as any))
-        .rejects.toThrow('plugin system');
-    });
-
     it('throws when server not found', async () => {
       const mgr = getManager();
       await mgr.initialize('alice');
@@ -788,6 +872,53 @@ describe('MCPClientManager', () => {
       expect(mgr.getMcpServerRuntimeState('test-server')?.status).toBe('connecting');
     });
 
+    it('cancels any pending auto-reconnect so the manual update wins', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue({ config: makeServerConfig(), runtime: { status: 'disconnected' } });
+      const cancel = vi.spyOn((mgr as any).autoReconnect, 'cancel');
+
+      await mgr.update('test-server', makeServerConfig() as any);
+
+      expect(cancel).toHaveBeenCalledWith('test-server');
+    });
+
+    it('cancels auto-reconnect before awaiting config persistence', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue({ config: makeServerConfig(), runtime: { status: 'connected' } });
+      const cancel = vi.spyOn((mgr as any).autoReconnect, 'cancel');
+      let resolveUpdate!: (value: boolean) => void;
+      mockUpdateMcpServerConfig.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+        resolveUpdate = resolve;
+      }));
+
+      const updatePromise = mgr.update('test-server', makeServerConfig() as any);
+      await Promise.resolve();
+
+      expect(cancel).toHaveBeenCalledWith('test-server');
+      expect(mgr.getMcpServerRuntimeState('test-server')?.status).not.toBe('connecting');
+
+      resolveUpdate(true);
+      await updatePromise;
+    });
+
+    it('serializes background disconnect+reconnect through the operation lock', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue({ config: makeServerConfig(), runtime: { status: 'connected' } });
+      const runSpy = vi.spyOn((mgr as any).opLock, 'run');
+      const performDisconnect = vi.spyOn(mgr as any, '_performDisconnect').mockResolvedValue(undefined);
+      const performConnect = vi.spyOn(mgr as any, '_performConnect').mockResolvedValue(undefined);
+
+      await mgr.update('test-server', makeServerConfig() as any);
+      await new Promise(r => setImmediate(r));
+
+      expect(runSpy).toHaveBeenCalledWith('test-server', 'connect', expect.any(Function));
+      expect(performDisconnect).toHaveBeenCalledWith('test-server');
+      expect(performConnect).toHaveBeenCalledWith('test-server', expect.any(AbortSignal));
+    });
+
     it('throws when updateMcpServerConfig returns false', async () => {
       const mgr = getManager();
       await mgr.initialize('alice');
@@ -811,25 +942,6 @@ describe('MCPClientManager', () => {
       const mgr = getManager();
       await mgr.initialize('alice');
       await expect(mgr.delete('builtin-tools')).rejects.toThrow('cannot be deleted');
-    });
-
-    it('throws for plugin server without bypass', async () => {
-      const mgr = getManager();
-      await mgr.initialize('alice');
-      mockIsPluginMcpServer.mockReturnValueOnce(true);
-      await expect(mgr.delete('plugin-srv')).rejects.toThrow('Uninstall the plugin');
-    });
-
-    it('allows plugin server deletion with pluginBypass', async () => {
-      const mgr = getManager();
-      await mgr.initialize('alice');
-      mockIsPluginMcpServer.mockReturnValue(true);
-      mockGetMcpServerInfo.mockReturnValue({
-        config: makeServerConfig({ name: 'plugin-srv', transport: 'stdio' }),
-        runtime: { status: 'disconnected' },
-      });
-
-      await expect(mgr.delete('plugin-srv', { pluginBypass: true })).resolves.not.toThrow();
     });
 
     it('throws when server not found', async () => {
@@ -869,6 +981,18 @@ describe('MCPClientManager', () => {
       expect(mockDeleteMcpServerConfig).toHaveBeenCalledWith('alice', 'test-server');
     });
 
+    it('clears OAuth credentials for non-stdio servers on delete', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue({
+        config: makeServerConfig({ transport: 'sse', url: 'http://example.com' }),
+        runtime: { status: 'disconnected' },
+      });
+
+      await mgr.delete('test-server');
+      expect(mockClearOAuthForServer).toHaveBeenCalledWith('test-server', expect.any(Object), 'all');
+    });
+
     it('does not clear OAuth for stdio servers', async () => {
       const mgr = getManager();
       await mgr.initialize('alice');
@@ -879,6 +1003,31 @@ describe('MCPClientManager', () => {
 
       await mgr.delete('test-server');
       expect(mockClearOAuthForServer).not.toHaveBeenCalled();
+    });
+
+    it('treats a server with no runtime info as disconnected when deleting', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      // runtime undefined exercises the `runtime?.status || 'disconnected'` fallback
+      mockGetMcpServerInfo.mockReturnValue({
+        config: makeServerConfig({ transport: 'stdio' }),
+        runtime: undefined,
+      });
+
+      await mgr.delete('test-server');
+      expect(mockDeleteMcpServerConfig).toHaveBeenCalledWith('alice', 'test-server');
+    });
+
+    it('throws when the profile cache fails to delete the server config', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue({
+        config: makeServerConfig({ transport: 'stdio' }),
+        runtime: { status: 'disconnected' },
+      });
+      mockDeleteMcpServerConfig.mockResolvedValue(false);
+
+      await expect(mgr.delete('test-server')).rejects.toThrow('Failed to delete server configuration');
     });
   });
 
@@ -1101,13 +1250,13 @@ describe('MCPClientManager', () => {
       const mgr = getManager();
       await mgr.initialize('alice');
       mockGetMcpServerInfo.mockReturnValue(makeServerInfo({
-        config: { name: 'test-server', transport: 'sse', url: '{{OpenKosmos_ALIAS}}/mcp', in_use: true },
+        config: { name: 'test-server', transport: 'sse', url: '{{OPENKOSMOS_ALIAS}}/mcp', in_use: true },
       }));
       mockContainsOpenKosmosPlaceholder.mockReturnValue(true);
       mockReplacePlaceholders.mockReturnValue('alice/mcp');
 
       await mgr.connect('test-server');
-      expect(mockReplacePlaceholders).toHaveBeenCalledWith('{{OpenKosmos_ALIAS}}/mcp', { alias: 'alice' });
+      expect(mockReplacePlaceholders).toHaveBeenCalledWith('{{OPENKOSMOS_ALIAS}}/mcp', { alias: 'alice' });
     });
 
     it('replaces placeholders in env during connect', async () => {
@@ -1116,7 +1265,7 @@ describe('MCPClientManager', () => {
       mockGetMcpServerInfo.mockReturnValue(makeServerInfo({
         config: {
           name: 'test-server', transport: 'stdio', command: 'node',
-          env: { TOKEN: '{{OpenKosmos_TOKEN}}' }, in_use: true,
+          env: { TOKEN: '{{OPENKOSMOS_TOKEN}}' }, in_use: true,
         },
       }));
       // stdio has no url → url check skipped; env value check returns true
@@ -1125,6 +1274,266 @@ describe('MCPClientManager', () => {
 
       await mgr.connect('test-server');
       expect(mockReplacePlaceholdersInObject).toHaveBeenCalled();
+    });
+
+    it('replaces placeholders in headers during connect', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue(makeServerInfo({
+        config: {
+          name: 'test-server', transport: 'sse', url: 'http://x',
+          headers: { 'x-apikey': '{{OPENKOSMOS_API_KEY}}' }, in_use: true,
+        },
+      }));
+      mockContainsOpenKosmosPlaceholder.mockImplementation((v: string) => v.includes('{{OPENKOSMOS'));
+      mockReplacePlaceholdersInObject.mockReturnValue({ 'x-apikey': 'resolved-key' });
+
+      await mgr.connect('test-server');
+      expect(mockReplacePlaceholdersInObject).toHaveBeenCalled();
+    });
+
+    it('skips header placeholder replacement when no placeholders present', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      mockGetMcpServerInfo.mockReturnValue(makeServerInfo({
+        config: {
+          name: 'test-server', transport: 'sse', url: 'http://x',
+          headers: { 'x-apikey': 'plain-key' }, in_use: true,
+        },
+      }));
+      mockContainsOpenKosmosPlaceholder.mockReturnValue(false);
+
+      await mgr.connect('test-server');
+      // replacePlaceholdersInObject should NOT be called for headers
+      // (it may be called for env, so check the call args)
+    });
+  });
+
+  // ── auto-reconnect wiring (manager → coordinator delegation) ────────────────
+  describe('auto-reconnect wiring', () => {
+    it('notes a server as connected via the coordinator when it reaches connected', () => {
+      const mgr = getManager();
+      const noteConnected = vi.spyOn((mgr as any).autoReconnect, 'noteConnected');
+      (mgr as any)._updateServerStatus('srv', 'connected');
+      expect(noteConnected).toHaveBeenCalledWith('srv');
+    });
+
+    it('does not note a server that only reached a non-connected status', () => {
+      const mgr = getManager();
+      const noteConnected = vi.spyOn((mgr as any).autoReconnect, 'noteConnected');
+      (mgr as any)._updateServerStatus('srv', 'error');
+      expect(noteConnected).not.toHaveBeenCalled();
+    });
+
+    describe('_isServerInUse', () => {
+      it('is false when there is no current user', () => {
+        const mgr = getManager();
+        (mgr as any).currentUserAlias = null;
+        expect((mgr as any)._isServerInUse('srv')).toBe(false);
+      });
+
+      it('is false when the config lookup throws', () => {
+        const mgr = getManager();
+        (mgr as any).currentUserAlias = 'alice';
+        mockGetMcpServerInfo.mockImplementation(() => {
+          throw new Error('no such server');
+        });
+        expect((mgr as any)._isServerInUse('srv')).toBe(false);
+      });
+
+      it('is false when the server is no longer in use', () => {
+        const mgr = getManager();
+        (mgr as any).currentUserAlias = 'alice';
+        mockGetMcpServerInfo.mockReturnValue({
+          config: { name: 'srv', in_use: false },
+          runtime: null,
+        });
+        expect((mgr as any)._isServerInUse('srv')).toBe(false);
+      });
+
+      it('is false when the config is missing', () => {
+        const mgr = getManager();
+        (mgr as any).currentUserAlias = 'alice';
+        mockGetMcpServerInfo.mockReturnValue({ config: null, runtime: null });
+        expect((mgr as any)._isServerInUse('srv')).toBe(false);
+      });
+
+      it('is true for an in-use server', () => {
+        const mgr = getManager();
+        (mgr as any).currentUserAlias = 'alice';
+        mockGetMcpServerInfo.mockReturnValue({
+          config: { name: 'srv', in_use: true },
+          runtime: null,
+        });
+        expect((mgr as any)._isServerInUse('srv')).toBe(true);
+      });
+    });
+
+    it('manual connect / disconnect / reconnect cancel any pending auto-reconnect', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      const cancel = vi.spyOn((mgr as any).autoReconnect, 'cancel');
+      vi.spyOn(mgr as any, '_performConnect').mockResolvedValue(undefined);
+      vi.spyOn(mgr as any, '_performDisconnect').mockResolvedValue(undefined);
+      vi.spyOn(mgr as any, '_performReconnect').mockResolvedValue(undefined);
+
+      await mgr.connect('srv');
+      await mgr.disconnect('srv');
+      await mgr.reconnect('srv');
+
+      expect(cancel).toHaveBeenCalledWith('srv');
+      expect(cancel).toHaveBeenCalledTimes(3);
+    });
+
+    it('cleanup resets the coordinator', async () => {
+      const mgr = getManager();
+      await mgr.initialize('alice');
+      const resetAll = vi.spyOn((mgr as any).autoReconnect, 'resetAll');
+
+      await mgr.cleanup();
+
+      expect(resetAll).toHaveBeenCalled();
+    });
+
+    it('cleanup aborts an in-flight auto-reconnect before it can repopulate state', async () => {
+      vi.useFakeTimers();
+      const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+      const mgr = getManager();
+      try {
+        (mgr as any).currentUserAlias = 'alice';
+        mockGetMcpServerInfo.mockReturnValue({
+          config: { name: 'srv', in_use: true },
+          runtime: null,
+        });
+
+        let resolveReconnect!: (value: string) => void;
+        const staleClient = {
+          connectToServer: vi.fn(() => new Promise<string>((resolve) => {
+            resolveReconnect = resolve;
+          })),
+          getTools: vi.fn().mockResolvedValue([{ name: 'stale-tool', inputSchema: {} }]),
+          executeTool: vi.fn(),
+          cleanup: vi.fn().mockResolvedValue(undefined),
+          on: vi.fn(),
+        };
+        (mgr as any).mcpClients.set('srv', staleClient);
+        (mgr as any).runtimeStates.set('srv', { serverName: 'srv', status: 'error', tools: [], lastError: null });
+        (mgr as any).autoReconnect.noteConnected('srv');
+        (mgr as any).autoReconnect.onServerError('srv', 'socket hang up');
+
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(staleClient.connectToServer).toHaveBeenCalled();
+
+        await mgr.cleanup();
+        resolveReconnect('connected');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(staleClient.getTools).not.toHaveBeenCalled();
+        expect((mgr as any).runtimeStates.size).toBe(0);
+        expect((mgr as any).toolToServerMap.size).toBe(0);
+        expect((mgr as any).mcpClients.size).toBe(0);
+      } finally {
+        randomSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('the error state handler notifies the coordinator with the captured cause', () => {
+      const mgr = getManager();
+      const onServerError = vi.spyOn((mgr as any).autoReconnect, 'onServerError');
+      let captured: ((state: any) => void) | undefined;
+      const fakeClient = {
+        on: (event: string, handler: (state: any) => void) => {
+          if (event === 'stateChange') captured = handler;
+        },
+      };
+      (mgr as any)._registerClientStateHandlers('srv', fakeClient);
+
+      captured?.({ state: 'connected' });
+      expect(onServerError).not.toHaveBeenCalled();
+
+      captured?.({ state: 'error', message: 'boom' });
+      expect(onServerError).toHaveBeenCalledWith('srv', 'boom', { wasAwaitingUserInteraction: false });
+    });
+
+    it('passes the prior user-interaction status to the coordinator before overwriting it', () => {
+      const mgr = getManager();
+      (mgr as any).runtimeStates.set('srv', {
+        serverName: 'srv',
+        status: 'needs-user-interaction',
+        tools: [{ name: 'old-tool', inputSchema: {} }],
+        lastError: null,
+      });
+      const onServerError = vi.spyOn((mgr as any).autoReconnect, 'onServerError');
+      let captured: ((state: any) => void) | undefined;
+      const fakeClient = {
+        on: (event: string, handler: (state: any) => void) => {
+          if (event === 'stateChange') captured = handler;
+        },
+      };
+      (mgr as any)._registerClientStateHandlers('srv', fakeClient);
+
+      captured?.({ state: 'error', message: 'auth cancelled' });
+
+      expect(onServerError).toHaveBeenCalledWith('srv', 'auth cancelled', { wasAwaitingUserInteraction: true });
+      expect(mgr.getMcpServerRuntimeState('srv')?.status).toBe('error');
+      expect(mgr.getMcpServerRuntimeState('srv')?.tools).toEqual([]);
+    });
+
+    // Integration: drive the full cycle so the inline host-adapter closures (executeReconnect /
+    // getStatus / isBuiltin / isInUse / setLastError / log) in the manager are covered.
+    it('drives a full reconnect cycle through the manager host adapter (success)', async () => {
+      vi.useFakeTimers();
+      const mgr = getManager();
+      try {
+        (mgr as any).currentUserAlias = 'alice';
+        (mgr as any).autoReconnect.noteConnected('srv');
+        (mgr as any).runtimeStates.set('srv', { status: 'error', lastError: null });
+        mockGetMcpServerInfo.mockReturnValue({
+          config: { name: 'srv', in_use: true },
+          runtime: null,
+        });
+        const perform = vi.spyOn(mgr as any, '_performReconnect').mockImplementation(async () => {
+          (mgr as any).runtimeStates.set('srv', { status: 'connected', lastError: null });
+        });
+
+        (mgr as any).autoReconnect.onServerError('srv', 'tool idle timeout');
+        // The scheduling hint is composed onto the captured cause and stored as lastError.
+        const composed = (mgr as any).runtimeStates.get('srv').lastError.message;
+        expect(composed).toContain('tool idle timeout');
+        expect(composed).toContain('auto-reconnecting');
+
+        await vi.advanceTimersByTimeAsync(6_000);
+        expect(perform).toHaveBeenCalledWith('srv', expect.any(AbortSignal));
+      } finally {
+        (mgr as any).autoReconnect.resetAll();
+        vi.useRealTimers();
+      }
+    });
+
+    it('reschedules through the host adapter when a reconnect attempt does not connect', async () => {
+      vi.useFakeTimers();
+      const mgr = getManager();
+      try {
+        (mgr as any).currentUserAlias = 'alice';
+        (mgr as any).autoReconnect.noteConnected('srv');
+        (mgr as any).runtimeStates.set('srv', { status: 'error', lastError: null });
+        mockGetMcpServerInfo.mockReturnValue({
+          config: { name: 'srv', in_use: true },
+          runtime: null,
+        });
+        const perform = vi.spyOn(mgr as any, '_performReconnect').mockResolvedValue(undefined);
+
+        (mgr as any).autoReconnect.onServerError('srv', 'boom');
+        await vi.advanceTimersByTimeAsync(6_000); // attempt 1 (~5s backoff)
+        expect(perform).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(40_000); // attempt 2 (~30s backoff)
+        expect(perform).toHaveBeenCalledTimes(2);
+      } finally {
+        (mgr as any).autoReconnect.resetAll();
+        vi.useRealTimers();
+      }
     });
   });
 });

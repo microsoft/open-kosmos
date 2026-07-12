@@ -6,8 +6,8 @@
   flex-direction: column;
   overflow: hidden;
   height: 100%;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.075);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-panel);
   box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
   transition: width 0.25s ease;
 }

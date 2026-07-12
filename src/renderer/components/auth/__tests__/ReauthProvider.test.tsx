@@ -39,14 +39,6 @@ vi.mock('../../ui/dialog', () => ({
   DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
 }));
 
-vi.mock('../../ui/button', () => ({
-  Button: ({ onClick, children }: any) => (
-    <button data-testid="login-button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
-
 // ── Import ─────────────────────────────────────────────────────────────────
 
 import { ReauthProvider } from '../ReauthProvider';
@@ -126,7 +118,7 @@ describe('ReauthProvider', () => {
     expect(screen.getByTestId('reauth-dialog')).toBeTruthy();
 
     await act(async () => {
-      screen.getByTestId('login-button').click();
+      screen.getByRole('button', { name: /Sign in via GitHub Copilot/ }).click();
     });
 
     expect(mockSignOut).toHaveBeenCalled();
@@ -161,7 +153,7 @@ describe('ReauthProvider', () => {
     });
 
     await act(async () => {
-      screen.getByTestId('login-button').click();
+      screen.getByRole('button', { name: /Sign in via GitHub Copilot/ }).click();
     });
 
     await waitFor(() => {

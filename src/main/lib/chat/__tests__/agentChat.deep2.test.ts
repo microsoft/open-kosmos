@@ -5,17 +5,14 @@
  *  - constructor: chatSessionData with interaction_history present / empty
  *  - getTokenCounter: recreates counter when model tokenizer changes mid-session
  *  - getCurrentModelConfig: model not found (returns defaults) vs model found (o3/o4 family, vision)
- *  - streamMessage: isRemoteSession=true, interactionPolicy override
- *  - streamMessage: emitUserMessage option, finalizes isRemoteSession/policy in finally
+ *  - streamMessage: interactionPolicy override
+ *  - streamMessage: emitUserMessage option and policy reset in finally
  *  - handleExternalAgentMessage: result.length===0 branch (starts push timeout)
  *  - handleExternalAgentMessage: result.length>0 branch (no push timeout)
  *  - handlePushChunk / handlePushComplete / cancelPush / addMessageToSession (delegates)
  *  - setChatStatus: listeners that throw are caught
  *  - addStatusChangeListener: unsubscribe removes listener
- *  - trackChatSessionActivated: records analytics (fire-and-forget)
- *  - shouldTrackChatSessionActivatedForUserMessage: false when currentChatSession is null
  *  - getContextSummary: messages with no text (empty) are skipped from parts
- *  - getSubAgentConfig: chatConfig has no agent property
  *  - getTokenCounter encoding switch path
  *  - exitNewChatSessionState: agentChatManager throws (logged but not propagated)
  *  - initialize: calculateAndNotifyContext failure is swallowed
@@ -75,6 +72,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   userInputPlaceholderParser: {},
   UserInputField: class {},
 }));
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class {},
 }));
@@ -125,24 +123,6 @@ vi.mock('../agentChatUtilities', async () => ({
   sanitizeToolCallsForApi: vi.fn(),
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
-
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn(() => undefined) })),
-  },
-}));
-
-const { mockAnalyticsManager } = vi.hoisted(() => ({
-  mockAnalyticsManager: { recordChatSessionActivated: vi.fn().mockResolvedValue(undefined) },
-}));
-
-vi.mock('../../analytics', async () => ({ analyticsManager: mockAnalyticsManager }));
-
-const { mockHookRegistry } = vi.hoisted(() => ({
-  mockHookRegistry: { execute: vi.fn().mockResolvedValue({ additionalContexts: [] }) },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({ hookRegistry: mockHookRegistry }));
 
 const { mockAgentChatManager } = vi.hoisted(() => ({
   mockAgentChatManager: { exitNewChatSessionFor: vi.fn() },
@@ -312,31 +292,10 @@ describe('AgentChat - getCurrentModelConfig', () => {
   });
 });
 
-// ── streamMessage: isRemoteSession / policy options ───────────────────────────
+// ── streamMessage policy options ──────────────────────────────────────────────
 
 describe('AgentChat - streamMessage options', () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it('sets isRemoteSession=true and interactionPolicy=plain-text-only for remote session', async () => {
-    const agent = createAgent();
-
-    const turnRunner = {
-      runStreamMessage: vi.fn().mockResolvedValue([]),
-    };
-    (agent as any).turnRunner = turnRunner;
-    (agent as any).streamingService = { turnStartTime: 0, ttftReportedForTurn: false };
-
-    await agent.streamMessage(
-      { id: 'u1', role: 'user', content: [], timestamp: Date.now() } as any,
-      undefined,
-      undefined,
-      { isRemoteSession: true },
-    );
-
-    // After the call (finally block), isRemoteSession and policy are restored
-    expect((agent as any).isRemoteSession).toBe(false);
-    expect((agent as any).interactionPolicy).toBe('allow-ui');
-  });
 
   it('uses provided interactionPolicy override', async () => {
     const agent = createAgent();
@@ -382,7 +341,6 @@ describe('AgentChat - streamMessage options', () => {
 
     await expect(agent.streamMessage({ id: 'u1', role: 'user', content: [], timestamp: Date.now() } as any))
       .rejects.toThrow('stream error');
-    expect((agent as any).isRemoteSession).toBe(false);
     expect((agent as any).interactionPolicy).toBe('allow-ui');
   });
 });
@@ -496,19 +454,6 @@ describe('AgentChat - addStatusChangeListener unsubscribe', () => {
   });
 });
 
-// ── shouldTrackChatSessionActivatedForUserMessage: null session ───────────────
-
-describe('AgentChat - shouldTrackChatSessionActivatedForUserMessage null session', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns false when currentChatSession is null', () => {
-    const agent = createAgent();
-    agent.initializeEmptyChatSession();
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(msg)).toBe(false);
-  });
-});
-
 // ── getContextSummary: messages with no text skipped ─────────────────────────
 
 describe('AgentChat - getContextSummary skips empty text messages', () => {
@@ -526,18 +471,6 @@ describe('AgentChat - getContextSummary skips empty text messages', () => {
     expect(summary).toContain('visible');
     // Tool message with no text should be skipped
     expect(summary).not.toMatch(/\[tool\]/);
-  });
-});
-
-// ── getSubAgentConfig: chatConfig has no agent property ───────────────────────
-
-describe('AgentChat - getSubAgentConfig: chatConfig missing agent', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns undefined when getChatConfig has no agent field', () => {
-    const agent = createAgent();
-    mockProfileCacheManager.getChatConfig.mockReturnValue({ chat_id: 'chat-1' }); // no agent
-    expect(agent.getSubAgentConfig('some-agent')).toBeUndefined();
   });
 });
 
@@ -563,6 +496,8 @@ describe('AgentChat - startChat sessionStartHookFired guard', () => {
 
   it('fires SessionStart hook only once', async () => {
     const agent = createAgent();
+    const runtime = (agent as any).getHookRuntime();
+    const sessionStartSpy = vi.spyOn(runtime, 'runSessionStartHook').mockResolvedValue({});
     const turnRunner = {
       run: vi.fn().mockResolvedValue(undefined),
       handleFailure: vi.fn(),
@@ -571,40 +506,28 @@ describe('AgentChat - startChat sessionStartHookFired guard', () => {
 
     // First call fires hook
     await (agent as any).startChat(undefined, {});
-    expect(mockHookRegistry.execute).toHaveBeenCalledTimes(1);
-    expect((agent as any).sessionStartHookFired).toBe(true);
+    expect(sessionStartSpy).toHaveBeenCalledTimes(1);
+    expect(runtime.isSessionStartHookFired()).toBe(true);
 
     // Second call should NOT fire hook again
-    mockHookRegistry.execute.mockClear();
     turnRunner.run.mockClear();
     await (agent as any).startChat(undefined, {});
-    expect(mockHookRegistry.execute).not.toHaveBeenCalled();
+    expect(sessionStartSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('injects additionalContexts from hook into promptService', async () => {
+  it('injects additionalContexts from Agent Hooks into promptService', async () => {
     const agent = createAgent();
-    mockHookRegistry.execute.mockResolvedValueOnce({
-      additionalContexts: ['Extra context 1', 'Extra context 2'],
-    });
+    const runtime = (agent as any).getHookRuntime();
+    vi.spyOn(runtime, 'runSessionStartHook').mockResolvedValueOnce({ additionalContexts: ['Extra context 1', 'Extra context 2'] });
 
     const setHookAdditionalContexts = vi.fn();
-    (agent as any).promptService = { setHookAdditionalContexts };
+    (agent as any).promptService = { setHookAdditionalContexts, setHookSystemMessages: vi.fn() };
 
     const turnRunner = { run: vi.fn().mockResolvedValue(undefined), handleFailure: vi.fn() };
     (agent as any).turnRunner = turnRunner;
 
     await (agent as any).startChat(undefined, {});
     expect(setHookAdditionalContexts).toHaveBeenCalledWith(['Extra context 1', 'Extra context 2']);
-  });
-
-  it('continues even when hookRegistry.execute throws', async () => {
-    const agent = createAgent();
-    mockHookRegistry.execute.mockRejectedValueOnce(new Error('hook error'));
-
-    const turnRunner = { run: vi.fn().mockResolvedValue(undefined), handleFailure: vi.fn() };
-    (agent as any).turnRunner = turnRunner;
-
-    await expect((agent as any).startChat(undefined, {})).resolves.not.toThrow();
   });
 });
 
@@ -615,8 +538,7 @@ describe('AgentChat - startChat stale nonce (stale cancellation)', () => {
 
   it('skips handleFailure when nonce is stale (newer turn started)', async () => {
     const agent = createAgent();
-    // Mark hook as already fired to skip that path
-    (agent as any).sessionStartHookFired = true;
+    vi.spyOn((agent as any).getHookRuntime(), 'runSessionStartLifecycle').mockResolvedValue(true);
 
     const handleFailure = vi.fn();
     const turnRunner = {
@@ -636,7 +558,7 @@ describe('AgentChat - startChat stale nonce (stale cancellation)', () => {
 
   it('calls handleFailure when nonce matches (this is the active turn)', async () => {
     const agent = createAgent();
-    (agent as any).sessionStartHookFired = true;
+    vi.spyOn((agent as any).getHookRuntime(), 'runSessionStartLifecycle').mockResolvedValue(true);
 
     const handleFailure = vi.fn().mockResolvedValue(undefined);
     const turnRunner = {

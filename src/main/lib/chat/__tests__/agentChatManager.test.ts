@@ -358,6 +358,20 @@ describe('AgentChatManager', () => {
       expect(result).toBe(mockInstance);
       expect(mockSessionCoordinator.activateSession).toHaveBeenCalledWith('session-1', mockInstance);
     });
+
+    it('recovers pending sub-agent results when activating a session', async () => {
+      const manager = createFreshManager();
+      const recoverSpy = vi.fn();
+      (manager as any)._autoWakeController = { setup: vi.fn(), recoverPendingForSession: recoverSpy };
+      const mockInstance = makeMockAgentChat();
+      mockRegistry.hasInstance.mockReturnValue(true);
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.switchToChatSession('chat-1', 'session-1');
+
+      expect(result).toBe(mockInstance);
+      expect(recoverSpy).toHaveBeenCalledWith('session-1');
+    });
   });
 
   describe('exitNewChatSessionFor', () => {

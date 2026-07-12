@@ -300,6 +300,25 @@ describe('useMcpConnectionFailureToast', () => {
     expect(true).toBe(true);
   });
 
+  it('handles reconnect exceptions gracefully', async () => {
+    (window as any).electronAPI.profile.reconnectMcpServer = vi.fn().mockRejectedValue(new Error('boom'));
+
+    renderToastHook();
+
+    act(() => {
+      mcpSubscribers.failure!('my-server', 'Error');
+    });
+
+    const toastOptions = mockShowToast.mock.calls[0][3];
+    const reconnectAction = toastOptions.actions.find((a: any) => a.label === 'Reconnect');
+
+    await act(async () => {
+      await reconnectAction.onClick();
+    });
+
+    expect((window as any).electronAPI.profile.reconnectMcpServer).toHaveBeenCalledWith('my-server');
+  });
+
   it('toast message is persistent', () => {
     renderToastHook();
 
@@ -333,5 +352,17 @@ describe('useMcpConnectionFailureToast', () => {
     });
 
     expect(mockShowToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows remaining line count for long stderr previews and falls back for empty summaries', () => {
+    renderToastHook();
+
+    const errorWithLongStderr = 'Failed to initialize MCP server:\n\nStderr output:\none\ntwo\nthree\nfour\nfive\nsix';
+    act(() => {
+      mcpSubscribers.failure!('my-server', errorWithLongStderr);
+    });
+
+    const messageArg = mockShowToast.mock.calls[0][0] as React.ReactElement;
+    expect(JSON.stringify(messageArg.props.children)).toContain('2 more lines');
   });
 });

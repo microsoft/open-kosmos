@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuthContext } from '../auth/AuthProvider';
 import { useProfileData } from '../userData/userDataProvider';
 import '../../styles/DataLoadingPage.css';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 export interface DataLoadingPageProps {
   onDataReady: () => void;
@@ -13,6 +14,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
   const [dots, setDots] = useState('');
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
+  const { t } = useI18n();
 
   // Animated dots effect
   useEffect(() => {
@@ -59,15 +61,15 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
     const elapsed = Math.floor(elapsedTime / 1000);
 
     if (elapsed < 2) {
-      return 'Connecting to server';
+      return t('dataLoading.connectingToServer');
     } else if (elapsed < 5) {
-      return 'Loading configuration files';
+      return t('dataLoading.loadingConfiguration');
     } else if (elapsed < 8) {
-      return 'Initializing MCP servers';
+      return t('dataLoading.initializingMcp');
     } else if (elapsed < 12) {
-      return 'Syncing GitHub Copilot models';
+      return t('dataLoading.syncingModels');
     } else {
-      return 'Almost complete';
+      return t('dataLoading.almostComplete');
     }
   };
 
@@ -106,10 +108,10 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
               )}
             </div>
             <h2 className="data-loading-welcome">
-              Welcome back, {user?.name || user?.login}!
+              {t('dataLoading.welcomeBack', { name: user?.name || user?.login || '' })}
             </h2>
             <p className="data-loading-subtitle">
-              Preparing your personalized AI assistant environment
+              {t('dataLoading.subtitle')}
             </p>
           </div>
 
@@ -123,7 +125,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
             </div>
             <div className="data-loading-progress-text-container">
               <p className="data-loading-progress-title">
-                Loading your data{dots}
+                {t('dataLoading.loadingYourData', { dots })}
               </p>
               <p className="data-loading-progress-message">
                 {getLoadingMessage()}
@@ -136,14 +138,14 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
             <div className="data-loading-detail-item">
               <div className={`data-loading-detail-indicator ${isInitialized ? 'completed' : 'loading'}`}></div>
               <span className={`data-loading-detail-text ${isInitialized ? 'completed' : 'loading'}`}>
-                Initialize user configuration {isInitialized ? '✓' : '...'}
+                {t('dataLoading.initializeUserConfiguration', { status: isInitialized ? '✓' : '...' })}
               </span>
             </div>
 
             <div className="data-loading-detail-item">
               <div className={`data-loading-detail-indicator ${data?.chats && data.chats.length >= 0 ? 'completed' : 'loading'}`}></div>
               <span className={`data-loading-detail-text ${data?.chats && data.chats.length >= 0 ? 'completed' : 'loading'}`}>
-                Load Chat configurations {data?.chats && data.chats.length >= 0 ? '✓' : '...'}
+                {t('dataLoading.loadChatConfigurations', { status: data?.chats && data.chats.length >= 0 ? '✓' : '...' })}
               </span>
             </div>
           </div>
@@ -151,7 +153,7 @@ export const DataLoadingPage: React.FC<DataLoadingPageProps> = ({ onDataReady })
           {/* Time indicator */}
           <div className="data-loading-time-section">
             <p className="data-loading-time-text">
-              Loading time: {formatElapsedTime(elapsedTime)}
+              {t('dataLoading.loadingTime', { time: formatElapsedTime(elapsedTime) })}
             </p>
           </div>
         </div>

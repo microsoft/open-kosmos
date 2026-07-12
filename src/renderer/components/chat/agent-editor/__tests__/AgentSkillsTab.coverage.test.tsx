@@ -79,7 +79,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
     role: 'assistant',
     model: 'gpt-4',
     mcpServers: [],
-    systemPrompt: '',
+    systemPrompt: { 'Base.md': '', 'AGENTS.md': '' },
     skills: [],
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -90,7 +90,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
 function defaultProps(overrides: Partial<TabComponentProps> = {}): TabComponentProps {
   return {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: makeAgentData(),
     onSave: vi.fn().mockResolvedValue(makeAgentData()),
     readOnly: false,
@@ -255,40 +255,11 @@ describe('AgentSkillsTab', () => {
     vi.useRealTimers()
   })
 
-  it('navigates to skill library when update button is clicked', async () => {
+  it('treats legacy remote version metadata as inert', () => {
     const skill = makeSkill({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '2.0.0' })
     mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
     render(<AgentSkillsTab {...defaultProps()} />)
-
-    const updateBtn = screen.getByText('Update').closest('button')!
-    await act(async () => {
-      fireEvent.click(updateBtn)
-    })
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('/settings/skills/skill-library'),
-      expect.any(Object)
-    )
-  })
-
-  it('does not show update button for ON-DEVICE skill', () => {
-    const skill = makeSkill({ source: 'ON-DEVICE', version: '1.0.0', remoteVersion: '2.0.0' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
     expect(screen.queryByText('Update')).not.toBeInTheDocument()
-  })
-
-  it('does not show update button when remoteVersion is empty', () => {
-    const skill = makeSkill({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    expect(screen.queryByText('Update')).not.toBeInTheDocument()
-  })
-
-  it('shows update button when version is empty but remoteVersion is set', () => {
-    const skill = makeSkill({ source: 'IN-LIBRARY', version: '', remoteVersion: '1.0.0' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    expect(screen.getByText('Update')).toBeInTheDocument()
   })
 
   it('shows builtin badge for builtin skill', () => {
@@ -296,28 +267,6 @@ describe('AgentSkillsTab', () => {
     mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
     render(<AgentSkillsTab {...defaultProps()} />)
     expect(screen.getByText('Built-in')).toBeInTheDocument()
-  })
-
-  it('shows plugin badge for plugin skill', () => {
-    const skill = makeSkill({ name: 'plugin--abc', source: 'PLUGIN' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    expect(screen.getByText('Plugin')).toBeInTheDocument()
-  })
-
-  it('disables checkbox for plugin skill', () => {
-    const skill = makeSkill({ name: 'plugin--abc', source: 'PLUGIN' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    expect(screen.getByRole('checkbox')).toBeDisabled()
-  })
-
-  it('does not show manage (settings) button for plugin skill', () => {
-    const skill = makeSkill({ name: 'plugin--abc', source: 'PLUGIN' })
-    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    // Settings icon should not be rendered for plugin skills
-    expect(screen.queryByTestId('settings-icon')).not.toBeInTheDocument()
   })
 
   it('uses cachedData skills over agentData skills', async () => {
@@ -330,19 +279,19 @@ describe('AgentSkillsTab', () => {
     await waitFor(() => {
       const checkboxes = screen.getAllByRole('checkbox')
       // skill-b should be checked (from cachedData), skill-a should not
-      // Skills are sorted: non-builtin, non-plugin first alphabetically
+      // Skills are sorted: non-builtin first alphabetically
       // skill-a comes before skill-b alphabetically
       expect(checkboxes[0]).not.toBeChecked() // skill-a
       expect(checkboxes[1]).toBeChecked()     // skill-b
     })
   })
 
-  it('shows version and source for skills', () => {
+  it('shows legacy source metadata with local semantics', () => {
     const skill = makeSkill({ name: 'my-skill', version: '2.0.0', source: 'IN-LIBRARY' })
     mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
     render(<AgentSkillsTab {...defaultProps()} />)
     expect(screen.getByText('v2.0.0')).toBeInTheDocument()
-    expect(screen.getByText('IN-LIBRARY')).toBeInTheDocument()
+    expect(screen.getByText('ON-DEVICE')).toBeInTheDocument()
   })
 
   it('sorts builtin skills before others', () => {
@@ -356,19 +305,6 @@ describe('AgentSkillsTab', () => {
     // just verify both appear
     expect(screen.getByText('builtin-skill')).toBeInTheDocument()
     expect(screen.getByText('z-regular')).toBeInTheDocument()
-  })
-
-  it('sorts plugin skills after non-plugin skills', () => {
-    const plugin = makeSkill({ name: 'plugin--abc', source: 'PLUGIN' })
-    const regular = makeSkill({ name: 'a-regular' })
-    mockUseSkills.mockReturnValue({ skills: [plugin, regular], isLoading: false })
-    render(<AgentSkillsTab {...defaultProps()} />)
-    const skillNames = screen.getAllByRole('checkbox').map((cb) => {
-      const card = cb.closest('.skill-card')
-      return card?.querySelector('.skill-card-name')?.textContent
-    })
-    expect(skillNames[0]).toBe('a-regular')
-    expect(skillNames[1]).toBe('plugin--abc')
   })
 
   it('locks builtin skill checkbox for builtin agent', async () => {
@@ -396,7 +332,7 @@ describe('AgentSkillsTab', () => {
     expect(lastCall[1]).toHaveProperty('skills')
   })
 
-  it('clicking skill card toggles selection (non-readonly, non-plugin)', async () => {
+  it('clicking skill card toggles selection (non-readonly)', async () => {
     const onDataChange = vi.fn()
     const skill = makeSkill()
     mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
@@ -408,5 +344,90 @@ describe('AgentSkillsTab', () => {
     })
     // Should have been called (data changed)
     expect(onDataChange).toHaveBeenCalled()
+  })
+
+  it('stops checkbox event propagation and toggles an unlocked skill', async () => {
+    const onDataChange = vi.fn()
+    const skill = makeSkill({ name: 'toggle-from-checkbox' })
+    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
+
+    render(<AgentSkillsTab {...defaultProps({ onDataChange })} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('checkbox'))
+    })
+
+    await waitFor(() => expect(onDataChange).toHaveBeenCalled())
+  })
+
+  it('does not toggle a locked builtin skill from the checkbox handler', async () => {
+    const onDataChange = vi.fn()
+    const skill = makeSkill({ name: 'builtin-skill' })
+    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
+    const agentData = makeAgentData({ name: 'BuiltinAgent', skills: ['builtin-skill'] })
+
+    render(<AgentSkillsTab {...defaultProps({ agentData, onDataChange })} />)
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled())
+    const callsBefore = onDataChange.mock.calls.length
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+    checkbox.disabled = false
+
+    await act(async () => {
+      fireEvent.click(checkbox)
+    })
+
+    expect(onDataChange.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('ignores direct toggle attempts when readOnly is true', async () => {
+    const onDataChange = vi.fn()
+    const skill = makeSkill({ name: 'readonly-skill' })
+    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
+
+    render(<AgentSkillsTab {...defaultProps({ readOnly: true, onDataChange })} />)
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+    checkbox.disabled = false
+    const callsBefore = onDataChange.mock.calls.length
+
+    await act(async () => {
+      fireEvent.click(checkbox)
+    })
+
+    expect(onDataChange.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('removes an already selected skill when the skill card is clicked', async () => {
+    const onDataChange = vi.fn()
+    const skill = makeSkill({ name: 'selected-skill' })
+    mockUseSkills.mockReturnValue({ skills: [skill], isLoading: false })
+    const agentData = makeAgentData({ skills: ['selected-skill'] })
+
+    render(<AgentSkillsTab {...defaultProps({ agentData, onDataChange })} />)
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked())
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('selected-skill').closest('.skill-card')!)
+    })
+
+    await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked())
+  })
+
+  it('renders without selected skills when agent data is absent', () => {
+    mockUseSkills.mockReturnValue({ skills: [makeSkill()], isLoading: false })
+
+    render(<AgentSkillsTab {...defaultProps({ agentData: undefined })} />)
+
+    expect(screen.getByText('0 selected from available skills')).toBeInTheDocument()
+  })
+
+  it('covers alternate builtin sorting branches', () => {
+    const builtin = makeSkill({ name: 'builtin-skill' })
+    const regular = makeSkill({ name: 'regular-skill' })
+    mockUseSkills.mockReturnValue({ skills: [builtin, regular], isLoading: false })
+
+    render(<AgentSkillsTab {...defaultProps()} />)
+
+    expect(screen.getByText('builtin-skill')).toBeInTheDocument()
+    expect(screen.getByText('regular-skill')).toBeInTheDocument()
   })
 })

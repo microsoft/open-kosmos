@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head><title>Probe Fixture</title></head>
+<body>
+  <h1>Hello Probe</h1>
+  <p>Some visible body text for read_page.</p>
+  <a href="https://example.com/">Example Link</a>
+  <a href="https://example.com/" target="_blank">Open external</a>
+  <input id="field" />
+  <button id="btn" style="width:120px;height:40px">Submit</button>
+  <button id="publish" style="width:120px;height:40px">Publish</button>
+  <div id="status">idle</div>
+  <script>
+    // Mirror the input value into a data-attr on every real `input` event,
+    // standing in for a React-controlled input (only a trusted event sets it).
+    const field = document.getElementById('field');
+    field.addEventListener('input', () => field.setAttribute('data-mirror', field.value));
+    document.getElementById('btn').addEventListener('click', () => {
+      document.getElementById('status').textContent = 'clicked';
+    });
+    // Delayed element to exercise wait_for.
+    setTimeout(() => {
+      const t = document.createElement('div');
+      t.id = 'toast'; t.textContent = 'success';
+      document.body.appendChild(t);
+    }, 400);
+  </script>
+</body>
+</html>

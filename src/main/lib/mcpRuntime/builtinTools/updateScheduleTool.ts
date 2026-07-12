@@ -75,7 +75,7 @@ export class UpdateScheduleTool {
             cron_expression: updatedJob.cronExpression,
             run_at: updatedJob.runAt,
             message: updatedJob.message,
-            agent_id: updatedJob.agentId,
+            chat_id: updatedJob.chat_id,
             enabled: updatedJob.enabled,
             status: updatedJob.status,
             last_run_at: updatedJob.lastRunAt,
@@ -125,7 +125,7 @@ export class UpdateScheduleTool {
           },
           cron_expression: {
             type: 'string',
-            description: 'New cron expression defining a recurring schedule. Supports both 5-field (`minute hour day-of-month month day-of-week`) and 6-field (`second minute hour day-of-month month day-of-week`) syntax. Examples: "0 6 * * *" (daily 6AM), "0 4,8,14,18 * * *" (daily at 04:00, 08:00, 14:00, 18:00), "0 0 4,8,14,18 * * *" (same schedule in 6-field syntax).',
+            description: 'New cron expression (interpreted in the user\'s local timezone). Supports both 5-field (`minute hour day-of-month month day-of-week`) and 6-field (`second minute hour day-of-month month day-of-week`) syntax. Examples: "0 6 * * *" (daily 6AM), "0 4,8,14,18 * * *" (daily at 04:00, 08:00, 14:00, 18:00), "0 0 4,8,14,18 * * *" (same schedule in 6-field syntax).',
           },
           run_at: {
             type: 'string',

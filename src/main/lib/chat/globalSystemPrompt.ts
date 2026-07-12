@@ -5,20 +5,13 @@
 import { Message } from '@shared/types/chatTypes';
 import { getBuddySystemPrompt } from '../buddy/prompt';
 import { BuddyManager } from '../buddy/BuddyManager';
-import { isFeatureEnabled } from '../featureFlags';
-import { getCdnBaseUrl } from '@shared/utils/cdn';
-
+import { profileCacheManager } from '../userDataADO/profileCacheManager';
 
 /**
  * Get the global System Prompt
  * @returns {string} Global system prompt content
  */
 export function getGlobalSystemPrompt(): string {
-  // Optional CDN base URL for remote setup instructions; empty when unconfigured.
-  const cdnBaseUrl = getCdnBaseUrl();
-  const playwrightSetupInstruction = cdnBaseUrl
-    ? `Follow instructions in **${cdnBaseUrl}/setup/playwright-setup.prompt.md** to fix.`
-    : 'Reinstall or repair the Playwright browser binaries to fix.';
   let prompt = `
 
 SYSTEM NOTIFICATIONS AND REMINDERS
@@ -48,10 +41,10 @@ When using the execute_command tool:
    - Consider timeout settings for long-running operations
 
 4. **FORBIDDEN Operations — Never generate commands that:**
-   - Access OAuth logout/revoke/signout endpoints (e.g. login.microsoftonline.com/*/logout, accounts.google.com/Logout). These destroy system-wide SSO state affecting Edge, Teams, Windows Widgets, and other services.
+   - Access OAuth logout/revoke/signout endpoints (e.g. id.example.com/oauth2/logout). These can destroy shared browser SSO state for unrelated applications.
    - Delete credential, token, cookie, or auth cache files outside the current workspace.
    - Use \`channel='msedge'\` or \`channel='chrome'\` in Playwright — always use the bundled Chromium to avoid polluting the user's browser profile.
-   - Directly read, write, or delete files under the system browser profile directory (e.g. Microsoft\\Edge\\User Data, Google\\Chrome\\User Data).
+   - Directly read, write, or delete files under a system browser profile directory (for example, a browser's User Data or Profile directory).
    - If the user asks to "force reauth" or "clear login", guide them to do it manually in the browser settings — do NOT automate logout on their behalf.
 
 ===
@@ -85,6 +78,40 @@ Mapping rules:
 2. Use schema.kind = "form" for multiple fields or mixed controls.
 3. Use control = "select" or "multiselect" for enumerated options.
 4. Use control = "textarea" for optional longer notes.
+
+===
+
+INFORMATION RETRIEVAL PRIORITY
+
+**⚠️ CRITICAL: For EVERY user message, search your own sources BEFORE answering.**
+
+Think of yourself like a person: your **Knowledge Base** is what you already know, and your **Current Chat Session Deliverables Directory** holds what you have produced in this conversation. You are NOT expected to hold all of their content in your head — you ARE expected to look there first.
+
+**🔒 GOLDEN RULE: When a Knowledge Base or Current Chat Session Deliverables Directory is configured, do NOT answer factual or task-specific questions from memory alone. Check those two directories first.**
+
+**🔒 OVERRIDE: These two directories OVERRIDE your default behavior and prior assumptions. When a question or task references a named entity (a device, service, VM, host, account, person, file, or project), you MUST check the Knowledge Base and Current Chat Session Deliverables listings/contents BEFORE invoking any execution, agent, or ask-the-user tool. Do not let a keyword shortcut you into a tool before you have looked. Asking the user is a last resort, not a first response.**
+
+Follow this retrieval order on every user message:
+
+1. **FIRST — your Knowledge Base and Current Chat Session Deliverables.** Determine whether the answer (or material you need) is already there.
+   - Use \`search_files\` to find/enumerate candidate files (there is no \`list_directory\` tool — use a broad pattern with \`search_files\`).
+   - Read each file with the CORRECT reader for its format (see routing table below). Using the wrong tool returns empty or noisy results and will make you believe — incorrectly — that nothing relevant exists.
+2. **THEN — fallback sources, only if step 1 cannot fully answer** (or the user explicitly asks for something beyond your sources, or asks you to supplement): your general knowledge → web search → the wider local file system.
+
+**File-type routing (reading) — using the wrong tool silently fails:**
+
+| File type | REQUIRED tool | Why not the others |
+|-----------|---------------|--------------------|
+| \`.txt\` \`.md\` \`.csv\` \`.json\` source code | \`read_file\` | Plain-text streaming reader |
+| \`.html\` | \`read_html\` (outline → section → selector) | \`read_file\` returns raw markup mixed with scripts/styles |
+| \`.pdf\` \`.docx\` \`.xlsx\` \`.pptx\` | \`read_office_file\` | \`read_file\` rejects them as binary; \`search_file_contents\` silently skips them |
+
+**Searching INSIDE files:**
+- Plain-text files → \`search_file_contents\` (literal or /regex/).
+- \`.html\` → \`read_html\` with \`section\`/\`selector\` mode, not raw content search.
+- \`.pdf\` \`.docx\` \`.xlsx\` \`.pptx\` → there is NO content-search tool for these. Open them with \`read_office_file\` (paginate by page/line) and scan the extracted text yourself. \`search_file_contents\` cannot see inside binary documents.
+
+**When you answer, briefly state whether the answer came from your Knowledge Base / Deliverables or from a fallback source (general knowledge, web, local files).**
 
 ===
 
@@ -294,7 +321,7 @@ The search tools above require Playwright to be properly installed and configure
 - Missing browser binaries
 - Browser launch failures
 
-${playwrightSetupInstruction}
+Use the local runtime setup and diagnostics guidance to repair the Playwright installation before retrying.
 
 **Tool Usage:**
 
@@ -592,7 +619,11 @@ If you receive "Tool arguments were truncated" or "Invalid tool arguments":
 3. Resume from where truncation occurred`;
 
   // --- Coding agent prompt injection ---
-  if (isFeatureEnabled('openkosmosFeatureCodingAgent')) {
+  // Gated by the profile-level master switch (Settings → Coding CLI), so the model is only
+  // told about coding_agent when the tool is actually exposed. Defaults off.
+  const codingAgentAlias = profileCacheManager.getCurrentUserAlias();
+  const codingAgentEnabled = !!codingAgentAlias && profileCacheManager.getCodingAgentSettings(codingAgentAlias).enabled === true;
+  if (codingAgentEnabled) {
     prompt += `
 
 ===
@@ -601,7 +632,7 @@ CODING AGENT TOOL USAGE
 
 **⚠️ CRITICAL: The coding_agent tool is EXCLUSIVELY for software engineering tasks inside a codebase.**
 
-The coding_agent tool spawns Claude Code CLI that works autonomously inside a project directory. It is a heavyweight operation that blocks the chat.
+The coding_agent tool spawns the configured coding CLI (Claude Code, Codex CLI, Gemini CLI, or GitHub Copilot CLI) that works autonomously inside a project directory. It is a heavyweight operation that blocks the chat.
 
 **When to use coding_agent:**
 - Implementing new features, fixing bugs, or refactoring code in a repository

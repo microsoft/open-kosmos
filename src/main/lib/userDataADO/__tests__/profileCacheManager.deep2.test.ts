@@ -17,7 +17,6 @@
  *  - notifyProfileDataManager: batched (non-immediate) path + debounce
  *  - clearCache: with specific alias (had / did not have cache)
  *  - clearCache: without alias (all clear)
- *  - updateMcpServerInUse: server not found
  *  - getMcpServerRuntimeState: mcpClientManager is null
  *  - getAllMcpServerRuntimeStates: mcpClientManager is null
  *  - executeToolCall: mcpClientManager null / alias null
@@ -40,12 +39,6 @@ vi.mock('electron', async () => ({
 vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
-
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({ cacheQuickStartImages: vi.fn() })),
-  },
-}));
 
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
@@ -96,10 +89,6 @@ vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
   },
 }));
 
-vi.mock('../../plugin/pluginManager', async () => ({
-  pluginManager: { initialize: vi.fn().mockResolvedValue({ errors: [] }) },
-}));
-
 
 vi.mock('../../chat/agentChatManager', async () => ({
   agentChatManager: { initialize: vi.fn().mockResolvedValue(undefined) },
@@ -109,19 +98,124 @@ vi.mock('../../featureFlags/featureFlagManager', async () => ({
   featureFlagManager: { isEnabled: vi.fn(() => false) },
 }));
 
-vi.mock('../../remoteChannel/credentialStore', async () => ({
-  credentialStore: { hasCredential: vi.fn().mockResolvedValue(false) },
-}));
-
 vi.mock('../../startup/lazy', async () => ({
   getExternalAgentService: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: { getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })) },
-}));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+const mcpManagerStore = vi.hoisted(() => ({ servers: new Map<string, any[]>() }));
+const mcpManagerMock = vi.hoisted(() => ({
+  getServers: vi.fn((alias: string) => mcpManagerStore.servers.get(alias) ?? []),
+  getServerInfo: vi.fn((alias: string, name: string) =>
+    (mcpManagerStore.servers.get(alias) ?? []).find((s: any) => s.name === name) ?? null),
+  hasServersLoaded: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  hasPersistedServers: vi.fn((alias: string) => mcpManagerStore.servers.has(alias)),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    mcpManagerStore.servers.set(alias, legacySlice ?? mcpManagerStore.servers.get(alias) ?? []);
+  }),
+  commitResolvedServers: vi.fn(async (alias: string, servers: any[]) => {
+    mcpManagerStore.servers.set(alias, servers ?? []);
+  }),
+  addServer: vi.fn(async (alias: string, cfg: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    if (cur.some((s: any) => s.name === cfg.name)) return false;
+    mcpManagerStore.servers.set(alias, [...cur, cfg]);
+    return true;
+  }),
+  updateServer: vi.fn(async (alias: string, name: string, updates: any) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], ...updates };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  deleteServer: vi.fn(async (alias: string, name: string) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    mcpManagerStore.servers.set(alias, cur.filter((_: any, j: number) => j !== i));
+    return true;
+  }),
+  setServerInUse: vi.fn(async (alias: string, name: string, inUse: boolean) => {
+    const cur = mcpManagerStore.servers.get(alias) ?? [];
+    const i = cur.findIndex((s: any) => s.name === name);
+    if (i < 0) return false;
+    const next = [...cur]; next[i] = { ...next[i], in_use: inUse };
+    mcpManagerStore.servers.set(alias, next);
+    return true;
+  }),
+  clearCache: vi.fn((alias?: string) => {
+    if (alias === undefined) mcpManagerStore.servers.clear();
+    else mcpManagerStore.servers.delete(alias);
+  }),
+}));
+vi.mock('../mcpConfigManager', () => ({
+  mcpConfigManager: mcpManagerMock,
+  McpConfigManager: class {},
+}));
+
+const skillsManagerStore = vi.hoisted(() => ({ skills: new Map<string, any[]>() }));
+const skillsManagerMock = vi.hoisted(() => ({
+  loadForAlias: vi.fn(async (alias: string, rawProfile: { skills?: unknown }) => {
+    const skills = Array.isArray(rawProfile?.skills) ? (rawProfile.skills as any[]) : [];
+    skillsManagerStore.skills.set(alias, skills);
+    return { skills, needsProfileRewrite: false };
+  }),
+  getSkills: vi.fn((alias: string) => skillsManagerStore.skills.get(alias) ?? []),
+  getSkill: vi.fn((alias: string, name: string) =>
+    (skillsManagerStore.skills.get(alias) ?? []).find((s: any) => s.name === name)),
+  hasSkill: vi.fn((alias: string, name: string) =>
+    (skillsManagerStore.skills.get(alias) ?? []).some((s: any) => s.name === name)),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    skillsManagerStore.skills.set(alias, legacySlice ?? skillsManagerStore.skills.get(alias) ?? []);
+  }),
+  clearForAlias: vi.fn((alias: string) => {
+    skillsManagerStore.skills.delete(alias);
+  }),
+  clearAll: vi.fn(() => {
+    skillsManagerStore.skills.clear();
+  }),
+}));
+vi.mock('../skillsConfigManager', () => ({
+  skillsConfigManager: skillsManagerMock,
+  SkillsConfigManager: class {},
+}));
+
+const hooksManagerStore = vi.hoisted(() => ({ hooks: new Map<string, any[]>() }));
+const hooksManagerMock = vi.hoisted(() => ({
+  loadForAlias: vi.fn(async (alias: string, rawProfile: { hooks?: unknown }) => {
+    const hooks = Array.isArray(rawProfile?.hooks) ? (rawProfile.hooks as any[]) : [];
+    hooksManagerStore.hooks.set(alias, hooks);
+    return { hooks, needsProfileRewrite: false };
+  }),
+  getHooks: vi.fn((alias: string) => hooksManagerStore.hooks.get(alias) ?? []),
+  getHook: vi.fn((alias: string, id: string) =>
+    (hooksManagerStore.hooks.get(alias) ?? []).find((h: any) => h.id === id)),
+  hasHook: vi.fn((alias: string, id: string) =>
+    (hooksManagerStore.hooks.get(alias) ?? []).some((h: any) => h.id === id)),
+  hasHooksLoaded: vi.fn((alias: string) => hooksManagerStore.hooks.has(alias)),
+  hasPersistedHooks: vi.fn(() => true),
+  resolveFromDisk: vi.fn(async (alias: string, legacySlice?: any[]) => {
+    hooksManagerStore.hooks.set(alias, legacySlice ?? hooksManagerStore.hooks.get(alias) ?? []);
+  }),
+  commitResolvedHooks: vi.fn(async () => {}),
+  addHook: vi.fn(async () => true),
+  updateHook: vi.fn(async () => true),
+  deleteHook: vi.fn(async () => true),
+  clearForAlias: vi.fn((alias: string) => {
+    hooksManagerStore.hooks.delete(alias);
+  }),
+  clearAll: vi.fn(() => {
+    hooksManagerStore.hooks.clear();
+  }),
+}));
+vi.mock('../hooksConfigManager', () => ({
+  hooksConfigManager: hooksManagerMock,
+  HooksConfigManager: class {},
+}));
+
 import { ProfileCacheManager } from '../profileCacheManager';
 import type { ProfileV2 } from '../types/profile';
 
@@ -144,7 +238,6 @@ function makeProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
     updatedAt: '2026-01-01T00:00:00Z',
     alias: 'testUser',
     freDone: true,
-    primaryAgent: 'Kobi',
     mcp_servers: [],
     skills: [],
     'starred-chat-sessions': [],
@@ -159,12 +252,12 @@ function makeProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent',
           model: 'gpt-5',
           workspace: '/ws',
-          knowledge: { knowledgeBase: '' },
+          knowledgeBase: '',
           version: '1.0.0',
           remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: [],
           zero_states: { greeting: '', quick_starts: [] },
         },
@@ -181,6 +274,7 @@ describe('ProfileCacheManager.handleProfile', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -190,6 +284,11 @@ describe('ProfileCacheManager.handleProfile', () => {
     const result = await mgr.handleProfile('newuser');
     expect(result).not.toBeNull();
     expect(result?.alias).toBe('newuser');
+    expect(result?.computerUse).toEqual({
+      enabled: false,
+      alwaysAllowedApps: [],
+      requireConfirmation: true,
+    });
     expect((mgr as any).writeProfileToFile).toHaveBeenCalled();
     expect((mgr as any).notifyProfileDataManager).toHaveBeenCalledWith('newuser', true);
   });
@@ -235,6 +334,7 @@ describe('ProfileCacheManager.syncStarredChatSessionIndex — edge branches', ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -270,7 +370,6 @@ describe('ProfileCacheManager.syncStarredChatSessionIndex — edge branches', ()
           title: 'T',
           lastUpdated: '2026-01-01T00:00:00Z',
           readStatus: 'unread',
-          source: { type: 'local' },
           agentName: 'Agent',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -314,6 +413,7 @@ describe('ProfileCacheManager.removeStarredChatSessionIndex — edge branches', 
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -337,7 +437,6 @@ describe('ProfileCacheManager.removeStarredChatSessionIndex — edge branches', 
           title: 'T',
           lastUpdated: '2026-01-01T00:00:00Z',
           readStatus: 'unread',
-          source: { type: 'local' },
           agentName: 'Agent',
           agentEmoji: '🤖',
           agentAvatar: '',
@@ -365,6 +464,7 @@ describe('ProfileCacheManager.clearCache', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
     (mgr as any).mcpClientManager = {
       getAllMcpServerRuntimeStates: vi.fn(() => []),
@@ -402,47 +502,6 @@ describe('ProfileCacheManager.clearCache', () => {
   });
 });
 
-// ── updateMcpServerInUse ──────────────────────────────────────────────────────
-
-describe('ProfileCacheManager.updateMcpServerInUse', () => {
-  let mgr: ProfileCacheManager;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mgr = freshManager();
-  });
-
-  it('no-ops when profile not in cache', () => {
-    expect(() => mgr.updateMcpServerInUse('noUser', 'server', true)).not.toThrow();
-  });
-
-  it('no-ops when server not found in mcp_servers', () => {
-    const profile = makeProfile({ mcp_servers: [] });
-    (mgr as any).cache.set('testUser', profile);
-    mgr.updateMcpServerInUse('testUser', 'nonexistent', true);
-    expect(profile.mcp_servers).toHaveLength(0);
-  });
-
-  it('updates in_use for existing server', () => {
-    const profile = makeProfile({
-      mcp_servers: [{
-        name: 'my-server',
-        transport: 'stdio',
-        command: 'node',
-        args: [],
-        env: {},
-        url: '',
-        in_use: false,
-        version: '1.0.0',
-        source: 'ON-DEVICE',
-      }],
-    });
-    (mgr as any).cache.set('testUser', profile);
-    mgr.updateMcpServerInUse('testUser', 'my-server', true);
-    expect(profile.mcp_servers[0].in_use).toBe(true);
-  });
-});
-
 // ── getMcpServerRuntimeState / getAllMcpServerRuntimeStates ───────────────────
 
 describe('ProfileCacheManager — runtime state with null mcpClientManager', () => {
@@ -450,6 +509,7 @@ describe('ProfileCacheManager — runtime state with null mcpClientManager', () 
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
     // Ensure mcpClientManager is null
     (mgr as any).mcpClientManager = null;
@@ -481,6 +541,7 @@ describe('ProfileCacheManager.executeToolCall', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -513,6 +574,7 @@ describe('ProfileCacheManager.getMcpServerInfo', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
     (mgr as any).mcpClientManager = {
       getMcpServerRuntimeState: vi.fn(() => null),
@@ -538,6 +600,7 @@ describe('ProfileCacheManager.getMcpServerInfo', () => {
       source: 'ON-DEVICE' as const,
     };
     (mgr as any).cache.set('testUser', makeProfile({ mcp_servers: [serverConfig] }));
+    mcpManagerStore.servers.set('testUser', [serverConfig]);
     const result = mgr.getMcpServerInfo('testUser', 'my-server');
     expect(result.config).toEqual(serverConfig);
   });
@@ -548,6 +611,7 @@ describe('ProfileCacheManager.getAllMcpServerInfo', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
     (mgr as any).mcpClientManager = {
       getMcpServerRuntimeState: vi.fn(() => null),
@@ -572,6 +636,7 @@ describe('ProfileCacheManager.getAllMcpServerInfo', () => {
       source: 'ON-DEVICE' as const,
     };
     (mgr as any).cache.set('testUser', makeProfile({ mcp_servers: [serverConfig] }));
+    mcpManagerStore.servers.set('testUser', [serverConfig]);
     const result = mgr.getAllMcpServerInfo('testUser');
     expect(result).toHaveLength(1);
     expect(result[0].config).toEqual(serverConfig);
@@ -586,6 +651,7 @@ describe('ProfileCacheManager.getCachedAliases', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -610,6 +676,7 @@ describe('ProfileCacheManager.forceNotifyProfileDataManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
@@ -619,20 +686,26 @@ describe('ProfileCacheManager.forceNotifyProfileDataManager', () => {
   });
 });
 
-// ── cleanupMem0Resources ──────────────────────────────────────────────────────
+// ── deprecated runtime state methods (stubs) ─────────────────────────────────
 
-describe('ProfileCacheManager.cleanupMem0Resources', () => {
+describe('ProfileCacheManager — deprecated status methods (no-ops)', () => {
   let mgr: ProfileCacheManager;
 
   beforeEach(() => {
     vi.clearAllMocks();
+  mcpManagerStore.servers.clear();
     mgr = freshManager();
   });
 
-  it('completes without throwing', async () => {
-    await expect(mgr.cleanupMem0Resources()).resolves.not.toThrow();
+  it('updateMcpServerStatus does not throw', () => {
+    expect(() => mgr.updateMcpServerStatus('alice', 'server', 'connected')).not.toThrow();
+  });
+
+  it('updateMcpServerTools does not throw', () => {
+    expect(() => mgr.updateMcpServerTools('alice', 'server', [])).not.toThrow();
+  });
+
+  it('updateMcpServerError does not throw', () => {
+    expect(() => mgr.updateMcpServerError('alice', 'server', null)).not.toThrow();
   });
 });
-
-// ── deprecated runtime state methods (stubs) ─────────────────────────────────
-

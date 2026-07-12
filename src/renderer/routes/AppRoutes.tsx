@@ -8,24 +8,26 @@ import ChatView from '../components/chat/ChatView';
 import McpView from '../components/mcp/McpView';
 import AddNewMcpServerView from '../components/mcp/AddNewMcpServerView';
 import ImportVscodeMcpServerView from '../components/mcp/ImportVscodeMcpServerView';
-import AddFromMcpLibraryView from '../components/mcp/AddFromMcpLibraryView';
-import AddFromSkillLibraryView from '../components/mcp/AddFromSkillLibraryView';
 import SkillsView from '../components/skills/SkillsView';
-import PluginManagementView from '../components/plugin/PluginManagementView';
-import SubAgentsView from '../components/subAgents/SubAgentsView';
-import CreateSubAgentView from '../components/subAgents/CreateSubAgentView';
-import EditSubAgentView from '../components/subAgents/EditSubAgentView';
 import SettingsPage from '../components/pages/SettingsPage';
 import RuntimeSettingsView from '../components/settings/RuntimeSettingsView';
+import AppearanceSettingsView from '../components/settings/AppearanceSettingsView';
+import VoiceInputSettingsView from '../components/settings/VoiceInputSettingsView';
 import ScreenshotSettingsView from '../components/settings/ScreenshotSettingsView';
+import SyncSettingsView from '../components/settings/SyncSettingsView';
 import AboutAppView from '../components/settings/AboutAppView';
-import BrowserControlView from '../components/settings/BrowserControlView';
+import CodingCliSettingsView from '../components/settings/CodingCliSettingsView';
 import ArchivedAgentsView from '../components/settings/ArchivedAgentsView';
-import RemoteChannelSettingsView from '../components/settings/RemoteChannelSettingsView';
+import BrowserSettingsView from '../components/settings/BrowserSettingsView';
+import MemexSettingsView from '../components/settings/MemexSettingsView';
+import ProfileMemoryEditorView from '../components/settings/ProfileMemoryEditorView';
+import ComputerUseSettingsView from '../components/settings/ComputerUseSettingsView';
+import AgentHooksView from '../components/agentHooks/AgentHooksView';
+import HookEditorView from '../components/agentHooks/HookEditorView';
+import LanguageSettingsView from '../components/settings/LanguageSettingsView';
 import AgentChatEditingView from '../components/chat/agent-area/AgentChatEditingView';
 import AgentChatCreationView from '../components/chat/agent-area/AgentChatCreationView';
 import CreateCustomAgentView from '../components/chat/agent-area/CreateCustomAgentView';
-import AddFromAgentLibraryView from '../components/chat/agent-area/AddFromAgentLibraryView';
 import { RequireAuth } from './RequireAuth';
 import { useFeatureFlag } from '../lib/featureFlags';
 import {
@@ -121,17 +123,6 @@ export const AppRoutes: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Chrome Extension / Browser Control route (controlled by feature flag)
-  const browserControlEnabled = useFeatureFlag('browserControl');
-  // Remote Channel route (controlled by feature flag)
-  const remoteChannelEnabled = useFeatureFlag('openkosmosFeatureRemoteChannel');
-
-  // Sub-Agent route (controlled by feature flag)
-  const subAgentEnabled = useFeatureFlag('openkosmosFeatureSubAgent');
-
-  // Plugin route (controlled by feature flag)
-  const pluginsEnabled = useFeatureFlag('openkosmosFeaturePlugins');
-
   // Listen for navigation events from main process
   useEffect(() => {
     const handleNavigate = (data: { route: string; state?: any }) => {
@@ -168,7 +159,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="chat" element={<ChatView />} />
           <Route path="chat/creation" element={<AgentChatCreationView />} />
           <Route path="chat/creation/custom-agent" element={<CreateCustomAgentView />} />
-          <Route path="chat/creation/agent-library" element={<AddFromAgentLibraryView />} />
           <Route path="chat/:chatId" element={<ChatView />} />
           <Route path="chat/:chatId/:sessionId" element={<ChatView />} />
           <Route path="chat/:chatId/settings" element={<AgentChatEditingView />} />
@@ -178,35 +168,29 @@ export const AppRoutes: React.FC = () => {
         {/* Settings Routes - separate from agent */}
         <Route path="/settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="mcp" replace />} />
+          <Route path="appearance" element={<AppearanceSettingsView />} />
+          <Route path="voice-input" element={<VoiceInputSettingsView />} />
           <Route path="screenshot" element={<ScreenshotSettingsView />} />
           <Route path="mcp" element={<McpView />} />
           <Route path="mcp/new" element={<AddNewMcpServerView />} />
           <Route path="mcp/edit/:editServerName" element={<AddNewMcpServerView />} />
           <Route path="mcp/import-vscode" element={<ImportVscodeMcpServerView />} />
-          <Route path="mcp/mcp-library" element={<AddFromMcpLibraryView />} />
           <Route path="runtime" element={<RuntimeSettingsView />} />
           <Route path="skills" element={<SkillsView />} />
-          <Route path="skills/skill-library" element={<AddFromSkillLibraryView />} />
-          {pluginsEnabled && (
-            <Route path="plugins" element={<PluginManagementView />} />
-          )}
-          {subAgentEnabled && (
-            <>
-              <Route path="sub-agents" element={<SubAgentsView />} />
-              <Route path="sub-agents/new" element={<CreateSubAgentView />} />
-              <Route path="sub-agents/edit/:subAgentName" element={<EditSubAgentView />} />
-            </>
-          )}
+          <Route path="agent-hooks" element={<AgentHooksView />} />
+          <Route path="agent-hooks/new" element={<HookEditorView />} />
+          <Route path="agent-hooks/edit/:editHookId" element={<HookEditorView />} />
+          <Route path="sync" element={<SyncSettingsView />} />
+          <Route path="language" element={<LanguageSettingsView />} />
           <Route path="about" element={<AboutAppView />} />
+          <Route path="browser" element={<BrowserSettingsView />} />
+          <Route path="memex" element={<MemexSettingsView />} />
+          <Route path="memex/new" element={<ProfileMemoryEditorView />} />
+          <Route path="memex/edit/:slug" element={<ProfileMemoryEditorView />} />
+          <Route path="computer-use" element={<ComputerUseSettingsView />} />
           <Route path="archived-agents" element={<ArchivedAgentsView />} />
-          {/* Browser Control route controlled by feature flag */}
-          {browserControlEnabled && (
-            <Route path="browser-control" element={<BrowserControlView />} />
-          )}
-          {/* Remote Channel route controlled by feature flag */}
-          {remoteChannelEnabled && (
-            <Route path="remote-channel" element={<RemoteChannelSettingsView />} />
-          )}
+          {/* Coding CLI route — gated at runtime by the per-profile master switch */}
+          <Route path="coding-cli" element={<CodingCliSettingsView />} />
         </Route>
       </Route>
 

@@ -1,9 +1,29 @@
 /**
  * Additional coverage tests for VscodeHttpTransport
- * Focuses on SSE fallback, redirect handling,
+ * Focuses on auth-challenge paths, SSE fallback, redirect handling,
  * backchannel retry, and various error branches.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// ── Hoisted mocks ─────────────────────────────────────────────────────────────
+const mockResolveMetadata = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockUpdateFromHeaders = vi.hoisted(() => vi.fn((existing: unknown) => existing));
+const mockGetTokenForServer = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock('../../../auth/McpAuthMetadataService', () => ({
+  McpAuthMetadataService: {
+    resolve: mockResolveMetadata,
+    updateFromHeaders: mockUpdateFromHeaders,
+  },
+}));
+
+vi.mock('../../../auth/McpAuthService', () => ({
+  McpAuthService: {
+    getInstance: vi.fn(() => ({
+      getTokenForServer: mockGetTokenForServer,
+    })),
+  },
+}));
 
 import { VscodeHttpTransport } from '../VscodeHttpTransport';
 
@@ -152,6 +172,68 @@ describe('VscodeHttpTransport — SSE fallback on 5xx before auth', () => {
     await t.start();
     await t.send('{"id":1}');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+});
+
+// ── 401 triggers auth challenge ───────────────────────────────────────────────
+describe('VscodeHttpTransport — auth challenge on 401', () => {
+  it('resolves metadata and retries when 401 returned', async () => {
+    const fakeMeta = {
+      providerLabel: 'GitHub',
+      authorizationServerMetadata: { issuer: 'https://github.com' },
+      authorizationServerUrl: 'https://github.com',
+      scopes: ['repo'],
+      telemetry: { resourceMetadataSource: 'header', serverMetadataSource: 'well-known' },
+    };
+    mockResolveMetadata.mockResolvedValueOnce(fakeMeta);
+    mockGetTokenForServer.mockResolvedValueOnce('tok123');
+
+    const fetchMock = vi.fn();
+    // First call → 401 auth challenge
+    fetchMock.mockResolvedValueOnce(new Response('Unauthorized', {
+      status: 401,
+      headers: { 'WWW-Authenticate': 'Bearer realm="test"' },
+    }));
+    // Second call after token injection → 200 JSON
+    fetchMock.mockResolvedValueOnce(jsonResponse('{"ok":true}'));
+
+    vi.stubGlobal('fetch', fetchMock);
+    const t = makeTransport();
+    await t.start();
+    const messages: string[] = [];
+    t.on('message', (m: string) => messages.push(m));
+    await t.send('{"id":1}');
+    expect(mockGetTokenForServer).toHaveBeenCalledWith('test-server', fakeMeta, expect.anything());
+    expect(messages).toContain('{"ok":true}');
+    vi.unstubAllGlobals();
+  });
+});
+
+// ── 403 after auth (feature gate) ────────────────────────────────────────────
+describe('VscodeHttpTransport — 403 after successful auth', () => {
+  it('throws descriptive error for 403 after OAuth sign-in', async () => {
+    const fakeMeta = {
+      providerLabel: 'GitLab',
+      authorizationServerMetadata: { issuer: 'https://gitlab.com' },
+      authorizationServerUrl: 'https://gitlab.com',
+      scopes: ['api'],
+      telemetry: { resourceMetadataSource: 'header', serverMetadataSource: 'well-known' },
+    };
+    mockResolveMetadata.mockResolvedValueOnce(fakeMeta);
+    mockGetTokenForServer.mockResolvedValue('tok-abc');
+
+    const fetchMock = vi.fn();
+    fetchMock
+      // First → 401 (challenge)
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      // Second → 403 (feature gate after auth)
+      .mockResolvedValueOnce(new Response('Feature not available', { status: 403, headers: { Authorization: 'Bearer tok-abc' } }));
+
+    vi.stubGlobal('fetch', fetchMock);
+    const t = makeTransport();
+    await t.start();
+    await expect(t.send('{"id":1}')).rejects.toThrow();
     vi.unstubAllGlobals();
   });
 });

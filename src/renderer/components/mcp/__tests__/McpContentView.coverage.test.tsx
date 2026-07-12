@@ -11,9 +11,15 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 const { mockSearchParams, mockSetSearchParams } = vi.hoisted(() => {
   const params = new URLSearchParams();
+  const ref = { current: params };
   return {
-    mockSearchParams: { current: params },
-    mockSetSearchParams: vi.fn(),
+    mockSearchParams: ref,
+    // Invoke the updater so the component's setSearchParams callback executes
+    mockSetSearchParams: vi.fn((updater: any) => {
+      if (typeof updater === 'function') {
+        updater(ref.current);
+      }
+    }),
   };
 });
 
@@ -40,6 +46,11 @@ vi.mock('../McpServerListView', () => ({
         </button>
       ))}
       <button data-testid="select-null" onClick={() => onSelectServer(null)}>None</button>
+      <button data-testid="op-connect" onClick={() => onConnect('srv1')}>Connect</button>
+      <button data-testid="op-disconnect" onClick={() => onDisconnect('srv1')}>Disconnect</button>
+      <button data-testid="op-reconnect" onClick={() => onReconnect('srv1')}>Reconnect</button>
+      <button data-testid="op-delete" onClick={() => onDelete('srv1')}>Delete</button>
+      <button data-testid="op-edit" onClick={() => onEdit('srv1')}>Edit</button>
     </div>
   ),
 }));
@@ -353,10 +364,55 @@ describe('McpContentView - operation callbacks', () => {
 
   it('calls onConnect when server connect is triggered', () => {
     const onConnect = vi.fn();
-    const server = makeServer('srv1');
-    render(<McpContentView {...defaultProps} servers={[server]} onConnect={onConnect} />);
-    // The McpServerListView mock exposes connect capability via the server list
-    // Since our mock doesn't have connect buttons, just verify prop passed
-    expect(screen.getByTestId('mcp-server-list-view')).toBeInTheDocument();
+    render(<McpContentView {...defaultProps} onConnect={onConnect} />);
+    fireEvent.click(screen.getByTestId('op-connect'));
+    expect(onConnect).toHaveBeenCalledWith('srv1');
+  });
+
+  it('calls onDisconnect when server disconnect is triggered', () => {
+    const onDisconnect = vi.fn();
+    render(<McpContentView {...defaultProps} onDisconnect={onDisconnect} />);
+    fireEvent.click(screen.getByTestId('op-disconnect'));
+    expect(onDisconnect).toHaveBeenCalledWith('srv1');
+  });
+
+  it('calls onReconnect when server reconnect is triggered', () => {
+    const onReconnect = vi.fn();
+    render(<McpContentView {...defaultProps} onReconnect={onReconnect} />);
+    fireEvent.click(screen.getByTestId('op-reconnect'));
+    expect(onReconnect).toHaveBeenCalledWith('srv1');
+  });
+
+  it('calls onDelete when server delete is triggered', () => {
+    const onDelete = vi.fn();
+    render(<McpContentView {...defaultProps} onDelete={onDelete} />);
+    fireEvent.click(screen.getByTestId('op-delete'));
+    expect(onDelete).toHaveBeenCalledWith('srv1');
+  });
+
+  it('calls onEdit when server edit is triggered', () => {
+    const onEdit = vi.fn();
+    render(<McpContentView {...defaultProps} onEdit={onEdit} />);
+    fireEvent.click(screen.getByTestId('op-edit'));
+    expect(onEdit).toHaveBeenCalledWith('srv1');
+  });
+});
+
+describe('McpContentView - tool list loading state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearchParams.current = new URLSearchParams();
+    setupElectronAPI();
+  });
+
+  it('passes loading state to tool list when isLoading and no server selected', async () => {
+    render(<McpContentView {...defaultProps} isLoading={true} />);
+    // Deselect the default builtin-tools server so selectedServer becomes null,
+    // making the `isLoading && !selectedServer` branch evaluate truthy.
+    fireEvent.click(screen.getByTestId('select-null'));
+    await waitFor(() => {
+      expect(screen.getByTestId('mcp-server-list-view')).toHaveAttribute('data-selected', '');
+    });
+    expect(screen.getByTestId('mcp-tool-list-view')).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CompanionCard } from './CompanionCard';
 import type { Companion } from '../../../main/lib/buddy/types';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 type Phase = 'wobble' | 'crack' | 'reveal';
 
@@ -39,6 +40,7 @@ interface Props {
 }
 
 export const HatchingCeremony: React.FC<Props> = ({ companion, onComplete }) => {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<Phase>('wobble');
   const [frameIndex, setFrameIndex] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
@@ -77,7 +79,7 @@ export const HatchingCeremony: React.FC<Props> = ({ companion, onComplete }) => 
             <pre className="buddy-sprite" style={{ fontSize: '18px' }}>
               {EGG_WOBBLE[frameIndex % EGG_WOBBLE.length].join('\n')}
             </pre>
-            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '16px' }}>Something is stirring...</p>
+            <p style={{ color: 'var(--color-neutral-400)', fontSize: '13px', marginTop: '16px' }}>{t('buddy.hatching.stirring')}</p>
           </div>
         )}
         {phase === 'crack' && (
@@ -85,14 +87,14 @@ export const HatchingCeremony: React.FC<Props> = ({ companion, onComplete }) => 
             <pre className="buddy-sprite" style={{ fontSize: '18px' }}>
               {EGG_CRACK[frameIndex % EGG_CRACK.length].join('\n')}
             </pre>
-            <p style={{ color: '#e2e8f0', fontSize: '13px', marginTop: '16px' }}>It's hatching!</p>
+            <p style={{ color: 'var(--color-neutral-200)', fontSize: '13px', marginTop: '16px' }}>{t('buddy.hatching.hatching')}</p>
           </div>
         )}
         {phase === 'reveal' && (
           <div className="buddy-reveal">
             <CompanionCard companion={companion} />
-            <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '16px', cursor: 'pointer' }} onClick={onComplete}>
-              Click anywhere to continue
+            <p style={{ color: 'var(--color-neutral-400)', fontSize: '12px', marginTop: '16px', cursor: 'pointer' }} onClick={onComplete}>
+              {t('buddy.hatching.continue')}
             </p>
           </div>
         )}

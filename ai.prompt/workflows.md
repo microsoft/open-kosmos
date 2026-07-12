@@ -1,3 +1,5 @@
+<!-- Last verified: 2026-07-13 -->
+
 # Workflows
 
 Reference: `CLAUDE.md`, `.github/prompts/gitpush.prompt.md`, `playwright.config.ts`, `electron-builder.config.js`
@@ -41,10 +43,30 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
   npm run lint:fix   # auto-fix linting issues
   ```
 
+### Static Governance Checks
+
+- `npm run check:impact -- <changed-files>` — identify affected modules and required `ai.prompt.md` reads.
+- `npm run check:design` — enforce design-system token drift ratchets.
+- `npm run check:i18n` — scan full changed renderer source files for hardcoded UI copy, fixed default-language translation calls, and direct user-facing message literals.
+- `npm run check:coverage` — enforce diff-aware per-file coverage after running coverage.
+
+Pull request CI includes:
+
+| Workflow | Purpose |
+|----------|---------|
+| `PR Type Check` | TypeScript and mixed-import checks. |
+| `PR Unit Tests` | Vitest unit/integration suite. |
+| `PR E2E Tests` | Playwright Electron E2E suite. |
+| `PR File Length Check` | Renderer/code file-length gate. |
+| `PR Design System Check` | Design-token drift ratchet. |
+| `PR Bundle Size Check` | Bundle size regression check. |
+| `PR I18n Check` | Diff-aware renderer UI localization gate. |
+
 ### Playwright E2E
 - Location: `tests/e2e/`
 - Config: `playwright.config.ts` — 60s timeout, single-worker serial execution
-- Fixtures: custom Electron fixtures via `_electron.launch()`, isolated via `OpenKosmos_TEST_USER_DATA_PATH`
+- Fixtures: custom Electron fixtures via `_electron.launch()`, isolated via `OPENKOSMOS_TEST_USER_DATA_PATH`
+- Electron fixture teardown must call Playwright `ElectronApplication.close()` before any force-kill fallback so the CDP and Node debugger transports close with the browser context. Do not call `electron.app.exit()` first: Electron can wait for the attached debugger while the fixture returns after process exit, leaking Playwright connections until the 60-second worker teardown timeout.
 - Test suites: `startup.e2e.ts` (9 tests), `auth.e2e.ts` (6 tests), `chat.e2e.ts` (4 tests)
 - Covers full lifecycle: startup → authentication → chat interaction
 - Commands:
@@ -81,7 +103,7 @@ npm run dist:mac:x64
 npm run dist:mac:arm64
 npm run dist:mac:universal
 
-# Publish to GitHub Releases (gim-home/OpenKosmos)
+# Publish to GitHub Releases (microsoft/open-kosmos)
 npm run dist:publish        # build + publish
 npm run dist:publish:win
 npm run dist:publish:mac
@@ -90,6 +112,8 @@ npm run dist:publish:mac
 macOS builds use hardened runtime and notarization via `scripts/notarize.js`.
 
 Release workflow note:
+- `.github/workflows/release.yml` publishes OpenKosmos only. Do not add secondary-brand publish jobs to the release action.
+- OpenKosmos release jobs must write MCP credential secrets (`REDDIT_CLIENT_*`, `DATA_AI_API_KEY`, `UNWRAP_ACCESS_TOKEN`, `TAVILY_API_KEY`) to `.env.local`; both `webpack.main.config.js` (`npm run build`) and `scripts/vite/defines.ts` (`npm run build:vite`) compile these main-process env variables into packaged builds so `@OPENKOSMOS_*` MCP placeholders resolve at runtime.
 - Windows release jobs are split by architecture.
 - Windows x64 builds run on `windows-latest`.
 - Windows ARM64 builds run on `windows-11-arm`.
@@ -119,7 +143,7 @@ npx asar list <app.asar> | grep <module>
 | Category | Packaged? | When to use |
 |----------|-----------|-------------|
 | `dependencies` | Yes | Runtime modules needed by main process (e.g., `playwright-core`, `sharp`, `better-sqlite3`) |
-| `optionalDependencies` | Yes | Platform-specific or on-demand native modules |
+| `optionalDependencies` | Yes | Platform-specific or on-demand native modules (e.g., `whisper-addon`) |
 | `devDependencies` | No | Build tools, test frameworks, webpack-bundled renderer-only modules (e.g., `mermaid`, `monaco-editor`, `@playwright/test`) |
 
 **`playwright` vs `playwright-core`:**
@@ -136,14 +160,17 @@ Configured via `.env.local` (copy from `.env.example`). Injected at build time v
 |----------|-------|-------------|
 | `NODE_ENV` | Both | `development` / `production` |
 | `HISTORY_PROMPT_QUEUE_SIZE` | Both | Prompt history ring buffer size (default: 20) |
-| `RELEASE_CDN_URL` | Both | Custom CDN URL for auto-updates |
-| `DEVELOPMENT_BASE_CDN_URL` | Both | Dev CDN for optional features (no default; unset disables them gracefully) |
-| `PRODUCTION_BASE_CDN_URL` | Both | Prod CDN for optional features (no default; unset disables them gracefully) |
 | `UNWRAP_ACCESS_TOKEN` | Both | Token unwrapping configuration |
+| `REDDIT_CLIENT_*` | Main | OpenKosmos Reddit OAuth credentials |
+| `DATA_AI_API_KEY` | Main | OpenKosmos data service API key |
+| `TAVILY_API_KEY` | Main | OpenKosmos search service API key |
 
 ---
+
+## Known Limitations
 
 - **Python 3.10+** required for some MCP servers
 - **GitHub Copilot subscription** required for the primary AI provider
 - **Native module support** varies by platform (Windows / macOS / Linux)
-- **Browser control** is Windows-only; gated by `browserControl` feature flag
+- **Voice input** is dev-only by default; gated by the `openkosmosFeatureVoiceInput` feature flag
+- **Native modules** are not bundled in the installer — downloaded on demand at runtime (~127MB whisper-addon)

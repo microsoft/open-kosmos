@@ -61,6 +61,13 @@ describe('getToolCallDisplayText — description field', () => {
     expect(getToolCallDisplayText('execute_command', args)).toBe('My description');
   });
 
+  describe('present', () => {
+    it('uses a non-empty present description', () => {
+      expect(getToolCallDisplayText('present_deliverables', JSON.stringify({ description: '  Demo ready  ' })))
+        .toBe('Demo ready');
+    });
+  });
+
   it('ignores description when empty/whitespace', () => {
     const args = JSON.stringify({ description: '   ' });
     expect(getToolCallDisplayText('execute_command', args)).toBe('Executed command');
@@ -150,6 +157,152 @@ describe('fetch_web_content', () => {
 
   it('falls back when no urls', () => {
     expect(getToolCallDisplayText('fetch_web_content', JSON.stringify({}))).toBe('Fetched web content');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// browser (embedded browser automation) — one case per action arm
+// ---------------------------------------------------------------------------
+describe('browser', () => {
+  it('navigate with url', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'navigate', url: 'https://x.test' })))
+      .toBe('Opened https://x.test');
+  });
+
+  it('navigate without url falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'navigate' }))).toBe('Opened a page');
+  });
+
+  it('screenshot', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'screenshot' }))).toBe('Took a screenshot');
+  });
+
+  it('read_page', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'read_page' }))).toBe('Read the page');
+  });
+
+  it('click with text', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'click', text: 'Submit' })))
+      .toBe('Clicked Submit');
+  });
+
+  it('click falls back to selector when no text', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'click', selector: '#go' })))
+      .toBe('Clicked #go');
+  });
+
+  it('click without target falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'click' }))).toBe('Clicked an element');
+  });
+
+  it('type with selector', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'type', selector: '#name' })))
+      .toBe('Typed into #name');
+  });
+
+  it('type without selector falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'type' }))).toBe('Typed text');
+  });
+
+  it('wait_for with text', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'wait_for', text: 'Ready' })))
+      .toBe('Waited for Ready');
+  });
+
+  it('wait_for falls back to selector when no text', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'wait_for', selector: '.spinner' })))
+      .toBe('Waited for .spinner');
+  });
+
+  it('wait_for without target falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'wait_for' }))).toBe('Waited for the page');
+  });
+
+  it('unknown action falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 'frobnicate' }))).toBe('Used the browser');
+  });
+
+  it('missing action falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({}))).toBe('Used the browser');
+  });
+
+  it('non-string action arg falls back', () => {
+    expect(getToolCallDisplayText('browser', JSON.stringify({ action: 42 }))).toBe('Used the browser');
+  });
+
+  it.each([
+    [{ action: 'open_local_file', localPath: '/tmp/report.html' }, 'Opened local file /tmp/report.html'],
+    [{ action: 'open_local_file' }, 'Opened a local file'],
+    [{ action: 'get_state' }, 'Checked browser state'],
+    [{ action: 'back' }, 'Went back'],
+    [{ action: 'forward' }, 'Went forward'],
+    [{ action: 'reload' }, 'Reloaded the page'],
+    [{ action: 'stop' }, 'Stopped loading'],
+    [{ action: 'capture_visual_baseline', baselineName: 'home' }, 'Captured visual baseline: home'],
+    [{ action: 'capture_visual_baseline' }, 'Captured visual baseline'],
+    [{ action: 'compare_visual_baseline', baselineName: 'home' }, 'Compared visual baseline: home'],
+    [{ action: 'compare_visual_baseline' }, 'Compared visual baseline'],
+    [{ action: 'inspect' }, 'Inspected the page'],
+    [{ action: 'diagnostics' }, 'Checked browser diagnostics'],
+    [{ action: 'double_click', name: 'Submit' }, 'Double-clicked Submit'],
+    [{ action: 'double_click' }, 'Double-clicked an element'],
+    [{ action: 'right_click', label: 'Options' }, 'Right-clicked Options'],
+    [{ action: 'right_click' }, 'Right-clicked an element'],
+    [{ action: 'wait_for_url', url: '/settings' }, 'Waited for URL: /settings'],
+    [{ action: 'wait_for_url' }, 'Waited for page URL'],
+    [{ action: 'scroll' }, 'Scrolled the page'],
+    [{ action: 'press_key', key: 'Enter' }, 'Pressed Enter'],
+    [{ action: 'press_key' }, 'Pressed a key'],
+    [{ action: 'hover', placeholder: 'Search' }, 'Hovered Search'],
+    [{ action: 'hover' }, 'Hovered an element'],
+    [{ action: 'clear', testId: 'name' }, 'Cleared name'],
+    [{ action: 'clear' }, 'Cleared a field'],
+    [{ action: 'select_option', value: 'US' }, 'Selected US'],
+    [{ action: 'select_option' }, 'Selected an option'],
+    [{ action: 'upload_file' }, 'Uploaded a file'],
+    [{ action: 'paste' }, 'Pasted text'],
+    [{ action: 'drag' }, 'Dragged an element'],
+    [{ action: 'set_slider' }, 'Set a slider'],
+    [{ action: 'assert_visible', selector: '#panel' }, 'Checked visibility of #panel'],
+    [{ action: 'assert_visible' }, 'Checked element visibility'],
+    [{ action: 'assert_text', text: 'Saved' }, 'Checked text: Saved'],
+    [{ action: 'assert_text' }, 'Checked page text'],
+    [{ action: 'assert_clickable', text: 'Save' }, 'Checked clickability of Save'],
+    [{ action: 'assert_clickable' }, 'Checked element clickability'],
+    [{ action: 'assert_enabled', selector: '#save' }, 'Checked enabled state of #save'],
+    [{ action: 'assert_enabled' }, 'Checked element is enabled'],
+    [{ action: 'assert_disabled', selector: '#save' }, 'Checked disabled state of #save'],
+    [{ action: 'assert_disabled' }, 'Checked element is disabled'],
+    [{ action: 'assert_url', url: '/done' }, 'Checked URL: /done'],
+    [{ action: 'assert_url' }, 'Checked page URL'],
+    [{ action: 'assert_not_blank' }, 'Checked page is not blank'],
+    [{ action: 'assert_images_loaded' }, 'Checked images loaded'],
+    [{ action: 'assert_media_rendered' }, 'Checked media rendering'],
+    [{ action: 'assert_dialog_open' }, 'Checked dialog state'],
+    [{ action: 'assert_toast' }, 'Checked toast notification'],
+    [{ action: 'assert_table_rows' }, 'Checked table rows'],
+    [{ action: 'assert_form_validity' }, 'Checked form validity'],
+    [{ action: 'assert_menu_open' }, 'Checked menu state'],
+    [{ action: 'assert_tooltip' }, 'Checked tooltip'],
+    [{ action: 'assert_drawer_open' }, 'Checked drawer state'],
+    [{ action: 'assert_list_items' }, 'Checked list items'],
+    [{ action: 'assert_card_visible' }, 'Checked card visibility'],
+    [{ action: 'assert_no_console_errors' }, 'Checked browser console errors'],
+    [{ action: 'assert_no_network_errors' }, 'Checked browser network errors'],
+    [{ action: 'accessibility_snapshot' }, 'Captured accessibility snapshot'],
+    [{ action: 'set_date' }, 'Set a date field'],
+    [{ action: 'multi_select' }, 'Selected multiple options'],
+    [{ action: 'network_diagnostics' }, 'Checked network diagnostics'],
+    [{ action: 'download_diagnostics' }, 'Checked download diagnostics'],
+    [{ action: 'assert_downloaded' }, 'Checked download completion'],
+    [{ action: 'inspect_frames' }, 'Inspected frames'],
+    [{ action: 'layout_audit' }, 'Audited page layout'],
+  ])('formats browser action %j', (args, expected) => {
+    expect(getToolCallDisplayText('browser', JSON.stringify(args))).toBe(expected);
+  });
+
+  it('icon type → globe', () => {
+    expect(getToolCallIconType('browser')).toBe('globe');
   });
 });
 
@@ -279,8 +432,6 @@ describe('search_file_contents', () => {
 // MCP management tools
 // ---------------------------------------------------------------------------
 describe('mcp management tools', () => {
-  it('get_mcp_template_from_library', () =>
-    expect(getToolCallDisplayText('get_mcp_template_from_library')).toBe('Got MCP config from library'));
   it('create_mcp_server_from_config', () =>
     expect(getToolCallDisplayText('create_mcp_server_from_config')).toBe('Added MCP server'));
   it('update_mcp_server', () =>
@@ -295,8 +446,6 @@ describe('mcp management tools', () => {
 // Agent management tools
 // ---------------------------------------------------------------------------
 describe('agent management tools', () => {
-  it('get_agent_template_from_library', () =>
-    expect(getToolCallDisplayText('get_agent_template_from_library')).toBe('Got agent config from library'));
   it('create_agent_from_config', () =>
     expect(getToolCallDisplayText('create_agent_from_config')).toBe('Added agent'));
   it('update_agent', () =>
@@ -471,12 +620,10 @@ describe('getToolCallIconType — explicit mappings', () => {
     ['search_file_contents', 'file-search'],
     ['download_file', 'download'],
     ['get_current_datetime', 'calendar'],
-    ['get_mcp_template_from_library', 'settings'],
     ['create_mcp_server_from_config', 'settings'],
     ['update_mcp_server', 'settings'],
     ['get_mcp_status', 'settings'],
     ['set_mcp_connection_state', 'settings'],
-    ['get_agent_template_from_library', 'brain'],
     ['create_agent_from_config', 'brain'],
     ['update_agent', 'brain'],
     ['get_agent_status', 'brain'],

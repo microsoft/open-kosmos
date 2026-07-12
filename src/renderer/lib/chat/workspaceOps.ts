@@ -1,4 +1,4 @@
-import { updateChatAgent } from "./chatOps";
+import { updateChat, updateChatAgent } from "./chatOps";
 /**
  * Workspace Operations
  *
@@ -36,6 +36,7 @@ export interface FileTreeNode {
   path: string;
   type: 'file' | 'directory';
   size?: number;
+  mtime?: number;
   children?: FileTreeNode[];
   isExpanded?: boolean;
 }
@@ -159,6 +160,7 @@ export class WorkspaceOpsManager {
     options?: {
       maxDepth?: number;
       ignorePatterns?: string[];
+      includeMetadata?: boolean;
     }
   ): Promise<WorkspaceOperationResult> {
     try {
@@ -210,7 +212,7 @@ export class WorkspaceOpsManager {
    */
   async getDirectoryChildren(
     dirPath: string,
-    options?: { ignorePatterns?: string[] }
+    options?: { ignorePatterns?: string[]; includeMetadata?: boolean }
   ): Promise<WorkspaceOperationResult> {
     try {
       if (!this.validateAPI()) {
@@ -269,7 +271,7 @@ export class WorkspaceOpsManager {
 
   /**
    * Update Chat's Workspace configuration
-   * Updates specified Chat's agent.workspace field via ChatOps
+   * Updates specified Chat's chat-level workspace field via ChatOps
    * @param chatId Chat ID
    * @param workspacePath Workspace path
    */
@@ -278,10 +280,7 @@ export class WorkspaceOpsManager {
     workspacePath: string
   ): Promise<WorkspaceOperationResult> {
     try {
-      // Dynamically import ChatOps to avoid circular dependencies
-
-      // 🔄 workspace has been moved to agent level
-      const result = await updateChatAgent(chatId, {
+      const result = await updateChat(chatId, {
         workspace: workspacePath
       });
 
@@ -569,6 +568,21 @@ export class WorkspaceOpsManager {
   }
 
   /**
+   * Add file change listener (kept for compatibility, actually triggers refresh)
+   * @param listener Listener callback function
+   * @returns Function to remove listener
+   */
+  onFileChange(listener: (changes: FileChange[]) => void): () => void {
+    // Convert to refresh listener
+    const refreshListener = () => {
+      // Call original listener, pass empty change array since we no longer care about specific changes
+      listener([]);
+    };
+
+    return this.onRefresh(refreshListener);
+  }
+
+  /**
    * Add error listener
    * @param listener Listener callback function
    * @returns Function to remove listener
@@ -773,6 +787,7 @@ export async function getWorkspaceFileTree(
   options?: {
     maxDepth?: number;
     ignorePatterns?: string[];
+    includeMetadata?: boolean;
   }
 ): Promise<WorkspaceOperationResult> {
   return await workspaceOps.getWorkspaceFileTree(workspacePath, options);
@@ -783,7 +798,7 @@ export async function getWorkspaceFileTree(
  */
 export async function getDirectoryChildren(
   dirPath: string,
-  options?: { ignorePatterns?: string[] }
+  options?: { ignorePatterns?: string[]; includeMetadata?: boolean }
 ): Promise<WorkspaceOperationResult> {
   return await workspaceOps.getDirectoryChildren(dirPath, options);
 }
@@ -854,6 +869,13 @@ export async function stopWatch(): Promise<WorkspaceOperationResult> {
  */
 export async function getWatcherStats(): Promise<WorkspaceOperationResult> {
   return await workspaceOps.getWatcherStats();
+}
+
+/**
+ * Add file change listener
+ */
+export function onFileChange(listener: (changes: FileChange[]) => void): () => void {
+  return workspaceOps.onFileChange(listener);
 }
 
 /**

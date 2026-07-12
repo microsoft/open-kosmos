@@ -126,9 +126,6 @@ const getWriteFileDisplayText = (args: Record<string, unknown> | null): string =
 };
 
 const getPresentDisplayText = (args: Record<string, unknown> | null): string => {
-  if (args?.description && typeof args.description === 'string' && args.description.trim()) {
-    return args.description.trim();
-  }
   if (args?.filePaths && Array.isArray(args.filePaths) && args.filePaths.length > 0) {
     const count = args.filePaths.length;
     return count === 1 ? 'Presented 1 file' : `Presented ${count} files`;
@@ -180,6 +177,170 @@ const getSearchTextInFilesDisplayText = (args: Record<string, unknown> | null): 
   return 'Searched text in files';
 };
 
+const getBrowserDisplayText = (args: Record<string, unknown> | null): string => {
+  const action = typeof args?.action === 'string' ? args.action : '';
+  const str = (key: string): string =>
+    typeof args?.[key] === 'string' ? (args[key] as string).trim() : '';
+  const locator = (): string =>
+    str('text') || str('selector') || str('name') || str('label') || str('placeholder') || str('testId');
+  switch (action) {
+    case 'navigate': {
+      const url = str('url');
+      return url ? `Opened ${url}` : 'Opened a page';
+    }
+    case 'open_local_file': {
+      const localPath = str('localPath') || str('filePath') || str('url');
+      return localPath ? `Opened local file ${localPath}` : 'Opened a local file';
+    }
+    case 'get_state':
+      return 'Checked browser state';
+    case 'back':
+      return 'Went back';
+    case 'forward':
+      return 'Went forward';
+    case 'reload':
+      return 'Reloaded the page';
+    case 'stop':
+      return 'Stopped loading';
+    case 'screenshot':
+      return 'Took a screenshot';
+    case 'capture_visual_baseline': {
+      const target = str('baselineName');
+      return target ? `Captured visual baseline: ${target}` : 'Captured visual baseline';
+    }
+    case 'compare_visual_baseline': {
+      const target = str('baselineName');
+      return target ? `Compared visual baseline: ${target}` : 'Compared visual baseline';
+    }
+    case 'read_page':
+      return 'Read the page';
+    case 'inspect':
+      return 'Inspected the page';
+    case 'diagnostics':
+      return 'Checked browser diagnostics';
+    case 'click': {
+      const target = locator();
+      return target ? `Clicked ${target}` : 'Clicked an element';
+    }
+    case 'double_click': {
+      const target = locator();
+      return target ? `Double-clicked ${target}` : 'Double-clicked an element';
+    }
+    case 'right_click': {
+      const target = locator();
+      return target ? `Right-clicked ${target}` : 'Right-clicked an element';
+    }
+    case 'type': {
+      const target = locator();
+      return target ? `Typed into ${target}` : 'Typed text';
+    }
+    case 'wait_for': {
+      const target = locator();
+      return target ? `Waited for ${target}` : 'Waited for the page';
+    }
+    case 'wait_for_url': {
+      const target = str('url');
+      return target ? `Waited for URL: ${target}` : 'Waited for page URL';
+    }
+    case 'scroll':
+      return 'Scrolled the page';
+    case 'press_key': {
+      const key = str('key');
+      return key ? `Pressed ${key}` : 'Pressed a key';
+    }
+    case 'hover': {
+      const target = locator();
+      return target ? `Hovered ${target}` : 'Hovered an element';
+    }
+    case 'clear': {
+      const target = locator();
+      return target ? `Cleared ${target}` : 'Cleared a field';
+    }
+    case 'select_option': {
+      const target = str('value') || str('text');
+      return target ? `Selected ${target}` : 'Selected an option';
+    }
+    case 'upload_file':
+      return 'Uploaded a file';
+    case 'paste':
+      return 'Pasted text';
+    case 'drag':
+      return 'Dragged an element';
+    case 'set_slider':
+      return 'Set a slider';
+    case 'assert_visible': {
+      const target = locator();
+      return target ? `Checked visibility of ${target}` : 'Checked element visibility';
+    }
+    case 'assert_text': {
+      const target = str('text');
+      return target ? `Checked text: ${target}` : 'Checked page text';
+    }
+    case 'assert_clickable': {
+      const target = locator();
+      return target ? `Checked clickability of ${target}` : 'Checked element clickability';
+    }
+    case 'assert_enabled': {
+      const target = locator();
+      return target ? `Checked enabled state of ${target}` : 'Checked element is enabled';
+    }
+    case 'assert_disabled': {
+      const target = locator();
+      return target ? `Checked disabled state of ${target}` : 'Checked element is disabled';
+    }
+    case 'assert_url': {
+      const target = str('url');
+      return target ? `Checked URL: ${target}` : 'Checked page URL';
+    }
+    case 'assert_not_blank':
+      return 'Checked page is not blank';
+    case 'assert_images_loaded':
+      return 'Checked images loaded';
+    case 'assert_media_rendered':
+      return 'Checked media rendering';
+    case 'assert_dialog_open':
+      return 'Checked dialog state';
+    case 'assert_toast':
+      return 'Checked toast notification';
+    case 'assert_table_rows':
+      return 'Checked table rows';
+    case 'assert_form_validity':
+      return 'Checked form validity';
+    case 'assert_menu_open':
+      return 'Checked menu state';
+    case 'assert_tooltip':
+      return 'Checked tooltip';
+    case 'assert_drawer_open':
+      return 'Checked drawer state';
+    case 'assert_list_items':
+      return 'Checked list items';
+    case 'assert_card_visible':
+      return 'Checked card visibility';
+    case 'assert_no_console_errors':
+      return 'Checked browser console errors';
+    case 'assert_no_network_errors':
+      return 'Checked browser network errors';
+    case 'accessibility_snapshot':
+      return 'Captured accessibility snapshot';
+    case 'set_date':
+      return 'Set a date field';
+    case 'multi_select':
+      return 'Selected multiple options';
+    case 'network_diagnostics':
+      return 'Checked network diagnostics';
+    case 'download_diagnostics':
+      return 'Checked download diagnostics';
+    case 'assert_downloaded':
+      return 'Checked download completion';
+    case 'inspect_frames':
+      return 'Inspected frames';
+    case 'layout_audit':
+      return 'Audited page layout';
+    default:
+      return 'Used the browser';
+  }
+};
+
 /**
  * Get the display text for a Tool Call
  * @param toolName - tool name (function.name)
@@ -210,6 +371,10 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string, tool
 
     case 'fetch_web_content':
       return getFetchWebContentDisplayText(args);
+
+    // ===== Embedded browser automation =====
+    case 'browser':
+      return getBrowserDisplayText(args);
 
     // ===== File write tools =====
     case 'write_file':
@@ -242,8 +407,6 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string, tool
       return 'Got current time';
 
     // ===== MCP management tools =====
-    case 'get_mcp_template_from_library':
-      return 'Got MCP config from library';
     case 'create_mcp_server_from_config':
       return 'Added MCP server';
     case 'update_mcp_server':
@@ -254,8 +417,6 @@ export const getToolCallDisplayText = (toolName: string, toolArgs?: string, tool
       return 'Toggled MCP server';
 
     // ===== Agent management tools =====
-    case 'get_agent_template_from_library':
-      return 'Got agent config from library';
     case 'create_agent_from_config':
       return 'Added agent';
     case 'update_agent':
@@ -363,6 +524,10 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
     case 'fetch_web_content':
       return 'globe';
 
+    // ===== Embedded browser automation =====
+    case 'browser':
+      return 'globe';
+
     case 'bing_image_search':
       return 'image';
 
@@ -396,7 +561,6 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
       return 'calendar';
 
     // ===== MCP management tools =====
-    case 'get_mcp_template_from_library':
     case 'create_mcp_server_from_config':
     case 'update_mcp_server':
     case 'get_mcp_status':
@@ -404,7 +568,6 @@ export const getToolCallIconType = (toolName: string): ToolIconType => {
       return 'settings';
 
     // ===== Agent management tools =====
-    case 'get_agent_template_from_library':
     case 'create_agent_from_config':
     case 'update_agent':
     case 'get_agent_status':

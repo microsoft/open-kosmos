@@ -518,4 +518,361 @@ describe('ImportVscodeMcpServerViewContent — coverage', () => {
       expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Import failed'))
     })
   })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: env + headers propagation in parseServerConfig
+  // -------------------------------------------------------------------------
+  it('extracts env and headers from server config and forwards them to McpOps.add', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: {
+          'http-server': {
+            url: 'http://localhost:8000/mcp',
+            env: { LOG_LEVEL: 'debug' },
+            headers: { 'x-api-key': 'secret' },
+          },
+        },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('http-server')).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockMcpOpsAdd).toHaveBeenCalled()
+    })
+    const arg = mockMcpOpsAdd.mock.calls[0][0]
+    expect(arg.env).toEqual({ LOG_LEVEL: 'debug' })
+    expect(arg.headers).toEqual({ 'x-api-key': 'secret' })
+  })
+
+  it('ignores headers when they are not a plain object (e.g. array)', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: {
+          'http-server': {
+            url: 'http://localhost:8000/mcp',
+            headers: ['bad', 'array'],
+          },
+        },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('http-server')).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockMcpOpsAdd).toHaveBeenCalled()
+    })
+    const arg = mockMcpOpsAdd.mock.calls[0][0]
+    expect(arg.headers).toBeUndefined()
+  })
+
+  it('ignores env when not an object (e.g. string)', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: {
+          'srv': { type: 'stdio', command: 'node', env: 'not-an-object' },
+        },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('srv')).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockMcpOpsAdd).toHaveBeenCalled()
+    })
+    const arg = mockMcpOpsAdd.mock.calls[0][0]
+    expect(arg.env).toEqual({})
+  })
+
+  it('skips non-object server entries (e.g. string value)', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: {
+          'string-entry': 'this-is-not-an-object',
+          'real-server': { type: 'stdio', command: 'node' },
+        },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('real-server')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('string-entry')).not.toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: catch path when error is not an Error instance
+  // -------------------------------------------------------------------------
+  it('handles auto-detect rejecting with a non-Error value', async () => {
+    mockDetectVSCodeConfigs.mockRejectedValue('plain-string-failure')
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/plain-string-failure/)).toBeInTheDocument()
+    })
+  })
+
+  it('handles McpOps.add throwing a non-Error value', async () => {
+    mockMcpOpsAdd.mockRejectedValue('string-failure')
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/Import Selected/)).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Import failed'))
+    })
+  })
+
+  it('handles top-level handleRealImport throwing a non-Error', async () => {
+    // refreshRuntimeInfo runs inside the outer try and can throw to the top-level catch
+    mockRefreshRuntimeInfo.mockRejectedValue('refresh-string-error')
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/Import Selected/)).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Import failed: refresh-string-error'))
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: handleServerToggle delete path (uncheck a selected server)
+  // -------------------------------------------------------------------------
+  it('toggles a checked server off via the checkbox onChange handler', async () => {
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('my-server')).toBeInTheDocument()
+    })
+    // Default selection: both servers are selected
+    expect(screen.getByText('Import Selected (2)')).toBeInTheDocument()
+    // Find checkboxes
+    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+    const serverCheckboxes = checkboxes.filter(cb => cb.type === 'checkbox' && cb.checked)
+    expect(serverCheckboxes.length).toBeGreaterThan(0)
+    // Click first one to uncheck (hits the delete branch of handleServerToggle)
+    await act(async () => {
+      fireEvent.click(serverCheckboxes[0])
+    })
+    expect(screen.getByText('Import Selected (1)')).toBeInTheDocument()
+    // Click again to re-check (add branch)
+    await act(async () => {
+      fireEvent.click(serverCheckboxes[0])
+    })
+    expect(screen.getByText('Import Selected (2)')).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: imported plural vs singular + partial-error suffix
+  // -------------------------------------------------------------------------
+  it('shows partial-failure suffix when some imports fail and at least one succeeds', async () => {
+    // Two servers; second one fails (not-conflicting). Use stdio without command to fail validation
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: {
+          'good': { type: 'stdio', command: 'node' },
+          'bad-stdio': { type: 'stdio' },
+        },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('good')).toBeInTheDocument()
+      expect(screen.getByText('bad-stdio')).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalled()
+    })
+    // Should mention "(1 failed)" suffix
+    const msg = mockShowSuccess.mock.calls[0][0] as string
+    expect(msg).toMatch(/1 failed/)
+  })
+
+  it('shows singular "server" when exactly one imported', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: { 'single': { type: 'stdio', command: 'node' } },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('single')).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalled()
+    })
+    const msg = mockShowSuccess.mock.calls[0][0] as string
+    // 1 server → "1 server!" (no "s")
+    expect(msg).toMatch(/Successfully imported 1 server!/)
+  })
+
+  it('shows plural "servers" when more than one imported', async () => {
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/Import Selected/)).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalled()
+    })
+    const msg = mockShowSuccess.mock.calls[0][0] as string
+    expect(msg).toMatch(/Successfully imported 2 servers!/)
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: overwrite path with McpOps.update returning failure
+  // -------------------------------------------------------------------------
+  it('records error when McpOps.update fails during overwrite', async () => {
+    mockMcpServersRef.current = [{ name: 'my-server' }]
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: { 'my-server': { type: 'stdio', command: 'node' } },
+      }),
+    })
+    mockMcpOpsUpdate.mockResolvedValue({ success: false, error: 'no perms' })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('Name conflict!')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByDisplayValue('overwrite'))
+    fireEvent.click(screen.getByText('Select All'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('no perms'))
+    })
+  })
+
+  it('falls back to "Unknown error" when McpOps.add returns success=false with no error', async () => {
+    mockMcpOpsAdd.mockResolvedValue({ success: false })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/Import Selected/)).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'))
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: mcpServers === null/undefined falls through to []
+  // -------------------------------------------------------------------------
+  it('handles mcpServers being null (typeof check fails)', async () => {
+    mockMcpServersRef.current = null as any
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText(/Scan successful/)).toBeInTheDocument()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: click handler stopPropagation on checkbox
+  // -------------------------------------------------------------------------
+  it('clicking checkbox does not trigger server preview row click', async () => {
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('my-server')).toBeInTheDocument()
+    })
+    const checkboxes = screen.getAllByRole('checkbox')
+    // Click stops propagation; component should still render after the click
+    await act(async () => {
+      fireEvent.click(checkboxes[0])
+    })
+    expect(screen.getByText('my-server')).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: server-list click → handleServerPreview path
+  // -------------------------------------------------------------------------
+  it('clicking a server row updates the previewed server (selected class)', async () => {
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('http-server')).toBeInTheDocument()
+    })
+    const httpServerRow = screen.getByText('http-server').closest('.server-item')
+    expect(httpServerRow).toBeTruthy()
+    fireEvent.click(httpServerRow!)
+    // The clicked row should now have 'selected' class
+    expect(httpServerRow!.className).toContain('selected')
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: validate=false skips command/url checks (lines 376-386)
+  // -------------------------------------------------------------------------
+  it('imports stdio with missing command when validation is disabled', async () => {
+    mockReadFileContent.mockResolvedValue({
+      success: true,
+      content: JSON.stringify({
+        servers: { 'no-cmd': { type: 'stdio' } },
+      }),
+    })
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByText('no-cmd')).toBeInTheDocument()
+    })
+    // Disable validation
+    const validateCb = screen
+      .getAllByRole('checkbox')
+      .find(cb => cb.closest('label')?.textContent?.includes('Validate configurations'))
+    expect(validateCb).toBeTruthy()
+    fireEvent.click(validateCb!)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import Selected/ }))
+    })
+    // Should now reach McpOps.add despite missing command
+    await waitFor(() => {
+      expect(mockMcpOpsAdd).toHaveBeenCalled()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Branch coverage: rename radio onChange handler (line 569)
+  // -------------------------------------------------------------------------
+  it('fires onChange when switching back to rename after selecting overwrite', async () => {
+    await act(async () => { await renderComp() })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('rename')).toBeInTheDocument()
+    })
+    // Move away from default first
+    fireEvent.click(screen.getByDisplayValue('overwrite'))
+    expect((screen.getByDisplayValue('overwrite') as HTMLInputElement).checked).toBe(true)
+    // Now switch back to rename — this exercises the rename onChange
+    fireEvent.click(screen.getByDisplayValue('rename'))
+    expect((screen.getByDisplayValue('rename') as HTMLInputElement).checked).toBe(true)
+  })
 })

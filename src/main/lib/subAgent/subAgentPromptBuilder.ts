@@ -13,6 +13,7 @@ import type { SubAgentConfig } from '../userDataADO/types/profile';
 import { skillManager } from '../skill/skillManager';
 import * as path from 'path';
 import { app } from 'electron';
+import { buildMemexMemoryPrompt } from '../memex/memexMemoryPrompt';
 
 /**
  * Get the Electron app instance (supports test environment mocking)
@@ -43,10 +44,8 @@ export function buildWorkspaceAndSkillsInfo(options: SubAgentChatOptions, config
 
   // Workspace path — no longer configured on sub-agent directly; derived from deliverablesPath
 
-  // Skills info — uses resolvedSkills (includes inherited skills)
-  const skillNames = subAgent.resolvedSkills.length > 0
-    ? subAgent.resolvedSkills.map(s => s.name)
-    : (config.skills || []);
+  // Skills info — uses resolvedSkills (ad-hoc sub-agents resolve their own skills)
+  const skillNames = subAgent.resolvedSkills.map(s => s.name);
 
   if (skillNames.length > 0) {
     try {
@@ -139,6 +138,12 @@ export function buildSubAgentSystemPrompt(options: SubAgentChatOptions): Message
   if (deliverablesPath) {
     prompt += `6. When creating or saving files, use the deliverables directory: ${deliverablesPath}\n`;
     prompt += `7. After creating files, always mention the file paths and a brief description of each file in your final response, so the parent agent knows what was produced\n`;
+  }
+
+  const hasMemexMemory = options.allowedToolNames?.has('memex_memory')
+    ?? subAgent.resolvedMcpServers.some((server) => server.tools.length === 0 || server.tools.includes('memex_memory'));
+  if (hasMemexMemory) {
+    prompt += `\n${buildMemexMemoryPrompt({ isSubAgent: true })}\n`;
   }
 
   // 4.2 Efficiency constraints — general efficiency guidance (specific turn progress injected dynamically per turn via buildTurnProgressHint)

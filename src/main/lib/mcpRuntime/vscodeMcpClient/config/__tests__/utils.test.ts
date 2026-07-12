@@ -162,7 +162,7 @@ describe('getPlatformInfo', () => {
     const info = getPlatformInfo('macOS');
     expect(info.platform).toBe('macOS');
     expect(info.isSupported).toBe(true);
-    expect(typeof info.vscodeConfigPaths[0]).toBe('string');
+    expect(typeof info.vscodeConfigPath).toBe('string');
     expect(Array.isArray(info.vscodeConfigPaths)).toBe(true);
     expect(typeof info.displayName).toBe('string');
   });

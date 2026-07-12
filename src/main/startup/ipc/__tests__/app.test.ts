@@ -29,9 +29,11 @@ vi.mock('../../../lib/crash/CrashCaptureManager', () => ({
 }));
 
 const mockGetConfig = vi.fn(() => ({ theme: 'dark' }));
-const mockUpdateConfig = vi.fn().mockResolvedValue(undefined);
+const mockGetConfigRevision = vi.fn(() => 0);
+const mockUpdateConfig = vi.fn().mockResolvedValue({ revision: 1 });
 const mockGetAppCacheManager = vi.fn().mockResolvedValue({
   getConfig: (...args: any[]) => (mockGetConfig as any)(...args),
+  getConfigRevision: (...args: any[]) => (mockGetConfigRevision as any)(...args),
   updateConfig: (...args: any[]) => (mockUpdateConfig as any)(...args),
 });
 
@@ -53,7 +55,6 @@ function getHandler(channel: string): Function {
 
 const mockCtx = {
   isDev: false,
-  isAnalyticsReady: true,
   isAgentChatReady: true,
 };
 
@@ -91,7 +92,7 @@ describe('startup/ipc/app', () => {
   });
 
   it('app:isReady returns false when agentChat not ready', async () => {
-    const ctx = { isDev: false, isAnalyticsReady: true, isAgentChatReady: false };
+    const ctx = { isDev: false, isAgentChatReady: false };
     vi.resetModules();
     vi.clearAllMocks();
     const { default: registerAppIPC } = await import('../app');
@@ -107,11 +108,10 @@ describe('startup/ipc/app', () => {
     expect(result).toHaveProperty('platform');
     expect(result).toHaveProperty('arch');
     expect(result).toHaveProperty('isWindowsArm');
-    expect(result).toHaveProperty('memoryEnabled');
     expect(typeof result.isWindowsArm).toBe('boolean');
   });
 
-  it('app:getPlatformInfo sets memoryEnabled=false on Windows ARM', async () => {
+  it('app:getPlatformInfo sets isWindowsArm=true on Windows ARM', async () => {
     const originalPlatform = process.platform;
     const originalArch = process.arch;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
@@ -125,7 +125,6 @@ describe('startup/ipc/app', () => {
     const result = await handler();
 
     expect(result.isWindowsArm).toBe(true);
-    expect(result.memoryEnabled).toBe(false);
 
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     Object.defineProperty(process, 'arch', { value: originalArch, configurable: true });
@@ -167,7 +166,7 @@ describe('startup/ipc/app', () => {
   it('app:getAppConfig returns config on success', async () => {
     const handler = getHandler('app:getAppConfig');
     const result = await handler();
-    expect(result).toEqual({ success: true, data: { theme: 'dark' } });
+    expect(result).toEqual({ success: true, data: { theme: 'dark' }, revision: 0 });
   });
 
   it('app:getAppConfig returns error on failure', async () => {
@@ -177,10 +176,17 @@ describe('startup/ipc/app', () => {
     expect(result).toEqual({ success: false, error: 'cache fail' });
   });
 
+  it('app:getAppConfig stringifies a non-Error rejection', async () => {
+    mockGetAppCacheManager.mockRejectedValueOnce('plain string failure');
+    const handler = getHandler('app:getAppConfig');
+    const result = await handler();
+    expect(result).toEqual({ success: false, error: 'plain string failure' });
+  });
+
   it('app:updateAppConfig updates and returns success', async () => {
     const handler = getHandler('app:updateAppConfig');
     const result = await handler({}, { theme: 'light' });
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, revision: 1 });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ theme: 'light' });
   });
 
@@ -189,5 +195,12 @@ describe('startup/ipc/app', () => {
     const handler = getHandler('app:updateAppConfig');
     const result = await handler({}, { theme: 'light' });
     expect(result).toEqual({ success: false, error: 'update fail' });
+  });
+
+  it('app:updateAppConfig stringifies a non-Error rejection', async () => {
+    mockGetAppCacheManager.mockRejectedValueOnce({ code: 500 });
+    const handler = getHandler('app:updateAppConfig');
+    const result = await handler({}, { theme: 'light' });
+    expect(result).toEqual({ success: false, error: '[object Object]' });
   });
 });

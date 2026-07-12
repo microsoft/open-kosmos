@@ -22,7 +22,7 @@ const mockRetryChat = vi.fn();
 
 vi.mock('../../../lib/models/ghcModels', () => ({
   MODEL_CATEGORIES: {
-    claude: ['claude-sonnet', 'claude-haiku', 'claude-opus'],
+    claude: ['claude-mythos', 'claude-fable', 'claude-sonnet', 'claude-haiku', 'claude-opus'],
   },
 }));
 
@@ -126,6 +126,18 @@ describe('ErrorBar — fix suggestions', () => {
     mockGetSelectedModel.mockReturnValue('claude-opus');
 
     renderBar('The service is not available');
+    expect(screen.getByText(/VPN/)).toBeTruthy();
+  });
+
+  it('shows Claude VPN suggestion for new Claude mythos and fable families', () => {
+    mockGetChatSessionCache.mockReturnValue({ chatId: 'chat-1' });
+    mockGetSelectedModel.mockReturnValueOnce('claude-mythos-5');
+    const { unmount } = renderBar('model is not supported in this region');
+    expect(screen.getByText(/VPN/)).toBeTruthy();
+
+    unmount();
+    mockGetSelectedModel.mockReturnValueOnce('claude-fable-5');
+    renderBar('model is not supported in this region');
     expect(screen.getByText(/VPN/)).toBeTruthy();
   });
 

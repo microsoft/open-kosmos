@@ -31,8 +31,8 @@ describe('BrowserProfileManager', () => {
   });
 
   it('getProfilePath returns a path under baseDir', () => {
-    const p = manager.getProfilePath('teams-auth');
-    expect(p).toContain('teams-auth');
+    const p = manager.getProfilePath('test-profile');
+    expect(p).toContain('test-profile');
     expect(p).toContain('openkosmos-playwright-profiles');
   });
 
@@ -97,5 +97,108 @@ describe('BrowserProfileManager', () => {
     const profiles = manager.listProfiles();
     expect(profiles).toContain('keep');
     expect(profiles).not.toContain('remove');
+  });
+
+  it('serializes owners of the same persistent profile', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+    let secondAcquired = false;
+    const secondLeasePromise = manager.acquireProfileLease('shared-profile').then((release) => {
+      secondAcquired = true;
+      return release;
+    });
+
+    await Promise.resolve();
+    expect(secondAcquired).toBe(false);
+
+    releaseFirst();
+    const releaseSecond = await secondLeasePromise;
+    expect(secondAcquired).toBe(true);
+    releaseSecond();
+  });
+
+  it('allows different persistent profiles to be used concurrently', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+    const releaseSecond = await manager.acquireProfileLease('other-profile');
+
+    releaseFirst();
+    releaseSecond();
+  });
+
+  it('ignores duplicate release calls without admitting multiple owners', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+    const secondLeasePromise = manager.acquireProfileLease('shared-profile');
+    const thirdLeasePromise = manager.acquireProfileLease('shared-profile');
+
+    releaseFirst();
+    releaseFirst();
+    const releaseSecond = await secondLeasePromise;
+
+    let thirdAcquired = false;
+    void thirdLeasePromise.then(() => {
+      thirdAcquired = true;
+    });
+    await Promise.resolve();
+    expect(thirdAcquired).toBe(false);
+
+    releaseSecond();
+    const releaseThird = await thirdLeasePromise;
+    releaseThird();
+  });
+
+  it('ignores a duplicate grant for the same queued owner', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+    const secondLeasePromise = manager.acquireProfileLease('shared-profile');
+    const queue = [...(manager as any).profileLeaseQueues.values()][0];
+    const queuedOwner = queue[0];
+
+    releaseFirst();
+    queuedOwner.grant();
+
+    const releaseSecond = await secondLeasePromise;
+    releaseSecond();
+  });
+
+  it('rejects a bounded wait without releasing the active owner', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+
+    await expect(manager.acquireProfileLease('shared-profile', 1)).rejects.toThrow(
+      '[BROWSER_PROFILE_BUSY]',
+    );
+
+    const secondLeasePromise = manager.acquireProfileLease('shared-profile');
+    releaseFirst();
+    const releaseSecond = await secondLeasePromise;
+    releaseSecond();
+  });
+
+  it('keeps later waiters queued when an earlier waiter times out', async () => {
+    const releaseFirst = await manager.acquireProfileLease('shared-profile');
+    const timedOutLease = manager.acquireProfileLease('shared-profile', 1);
+    const laterLease = manager.acquireProfileLease('shared-profile', 1000);
+
+    await expect(timedOutLease).rejects.toThrow('[BROWSER_PROFILE_BUSY]');
+    releaseFirst();
+    const releaseLater = await laterLease;
+    releaseLater();
+  });
+
+  it('preserves profile path casing on case-sensitive platforms', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      expect((manager as any).getProfileLeaseKey('MixedCase')).toContain('MixedCase');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+
+  it('normalizes profile path casing on Windows', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      expect((manager as any).getProfileLeaseKey('MixedCase')).not.toContain('MixedCase');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
   });
 });

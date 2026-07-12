@@ -81,9 +81,12 @@ vi.mock('../../token', () => ({
 }));
 
 vi.mock('../../mcpRuntime/mcpClientManager', () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set(['sub_agent', 'computer_use', 'send_to_subagent']),
   mcpClientManager: {
     getToolsForSubAgent: vi.fn().mockReturnValue([]),
     executeTool: vi.fn().mockResolvedValue('tool result'),
+    isBuiltinTool: vi.fn(() => true),
   },
 }));
 

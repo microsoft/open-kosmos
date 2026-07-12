@@ -416,6 +416,13 @@ describe('workspace IPC handlers', () => {
       const result = await handlers.get('workspace:searchFiles')!(fakeEvent, { folder: '/workspace' });
       expect(result.success).toBe(false);
     });
+
+    it('normalizes folder path before searching', async () => {
+      mockWatcher.searchFiles.mockResolvedValue({ results: [] });
+      const query = { folder: 'C:/Users/test/workspace', pattern: 'test' };
+      await handlers.get('workspace:searchFiles')!(fakeEvent, query);
+      expect(query.folder).toBe(require('path').normalize('C:/Users/test/workspace'));
+    });
   });
 
   // ── workspace:copyPaths ────────────────────────────────────────────────────

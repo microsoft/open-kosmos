@@ -27,6 +27,7 @@ import {
   needsCleanup,
   getLogDirectoryStats,
   resetDevStartupLogFileNameForTest,
+  validateLogDirectory,
 } from '../FileOperations';
 
 describe('FileOperations - mocked fs error paths', () => {
@@ -55,6 +56,15 @@ describe('FileOperations - mocked fs error paths', () => {
     const result = await writeCacheObjectToDisk(cache, '/tmp/fake-log-dir');
     expect(result.success).toBe(false);
     expect(result.error).toContain('disk full');
+  });
+
+  it('writeCacheObjectToDisk handles non-Error append failures', async () => {
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.appendFile).mockRejectedValue('disk unavailable');
+
+    const result = await writeCacheObjectToDisk(new CacheObject(10), '/tmp/fake-log-dir');
+
+    expect(result).toMatchObject({ success: false, error: 'Unknown error' });
   });
 
   it('cleanupOldLogFiles succeeds even if getAllLogFiles returns empty due to readdir error', async () => {
@@ -94,5 +104,16 @@ describe('FileOperations - mocked fs error paths', () => {
     expect(stats.totalFiles).toBe(0);
     expect(stats.totalSize).toBe(0);
     expect(stats.todayFileExists).toBe(false);
+  });
+
+  it('validateLogDirectory handles non-Error access failures', async () => {
+    vi.mocked(fs.access).mockRejectedValue('permission unavailable');
+
+    await expect(validateLogDirectory('/tmp/fake-dir')).resolves.toEqual({
+      exists: false,
+      writable: false,
+      readable: false,
+      error: 'Unknown error',
+    });
   });
 });

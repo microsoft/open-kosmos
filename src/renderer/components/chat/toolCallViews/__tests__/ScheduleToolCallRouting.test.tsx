@@ -62,7 +62,7 @@ describe('schedule tool call routing', () => {
           name: 'Cross-agent schedule',
           description: 'Create schedule for another agent',
           message: 'Summarize updates',
-          agent_id: 'chat-target',
+          chat_id: 'chat-target',
           cron_expression: '0 9 * * 1-5',
         })}
         toolResult={null}
@@ -93,7 +93,7 @@ describe('schedule tool call routing', () => {
             schedule_type: 'cron',
             cron_expression: '0 9 * * 1-5',
             message: 'Summarize updates',
-            agent_id: 'chat-updated',
+            chat_id: 'chat-updated',
             enabled: true,
             status: 'pending',
           },
@@ -112,7 +112,7 @@ describe('schedule tool call routing', () => {
       <GetScheduleToolCallView
         toolCall={buildToolCall('get_schedule', {
           description: 'List agent schedules',
-          agent_id: 'chat-requested',
+          chat_id: 'chat-requested',
         })}
         toolResult={buildToolResult({
           success: true,
@@ -125,7 +125,7 @@ describe('schedule tool call routing', () => {
               schedule_type: 'cron',
               cron_expression: '0 9 * * 1-5',
               message: 'Summarize updates',
-              agent_id: 'chat-requested',
+              chat_id: 'chat-requested',
               enabled: true,
               status: 'pending',
             },
@@ -157,7 +157,7 @@ describe('schedule tool call routing', () => {
               schedule_type: 'cron',
               cron_expression: '0 9 * * 1-5',
               message: 'Summarize updates',
-              agent_id: 'chat-one',
+              chat_id: 'chat-one',
               enabled: true,
               status: 'pending',
             },
@@ -168,7 +168,7 @@ describe('schedule tool call routing', () => {
               schedule_type: 'cron',
               cron_expression: '0 9 * * 1-5',
               message: 'Prepare digest',
-              agent_id: 'chat-two',
+              chat_id: 'chat-two',
               enabled: true,
               status: 'pending',
             },

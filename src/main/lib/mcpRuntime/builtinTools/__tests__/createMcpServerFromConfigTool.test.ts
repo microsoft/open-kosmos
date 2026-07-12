@@ -108,9 +108,9 @@ describe('CreateMcpServerFromConfigTool', () => {
           in_use: true,
           version: '1.0.0',
           source: 'ON-DEVICE',
-          remoteVersion: '',
         }),
       );
+      expect(mockMcpClientManagerAdd.mock.calls[0][1]).not.toHaveProperty('remoteVersion');
     });
 
     it('adds sse server and returns success', async () => {
@@ -126,26 +126,25 @@ describe('CreateMcpServerFromConfigTool', () => {
       expect(result.server_name).toBe('my-sse-server');
     });
 
-    it('sets remoteVersion to version for IN-LIBRARY source', async () => {
+    it('creates servers as local resources without remote metadata', async () => {
       const result = await CreateMcpServerFromConfigTool.execute({
         mcp_config: {
-          name: 'lib-server',
+          name: 'local-server',
           transport: 'stdio',
           command: 'npx',
-          source: 'IN-LIBRARY',
           version: '2.0.0',
         },
       });
 
       expect(result.success).toBe(true);
       expect(mockMcpClientManagerAdd).toHaveBeenCalledWith(
-        'lib-server',
+        'local-server',
         expect.objectContaining({
-          source: 'IN-LIBRARY',
+          source: 'ON-DEVICE',
           version: '2.0.0',
-          remoteVersion: '2.0.0',
         }),
       );
+      expect(mockMcpClientManagerAdd.mock.calls[0][1]).not.toHaveProperty('remoteVersion');
     });
 
     it('defaults version to 1.0.0 when not provided', async () => {

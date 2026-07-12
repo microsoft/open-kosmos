@@ -3,7 +3,7 @@ import ChatContainer from './ChatContainer';
 import ChatInput from './ChatInput';
 import ChatZeroStates from './ChatZeroStates';
 import { Message } from '@shared/types/chatTypes';
-import { ZeroStates, isBuiltinAgent } from '../../lib/userData/types';
+import { ZeroStates } from '../../lib/userData/types';
 import { useCurrentChatSessionId, useMessagesWithStream, ChatStatus } from '../../lib/chat/agentChatSessionCacheManager';
 import {
   isFrontendOnlySayHiMessage,
@@ -14,7 +14,9 @@ import { createLogger } from '../../lib/utilities/logger';
 import { sendUserMessage, sendUserPrompt } from '@renderer/lib/chat/sendUserMessageOptimistically';
 import { editMessageAtom } from './edit-message.atom';
 import ChatSide from './ChatSide';
-import { InlinePreviewAtom } from './chat-side.atom';
+import { WorkspaceExplorerAtom } from './chat-side.atom';
+import { queuedMessageAtom } from './queued-message.atom';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const logger = createLogger('[ChatViewContent]');
 
@@ -28,11 +30,9 @@ interface ChatViewContentProps {
 
   // Zero States props
   zeroStates?: ZeroStates;
-  agentName?: string; // Agent name, used for avatar image caching
+  agentName?: string;
 
   onSelectScheduledSession?: (sessionId: string) => void | Promise<void>;
-  // Read-only mode for remote sessions
-  isReadOnly?: boolean;
 }
 
 const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
@@ -40,12 +40,12 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
   chatId,
   chatStatus,
   zeroStates,
-  agentName,
-  onSelectScheduledSession,
-  isReadOnly
+  onSelectScheduledSession
 }) => {
+  const { t } = useI18n();
   const { messages, streamingMessageId } = useMessagesWithStream();
   const [editingMessageState, editMessageActions] = editMessageAtom.use();
+  const [queuedMessages] = queuedMessageAtom.use();
   /**
    * ========== isEmpty Decision Logic ==========
    *
@@ -89,15 +89,16 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
     (zeroStates.greeting && zeroStates.greeting.trim().length > 0) ||
     (zeroStates.quick_starts && zeroStates.quick_starts.length > 0)
   );
-  const shouldDisableZeroStates =
-    false;
-  const showZeroStates = !isSessionSwitching && !shouldDisableZeroStates && isEmpty && hasValidZeroStates;
+  const showZeroStates = !isSessionSwitching && isEmpty && hasValidZeroStates;
 
   const currentChatSessionId = useCurrentChatSessionId();
-  const InlinePreviewActions = InlinePreviewAtom.useChange();
-  // Close preview when switching chat sessions
+  const queuedMessageItems = currentChatSessionId ? queuedMessages[currentChatSessionId]?.items ?? [] : [];
+  const workspaceExplorerActions = WorkspaceExplorerAtom.useChange();
+  // On chat-session switch: tree-origin previews fall back to the file tree,
+  // chat-origin previews close the workspace sidepane (legacy behavior). Also
+  // exits inline message editing.
   useEffect(() => {
-    InlinePreviewActions.cancel();
+    workspaceExplorerActions.onSessionSwitch();
     editMessageActions.cancel();
   }, [currentChatSessionId]);
 
@@ -107,11 +108,12 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
         {isSessionSwitching ? (
           <div className="chat-session-transition-state" role="status" aria-live="polite">
             <div className="chat-session-transition-copy">
-              Opening chat history...
+              {t('chat.history.opening')}
             </div>
           </div>
         ) : (
           <ChatContainer
+            key={currentChatSessionId || undefined}
             messages={renderedMessages}
             allMessages={messages}
             streamingMessageId={streamingMessageId ?? undefined}
@@ -119,14 +121,13 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
             chatSessionId={currentChatSessionId || undefined}
             chatStatus={chatStatus}
             editingMessage={editingMessageState}
-            canEditUserMessage={!(isReadOnly || isSessionSwitching || (chatStatus && chatStatus !== 'idle'))}
+            canEditUserMessage={!(isSessionSwitching || (chatStatus && chatStatus !== 'idle'))}
           />
         )}
         {/* Zero States - shown above ChatInput when the chat is empty */}
         {showZeroStates && (
           <ChatZeroStates
             zeroStates={zeroStates!}
-            agentName={agentName || 'default'}
             onQuickStartClick={sendUserPrompt}
           />
         )}
@@ -134,7 +135,7 @@ const ChatViewContent: React.FC<ChatViewContentProps> = memo(({
           onSendMessage={sendUserMessage}
           enableContextMenu
           chatSessionId={currentChatSessionId}
-          isReadOnly={isReadOnly}
+          queuedMessages={queuedMessageItems}
           isInputLocked={!!editingMessageState || isSessionSwitching}
         />
       </div>

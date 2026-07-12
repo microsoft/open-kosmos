@@ -76,10 +76,22 @@ describe('BuddyContextMenu', () => {
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
+  it('does not call onClose for non-Escape keys', () => {
+    render(<BuddyContextMenu {...defaultProps} />);
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+
   it('calls onClose when clicking outside', () => {
     render(<BuddyContextMenu {...defaultProps} />);
     fireEvent.mouseDown(document.body);
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('does not call onClose when clicking inside the menu', () => {
+    const { container } = render(<BuddyContextMenu {...defaultProps} />);
+    fireEvent.mouseDown(container.firstChild as HTMLElement);
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 
   it('adjusts position to avoid overflow when near right/bottom edge', () => {
@@ -102,5 +114,14 @@ describe('BuddyContextMenu', () => {
     const menu = container.firstChild as HTMLElement;
     expect(parseInt(menu.style.left)).toBe(50);
     expect(parseInt(menu.style.top)).toBe(50);
+  });
+
+  it('clamps negative coordinates to the viewport origin', () => {
+    const { container } = render(
+      <BuddyContextMenu {...defaultProps} position={{ x: -20, y: -30 }} />
+    );
+    const menu = container.firstChild as HTMLElement;
+    expect(parseInt(menu.style.left)).toBe(0);
+    expect(parseInt(menu.style.top)).toBe(0);
   });
 });

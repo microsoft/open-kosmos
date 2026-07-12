@@ -88,9 +88,12 @@ const { mockGetToolsForSubAgent } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set(['sub_agent', 'computer_use', 'send_to_subagent']),
   mcpClientManager: {
     getToolsForSubAgent: (...args: any[]) => mockGetToolsForSubAgent(...args),
     executeTool: vi.fn().mockResolvedValue('tool result'),
+    isBuiltinTool: vi.fn(() => true),
   },
 }));
 

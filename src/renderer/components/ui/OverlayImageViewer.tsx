@@ -3,6 +3,7 @@ import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { atom } from '@/atom';
 import '../../styles/OverlayImageViewer.css';
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[OverlayImageViewer]');
 
 interface ImageItem {
@@ -36,11 +37,15 @@ export const ImageViewerAtom = atom(zeroState, (_get, set) => {
 });
 
 export const OverlayImageViewer: React.FC = () => {
+  const { t } = useI18n();
   const [state, actions] = ImageViewerAtom.use();
   const { isOpen, images, initialIndex } = state;
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isImageLoading, setIsImageLoading] = useState(true);
+  // Tracks whether the current image's <img> emitted an error. Without this, a
+  // failed load leaves the spinner up forever because only onLoad clears it.
+  const [hasImageError, setHasImageError] = useState(false);
 
   // Listen for imageViewer:open custom events
   useEffect(() => {
@@ -66,6 +71,7 @@ export const OverlayImageViewer: React.FC = () => {
     if (isOpen) {
       setCurrentIndex(initialIndex);
       setIsImageLoading(true);
+      setHasImageError(false);
     }
   }, [isOpen, initialIndex]);
 
@@ -107,6 +113,7 @@ export const OverlayImageViewer: React.FC = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
       setIsImageLoading(true);
+      setHasImageError(false);
     }
   }, [currentIndex]);
 
@@ -114,6 +121,7 @@ export const OverlayImageViewer: React.FC = () => {
     if (currentIndex < images.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setIsImageLoading(true);
+      setHasImageError(false);
     }
   }, [currentIndex, images.length]);
 
@@ -126,6 +134,14 @@ export const OverlayImageViewer: React.FC = () => {
 
   const handleImageLoad = useCallback(() => {
     setIsImageLoading(false);
+  }, []);
+
+  // Clear the loading spinner and surface an error state when the image fails to
+  // load (e.g. a deleted file or a malformed URL). Without this the spinner would
+  // hang indefinitely since only onLoad clears isImageLoading.
+  const handleImageError = useCallback(() => {
+    setIsImageLoading(false);
+    setHasImageError(true);
   }, []);
 
   // Save image to local disk
@@ -164,8 +180,8 @@ export const OverlayImageViewer: React.FC = () => {
       <div className="image-viewer-overlay" onClick={actions.close}>
         <div className="image-viewer-content">
           <div className="image-viewer-error">
-            <p>Image failed to load</p>
-            <button onClick={actions.close}>Close</button>
+            <p>{t('viewer.image.failed')}</p>
+            <button onClick={actions.close}>{t('common.close')}</button>
           </div>
         </div>
       </div>
@@ -183,8 +199,8 @@ export const OverlayImageViewer: React.FC = () => {
         <button
           className="image-viewer-tool-btn"
           onClick={handleSaveImage}
-          aria-label="Save image"
-          title="Save image"
+          aria-label={t('viewer.image.save')}
+          title={t('viewer.image.save')}
         >
           <Download size={20} />
         </button>
@@ -193,8 +209,8 @@ export const OverlayImageViewer: React.FC = () => {
         <button
           className="image-viewer-tool-btn image-viewer-close"
           onClick={actions.close}
-          aria-label="Close image viewer"
-          title="Close"
+          aria-label={t('viewer.image.closeViewer')}
+          title={t('common.close')}
         >
           <X size={20} />
         </button>
@@ -205,7 +221,7 @@ export const OverlayImageViewer: React.FC = () => {
         <button
           className="image-viewer-nav image-viewer-nav-prev"
           onClick={handlePrevious}
-          aria-label="Previous image"
+          aria-label={t('viewer.image.previous')}
         >
           <ChevronLeft size={48} />
         </button>
@@ -213,22 +229,30 @@ export const OverlayImageViewer: React.FC = () => {
 
       {/* Image container */}
       <div className="image-viewer-content">
-        {isImageLoading && (
+        {isImageLoading && !hasImageError && (
           <div className="image-viewer-loading">
             <div className="loading-spinner-large">
               <div className="spinner-circle-large"></div>
             </div>
-            <div className="loading-text">Loading...</div>
+            <div className="loading-text">{t('viewer.loading')}</div>
           </div>
         )}
-        <img
-          src={currentImage.url}
-          alt={currentImage.alt || `Image ${currentIndex + 1}`}
-          className="image-viewer-image"
-          onLoad={handleImageLoad}
-          style={{ display: isImageLoading ? 'none' : 'block' }}
-        />
-        {currentImage.alt && !isImageLoading && (
+        {hasImageError ? (
+          <div className="image-viewer-error">
+            <p>{t('viewer.image.failed')}</p>
+            <button onClick={actions.close}>{t('common.close')}</button>
+          </div>
+        ) : (
+          <img
+            src={currentImage.url}
+            alt={currentImage.alt || t('viewer.image.alt', { index: currentIndex + 1 })}
+            className="image-viewer-image"
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            style={{ display: isImageLoading ? 'none' : 'block' }}
+          />
+        )}
+        {currentImage.alt && !isImageLoading && !hasImageError && (
           <div className="image-viewer-caption">
             {currentImage.alt}
           </div>
@@ -240,7 +264,7 @@ export const OverlayImageViewer: React.FC = () => {
         <button
           className="image-viewer-nav image-viewer-nav-next"
           onClick={handleNext}
-          aria-label="Next image"
+          aria-label={t('viewer.image.next')}
         >
           <ChevronRight size={48} />
         </button>
@@ -257,12 +281,13 @@ export const OverlayImageViewer: React.FC = () => {
                 onClick={() => {
                   setCurrentIndex(index);
                   setIsImageLoading(true);
+                  setHasImageError(false);
                 }}
-                aria-label={`View image ${index + 1}`}
+                aria-label={t('viewer.image.view', { index: index + 1 })}
               >
                 <img
                   src={img.url}
-                  alt={img.alt || `Thumbnail ${index + 1}`}
+                  alt={img.alt || t('viewer.image.thumbnail', { index: index + 1 })}
                   className="thumbnail-image"
                 />
                 {index === currentIndex && (

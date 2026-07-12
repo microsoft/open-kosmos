@@ -9,9 +9,12 @@ import {
 } from '../../../lib/chat/workspaceOps';
 import { extractMonthFromChatSessionIdValue } from '../../../../shared/utils/idFormats';
 import { useCurrentChatSessionId, useCurrentChatId } from '../../../lib/chat/agentChatSessionCacheManager';
+import { resolveChatAgent } from '@/lib/agent';
 import FileExplorerSection from './FileExplorerSection';
+import InlineFilePreviewPanel from '../InlineFilePreviewPanel';
 import { WorkspaceMenuAtom } from '@renderer/components/menu/WorkspaceMenuDropdown';
 import { WorkspaceExplorerAtom } from '../chat-side.atom';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 export interface WorkspaceMenuActions {
   onOpenInExplorer: () => void;
@@ -26,10 +29,12 @@ export interface WorkspaceMenuActions {
 }
 
 const WorkspaceExplorerSidepane: React.FC = () => {
+  const { t } = useI18n();
   const [
-    { visible: isVisible, reveal: revealRequest },
-    { cancelReveal: onRevealHandled },
+    { visible: isVisible, mode, preview, reveal: revealRequest },
+    workspaceActions,
   ] = WorkspaceExplorerAtom.use();
+  const { cancelReveal: onRevealHandled } = workspaceActions;
   const { toggle: onMenuToggle } = WorkspaceMenuAtom.useChange();
   const { data } = useProfileData();
   // 🔧 Fix: use reactive hook instead of synchronous reads
@@ -39,7 +44,7 @@ const WorkspaceExplorerSidepane: React.FC = () => {
   const { user } = useAuthContext();
   const userAlias = user?.login;
 
-  // Get current Agent's Workspace and KnowledgeBase from ProfileData
+  // Get current Chat's workspace and current Agent's KnowledgeBase from ProfileData
   const { currentWorkspace, currentKnowledgeBase } = useMemo(() => {
     if (!data?.chats || !currentChatId) {
       return {
@@ -48,9 +53,10 @@ const WorkspaceExplorerSidepane: React.FC = () => {
       };
     }
     const currentChat = data.chats.find(chat => chat.chat_id === currentChatId);
+    const currentAgent = resolveChatAgent(currentChat);
     return {
-      currentWorkspace: currentChat?.agent?.workspace || '',
-      currentKnowledgeBase: currentChat?.agent?.knowledge?.knowledgeBase || '',
+      currentWorkspace: currentChat?.workspace || currentAgent?.workspace || '',
+      currentKnowledgeBase: currentAgent?.knowledge?.knowledgeBase || currentAgent?.knowledgeBase || '',
     };
   }, [data.chats, data.lastUpdated, currentChatId]);
 
@@ -85,8 +91,7 @@ const WorkspaceExplorerSidepane: React.FC = () => {
         const result = await (window as any).electronAPI.workspace.getDefaultWorkspacePath?.(userAlias, currentChatId);
         if (result?.success && result?.data) {
           setDefaultWorkspacePath(result.data);
-          // Knowledge base default path is workspace/knowledge
-          setDefaultKnowledgeBasePath(result.data + '/knowledge');
+          setDefaultKnowledgeBasePath(currentKnowledgeBase);
         }
       } catch (error) {
         // ignore
@@ -94,7 +99,7 @@ const WorkspaceExplorerSidepane: React.FC = () => {
     };
 
     getDefaultPaths();
-  }, [currentChatId, userAlias]);
+  }, [currentChatId, userAlias, currentKnowledgeBase]);
 
   // Update Workspace path
   const handleUpdateWorkspacePath = useCallback(async (newPath: string) => {
@@ -112,11 +117,33 @@ const WorkspaceExplorerSidepane: React.FC = () => {
     return null;
   }
 
+  // Preview mode: a single file rendered by InlineFilePreviewPanel, splitting the
+  // chat-content-wrapper like the legacy inline preview. The X always destroys the
+  // sidepane; the back arrow (tree-origin only) returns to the file tree.
+  if (mode === 'preview' && preview) {
+    return (
+      <>
+        <div
+          className="inline-preview-resizer"
+          onMouseDown={workspaceActions.resizePreview}
+        />
+        <InlineFilePreviewPanel
+          file={preview.file}
+          isOpen
+          onClose={() => workspaceActions.setVisible(false)}
+          onBack={preview.origin === 'tree' ? workspaceActions.backToExplorer : undefined}
+          onDirtyStateChange={workspaceActions.markPreviewDirty}
+          style={preview.width != undefined ? { flex: `0 0 ${preview.width}px` } : undefined}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="file-explorer-sidepane chat-sidepane">
       {/* Knowledge Base Section */}
       <FileExplorerSection
-        title="Agent Knowledge Files"
+        title={t('workspace.explorer.agentKnowledgeFiles')}
         sectionClassName="knowledge-explorer-sidepane-section"
         currentPath={currentKnowledgeBase}
         defaultPath={defaultKnowledgeBasePath}
@@ -129,9 +156,9 @@ const WorkspaceExplorerSidepane: React.FC = () => {
 
       {/* Chat Session File Section */}
       <FileExplorerSection
-        title="Current Chat Session Deliverables"
+        title={t('workspace.explorer.currentSessionDeliverables')}
         sectionClassName="chat-session-file-explorer-sidepane-section"
-        emptyMessage="Files generated during the current chat session will appear here."
+        emptyMessage={t('workspace.explorer.currentSessionEmpty')}
         hideEmptyActions={true}
         currentPath={chatSessionFilePath}
         defaultPath={chatSessionFilePath}
@@ -140,6 +167,9 @@ const WorkspaceExplorerSidepane: React.FC = () => {
         onRevealHandled={onRevealHandled}
         onUpdatePath={handleUpdateWorkspacePath}
         onMenuToggle={onMenuToggle}
+        defaultSortField="mtime"
+        defaultSortOrder="desc"
+        showSortButton={true}
       />
 
     </div>

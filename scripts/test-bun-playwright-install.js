@@ -29,7 +29,6 @@ const { spawn } = require('child_process');
 
 function parseArgs(argv) {
   const result = {
-    brand: 'openkosmos',
     userDataDir: '',
     realInstall: false,
     strategy: 'all', // 'all' | 'bun' | 'node' | 'npx'
@@ -38,7 +37,6 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--brand') { result.brand = argv[++i] || result.brand; continue; }
     if (arg === '--user-data-dir') { result.userDataDir = argv[++i] || ''; continue; }
     if (arg === '--real-install') { result.realInstall = true; continue; }
     if (arg === '--strategy') { result.strategy = argv[++i] || 'all'; continue; }
@@ -48,7 +46,7 @@ function parseArgs(argv) {
   return result;
 }
 
-function resolveDefaultUserDataDir(brand) {
+function resolveDefaultUserDataDir() {
   const appName = 'openkosmos-app';
   if (process.platform === 'darwin') {
     return path.join(os.homedir(), 'Library', 'Application Support', appName);
@@ -173,7 +171,7 @@ function buildStrategies(nodeShim, playwrightCli, realInstall) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const userDataDir = args.userDataDir || resolveDefaultUserDataDir(args.brand);
+  const userDataDir = args.userDataDir || resolveDefaultUserDataDir();
   const binDir = path.join(userDataDir, 'bin');
   const nodeShim = path.join(binDir, process.platform === 'win32' ? 'node.cmd' : 'node');
   const bunBinary = path.join(binDir, process.platform === 'win32' ? 'bun.exe' : 'bun');
@@ -183,7 +181,6 @@ async function main() {
   console.log('║   Bun-shim × Playwright Browser Install Test      ║');
   console.log('╚═══════════════════════════════════════════════════╝');
   console.log(`Platform:       ${process.platform} ${process.arch}`);
-  console.log(`Brand:          ${args.brand}`);
   console.log(`User data dir:  ${userDataDir}`);
   console.log(`Node shim:      ${nodeShim}  [${fs.existsSync(nodeShim) ? 'EXISTS' : 'MISSING'}]`);
   console.log(`Bun binary:     ${bunBinary}  [${fs.existsSync(bunBinary) ? 'EXISTS' : 'MISSING'}]`);

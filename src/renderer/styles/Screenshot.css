@@ -13,7 +13,7 @@
 /* Selection border - box-shadow mask effect cannot be expressed with Tailwind */
 .selection-rect {
   position: absolute;
-  border: 2px solid #1890ff;
+  border: 2px solid var(--color-accent-strong);
   background-color: transparent;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   pointer-events: none;
@@ -25,7 +25,7 @@
   background-color: rgba(0, 0, 0, 0.75);
   color: white;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 12px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   white-space: nowrap;
@@ -42,7 +42,7 @@
   background-color: rgba(0, 0, 0, 0.75);
   color: white;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   pointer-events: none;
@@ -54,9 +54,9 @@
   position: absolute;
   width: 8px;
   height: 8px;
-  background-color: #1890ff;
+  background-color: var(--color-accent-strong);
   border: 1px solid white;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .resize-handle-nw { top: -4px; left: -4px; cursor: nw-resize; }
@@ -77,7 +77,7 @@
   background-color: rgba(0, 0, 0, 0.85);
   color: white;
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   font-size: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   z-index: 1003;

@@ -3,12 +3,12 @@
  *
  * Manages preset, value computation, and replacement of OpenKosmos variable placeholders.
  *
- * Placeholder format: @OpenKosmos_[NAME]
- * - Starts with @OpenKosmos_
+ * Placeholder format: @OPENKOSMOS_[NAME]
+ * - Starts with @OPENKOSMOS_
  * - Composed of uppercase English letters, underscores, and digits
  *
  * Example:
- * @OpenKosmos_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
+ * @OPENKOSMOS_PROFILE_WORKSPACES_FOLDER -> {OpenKosmos app user data folder}/profiles/{alias}/chat_workspaces
  */
 
 import * as path from 'path';
@@ -22,7 +22,17 @@ const logger = createLogger();
  */
 export enum OpenKosmosPlaceholder {
   /** Path to the profile's chat_workspaces folder */
-  PROFILE_WORKSPACES_FOLDER = '@OpenKosmos_PROFILE_WORKSPACES_FOLDER',
+  PROFILE_WORKSPACES_FOLDER = '@OPENKOSMOS_PROFILE_WORKSPACES_FOLDER',
+  /** Reddit Client ID - read from environment variable */
+  REDDIT_CLIENT_ID = '@OPENKOSMOS_REDDIT_CLIENT_ID',
+  /** Reddit Client Secret - read from environment variable */
+  REDDIT_CLIENT_SECRET = '@OPENKOSMOS_REDDIT_CLIENT_SECRET',
+  /** Data AI API Key - read from environment variable */
+  DATA_AI_API_KEY = '@OPENKOSMOS_DATA_AI_API_KEY',
+  /** Unwrap Access Token - read from environment variable */
+  UNWRAP_ACCESS_TOKEN = '@OPENKOSMOS_UNWRAP_ACCESS_TOKEN',
+  /** Tavily API Key - read from environment variable */
+  TAVILY_API_KEY = '@OPENKOSMOS_TAVILY_API_KEY',
 }
 
 /**
@@ -40,20 +50,26 @@ export enum PlaceholderType {
  */
 const PLACEHOLDER_METADATA: Record<string, { type: PlaceholderType }> = {
   [OpenKosmosPlaceholder.PROFILE_WORKSPACES_FOLDER]: { type: PlaceholderType.PATH },
+  [OpenKosmosPlaceholder.REDDIT_CLIENT_ID]: { type: PlaceholderType.STRING },
+  [OpenKosmosPlaceholder.REDDIT_CLIENT_SECRET]: { type: PlaceholderType.STRING },
+  [OpenKosmosPlaceholder.DATA_AI_API_KEY]: { type: PlaceholderType.STRING },
+  [OpenKosmosPlaceholder.UNWRAP_ACCESS_TOKEN]: { type: PlaceholderType.STRING },
+  [OpenKosmosPlaceholder.TAVILY_API_KEY]: { type: PlaceholderType.STRING },
 };
 
 /**
  * OpenKosmos placeholder regular expression
- * Match format: @OpenKosmos_[A-Z0-9_]+
+ * Match format: @OPENKOSMOS_[A-Z0-9_]+
  */
-export const OpenKosmos_PLACEHOLDER_REGEX = /@OpenKosmos_[A-Z0-9_]+/g;
+export const OPENKOSMOS_PLACEHOLDER_REGEX = /@OPENKOSMOS_[A-Z0-9_]+/g;
 
 /**
  * Check whether a string contains OpenKosmos placeholders
  */
 export function containsOpenKosmosPlaceholder(value: string): boolean {
   if (typeof value !== 'string') return false;
-  return OpenKosmos_PLACEHOLDER_REGEX.test(value);
+  OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+  return OPENKOSMOS_PLACEHOLDER_REGEX.test(value);
 }
 
 /**
@@ -62,8 +78,8 @@ export function containsOpenKosmosPlaceholder(value: string): boolean {
 export function extractOpenKosmosPlaceholders(value: string): string[] {
   if (typeof value !== 'string') return [];
   // Reset the regular expression's lastIndex
-  OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
-  const matches = value.match(OpenKosmos_PLACEHOLDER_REGEX);
+  OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+  const matches = value.match(OPENKOSMOS_PLACEHOLDER_REGEX);
   return matches ? [...new Set(matches)] : [];
 }
 
@@ -85,7 +101,7 @@ export class OpenKosmosPlaceholderManager {
 
   /**
    * Get the actual value for a placeholder
-   * @param placeholder Placeholder name, e.g., @OpenKosmos_PROFILE_WORKSPACES_FOLDER
+   * @param placeholder Placeholder name, e.g., @OPENKOSMOS_PROFILE_WORKSPACES_FOLDER
    * @param context Context information, including required parameters such as alias
    */
   getPlaceholderValue(placeholder: string, context: { alias: string }): string | null {
@@ -99,6 +115,21 @@ export class OpenKosmosPlaceholderManager {
     switch (placeholder) {
       case OpenKosmosPlaceholder.PROFILE_WORKSPACES_FOLDER:
         value = this.getProfileWorkspacesFolderPath(context.alias);
+        break;
+      case OpenKosmosPlaceholder.REDDIT_CLIENT_ID:
+        value = process.env.REDDIT_CLIENT_ID || '';
+        break;
+      case OpenKosmosPlaceholder.REDDIT_CLIENT_SECRET:
+        value = process.env.REDDIT_CLIENT_SECRET || '';
+        break;
+      case OpenKosmosPlaceholder.DATA_AI_API_KEY:
+        value = process.env.DATA_AI_API_KEY || '';
+        break;
+      case OpenKosmosPlaceholder.UNWRAP_ACCESS_TOKEN:
+        value = process.env.UNWRAP_ACCESS_TOKEN || '';
+        break;
+      case OpenKosmosPlaceholder.TAVILY_API_KEY:
+        value = process.env.TAVILY_API_KEY || '';
         break;
       default:
         logger.warn(`[OpenKosmosPlaceholderManager] Unknown placeholder: ${placeholder}`);
@@ -157,8 +188,8 @@ export class OpenKosmosPlaceholderManager {
    * Check whether the string contains path-type placeholders
    */
   private containsPathPlaceholder(value: string): boolean {
-    OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
-    const matches = value.match(OpenKosmos_PLACEHOLDER_REGEX);
+    OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
+    const matches = value.match(OPENKOSMOS_PLACEHOLDER_REGEX);
     if (!matches) return false;
 
     return matches.some(placeholder => {
@@ -180,9 +211,9 @@ export class OpenKosmosPlaceholderManager {
     const hasPathPlaceholder = this.containsPathPlaceholder(value);
 
     // Reset the regular expression's lastIndex
-    OpenKosmos_PLACEHOLDER_REGEX.lastIndex = 0;
+    OPENKOSMOS_PLACEHOLDER_REGEX.lastIndex = 0;
 
-    let result = value.replace(OpenKosmos_PLACEHOLDER_REGEX, (match) => {
+    let result = value.replace(OPENKOSMOS_PLACEHOLDER_REGEX, (match) => {
       const replacement = this.getPlaceholderValue(match, context);
       if (replacement !== null) {
         return replacement;
@@ -193,7 +224,7 @@ export class OpenKosmosPlaceholderManager {
     });
 
     // If the string contains path-type placeholders, format the entire result string for the current platform path.
-    // This handles cases like "@OpenKosmos_PROFILE_WORKSPACES_FOLDER/workspace"
+    // This handles cases like "@OPENKOSMOS_PROFILE_WORKSPACES_FOLDER/my-agent"
     if (hasPathPlaceholder) {
       result = this.formatPathForPlatform(result);
     }
@@ -235,6 +266,26 @@ export class OpenKosmosPlaceholderManager {
         name: OpenKosmosPlaceholder.PROFILE_WORKSPACES_FOLDER,
         description: 'Path to the profile\'s chat_workspaces folder: {user data}/profiles/{alias}/chat_workspaces'
       },
+      {
+        name: OpenKosmosPlaceholder.REDDIT_CLIENT_ID,
+        description: 'Reddit Client ID - read from environment variable REDDIT_CLIENT_ID'
+      },
+      {
+        name: OpenKosmosPlaceholder.REDDIT_CLIENT_SECRET,
+        description: 'Reddit Client Secret - read from environment variable REDDIT_CLIENT_SECRET'
+      },
+      {
+        name: OpenKosmosPlaceholder.DATA_AI_API_KEY,
+        description: 'Data AI API Key - read from environment variable DATA_AI_API_KEY'
+      },
+      {
+        name: OpenKosmosPlaceholder.UNWRAP_ACCESS_TOKEN,
+        description: 'Unwrap Access Token - read from environment variable UNWRAP_ACCESS_TOKEN'
+      },
+      {
+        name: OpenKosmosPlaceholder.TAVILY_API_KEY,
+        description: 'Tavily API Key - read from environment variable TAVILY_API_KEY'
+      }
     ];
   }
 }

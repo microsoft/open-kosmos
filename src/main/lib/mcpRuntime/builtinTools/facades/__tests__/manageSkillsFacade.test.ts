@@ -84,7 +84,8 @@ describe('ManageSkillsFacade', () => {
       const result = await ManageSkillsFacade.execute({
         action: 'install',
         skill_names: ['good-skill', 'bad-skill'],
-        source: 'library',
+        source: 'device',
+        path: '/tmp/skills',
       });
 
       // 1/2 succeeded → success=true (successCount > 0), but bad-skill has error
@@ -93,6 +94,43 @@ describe('ManageSkillsFacade', () => {
       expect(results[0].success).toBe(true);
       expect(results[1].success).toBe(false);
       expect(results[1].message).toContain('network fail');
+    });
+
+    it('uses fallback messages for empty installer responses and non-Error throws', async () => {
+      vi.mocked(installAndActivateSkill)
+        .mockResolvedValueOnce({ success: true, message: '' } as any)
+        .mockResolvedValueOnce({ success: false, message: '' } as any)
+        .mockRejectedValueOnce('string failure');
+
+      const result = await ManageSkillsFacade.execute({
+        action: 'install',
+        skill_names: ['good-skill', 'bad-skill', 'string-skill'],
+        source: 'device',
+        path: '/skills/local',
+      });
+
+      const results = (result as any).results;
+      expect(results[0].message).toBe('Installed');
+      expect(results[1].message).toBe('Failed');
+      expect(results[2].message).toContain('string failure');
+    });
+
+    it('reports missing current user session from install flow', async () => {
+      const { profileCacheManager } = await import('../../../../userDataADO');
+      const original = (profileCacheManager as any).currentUserAlias;
+      (profileCacheManager as any).currentUserAlias = null;
+
+      const result = await ManageSkillsFacade.execute({
+        action: 'install',
+        skill_names: ['good-skill'],
+        source: 'device',
+        path: '/skills/local',
+      });
+
+      expect(result.success).toBe(false);
+      expect((result as any).results[0].message).toContain('No current user session found');
+
+      (profileCacheManager as any).currentUserAlias = original;
     });
   });
 
@@ -125,20 +163,37 @@ describe('ManageSkillsFacade', () => {
       expect(results[1].success).toBe(false);
       expect(results[1].message).toContain('bind fail');
     });
+
+    it('falls back for empty bind result fields and string throws', async () => {
+      vi.mocked(ApplySkillToAgentsTool.execute)
+        .mockResolvedValueOnce({} as any)
+        .mockRejectedValueOnce('bind string fail');
+
+      const result = await ManageSkillsFacade.execute({
+        action: 'bind',
+        skill_names: ['empty-skill', 'string-skill'],
+        agent_names: ['Bot1'],
+      });
+
+      const results = (result as any).results;
+      expect(results[0]).toMatchObject({ success: false, message: '' });
+      expect(results[1]).toMatchObject({ success: false, message: 'bind string fail' });
+    });
   });
 
   describe('action=install', () => {
-    it('installs from library by default', async () => {
+    it('installs only from a local path', async () => {
       const result = await ManageSkillsFacade.execute({
         action: 'install',
         skill_names: ['web-search'],
-        source: 'library',
+        source: 'device',
+        path: '/tmp/web-search',
       });
 
       expect(result.success).toBe(true);
       expect(installAndActivateSkill).toHaveBeenCalledWith(
         expect.objectContaining({
-          source: { type: 'library-name', value: 'web-search' },
+          source: { type: 'device-path', value: '/tmp/web-search' },
           activation: { mode: 'install-only' },
         }),
       );
@@ -174,7 +229,8 @@ describe('ManageSkillsFacade', () => {
       await ManageSkillsFacade.execute({
         action: 'install',
         skill_names: ['a', 'b', 'c'],
-        source: 'library',
+        source: 'device',
+        path: '/tmp/skills',
       });
 
       expect(installAndActivateSkill).toHaveBeenCalledTimes(3);

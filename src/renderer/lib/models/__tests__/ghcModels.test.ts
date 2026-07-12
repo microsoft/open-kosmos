@@ -15,8 +15,10 @@ import {
   validateModelId,
   getDefaultModel,
   isReasoningModel,
+  getLegacyModels,
   getModelsByCategory,
   MODEL_CATEGORIES,
+  GITHUB_COPILOT_MODELS,
 } from '../ghcModels';
 import { modelCacheManager } from '../modelCacheManager';
 import type { GhcCopilotModel } from '@shared/types/ghcChatTypes';
@@ -174,6 +176,54 @@ describe('ghcModels', () => {
     });
   });
 
+  describe('getLegacyModels', () => {
+    it('returns empty array when no openkosmos models', () => {
+      expect(getLegacyModels()).toEqual([]);
+    });
+
+    it('converts GhcCopilotModel to legacy format', async () => {
+      const m = makeModel({ id: 'legacy-test', name: 'Legacy' });
+      (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [m] });
+      await modelCacheManager.syncFromBackend();
+
+      const legacy = getLegacyModels();
+      expect(legacy).toHaveLength(1);
+      expect(legacy[0].id).toBe('legacy-test');
+      expect(legacy[0].name).toBe('Legacy');
+      expect(legacy[0].attachment).toBe(true); // vision: true
+      expect(legacy[0].reasoning).toBe(false);
+      expect(legacy[0].tool_call).toBe(true);
+      expect(legacy[0].modalities.input).toContain('image');
+    });
+
+    it('marks o3-family model as reasoning in legacy format', async () => {
+      const m = makeModel({
+        id: 'o3-legacy',
+        capabilities: { ...makeModel().capabilities, family: 'o3', supports: { tool_calls: false, vision: false } },
+      });
+      (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [m] });
+      await modelCacheManager.syncFromBackend();
+
+      const legacy = getLegacyModels();
+      expect(legacy[0].reasoning).toBe(true);
+      expect(legacy[0].temperature).toBe(false);
+    });
+
+    it('uses zero limits when legacy model capabilities omit limits', async () => {
+      const capabilitiesWithoutLimits = { ...makeModel().capabilities };
+      delete capabilitiesWithoutLimits.limits;
+      const m = makeModel({
+        id: 'no-limits-legacy',
+        capabilities: capabilitiesWithoutLimits,
+      });
+      (window as any).electronAPI.models.getAllOpenKosmosUsedModels.mockResolvedValue({ success: true, data: [m] });
+      await modelCacheManager.syncFromBackend();
+
+      const legacy = getLegacyModels();
+      expect(legacy[0].limit).toEqual({ context: 0, output: 0 });
+    });
+  });
+
   describe('getModelsByCategory', () => {
     it('returns empty array when cache is empty', () => {
       expect(getModelsByCategory('claude')).toEqual([]);
@@ -181,15 +231,19 @@ describe('ghcModels', () => {
 
     it('returns models matching the category', async () => {
       const claudeModel = makeModel({ id: 'claude-sonnet-4', name: 'Claude Sonnet 4' });
+      const mythosModel = makeModel({ id: 'claude-mythos-5', name: 'Claude Mythos 5' });
+      const fableModel = makeModel({ id: 'claude-fable-5', name: 'Claude Fable 5' });
       const gptModel = makeModel({ id: 'gpt-4.1', name: 'GPT-4.1' });
       (window as any).electronAPI.models.getAllModels.mockResolvedValue({
         success: true,
-        data: [claudeModel, gptModel],
+        data: [claudeModel, mythosModel, fableModel, gptModel],
       });
       await modelCacheManager.syncFromBackend();
 
       const claudeModels = getModelsByCategory('claude');
       expect(claudeModels.some(m => m.id === 'claude-sonnet-4')).toBe(true);
+      expect(claudeModels.some(m => m.id === 'claude-mythos-5')).toBe(true);
+      expect(claudeModels.some(m => m.id === 'claude-fable-5')).toBe(true);
       expect(claudeModels.some(m => m.id === 'gpt-4.1')).toBe(false);
     });
 
@@ -201,4 +255,9 @@ describe('ghcModels', () => {
     });
   });
 
+  describe('GITHUB_COPILOT_MODELS', () => {
+    it('is an empty array (deprecated constant)', () => {
+      expect(GITHUB_COPILOT_MODELS).toEqual([]);
+    });
+  });
 });

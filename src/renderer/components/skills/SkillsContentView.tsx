@@ -5,7 +5,8 @@ import '../../styles/ContentView.css'
 import '../../styles/SkillsContentView.css'
 import SkillListPanel from './SkillListPanel'
 import SkillViewPanel from './SkillViewPanel'
-import { SkillConfig } from '../../lib/userData/types'
+import type { SkillConfig } from '../../lib/userData/types'
+import { useI18n } from '../../lib/i18n/useI18n'
 
 interface SkillsContentViewProps {
   skills: SkillConfig[]
@@ -22,6 +23,8 @@ const SkillsContentView: React.FC<SkillsContentViewProps> = ({
   onSelectSkill,
   onSkillMenuToggle
 }) => {
+  const { t } = useI18n()
+
   // Trigger add Skill event
   const handleAddFromDeviceArtifact = () => {
     window.dispatchEvent(new CustomEvent('skills:addFromDeviceArtifact'))
@@ -31,35 +34,25 @@ const SkillsContentView: React.FC<SkillsContentViewProps> = ({
     window.dispatchEvent(new CustomEvent('skills:addFromDeviceFolder'))
   }
 
-  const handleAddFromLibrary = () => {
-    window.dispatchEvent(new CustomEvent('skills:addFromLibrary'))
-  }
-
   // Show empty state when there are no Skills and not loading
   if (!isLoading && skills.length === 0) {
     return (
       <div className="skills-content-view">
         <div className="skills-empty-state">
           <div className="skills-empty-content">
-            <p className="skills-empty-text">No Skills available, please add a skill from the library, a .zip/.skill file, or a folder.</p>
+            <p className="skills-empty-text">{t('skills.emptyDescription')}</p>
             <div className="skills-empty-actions">
               <button
                 className="skills-empty-btn skills-empty-btn-primary"
-                onClick={handleAddFromLibrary}
-              >
-                Add from Skill Library
-              </button>
-              <button
-                className="skills-empty-btn skills-empty-btn-secondary"
                 onClick={handleAddFromDeviceArtifact}
               >
-                Add from Device (.zip/.skill)
+                {t('skills.addFromDeviceArtifact')}
               </button>
               <button
                 className="skills-empty-btn skills-empty-btn-secondary"
                 onClick={handleAddFromDeviceFolder}
               >
-                Add from Device (folder)
+                {t('skills.addFromDeviceFolder')}
               </button>
             </div>
           </div>

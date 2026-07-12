@@ -18,10 +18,6 @@ vi.mock('../../../../shared/constants/builtinSkills', async () => ({
   BUILTIN_SKILL_CHANGELOG: { 1: ['skill-creator'] },
 }));
 
-vi.mock('../../plugin/bridges/skillBridge', async () => ({
-  isPluginSkill: vi.fn(() => false),
-}));
-
 vi.mock('fs', async () => ({
   existsSync: (...args: unknown[]) => mockExistsSync(...args),
   rmSync: (...args: unknown[]) => mockRmSync(...args),

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,9 +14,10 @@ import {
   Globe,
   Image as ImageIcon,
 } from 'lucide-react'
-import { SkillConfig } from '../../lib/userData/types'
+import type { SkillConfig } from '../../lib/userData/types'
 import { FileInfo } from './SkillViewPanel'
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[SkillFolderExplorer]');
 
 interface DirectoryItem {
@@ -41,22 +42,26 @@ interface SkillFolderExplorerProps {
 }
 
 // Loading spinner component
-const LoadingSpinner = () => (
-  <div className="skill-folder-loading">
-    <svg
-      width="32"
-      height="32"
-      viewBox="0 0 32 32"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <circle cx="16" cy="16" r="14" stroke="#e0e0e0" strokeWidth="2"/>
-      <path d="M30 16C30 23.732 23.732 30 16 30" stroke="#272320" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-    <span>Loading directory...</span>
-  </div>
-)
+const LoadingSpinner = () => {
+  const { t } = useI18n();
+
+  return (
+    <div className="skill-folder-loading">
+      <svg
+        width="32"
+        height="32"
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ animation: 'spin 1s linear infinite' }}
+      >
+        <circle cx="16" cy="16" r="14" stroke="var(--color-neutral-200)" strokeWidth="2"/>
+        <path d="M30 16C30 23.732 23.732 30 16 30" stroke="var(--color-warm-900)" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      <span>{t('skills.folder.loadingDirectory')}</span>
+    </div>
+  )
+}
 
 // File icon component - consistent with FileTreeExplorer
 const FileIcon: React.FC<{ extension: string | null }> = ({ extension }) => {
@@ -92,11 +97,17 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
   skill,
   onFileSelect
 }) => {
+  const { t } = useI18n();
+  const tRef = useRef(t)
   const [currentPath, setCurrentPath] = useState<string>('')
   const [directoryContents, setDirectoryContents] = useState<DirectoryContents | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pathHistory, setPathHistory] = useState<string[]>([])
+
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
 
   // Load directory contents
   const loadDirectory = useCallback(async (relativePath: string = '') => {
@@ -110,12 +121,12 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
         setDirectoryContents(result.data)
         setCurrentPath(relativePath)
       } else {
-        setError(result?.error || 'Failed to load directory contents')
+        setError(result?.error || tRef.current('skills.folder.loadFailed'))
         setDirectoryContents(null)
       }
     } catch (err) {
       logger.error('Error loading directory:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load directory contents')
+      setError(err instanceof Error ? err.message : tRef.current('skills.folder.loadFailed'))
       setDirectoryContents(null)
     } finally {
       setIsLoading(false)
@@ -240,7 +251,7 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
           <button
             className="skill-folder-back-btn"
             onClick={handleBack}
-            title="Go back"
+            title={t('skills.folder.goBack')}
           >
             <ChevronLeft size={20} strokeWidth={2} />
           </button>
@@ -304,7 +315,7 @@ const SkillFolderExplorer: React.FC<SkillFolderExplorerProps> = ({
           </div>
         ) : (
           <div className="skill-folder-empty">
-            <span>This directory is empty</span>
+            <span>{t('skills.folder.emptyDirectory')}</span>
           </div>
         )}
       </div>

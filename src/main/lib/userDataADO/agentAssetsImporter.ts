@@ -54,7 +54,6 @@ function buildImportedChatSessionMetadata(chatSessionFile: ChatSessionFile): Cha
     title: chatSessionFile.title,
     last_updated: chatSessionFile.last_updated,
     readStatus: 'read',
-    source: { type: 'local' },
   };
 }
 

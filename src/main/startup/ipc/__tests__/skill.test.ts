@@ -33,12 +33,6 @@ vi.mock('../../../lib/skill/skillDeviceImporter', async () => ({
   updateSkillFromDevice: (...args: any[]) => mockUpdateSkillFromDevice(...args),
 }));
 
-vi.mock('../../../lib/analytics', async () => ({
-  analyticsManager: {
-    recordSkillInstalledWithProps: (...args: any[]) => mockRecordSkillInstalledWithProps(...args),
-  },
-}));
-
 vi.mock('../../../lib/skill/deleteInstalledSkill', async () => ({
   deleteInstalledSkill: vi.fn().mockResolvedValue({ success: true, skillName: '', removedFromDisk: true }),
 }));
@@ -117,7 +111,7 @@ describe('startup/ipc/skill Windows selection flow', () => {
     } as any);
 
     setPlatformWin32();
-    const handler = getHandler('skillLibrary:addSkillFromDevice');
+    const handler = getHandler('skills:addSkillFromDevice');
     const result = await handler({}, undefined, { requestSource: 'settings', selectionMode: 'artifact' });
 
     expect(result.success).toBe(true);
@@ -151,12 +145,42 @@ describe('startup/ipc/skill Windows selection flow', () => {
     } as any);
 
     setPlatformWin32();
-    const handler = getHandler('skillLibrary:addSkillFromDevice');
+    const handler = getHandler('skills:addSkillFromDevice');
     const result = await handler({}, undefined, { requestSource: 'settings' });
 
     expect(result).toEqual({ success: false, error: 'File selection canceled' });
     expect(mockShowOpenDialog).not.toHaveBeenCalled();
     expect(mockInstallAndActivateSkill).not.toHaveBeenCalled();
+  });
+
+  it('uses the Windows prompt file mode and forwards the selected artifact path', async () => {
+    mockShowMessageBox.mockResolvedValue({ response: 1 });
+    mockShowOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['C:/tmp/from-prompt.skill'] });
+
+    const registerSkillIpc = (await import('../skill')).default;
+    registerSkillIpc({
+      currentUserAlias: 'tester',
+      mainWindow: {} as any,
+    } as any);
+
+    setPlatformWin32();
+    const handler = getHandler('skills:addSkillFromDevice');
+    const result = await handler({}, undefined, { requestSource: 'settings' });
+
+    expect(result.success).toBe(true);
+    expect(mockShowMessageBox).toHaveBeenCalled();
+    expect(mockShowOpenDialog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        title: 'Select Skill Artifact',
+        properties: ['openFile'],
+      }),
+    );
+    expect(mockInstallAndActivateSkill).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: { type: 'device-path', value: 'C:/tmp/from-prompt.skill' },
+      }),
+    );
   });
 
   it('uses folder-only selector when add flow explicitly requests folder mode', async () => {
@@ -169,7 +193,7 @@ describe('startup/ipc/skill Windows selection flow', () => {
     } as any);
 
     setPlatformWin32();
-    const handler = getHandler('skillLibrary:addSkillFromDevice');
+    const handler = getHandler('skills:addSkillFromDevice');
     const result = await handler({}, undefined, { requestSource: 'settings', selectionMode: 'folder' });
 
     expect(result.success).toBe(true);
@@ -199,7 +223,7 @@ describe('startup/ipc/skill Windows selection flow', () => {
     } as any);
 
     setPlatformWin32();
-    const handler = getHandler('skillLibrary:updateSkillFromDevice');
+    const handler = getHandler('skills:updateSkillFromDevice');
     const result = await handler({}, 'sample-skill');
 
     expect(result.success).toBe(true);

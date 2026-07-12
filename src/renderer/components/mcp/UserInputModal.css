@@ -2,24 +2,8 @@
    Follows the system unified design spec, consistent with Modal.css and Common.css */
 
 /* ===========================
-   Modal container size overrides
-   =========================== */
-
-.user-input-modal {
-  /* Use the standard Modal.css size - 900px, 90% */
-  height: auto;
-  max-height: 80vh;
-}
-
-/* ===========================
    Content area layout
    =========================== */
-
-.user-input-modal .modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  background: #FFFFFF;
-}
 
 .modal-description {
   /* Text styles consistent with the system */
@@ -27,25 +11,25 @@
   font-size: 14px;
   font-weight: 410;
   line-height: 20px;
-  color: #6B7280;
+  color: var(--color-neutral-500);
   margin-bottom: 24px;
   font-variation-settings: 'opsz' 10.5;
 }
 
 .contact-link {
-  color: #2563EB;
+  color: var(--color-accent-strong);
   text-decoration: none;
   font-weight: 600;
-  background: rgba(37, 99, 235, 0.08);
+  background: rgb(var(--color-accent-strong-rgb) / 0.08);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: all 0.2s ease;
 }
 
 .contact-link:hover {
-  color: #1D4ED8;
+  color: var(--color-accent-stronger);
   text-decoration: underline;
-  background: rgba(37, 99, 235, 0.15);
+  background: rgb(var(--color-accent-strong-rgb) / 0.15);
   transform: translateY(-1px);
 }
 
@@ -71,12 +55,12 @@
   font-size: 13px;
   font-weight: 500;
   line-height: 16px;
-  color: #374151;
+  color: var(--color-neutral-700);
   font-variation-settings: 'opsz' 10.5;
 }
 
 .required-asterisk {
-  color: #DC2626;
+  color: var(--color-danger-600);
   margin-left: 2px;
 }
 
@@ -88,39 +72,39 @@
   /* Base styles - consistent with Common.css form-input */
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
   font-size: 14px;
   font-family: inherit;
-  background: #FFFFFF;
-  color: #374151;
+  background: var(--color-white);
+  color: var(--color-neutral-700);
   transition: all 0.2s ease;
   font-variation-settings: 'opsz' 10.5;
   box-sizing: border-box;
 }
 
 .user-input-control:hover:not(:disabled):not([readonly]) {
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: var(--color-border-strongest);
 }
 
 .user-input-control:focus {
   outline: none;
-  border-color: #272320;
+  border-color: var(--color-warm-900);
   box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.1);
 }
 
 .user-input-control.error {
-  border-color: #DC2626;
+  border-color: var(--color-danger-600);
 }
 
 .user-input-control.error:focus {
-  border-color: #DC2626;
+  border-color: var(--color-danger-600);
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
 }
 
 .user-input-control:disabled {
   background: rgba(243, 244, 246, 0.95);
-  color: #9CA3AF;
+  color: var(--color-neutral-400);
   cursor: not-allowed;
 }
 
@@ -129,7 +113,7 @@
   font-family: inherit;
   font-size: 12px;
   font-weight: 410;
-  color: #DC2626;
+  color: var(--color-danger-600);
   margin-top: 4px;
   font-variation-settings: 'opsz' 10.5;
 }
@@ -156,10 +140,10 @@
   align-items: center;
   justify-content: center;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  background: #FFFFFF;
-  color: #6B7280;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  color: var(--color-neutral-500);
   font-size: 14px;
   font-weight: 410;
   cursor: pointer;
@@ -171,8 +155,8 @@
 
 .folder-select-btn:hover {
   background: rgba(39, 35, 32, 0.05);
-  border-color: rgba(0, 0, 0, 0.2);
-  color: #374151;
+  border-color: var(--color-border-strongest);
+  color: var(--color-neutral-700);
 }
 
 .folder-select-btn:active {
@@ -186,102 +170,8 @@
 }
 
 .boolean-select option {
-  background: #FFFFFF;
-  color: #374151;
-}
-
-/* ===========================
-   Footer button styles
-   =========================== */
-
-.user-input-modal .modal-footer {
-  /* Use the standard modal-footer styles */
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 16px 24px;
-  gap: 12px;
-  min-height: 52px;
-  background: #FFFFFF;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  flex: none;
-  align-self: stretch;
-  flex-grow: 0;
-  box-sizing: border-box;
-}
-
-.user-input-modal .btn-secondary {
-  /* Secondary button styles - consistent with the system */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 20px;
-  min-height: 40px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  background: #FFFFFF;
-  color: #374151;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  font-variation-settings: 'opsz' 10.5;
-  box-sizing: border-box;
-}
-
-.user-input-modal .btn-secondary:hover:not(:disabled) {
-  background: rgba(39, 35, 32, 0.05);
-  border-color: rgba(0, 0, 0, 0.2);
-}
-
-.user-input-modal .btn-secondary:active:not(:disabled) {
-  background: rgba(39, 35, 32, 0.1);
-  transform: translateY(1px);
-}
-
-.user-input-modal .btn-secondary:disabled {
-  color: #9CA3AF;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.user-input-modal .btn-primary {
-  /* Primary button styles - consistent with the system */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 20px;
-  min-height: 40px;
-  border: 1px solid #272320;
-  border-radius: 8px;
-  background: #272320;
-  color: #FFFFFF;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  font-variation-settings: 'opsz' 10.5;
-  box-sizing: border-box;
-}
-
-.user-input-modal .btn-primary:hover:not(:disabled) {
-  background: rgba(39, 35, 32, 0.8);
-  border-color: rgba(39, 35, 32, 0.8);
-}
-
-.user-input-modal .btn-primary:active:not(:disabled) {
-  background: rgba(39, 35, 32, 0.9);
-  border-color: rgba(39, 35, 32, 0.9);
-  transform: translateY(1px);
-}
-
-.user-input-modal .btn-primary:disabled {
-  background: #9CA3AF;
-  border-color: #9CA3AF;
-  cursor: not-allowed;
-  opacity: 0.6;
+  background: var(--color-white);
+  color: var(--color-neutral-700);
 }
 
 /* ===========================
@@ -293,29 +183,6 @@
    =========================== */
 
 @media (max-width: 768px) {
-  .user-input-modal {
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    max-height: none;
-  }
-
-  .user-input-modal .modal-body {
-    padding: 20px 16px;
-  }
-
-  .user-input-modal .modal-footer {
-    padding: 16px;
-    flex-direction: column-reverse;
-    gap: 8px;
-  }
-
-  .user-input-modal .btn-primary,
-  .user-input-modal .btn-secondary {
-    width: 100%;
-    justify-content: center;
-  }
-
   .folder-input-wrapper {
     flex-direction: column;
     gap: 8px;
@@ -335,24 +202,15 @@
   .folder-select-btn {
     border-width: 2px;
   }
-
-  .user-input-modal .btn-primary,
-  .user-input-modal .btn-secondary {
-    border-width: 2px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .user-input-control,
-  .folder-select-btn,
-  .user-input-modal .btn-primary,
-  .user-input-modal .btn-secondary {
+  .folder-select-btn {
     transition: none;
   }
 
-  .folder-select-btn:active,
-  .user-input-modal .btn-primary:active,
-  .user-input-modal .btn-secondary:active {
+  .folder-select-btn:active {
     transform: none;
   }
 }

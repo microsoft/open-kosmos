@@ -2,6 +2,7 @@ import React from 'react';
 import NavigationSection from './NavigationSection';
 import UserSection from './UserSection';
 import '../../styles/LeftNavigation.css';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface LeftNavigationProps {
   sidebarWidth?: number;
@@ -12,6 +13,8 @@ const LeftNavigation: React.FC<LeftNavigationProps> = ({
   sidebarWidth,
   leftPanelCollapsed,
 }) => {
+  const { t } = useI18n();
+
   const navigationClasses = [
     'left-navigation',
     leftPanelCollapsed ? 'collapsed' : '',
@@ -23,7 +26,7 @@ const LeftNavigation: React.FC<LeftNavigationProps> = ({
     <nav
       className={navigationClasses}
       role="navigation"
-      aria-label="Main navigation"
+      aria-label={t('layout.navigation.main')}
       style={sidebarWidth ? { width: sidebarWidth, minWidth: sidebarWidth } : undefined}
     >
       {/* Navigation Section - includes AgentList, New Agent button, Divider, and Function List */}

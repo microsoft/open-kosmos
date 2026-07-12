@@ -7,6 +7,7 @@ import { createLogger } from '../utilities/logger';
 import { external } from '@/atom/external';
 
 import { SessionManager, type ChatSessionCache, type ChatStatus } from './session-manager';
+import { chatSessionInputDraftManager } from './chatSessionInputDraftManager';
 
 const logger = createLogger('[AgentChatSessionCacheManager]');
 
@@ -288,6 +289,7 @@ export class AgentChatSessionCacheManager {
     if (!success) return;
 
     this.directMessageUpdateCallbacks.delete(chatSessionId);
+    chatSessionInputDraftManager.clear(chatSessionId);
     // If this is the currently active chatSession, clear the current state
     if (this.currentChatSessionId === chatSessionId) {
       this.setCurrentChatSessionId(null, null);
@@ -542,6 +544,7 @@ export class AgentChatSessionCacheManager {
 
     // Clear all session cache data
     this.sessions.cleanup();
+    chatSessionInputDraftManager.clearAll();
     // Reset the current session state and notify all subscribers
     const oldChatId = this.currentChatId;
     const oldChatSessionId = this.currentChatSessionId;
@@ -560,62 +563,7 @@ export class AgentChatSessionCacheManager {
   }
 }
 
-// Windows path regex: matches paths starting with a drive letter
-// Negative lookbehind (?<![:/]) prevents matching SharePoint URL fragments like /:p:/r/...Doc.aspx
-const WindowsPathRegex = /(?<![:/])([A-Za-z]:[\\\/](?:[^\\\/<>"'|?*:\n]+[\\\/])*[^\\\/<>"'|?*:\n]*\.[a-zA-Z0-9]+)/gi;
-// Unix path regex: matches paths starting with common system directories
-const UnixPathRegex = /(\/(?:Users|home|opt|var|etc|usr|Applications|Library|System|private|tmp|bin|sbin|dev|proc|sys|mnt|media|run)(?:\/[^\/\n<>"'|?*:]+)*\/[^\/\n<>"'|?*:]*\.[a-zA-Z0-9]+)/gi;
-
-/**
- * Standalone exported function that extracts file paths from text.
- * Supports Windows and Unix path formats.
- * Used as a fallback in ChatContainer to extract file paths from assistant messages.
- */
-export function extractFilePathsFromText(text: string): string[] {
-  const filePaths: string[] = [];
-  const matchedRanges: Array<{start: number, end: number}> = [];
-
-  let match;
-
-  // Extract Windows paths first and record their match positions
-  while ((match = WindowsPathRegex.exec(text)) !== null) {
-    const rawPath = match[1];
-    const matchStart = match.index;
-    const matchEnd = match.index + rawPath.length;
-
-    // Normalise to backslash format (Windows standard)
-    const normalizedPath = rawPath.replace(/\//g, '\\');
-
-    filePaths.push(normalizedPath);
-    matchedRanges.push({ start: matchStart, end: matchEnd });
-  }
-
-  // Check whether Unix paths overlap with already-matched Windows paths
-  const isOverlapping = (start: number, end: number): boolean => {
-    return matchedRanges.some(range =>
-      (start >= range.start && start < range.end) ||
-      (end > range.start && end <= range.end) ||
-      (start <= range.start && end >= range.end)
-    );
-  };
-
-  // Extract Unix paths, skipping those that overlap with Windows paths
-  while ((match = UnixPathRegex.exec(text)) !== null) {
-    const unixPath = match[1];
-    const matchStart = match.index;
-    const matchEnd = match.index + unixPath.length;
-
-    // Skip if this Unix path overlaps with a Windows path
-    if (isOverlapping(matchStart, matchEnd)) {
-      continue;
-    }
-
-    filePaths.push(unixPath);
-  }
-
-  // Deduplicate and return
-  return [...new Set(filePaths)];
-}
+export { extractFilePathsFromText } from './filePathUtils';
 
 export const agentChatSessionCacheManager = AgentChatSessionCacheManager.getInstance();
 const manager = agentChatSessionCacheManager;
@@ -687,7 +635,7 @@ export const CurrentSessionStatus = SubCurrentSession(() => {
     chatStatus: 'idle' as const,
   };
 }, (prev, next) => {
-  // session id 相同时，chat id 一定相同
+  // The same session id always belongs to the same chat id.
   return prev.chatSessionId === next.chatSessionId && prev.chatStatus === next.chatStatus;
 });
 

@@ -16,6 +16,7 @@ class AgentChatIpc {
   private toolResultListeners: ((result: any) => void)[] = [];
   private contextChangeListeners: ((stats: any) => void)[] = [];
 
+  private streamingCleanup: (() => void) | null = null;
   private toolUseCleanup: (() => void) | null = null;
   private toolResultCleanup: (() => void) | null = null;
   private toolMessageAddedCleanup: (() => void) | null = null;
@@ -36,6 +37,17 @@ class AgentChatIpc {
     this.streamingChunkCleanup = window.electronAPI.agentChat.onStreamingChunk((chunk: StreamingChunk) => {
       // chunk is automatically handled by AgentChatSessionCacheManager's IPC listener
       // No action needed here; just keep the connection alive
+    });
+
+    // 🔥 Retain old streamingMessage listener for backward compatibility (in case backend still sends it)
+    this.streamingCleanup = window.electronAPI.agentChat.onStreamingMessage((message: any) => {
+      this.streamingMessageListeners.forEach(listener => {
+        try {
+          listener(message);
+        } catch (error) {
+          logger.error('[AgentChatIpc] Error in streaming message listener:', error);
+        }
+      });
     });
 
     // Set up tool use listener
@@ -211,6 +223,7 @@ class AgentChatIpc {
     if (callbacks?.onAssistantMessage) {
       this.streamingMessageListeners.push(callbacks.onAssistantMessage);
     }
+
     if (callbacks?.onToolUse) {
       this.toolUseListeners.push(callbacks.onToolUse);
     }
@@ -244,6 +257,49 @@ class AgentChatIpc {
           this.toolResultListeners.splice(index, 1);
         }
       }
+    }
+  }
+
+  async enqueueQueuedSteeringMessage(chatSessionId: string, message: UserMessage): Promise<void> {
+    const result = await window.electronAPI.agentChat.enqueueQueuedSteeringMessage(chatSessionId, message);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to enqueue queued steering message');
+    }
+  }
+
+  async updateQueuedSteeringMessage(chatSessionId: string, message: UserMessage): Promise<void> {
+    const result = await window.electronAPI.agentChat.updateQueuedSteeringMessage(chatSessionId, message);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to update queued steering message');
+    }
+  }
+
+  async removeQueuedSteeringMessage(chatSessionId: string, messageId: string): Promise<void> {
+    const result = await window.electronAPI.agentChat.removeQueuedSteeringMessage(chatSessionId, messageId);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to remove queued steering message');
+    }
+  }
+
+  async setQueuedSteeringMessageEditing(chatSessionId: string, messageId: string, editing: boolean): Promise<void> {
+    const result = await window.electronAPI.agentChat.setQueuedSteeringMessageEditing(chatSessionId, messageId, editing);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to set queued steering message editing state');
+    }
+  }
+
+  async steerQueuedSteeringMessage(chatSessionId: string, messageId: string): Promise<Message[]> {
+    const result = await window.electronAPI.agentChat.steerQueuedSteeringMessage(chatSessionId, messageId);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to steer queued steering message');
+    }
+    return result.data || [];
+  }
+
+  async clearQueuedSteeringMessages(chatSessionId: string): Promise<void> {
+    const result = await window.electronAPI.agentChat.clearQueuedSteeringMessages(chatSessionId);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to clear queued steering messages');
     }
   }
 
@@ -434,6 +490,10 @@ class AgentChatIpc {
     if (this.streamingChunkCleanup) {
       this.streamingChunkCleanup();
       this.streamingChunkCleanup = null;
+    }
+    if (this.streamingCleanup) {
+      this.streamingCleanup();
+      this.streamingCleanup = null;
     }
     if (this.toolUseCleanup) {
       this.toolUseCleanup();

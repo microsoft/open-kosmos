@@ -8,6 +8,7 @@ import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
 import { createLogger } from '../../lib/utilities/logger';
 import { workspaceOps } from '@renderer/lib/chat/workspaceOps';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[FileTreeNodeContextMenu]');
 
 const zeroState: {
@@ -67,6 +68,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
   const { close: onClose, remove: onRemove } = FileTreeNodeMenuAtom.useChange();
   const fileTreeNodeMenuRef = useRef<HTMLDivElement>(null);
   const { chatStatus } = CurrentSessionStatus.use();
+  const { t } = useI18n();
 
   useClickOut(fileTreeNodeMenuRef, onClose);
 
@@ -129,10 +131,10 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
     e.preventDefault();
 
     const itemName = node.name || fullPath.split(/[/\\]/).pop();
-    const itemType = node.type === 'directory' ? 'folder' : 'file';
+    const itemType = node.type === 'directory' ? t('workspace.fileTree.folder') : t('workspace.fileTree.file');
 
     // Use system confirmation dialog
-    const confirmMessage = `Are you sure you want to delete this ${itemType}?\n\n${itemName}\n\nThis action cannot be undone.`;
+    const confirmMessage = t('workspace.fileTree.deleteConfirm', { itemType, itemName });
     const confirmed = window.confirm(confirmMessage);
 
     if (!confirmed) {
@@ -143,7 +145,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
     try {
       if (!window.electronAPI?.fs?.deletePaths) {
         logger.error('[FileTreeNode] Delete API not available');
-        window.alert(`Failed to delete ${itemType}: Delete API not available`);
+        window.alert(t('workspace.fileTree.deleteFailed', { itemType, error: t('workspace.fileTree.deleteApiUnavailable') }));
         onClose();
         return;
       }
@@ -154,7 +156,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
 
       if (!result?.success) {
         // Check specific error message
-        let errorMsg = result?.error || 'Unknown error';
+        let errorMsg = result?.error || t('common.unknownError');
         if (result?.results && result.results.length > 0) {
           const failedResult = result.results.find((r: any) => !r.success);
           if (failedResult?.error) {
@@ -162,17 +164,17 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
           }
         }
         logger.error('[FileTreeNode] Failed to delete:', errorMsg);
-        window.alert(`Failed to delete ${itemType}: ${errorMsg}`);
+        window.alert(t('workspace.fileTree.deleteFailed', { itemType, error: errorMsg }));
       } else {
         // Notify parent component to refresh
         onRemove();
       }
     } catch (error) {
       logger.error('[FileTreeNode] Error deleting:', error);
-      window.alert(`Failed to delete ${itemType}: ${error instanceof Error ? error.message : String(error)}`);
+      window.alert(t('workspace.fileTree.deleteFailed', { itemType, error: error instanceof Error ? error.message : String(error) }));
     }
     onClose();
-  }, [fullPath, node, onClose]);
+  }, [fullPath, node, onClose, onRemove, t]);
 
   // Copy path to clipboard
   const handleCopyPath = React.useCallback(async (e: React.MouseEvent) => {
@@ -189,26 +191,26 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
   // Determine "Reveal in Folder" menu text based on platform
   const getRevealInFolderText = () => {
     if (isWindows) {
-      return 'Reveal in File Explorer';
+      return t('common.revealInFileExplorer');
     } else if (isMac) {
-      return 'Reveal in Finder';
+      return t('common.revealInFinder');
     } else {
-      return 'Reveal in File Manager';
+      return t('common.revealInFileManager');
     }
   };
 
   // Determine "Open" menu text based on platform and node type
   const getOpenMenuText = () => {
     if (node.type === 'file') {
-      return 'Open with Default App';
+      return t('common.openWithDefaultApp');
     } else {
       // Directory node
       if (isWindows) {
-        return 'Open in File Explorer';
+        return t('common.openInFileExplorer');
       } else if (isMac) {
-        return 'Open in Finder';
+        return t('common.openInFinder');
       } else {
-        return 'Open in File Manager';
+        return t('common.openInFileManager');
       }
     }
   };
@@ -272,7 +274,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
         <span className="dropdown-menu-item-icon">
           <Copy size={16} strokeWidth={1.5} />
         </span>
-        <span className="dropdown-menu-item-text">Copy Path</span>
+        <span className="dropdown-menu-item-text">{t('common.copyPath')}</span>
       </button>
 
       {/* Move to Agent Knowledge - only for files NOT already in the knowledge base section, and only when session is idle */}
@@ -292,7 +294,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
             <span className="dropdown-menu-item-icon">
               <ArrowRightToLine size={16} strokeWidth={1.5} />
             </span>
-            <span className="dropdown-menu-item-text">Move to Agent Knowledge</span>
+            <span className="dropdown-menu-item-text">{t('workspace.fileTree.moveToAgentKnowledge')}</span>
           </button>
         </>
       )}
@@ -314,7 +316,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
             <span className="dropdown-menu-item-icon">
               <Download size={16} strokeWidth={1.5} />
             </span>
-            <span className="dropdown-menu-item-text">Install skill</span>
+            <span className="dropdown-menu-item-text">{t('workspace.fileTree.installSkill')}</span>
           </button>
         </>
       )}
@@ -331,7 +333,7 @@ const FileTreeNodeContextMenu: React.FC<InnerProps> = ({
         <span className="dropdown-menu-item-icon">
           <Trash2 size={16} strokeWidth={1.5} />
         </span>
-        <span className="dropdown-menu-item-text">Delete</span>
+        <span className="dropdown-menu-item-text">{t('common.delete')}</span>
       </button>
     </div>
   );

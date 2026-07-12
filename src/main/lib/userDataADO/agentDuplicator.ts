@@ -16,6 +16,7 @@ import {
   getAgentKnowledge,
 } from './types/profile';
 import { generateChatId } from './profileSanitizer';
+import { getChatPrimaryAgent } from './agentAccessor';
 import { schedulerManager } from '../scheduler/SchedulerManager';
 import type { SchedulerJob } from '../scheduler/types';
 import type { ProfileCacheManager } from './profileCacheManager';
@@ -41,7 +42,7 @@ export interface DuplicateChatConfigResult {
 }
 
 /**
- * Duplicate an agent with independent workspace, knowledge files, and scheduled tasks.
+ * Duplicate an agent with an independent chat workspace, knowledge files, and scheduled tasks.
  */
 export async function duplicateAgent(
   profileCacheManager: ProfileCacheManager,
@@ -51,20 +52,26 @@ export async function duplicateAgent(
 ): Promise<DuplicateChatConfigResult> {
   try {
     const sourceChat = profileCacheManager.getChatConfig(alias, sourceChatId);
-    if (!sourceChat || !sourceChat.agent) {
+    const sourceAgent = getChatPrimaryAgent(sourceChat);
+    if (!sourceChat || !sourceAgent) {
       return { success: false, error: 'Source agent not found' };
     }
 
-    const sourceKnowledgePath = getAgentKnowledge(sourceChat.agent).knowledgeBase;
+    const sourceKnowledgePath = getAgentKnowledge(sourceAgent).knowledgeBase;
 
-    // Build new chat config with cleared workspace/knowledge so addChatConfig auto-generates fresh paths
+    // Build new chat config with cleared agent knowledge so addChatConfig generates fresh derived paths.
+    // Drop the source agent's stable store id: the store dir (agents/{id}), knowledge path, and
+    // agent_ids all key off it, so carrying it would make addChatConfig -> persistNewChatAgents
+    // OVERWRITE the SOURCE's agents/{id}/agent.json and point the duplicate at the source's knowledge.
+    // Clearing id lets addChatConfig -> ensureInlineAgentIds mint a fresh UUID for the duplicate.
     const newChatId = generateChatId();
+    const { workspace: _legacyWorkspace, ...sourceAgentWithoutWorkspace } = sourceAgent;
     const duplicatedAgent: ChatAgent = {
-      ...sourceChat.agent,
+      ...sourceAgentWithoutWorkspace,
+      id: undefined,
       name: newAgentName,
       source: 'ON-DEVICE',
       version: '1.0.0',
-      workspace: '',
       knowledge: { knowledgeBase: '' },
     };
 
@@ -81,7 +88,8 @@ export async function duplicateAgent(
 
     // Copy knowledge files
     const newChat = profileCacheManager.getChatConfig(alias, newChatId);
-    const newKnowledgePath = newChat ? getAgentKnowledge(newChat.agent).knowledgeBase : '';
+    const newAgent = getChatPrimaryAgent(newChat);
+    const newKnowledgePath = newAgent ? getAgentKnowledge(newAgent).knowledgeBase : '';
     let knowledgeCopyFailed = false;
 
     if (sourceKnowledgePath && newKnowledgePath && sourceKnowledgePath !== newKnowledgePath) {
@@ -102,7 +110,7 @@ export async function duplicateAgent(
       const results = await Promise.allSettled(sourceJobs.map(job =>
         schedulerManager.createJob({
           ...omitRuntimeFields(job),
-          agentId: newChatId,
+          chat_id: newChatId,
           status: 'pending',
         })
       ));

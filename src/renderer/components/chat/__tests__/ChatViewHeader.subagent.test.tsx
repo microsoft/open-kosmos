@@ -46,6 +46,7 @@ vi.mock('lucide-react', () => ({
   Copy: () => <span data-testid="icon-copy" />,
   Check: () => <span data-testid="icon-check" />,
   Bot: () => <span data-testid="icon-bot" />,
+  Globe: () => <span data-testid="icon-globe" />,
 }));
 
 vi.mock('../../ui/StatusBadges', () => ({ default: () => null }));
@@ -55,6 +56,7 @@ vi.mock('../../common/AgentAvatar', () => ({
 vi.mock('../../common/UnreadCountBadge', () => ({ default: () => null }));
 
 vi.mock('../../userData/userDataProvider', () => ({
+  useProfileData: () => ({ data: { profile: { browser: { enabled: false } } } }),
   useAgentConfig: () => ({
     agent: {
       id: 'agent-1',
@@ -117,6 +119,10 @@ vi.mock('../chat-side.atom', () => ({
   SubAgentTasksSidepaneAtom: {
     use: () => [mockSubAgentAtomState.state, mockSubAgentAtomState.actions],
   },
+}));
+
+vi.mock('../MemexMemorySidepane', () => ({
+  ToggleMemexMemory: () => null,
 }));
 
 // ── import ─────────────────────────────────────────────────────────────────────

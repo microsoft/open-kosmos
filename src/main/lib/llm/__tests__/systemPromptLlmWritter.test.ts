@@ -137,6 +137,31 @@ describe('SystemPromptLlmWriter', () => {
       expect(result.improvedPrompt).toBe('# Identity\nYou are a coding assistant.');
       expect(result.rawResponse).toBe(raw);
       expect(result.originalPrompt).toBe('You are a coding assistant. Be helpful.');
+      expect(mockCallModel.mock.calls[0][1]).toContain('Agent Identity draft:');
+      expect(mockCallModel.mock.calls[0][2]).toContain('Current Prompt Area: Agent Identity');
+      expect(mockCallModel.mock.calls[0][2]).toContain('Do not add project-specific or domain-specific');
+    });
+
+    it('uses Project Context instructions when polishing AGENTS.md', async () => {
+      const raw = JSON.stringify({
+        success: true,
+        improvedPrompt: '# Context\nSupport customer onboarding.',
+        changeSummary: ['Added structure'],
+        warnings: [],
+        errors: [],
+      });
+      mockCallModel.mockResolvedValue(raw);
+
+      const result = await SystemPromptLlmWriter.improveSystemPrompt(
+        'Support customer onboarding.',
+        { promptFile: 'AGENTS.md' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockCallModel.mock.calls[0][1]).toContain('Project Context draft:');
+      expect(mockCallModel.mock.calls[0][2]).toContain('Current Prompt Area: Project Context');
+      expect(mockCallModel.mock.calls[0][2]).toContain('Do not invent project facts');
+      expect(mockCallModel.mock.calls[0][2]).toContain('Do not add generic agent personality');
     });
 
     it('strips markdown code blocks before parsing', async () => {

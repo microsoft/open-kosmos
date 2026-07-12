@@ -4,6 +4,7 @@ import { useScreenshotHotkey } from '../../lib/screenshot/useScreenshotHotkey';
 import { adjustAnchoredDropdownToViewport, ANCHORED_DROPDOWN_SIZE_PRESETS, AnchoredDropdownPosition, getAnchoredDropdownPosition } from '../../lib/utilities/dropdownPosition';
 import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const zeroState: {
   isOpen: boolean;
@@ -34,6 +35,7 @@ interface InnerProps {
 }
 
 const AttachMenuDropdown: React.FC<InnerProps> = ({ position }) => {
+  const { t } = useI18n();
   const { close: onClose } = AttachMenuAtom.useChange();
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const enableScreenshot = useScreenshotEnabled();
@@ -42,6 +44,7 @@ const AttachMenuDropdown: React.FC<InnerProps> = ({ position }) => {
   useClickOut(attachMenuRef, onClose);
 
   useLayoutEffect(() => {
+    /* v8 ignore next 3 -- defensive ref-null guard in layout effect; the mounted menu always assigns this ref before the effect runs */
     if (attachMenuRef.current) {
       adjustAnchoredDropdownToViewport(attachMenuRef.current, position);
     }
@@ -88,7 +91,7 @@ const AttachMenuDropdown: React.FC<InnerProps> = ({ position }) => {
             />
           </svg>
         </span>
-        <span className="dropdown-menu-item-text">Add files & images</span>
+        <span className="dropdown-menu-item-text">{t('chat.attachments.addFilesAndImages')}</span>
       </button>
       {enableScreenshot && (
         <button
@@ -117,7 +120,7 @@ const AttachMenuDropdown: React.FC<InnerProps> = ({ position }) => {
             </svg>
           </span>
           <span className="dropdown-menu-item-text">
-            Add screenshot
+            {t('chat.attachments.addScreenshot')}
             {screenshotHotkey && (
               <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', marginLeft: 6 }}>
                 ({screenshotHotkey})

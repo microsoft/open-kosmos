@@ -3,6 +3,8 @@ import type { Companion, BuddyEntry } from '../../../main/lib/buddy/types';
 import { ALL_STATS, RARITY_COLORS, RARITY_STARS, RARITY_MAX_LEVEL } from '../../../main/lib/buddy/types';
 import { xpToLevel, levelToXP } from '../../../main/lib/buddy/leveling';
 import { roll } from '../../../main/lib/buddy/companion';
+import { useI18n } from '../../lib/i18n/useI18n';
+import { getBuddyRarityLabel, getBuddySpeciesLabel, getBuddyStatLabel } from './buddyLabels';
 
 interface Props {
   companion: Companion;
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export const BuddyStatsModal: React.FC<Props> = ({ companion, activeBuddy, onClose }) => {
+  const { t } = useI18n();
   const color = RARITY_COLORS[companion.rarity];
   const stars = RARITY_STARS[companion.rarity];
 
@@ -38,22 +41,22 @@ export const BuddyStatsModal: React.FC<Props> = ({ companion, activeBuddy, onClo
       <div className="buddy-stats-modal" onClick={(e) => e.stopPropagation()}>
         {/* Header: name + rarity */}
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-          <div style={{ color: '#1e293b', fontSize: '16px', fontWeight: 'bold' }}>{companion.name}</div>
+          <div style={{ color: 'var(--color-neutral-800)', fontSize: '16px', fontWeight: 'bold' }}>{companion.name}</div>
           <div style={{ color, fontSize: '13px', marginTop: '4px', fontWeight: 600 }}>
-            {stars} {rarity.toUpperCase()} {companion.species}
+            {stars} {getBuddyRarityLabel(t, rarity)} {getBuddySpeciesLabel(t, companion.species)}
           </div>
-          <div style={{ color: '#64748b', fontSize: '11px', fontStyle: 'italic', marginTop: '2px' }}>
+          <div style={{ color: 'var(--color-neutral-500)', fontSize: '11px', fontStyle: 'italic', marginTop: '2px' }}>
             {companion.personality}
           </div>
         </div>
 
         {/* Level display */}
-        <div style={{ marginBottom: '16px', padding: '0 0 12px', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ marginBottom: '16px', padding: '0 0 12px', borderBottom: '1px solid var(--color-neutral-200)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600 }}>
-            <span style={{ color: '#1e293b' }}>
-              Lv.{level} / {maxLevel} {isMaxLevel ? '(MAX)' : ''}
+            <span style={{ color: 'var(--color-neutral-800)' }}>
+              {t('buddy.levelWithMax', { level, maxLevel })} {isMaxLevel ? t('buddy.maxParenthetical') : ''}
             </span>
-            <span style={{ color: '#64748b', fontSize: '11px' }}>
+            <span style={{ color: 'var(--color-neutral-500)', fontSize: '11px' }}>
               {isMaxLevel
                 ? `${totalXP.toLocaleString()} XP`
                 : `${totalXP.toLocaleString()} / ${nextLevelXP.toLocaleString()} XP`}
@@ -74,7 +77,7 @@ export const BuddyStatsModal: React.FC<Props> = ({ companion, activeBuddy, onClo
           const total = Math.min(100, base + bonus);
           return (
             <div key={stat} className="buddy-stat-row">
-              <span className="buddy-stat-name">{stat}</span>
+              <span className="buddy-stat-name">{getBuddyStatLabel(t, stat)}</span>
               <div className="buddy-stat-bar">
                 <div className="buddy-stat-bar-fill" style={{ width: `${total}%`, backgroundColor: color }} />
               </div>
@@ -96,11 +99,11 @@ export const BuddyStatsModal: React.FC<Props> = ({ companion, activeBuddy, onClo
               border: `1px solid ${color}40`,
               borderRadius: '8px',
               fontSize: '11px',
-              color: '#475569',
+              color: 'var(--color-neutral-600)',
               textAlign: 'center',
             }}
           >
-            ✨ Merge with a same-species {rarity} to evolve!
+            ✨ {t('buddy.mergeWithSameSpecies', { rarity: getBuddyRarityLabel(t, rarity) })}
           </div>
         )}
 
@@ -109,16 +112,16 @@ export const BuddyStatsModal: React.FC<Props> = ({ companion, activeBuddy, onClo
           <button
             onClick={onClose}
             style={{
-              background: '#334155',
+              background: 'var(--color-neutral-700)',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 24px',
-              color: '#e2e8f0',
+              color: 'var(--color-neutral-200)',
               cursor: 'pointer',
               fontSize: '13px',
             }}
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
       </div>

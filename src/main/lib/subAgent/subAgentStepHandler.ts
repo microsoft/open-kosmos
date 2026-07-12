@@ -2,7 +2,7 @@
  * SubAgentStepHandler — Pure function for applying step updates to runtime state.
  *
  * Extracted from SubAgentManager to deduplicate identical onStepUpdate closures
- * in spawnSubAgent and spawnAdhocSubAgent.
+ * in spawnAdhocSubAgent and spawnSubAgentAsync.
  *
  * File location: src/main/lib/subAgent/subAgentStepHandler.ts
  */

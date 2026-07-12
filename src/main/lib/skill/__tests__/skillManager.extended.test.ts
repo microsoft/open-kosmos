@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SkillManager } from '../skillManager';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 
 vi.mock('../../unifiedLogger', async () => ({
   createLogger: () => ({
@@ -23,6 +24,14 @@ vi.mock('../../userDataADO', async () => ({
     getCachedProfile: vi.fn(),
     addSkill: vi.fn(),
     updateSkill: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
   },
 }));
 
@@ -329,21 +338,20 @@ describe('SkillManager — extended coverage', () => {
   // ─── checkSkillExists ─────────────────────────────────────────────────────
 
   describe('checkSkillExists', () => {
-    it('returns null when profile missing', () => {
-      (profileCacheManager.getCachedProfile as Mock).mockReturnValue(null);
+    it('returns null when the registry has no matching skill', () => {
+      (skillsConfigManager.getSkill as Mock).mockReturnValue(undefined);
       expect(skillManager.checkSkillExists('tester', 'pdf')).toBeNull();
     });
 
     it('returns skill when it exists', () => {
-      (profileCacheManager.getCachedProfile as Mock).mockReturnValue({
-        skills: [{ name: 'pdf', version: '1.0.0' }],
-      });
+      (skillsConfigManager.getSkill as Mock).mockReturnValue({ name: 'pdf', version: '1.0.0' });
       expect(skillManager.checkSkillExists('tester', 'pdf')).toMatchObject({ name: 'pdf' });
     });
 
-    it('returns null when skill not in profile', () => {
-      (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [] });
-      expect(skillManager.checkSkillExists('tester', 'pdf')).toBeUndefined();
+    it('queries the installed skill registry for the requested alias and name', () => {
+      (skillsConfigManager.getSkill as Mock).mockReturnValue(undefined);
+      expect(skillManager.checkSkillExists('tester', 'pdf')).toBeNull();
+      expect(skillsConfigManager.getSkill).toHaveBeenCalledWith('tester', 'pdf');
     });
   });
 

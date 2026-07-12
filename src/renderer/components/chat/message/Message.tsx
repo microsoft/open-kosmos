@@ -9,6 +9,8 @@ import GeneratedScheduleCards from './GeneratedScheduleCards';
 import SayHiActionItems, { parseSayHiContent } from './SayHiActionItems';
 import { createLogger } from '../../../lib/utilities/logger';
 import { ImageGalleryMenuAtom } from '../../menu/ImageGalleryContextMenu';
+import { resolveMentionAssetUrl } from '../../../lib/chat/mentionAssetUrl';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[Message]');
 
 const SCHEDULE_JOB_ID_PATTERN = /sched_\d{14}(?:_[a-z0-9-]+_[a-z0-9]+|_[a-z0-9]{8,16})/gi;
@@ -117,6 +119,10 @@ const parseNewFormatMessage = (content: string, messageId: string, isStreaming: 
           try {
             const imageData = JSON.parse(trimmedLine);
             if (imageData.id) {
+              // Resolve mention-scheme URLs (@chat-session:/@knowledge-base:/@workspace:)
+              // to encoded file:// URLs so locally-saved deliverables (e.g. screenshots)
+              // render instead of failing in fetch(). Non-mention URLs pass through unchanged.
+              imageData.url = resolveMentionAssetUrl(imageData.url);
               imageRegistry.set(imageData.id, imageData);
               logger.debug('🖼️ [parseNewFormatMessage] Registered image:', imageData.id);
             }
@@ -227,6 +233,7 @@ const imageCache = new Map<string, string>();
 
 // 🆕 New image gallery component — Google-search-style multi-row layout, fixed height, dynamic width
 const ImageGalleryNew: React.FC<{ imageRegistry: Map<string, any> }> = ({ imageRegistry }) => {
+  const { t } = useI18n();
   const [loadingStates, setLoadingStates] = useState<Map<string, boolean>>(new Map());
   const [errorStates, setErrorStates] = useState<Map<string, boolean>>(new Map());
   const [cachedUrls, setCachedUrls] = useState<Map<string, string>>(new Map());
@@ -415,7 +422,7 @@ const ImageGalleryNew: React.FC<{ imageRegistry: Map<string, any> }> = ({ imageR
                 width: `${calculatedWidth}px`,
                 maxWidth: '100%', // 🔥 dynamically cap max-width at 100% of the container to prevent oversized images from overflowing
                 backgroundImage: !isLocalFile && !isLoading && !hasError ? `url(${cachedUrl})` : 'none',
-                backgroundColor: '#D9D9D9'
+                backgroundColor: 'var(--color-neutral-300)'
               }}
               onClick={!isLoading && !hasError ? () => handleImageClick(index) : undefined}
               onContextMenu={!isLoading && !hasError ? (e) => {
@@ -425,7 +432,7 @@ const ImageGalleryNew: React.FC<{ imageRegistry: Map<string, any> }> = ({ imageR
                 const image = { url: cachedUrl, alt: imageData.alt, index };
                 imageGalleryMenuActions.open(e, image, galleryImages, index);
               } : undefined}
-              title={!isLoading && !hasError ? "Click to view full size | Right-click for more options" : undefined}
+              title={!isLoading && !hasError ? t('chat.message.imageOpenTitle') : undefined}
             >
               {/* Loading state — displayed in the center of the image container */}
               {isLoading && (
@@ -440,7 +447,7 @@ const ImageGalleryNew: React.FC<{ imageRegistry: Map<string, any> }> = ({ imageR
               {hasError && (
                 <div className="image-error-placeholder">
                   <span className="error-icon">⚠️</span>
-                  <span className="error-text">Image failed to load</span>
+                  <span className="error-text">{t('chat.message.imageFailed')}</span>
                 </div>
               )}
 
@@ -475,6 +482,7 @@ const Message: React.FC<MessageProps> = ({
   onEditUserMessage
 }) => {
   const [isCopied, setIsCopied] = useState(false);
+  const { t } = useI18n();
 
   const getMessageClass = () => {
     switch (message.role) {
@@ -583,7 +591,7 @@ const Message: React.FC<MessageProps> = ({
               className="attachment-card image-attachment clickable"
               onClick={() => handleOpenImageViewer(imageParts, index)}
               style={{ cursor: 'pointer' }}
-              title={`Click to preview: ${imagePart.metadata.fileName || `Image ${index + 1}`}`}
+              title={t('chat.files.previewTitle', { name: imagePart.metadata.fileName || `Image ${index + 1}` })}
             >
               <div className="attachment-preview image-preview-full">
                 <img
@@ -611,7 +619,7 @@ const Message: React.FC<MessageProps> = ({
                 fileSize: filePart.metadata.fileSize,
               })}
               style={{ cursor: 'pointer' }}
-              title={`Click to preview: ${filePart.file.fileName}`}
+              title={t('chat.files.previewTitle', { name: filePart.file.fileName })}
             >
               <div className="attachment-preview">
                 <div className="file-icon">
@@ -638,7 +646,7 @@ const Message: React.FC<MessageProps> = ({
                 fileSize: officePart.metadata.fileSize,
               })}
               style={{ cursor: 'pointer' }}
-              title={`Click to preview: ${officePart.file.fileName}`}
+              title={t('chat.files.previewTitle', { name: officePart.file.fileName })}
             >
               <div className="attachment-preview">
                 <div className="file-icon">
@@ -665,7 +673,7 @@ const Message: React.FC<MessageProps> = ({
                 fileSize: othersPart.metadata.fileSize,
               })}
               style={{ cursor: 'pointer' }}
-              title={`Click to preview: ${othersPart.file.fileName}`}
+              title={t('chat.files.previewTitle', { name: othersPart.file.fileName })}
             >
               <div className="attachment-preview">
                 <div className="file-icon">
@@ -823,8 +831,8 @@ const Message: React.FC<MessageProps> = ({
               <button
                 className="message-action-btn copy-btn"
                 onClick={handleCopyMessage}
-                title="Copy"
-                aria-label="Copy"
+                title={t('common.copy')}
+                aria-label={t('common.copy')}
               >
                 <svg className="action-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -853,6 +861,14 @@ const Message: React.FC<MessageProps> = ({
 
   // Do not render tool messages or system messages
   if (message.role === 'tool' || message.role === 'system') {
+    return null;
+  }
+
+  // 🔥 Refactor: remove thinking-message rendering logic
+  // All assistant messages are now rendered directly; there is no longer a "thinking" type
+  if (message.role === 'thinking' as any) {
+    // Keep empty branch for backward compatibility, but execution should never reach here
+    logger.warn('[Message] Unexpected thinking role message - this should not happen after refactoring');
     return null;
   }
 
@@ -906,17 +922,18 @@ const Message: React.FC<MessageProps> = ({
 
   const processedContent = optimizeContentForMarkdown(rawContent, isStreaming);
 
-  // 🆕 Say-Hi action items: parse clickable prompts from say-hi messages
+  // Say-Hi action items: parse clickable prompts from say-hi messages.
   const isSayHiMessage = !!message.id?.startsWith('say-hi-');
-  // Parse legacy action-item chips
   const { markdownBody: sayHiBody, actionItemGroups: sayHiGroups } = isSayHiMessage
     ? parseSayHiContent(processedContent)
     : {
       markdownBody: processedContent,
       actionItemGroups: [] as import('./SayHiActionItems').ActionItemGroup[],
     };
-  // Use the stripped body (without action items) for rendering markdown
-  const displayContent = isSayHiMessage ? sayHiBody : processedContent;
+  // Use the stripped body (without action items/cards) for rendering markdown
+  const displayContent = isSayHiMessage
+    ? sayHiBody
+    : processedContent;
 
   // 🆕 New: if this is an assistant message that contains new-format images, use segmented rendering
   if (message.role === 'assistant' && hasNewImageFormat(displayContent)) {
@@ -949,7 +966,6 @@ const Message: React.FC<MessageProps> = ({
                       }
                     }}
                   />
-                  {/* 🆕 Render say-hi action items */}
                   {isSayHiMessage && sayHiGroups.length > 0 && (
                     <SayHiActionItems groups={sayHiGroups} />
                   )}
@@ -986,8 +1002,8 @@ const Message: React.FC<MessageProps> = ({
               <button
                 className="message-action-btn"
                 onClick={() => onEditUserMessage(message)}
-                title="Edit message"
-                aria-label="Edit message"
+                title={t('chat.message.edit')}
+                aria-label={t('chat.message.edit')}
               >
                 <svg
                   className="action-icon"
@@ -1014,8 +1030,8 @@ const Message: React.FC<MessageProps> = ({
             <button
               className="message-action-btn copy-btn"
               onClick={handleCopyMessage}
-              title={isCopied ? "Copied" : "Copy"}
-              aria-label={isCopied ? "Copied" : "Copy"}
+              title={isCopied ? t('common.copied') : t('common.copy')}
+              aria-label={isCopied ? t('common.copied') : t('common.copy')}
             >
               {isCopied ? (
                 <svg className="action-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -1039,8 +1055,8 @@ const Message: React.FC<MessageProps> = ({
               <button
                 className="message-action-btn copy-btn"
                 onClick={handleCopyMessage}
-                title={isCopied ? "Copied" : "Copy"}
-                aria-label={isCopied ? "Copied" : "Copy"}
+                title={isCopied ? t('common.copied') : t('common.copy')}
+                aria-label={isCopied ? t('common.copied') : t('common.copy')}
               >
                 {isCopied ? (
                   <svg className="action-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

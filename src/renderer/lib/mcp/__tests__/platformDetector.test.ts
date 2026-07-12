@@ -113,14 +113,14 @@ describe('getPlatformInfo', () => {
     expect(info.isSupported).toBe(true);
     expect(info.displayName).toBe('macOS');
     expect(info.vscodeConfigPaths.length).toBeGreaterThan(0);
-    expect(info.vscodeConfigPaths[0]).toBeTruthy();
+    expect(info.vscodeConfigPath).toBeTruthy();
   });
 
   it('returns correct info for Windows', () => {
     const info = getPlatformInfo('Windows');
     expect(info.platform).toBe('Windows');
     expect(info.isSupported).toBe(true);
-    expect(info.vscodeConfigPaths[0]).toContain('APPDATA');
+    expect(info.vscodeConfigPath).toContain('APPDATA');
   });
 
   it('returns correct info for Linux', () => {

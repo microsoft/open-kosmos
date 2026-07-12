@@ -1,8 +1,11 @@
 import { installAndActivateSkill } from '../installAndActivateSkill';
 import { addSkillFromDevice } from '../skillDeviceImporter';
 import { applySkillToAgents } from '../applySkillToAgents';
-import { SkillLibraryFetcher } from '../skillLibraryFetcher';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
+
+const mockRecordCompleted = vi.fn();
+const mockRecordAbandoned = vi.fn();
 
 vi.mock('../skillDeviceImporter', async () => ({
   addSkillFromDevice: vi.fn(),
@@ -12,11 +15,6 @@ vi.mock('../applySkillToAgents', async () => ({
   applySkillToAgents: vi.fn(),
 }));
 
-vi.mock('../skillLibraryFetcher', async () => ({
-  SkillLibraryFetcher: {
-    getInstance: vi.fn(),
-  },
-}));
 
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
@@ -25,9 +23,20 @@ vi.mock('../../userDataADO', async () => ({
   },
 }));
 
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
+  },
+}));
+
 describe('installAndActivateSkill', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRecordCompleted.mockResolvedValue(undefined);
+    mockRecordAbandoned.mockResolvedValue(undefined);
+    (skillsConfigManager.hasSkill as Mock).mockReturnValue(true);
   });
 
   it('installs and applies to the current single-agent chat', async () => {
@@ -110,30 +119,4 @@ describe('installAndActivateSkill', () => {
     expect(applySkillToAgents).not.toHaveBeenCalled();
   });
 
-  it('forwards overwrite when installing from the skill library', async () => {
-    const addSkill = vi.fn().mockResolvedValue({
-      success: true,
-      skillName: 'pdf',
-      skillVersion: '2.0.0',
-      installAction: 'update',
-    });
-    (SkillLibraryFetcher.getInstance as Mock).mockReturnValue({ addSkill });
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({
-      skills: [{ name: 'pdf' }],
-    });
-    (profileCacheManager.getChatConfig as Mock).mockReturnValue({
-      chat_type: 'single_agent',
-      agent: { name: 'Kobi', skills: ['pdf'] },
-    });
-
-    const result = await installAndActivateSkill({
-      userAlias: 'tester',
-      source: { type: 'library-name', value: 'pdf' },
-      overwrite: true,
-      activation: { mode: 'install-only', chatId: 'chat-1' },
-    });
-
-    expect(addSkill).toHaveBeenCalledWith('pdf', 'tester', { overwrite: true });
-    expect(result.success).toBe(true);
-  });
 });

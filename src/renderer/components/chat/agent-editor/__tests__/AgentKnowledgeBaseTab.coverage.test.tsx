@@ -103,13 +103,12 @@ function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
 function renderTab(overrides: Partial<TabComponentProps> = {}) {
   const props: TabComponentProps = {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: createAgent(),
     onSave: vi.fn(async () => createAgent()),
     onDataChange: vi.fn(),
     cachedData: null,
     readOnly: false,
-    isFromLibrary: false,
     ...overrides,
   };
   return render(<AgentKnowledgeBaseTab {...props} />);
@@ -184,13 +183,12 @@ describe('AgentKnowledgeBaseTab coverage - initialization', () => {
     rerender(
       <AgentKnowledgeBaseTab
         mode="update"
-        agentId="agent-1"
+        chatId="agent-1"
         agentData={createAgent({ knowledgeBase: '/updated-knowledge' })}
         onSave={vi.fn(async () => createAgent())}
         onDataChange={vi.fn()}
         cachedData={null}
         readOnly={false}
-        isFromLibrary={false}
       />
     );
 
@@ -471,6 +469,7 @@ describe('AgentKnowledgeBaseTab coverage - paste dialog', () => {
   });
 });
 
+
 describe('AgentKnowledgeBaseTab coverage - clear folder', () => {
   it('deletePaths returns failCount > 0 - logs error gracefully', async () => {
     window.confirm = vi.fn(() => true);
@@ -572,6 +571,437 @@ describe('AgentKnowledgeBaseTab coverage - format file size', () => {
     renderTab();
     await screen.findByText('empty.md');
     expect(screen.getByText('0 B')).toBeInTheDocument();
+  });
+});
+
+describe('AgentKnowledgeBaseTab coverage - tokenized styles and item rendering', () => {
+  it('renders the loading spinner with managed SVG color tokens', async () => {
+    mockGetWorkspaceFileTree.mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderTab();
+
+    await screen.findByText('Loading directory...');
+    const [track, arc] = Array.from(container.querySelectorAll('svg [stroke]'));
+    expect(track.getAttribute('stroke')).toBe('var(--color-neutral-200)');
+    expect(arc.getAttribute('stroke')).toBe('var(--color-warm-900)');
+  });
+
+  it('renders supported file icon branches without raw inline hex styles', async () => {
+    mockGetWorkspaceFileTree.mockResolvedValue({
+      success: true,
+      data: {
+        tree: [
+          { name: 'code.ts', path: '/knowledge/code.ts', type: 'file', size: 1 },
+          { name: 'data.json', path: '/knowledge/data.json', type: 'file', size: 1 },
+          { name: 'style.scss', path: '/knowledge/style.scss', type: 'file', size: 1 },
+          { name: 'plain.css', path: '/knowledge/plain.css', type: 'file', size: 1 },
+          { name: 'index.html', path: '/knowledge/index.html', type: 'file', size: 1 },
+          { name: 'README', path: '/knowledge/README', type: 'file', size: 1 },
+          { name: 'notes.txt', path: '/knowledge/notes.txt', type: 'file', size: 1 },
+        ],
+      },
+    });
+
+    const { container } = renderTab();
+
+    await screen.findByText('code.ts');
+    expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+  });
+
+  it('shows tokenized unsaved-path warnings', async () => {
+    mockSelectWorkspaceFolder.mockResolvedValue({ success: true, data: '/new-workspace' });
+    mockGetWorkspaceFileTree.mockResolvedValue({ success: true, data: { tree: [] } });
+
+    renderTab();
+    await screen.findByDisplayValue('/knowledge');
+    fireEvent.click(screen.getByRole('button', { name: /select path/i }));
+
+    const warning = await screen.findByText('Save knowledge base path first to manage files');
+    expect(warning.getAttribute('style') || '').toContain('var(--color-danger-600)');
+    expect(warning.getAttribute('style') || '').not.toMatch(/#[0-9a-fA-F]{3,6}/);
+  });
+
+  it('uses Workspace as breadcrumb fallback for root-like paths', async () => {
+    renderTab({ agentData: createAgent({ knowledgeBase: '/' }) });
+
+    await screen.findByRole('button', { name: 'Workspace' });
+  });
+});
+
+describe('AgentKnowledgeBaseTab coverage - explorer failures and refresh', () => {
+  it('shows empty state when loading the root file tree fails', async () => {
+    mockGetWorkspaceFileTree.mockResolvedValue({ success: false, error: 'boom' });
+
+    renderTab();
+
+    await screen.findByText('Add documents, code files, images, and more.');
+  });
+
+  it('uses the root clear-cache path when workspace refresh listener fires', async () => {
+    let refreshListener: (() => void) | undefined;
+    mockOnRefresh.mockImplementationOnce((listener: () => void) => {
+      refreshListener = listener;
+      return vi.fn();
+    });
+
+    renderTab();
+    await screen.findByText('cycles');
+
+    await act(async () => {
+      await refreshListener?.();
+    });
+
+    await waitFor(() => expect(mockClearFileTreeCache).toHaveBeenCalledWith());
+  });
+});
+
+describe('AgentKnowledgeBaseTab coverage - file and folder interactions', () => {
+  it('opens image and non-image files through their viewer events', async () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    renderTab();
+    await screen.findByText('image.png');
+
+    fireEvent.click(screen.getByText('image.png'));
+    fireEvent.click(screen.getByText('readme.md'));
+
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'imageViewer:open' }));
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'fileViewer:open' }));
+  });
+
+  it('opens the item context menu from the more button', async () => {
+    renderTab();
+    await screen.findByText('readme.md');
+
+    const moreButtons = document.querySelectorAll('.skill-folder-item-more-btn');
+    fireEvent.click(moreButtons[0]);
+
+    expect(mockFileTreeNodeMenuOpen).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ path: '/knowledge/cycles' }),
+      '/knowledge'
+    );
+  });
+
+  it('opens the item context menu for file nodes', async () => {
+    renderTab();
+    await screen.findByText('readme.md');
+
+    const moreButtons = document.querySelectorAll('.skill-folder-item-more-btn');
+    fireEvent.click(moreButtons[1]);
+
+    expect(mockFileTreeNodeMenuOpen).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ path: '/knowledge/readme.md', type: 'file' }),
+      '/knowledge'
+    );
+  });
+
+  it('navigates back from a child directory', async () => {
+    mockGetDirectoryChildren.mockResolvedValue({
+      success: true,
+      data: { children: [{ name: 'sub.md', path: '/knowledge/cycles/sub.md', type: 'file', size: 100 }] },
+    });
+
+    renderTab();
+    await screen.findByText('cycles');
+    fireEvent.click(screen.getByText('cycles'));
+    await screen.findByText('sub.md');
+
+    fireEvent.click(screen.getByTitle('Go back'));
+
+    await screen.findByText('readme.md');
+  });
+
+  it('uses cached directory children on repeated navigation', async () => {
+    mockGetDirectoryChildren.mockResolvedValue({
+      success: true,
+      data: { children: [{ name: 'sub.md', path: '/knowledge/cycles/sub.md', type: 'file', size: 100 }] },
+    });
+    renderTab();
+    await screen.findByText('cycles');
+
+    fireEvent.click(screen.getByText('cycles'));
+    await screen.findByText('sub.md');
+    fireEvent.click(screen.getByTitle('Go back'));
+    await screen.findByText('readme.md');
+    fireEvent.click(screen.getByText('cycles'));
+
+    await screen.findByText('sub.md');
+    expect(mockGetDirectoryChildren).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles missing directory children data as an empty directory', async () => {
+    mockGetDirectoryChildren.mockResolvedValue({ success: true, data: {} });
+
+    renderTab();
+    await screen.findByText('cycles');
+    fireEvent.click(screen.getByText('cycles'));
+
+    await screen.findByText('Add documents, code files, images, and more.');
+  });
+
+  it('handles directory child load failure', async () => {
+    mockGetDirectoryChildren.mockRejectedValue(new Error('child load failed'));
+
+    renderTab();
+    await screen.findByText('cycles');
+    fireEvent.click(screen.getByText('cycles'));
+
+    await screen.findByText('Add documents, code files, images, and more.');
+  });
+});
+
+describe('AgentKnowledgeBaseTab coverage - add folder', () => {
+  it('adds a selected folder and refreshes the explorer', async () => {
+    renderTab();
+    await screen.findByText('cycles');
+
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Folder' }));
+
+    await waitFor(() => {
+      expect(mockCopyPathToWorkspace).toHaveBeenCalledWith(
+        '/tmp/new-folder',
+        '/knowledge',
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('AgentKnowledgeBaseTab coverage - guarded branches', () => {
+    it('renders no-path state and handles folder selection errors', async () => {
+      mockSelectWorkspaceFolder.mockRejectedValueOnce(new Error('select failed'));
+      renderTab({ agentData: createAgent({ knowledgeBase: '' }) });
+
+      await screen.findByText('Select Knowledge Base Folder');
+      fireEvent.click(screen.getByText('Select Knowledge Base Folder'));
+
+      await waitFor(() => expect(mockSelectWorkspaceFolder).toHaveBeenCalled());
+      expect(mockGetWorkspaceFileTree).not.toHaveBeenCalled();
+    });
+
+    it('handles unsuccessful folder selection without changing the current path', async () => {
+      mockSelectWorkspaceFolder.mockResolvedValue({ success: false });
+      renderTab();
+      await screen.findByDisplayValue('/knowledge');
+
+      fireEvent.click(screen.getByRole('button', { name: /select path/i }));
+
+      await waitFor(() => expect(mockSelectWorkspaceFolder).toHaveBeenCalled());
+      expect(screen.getByDisplayValue('/knowledge')).toBeInTheDocument();
+    });
+
+    it('handles root file tree responses without tree data', async () => {
+      mockGetWorkspaceFileTree.mockResolvedValue({ success: true, data: {} });
+
+      renderTab();
+
+      await screen.findByText('Add documents, code files, images, and more.');
+    });
+
+    it('uses the default root load error when no error message is returned', async () => {
+      mockGetWorkspaceFileTree.mockResolvedValue({ success: false });
+
+      renderTab();
+
+      await screen.findByText('Add documents, code files, images, and more.');
+    });
+
+    it('returns early from direct select-path clicks while read-only', async () => {
+      renderTab({ readOnly: true });
+      await screen.findByDisplayValue('/knowledge');
+      const button = screen.getByRole('button', { name: /select path/i }) as HTMLButtonElement;
+      button.disabled = false;
+
+      fireEvent.click(button);
+
+      expect(mockSelectWorkspaceFolder).not.toHaveBeenCalled();
+    });
+
+    it('keeps drag overlay visible when leaving into a child element', async () => {
+      const { container } = renderTab();
+      await screen.findByText('cycles');
+      const root = container.firstChild as HTMLElement;
+      const child = document.createElement('div');
+      root.appendChild(child);
+
+      fireEvent.dragOver(root);
+      fireEvent.dragLeave(root, { relatedTarget: child });
+
+      expect(root.contains(child)).toBe(true);
+    });
+
+      it('allows direct path input events when the path is editable', async () => {
+        renderTab();
+        const input = await screen.findByDisplayValue('/knowledge');
+
+        fireEvent.change(input, { target: { value: '/manual' } });
+
+        expect(screen.getByDisplayValue('/manual')).toBeInTheDocument();
+      });
+
+    it('uses file.path when the Electron getPathForFile helper is unavailable', async () => {
+      (window as any).electronAPI.fs.getPathForFile = undefined;
+      renderTab();
+      await screen.findByText('cycles');
+      const root = document.querySelector('.agent-workspace-tab') as HTMLElement;
+      const file = new File(['content'], 'fallback.md') as File & { path?: string };
+      file.path = '/fallback/fallback.md';
+
+      await act(async () => {
+        fireEvent.drop(root, { dataTransfer: { files: [file] } });
+      });
+
+      expect(mockCopyPathToWorkspace).toHaveBeenCalledWith('/fallback/fallback.md', '/knowledge', expect.any(Object));
+    });
+
+    it('handles invalid drop targets without copying files', async () => {
+      renderTab({ agentData: createAgent({ knowledgeBase: '' }) });
+      await screen.findByText('Select Knowledge Base Folder');
+      const root = document.querySelector('.agent-workspace-tab') as HTMLElement;
+
+      await act(async () => {
+        fireEvent.drop(root, { dataTransfer: { files: [new File(['x'], 'x.md')] } });
+      });
+
+      expect(mockCopyPathToWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('uses zero counts when copyPathsToWorkspace omits data', async () => {
+      mockCopyPathsToWorkspace.mockResolvedValue({ success: true });
+      renderTab();
+      await screen.findByText('cycles');
+
+      fireEvent.click(screen.getByRole('button', { name: /add/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add Files' }));
+
+      await waitFor(() => expect(mockCopyPathsToWorkspace).toHaveBeenCalled());
+    });
+
+    it('handles file selection throwing in add files', async () => {
+      (window as any).electronAPI.fs.selectFiles = vi.fn(async () => {
+        throw new Error('select threw');
+      });
+      renderTab();
+      await screen.findByText('cycles');
+
+      fireEvent.click(screen.getByRole('button', { name: /add/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add Files' }));
+
+      await waitFor(() => expect((window as any).electronAPI.fs.selectFiles).toHaveBeenCalled());
+    });
+
+    it('adds a folder into the current subdirectory', async () => {
+      mockGetDirectoryChildren.mockResolvedValue({
+        success: true,
+        data: { children: [{ name: 'sub.md', path: '/knowledge/cycles/sub.md', type: 'file', size: 100 }] },
+      });
+      renderTab();
+      await screen.findByText('cycles');
+      fireEvent.click(screen.getByText('cycles'));
+      await screen.findByText('sub.md');
+
+      fireEvent.click(screen.getByRole('button', { name: /add/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add Folder' }));
+
+      await waitFor(() => {
+        expect(mockCopyPathToWorkspace).toHaveBeenCalledWith('/tmp/new-folder', '/knowledge/cycles', expect.any(Object));
+      });
+    });
+
+    it('runs the paste callback in a subdirectory and handles refresh failures', async () => {
+      mockGetDirectoryChildren.mockResolvedValue({
+        success: true,
+        data: { children: [{ name: 'sub.md', path: '/knowledge/cycles/sub.md', type: 'file', size: 100 }] },
+      });
+      mockClearFileTreeCache.mockRejectedValue(new Error('clear failed'));
+      renderTab();
+      await screen.findByText('cycles');
+      fireEvent.click(screen.getByText('cycles'));
+      await screen.findByText('sub.md');
+
+      fireEvent.click(screen.getByRole('button', { name: /add/i }));
+      fireEvent.click(screen.getByText('Paste Text'));
+      const pasteCallback = mockOpenPasteDialog.mock.calls[0]?.[2] as (() => void);
+      await act(async () => pasteCallback());
+
+      expect(mockOpenPasteDialog).toHaveBeenCalledWith('/knowledge', '/knowledge/cycles', expect.any(Function));
+    });
+
+    it('closes the add menu when clicking outside', async () => {
+      renderTab();
+      await screen.findByText('cycles');
+      fireEvent.click(screen.getByRole('button', { name: /add/i }));
+      expect(screen.getByText('Add Folder')).toBeInTheDocument();
+
+      fireEvent.mouseDown(document.body);
+
+      await waitFor(() => expect(screen.queryByText('Add Folder')).not.toBeInTheDocument());
+    });
+
+      it('keeps the add menu open when clicking inside the menu', async () => {
+        renderTab();
+        await screen.findByText('cycles');
+        fireEvent.click(screen.getByRole('button', { name: /add/i }));
+        const addFolder = screen.getByText('Add Folder');
+
+        fireEvent.mouseDown(addFolder);
+
+        expect(screen.getByText('Add Folder')).toBeInTheDocument();
+      });
+
+    it('does not clear items when confirmation is canceled', async () => {
+      window.confirm = vi.fn(() => false);
+      renderTab();
+      await screen.findByText('cycles');
+
+      fireEvent.click(screen.getByRole('button', { name: /clear current folder/i }));
+
+      expect((window as any).electronAPI.fs.deletePaths).not.toHaveBeenCalled();
+    });
+
+    it('refreshes after successfully clearing the current folder', async () => {
+      window.confirm = vi.fn(() => true);
+      (window as any).electronAPI.fs.deletePaths = vi.fn(async () => ({ successCount: 2, failCount: 0 }));
+      renderTab();
+      await screen.findByText('cycles');
+
+      fireEvent.click(screen.getByRole('button', { name: /clear current folder/i }));
+
+      await waitFor(() => expect((window as any).electronAPI.fs.deletePaths).toHaveBeenCalled());
+      await waitFor(() => expect(mockGetWorkspaceFileTree).toHaveBeenCalledTimes(2));
+    });
+  });
+
+  it('does not copy when folder selection is canceled', async () => {
+    (window as any).electronAPI.workspace.selectFolder = vi.fn(async () => ({ success: false }));
+
+    renderTab();
+    await screen.findByText('cycles');
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Folder' }));
+
+    await waitFor(() => expect((window as any).electronAPI.workspace.selectFolder).toHaveBeenCalled());
+    expect(mockCopyPathToWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('handles add-folder copy failure and thrown errors', async () => {
+    mockCopyPathToWorkspace
+      .mockResolvedValueOnce({ success: false, error: 'copy failed' })
+      .mockRejectedValueOnce(new Error('copy threw'));
+
+    renderTab();
+    await screen.findByText('cycles');
+
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Folder' }));
+    await waitFor(() => expect(mockCopyPathToWorkspace).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Folder' }));
+    await waitFor(() => expect(mockCopyPathToWorkspace).toHaveBeenCalledTimes(2));
   });
 });
 

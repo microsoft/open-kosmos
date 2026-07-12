@@ -107,20 +107,20 @@ const FileTypeIcon: React.FC<FileTypeIconProps> = ({ fileName, size = 20, classN
  */
 function getCategoryColor(category: FileCategory): string {
   switch (category) {
-    case 'pdf':        return '#E5252A';
-    case 'word':       return '#2B579A';
-    case 'excel':      return '#217346';
-    case 'ppt':        return '#D24726';
-    case 'archive':    return '#F0A30A';
-    case 'executable': return '#6B7280';
-    case 'image':      return '#8B5CF6';
-    case 'video':      return '#EC4899';
-    case 'audio':      return '#06B6D4';
-    case 'code':       return '#3B82F6';
-    case 'data':       return '#F59E0B';
-    case 'text':       return '#6B7280';
-    case 'other':      return '#9CA3AF';
-    default:           return '#9CA3AF';
+    case 'pdf':        return 'var(--color-filetype-pdf)';
+    case 'word':       return 'var(--color-filetype-word)';
+    case 'excel':      return 'var(--color-filetype-excel)';
+    case 'ppt':        return 'var(--color-filetype-ppt)';
+    case 'archive':    return 'var(--color-filetype-archive)';
+    case 'executable': return 'var(--color-neutral-500)';
+    case 'image':      return 'var(--color-filetype-image)';
+    case 'video':      return 'var(--color-filetype-video)';
+    case 'audio':      return 'var(--color-filetype-audio)';
+    case 'code':       return 'var(--color-filetype-code)';
+    case 'data':       return 'var(--color-filetype-data)';
+    case 'text':       return 'var(--color-neutral-500)';
+    case 'other':      return 'var(--color-neutral-400)';
+    default:           return 'var(--color-neutral-400)';
   }
 }
 

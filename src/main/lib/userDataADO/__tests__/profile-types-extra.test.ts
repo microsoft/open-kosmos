@@ -23,8 +23,13 @@ describe('isBuiltinAgent', () => {
   });
 
   it('returns false for non-builtin under openkosmos', () => {
-    expect(isBuiltinAgent('Research Agent', 'openkosmos')).toBe(false);
+    expect(isBuiltinAgent('Demo Agent', 'openkosmos')).toBe(false);
     expect(isBuiltinAgent('Custom Agent', 'openkosmos')).toBe(false);
+  });
+
+  it('ignores non-openkosmos brand arguments', () => {
+    expect(isBuiltinAgent('Kobi', 'custom-brand')).toBe(true);
+    expect(isBuiltinAgent('Demo Agent', 'custom-brand')).toBe(false);
   });
 
   it('returns false for undefined/null agent name', () => {
@@ -34,7 +39,7 @@ describe('isBuiltinAgent', () => {
 
   it('defaults to openkosmos when brandName is not provided', () => {
     expect(isBuiltinAgent('Kobi')).toBe(true);
-    expect(isBuiltinAgent('Research Agent')).toBe(false);
+    expect(isBuiltinAgent('Demo Agent')).toBe(false);
   });
 });
 
@@ -42,6 +47,11 @@ describe('getBuiltinAgentNames', () => {
   it('returns openkosmos agents by default', () => {
     const names = getBuiltinAgentNames();
     expect(names).toContain('Kobi');
+  });
+
+  it('ignores brand name casing and returns OpenKosmos built-ins', () => {
+    const names = getBuiltinAgentNames('OpenKosmos');
+    expect(names).toEqual(['Kobi']);
   });
 });
 
@@ -59,10 +69,14 @@ describe('getAgentKnowledge', () => {
     expect(getAgentKnowledge(agent).knowledgeBase).toBe('/kb/path');
   });
 
+  it('falls back to legacy knowledgeBase field', () => {
+    const agent = { knowledgeBase: '/legacy/kb' } as any;
+    expect(getAgentKnowledge(agent).knowledgeBase).toBe('/legacy/kb');
+  });
 });
 
 describe('withNormalizedAgentKnowledge', () => {
-  it('strips legacy knowledgeBase and normalizes knowledge', () => {
+  it('removes legacy fields and normalizes knowledge', () => {
     const agent: any = {
       name: 'Agent',
       model: 'gpt-4o',
@@ -74,9 +88,15 @@ describe('withNormalizedAgentKnowledge', () => {
       mcp_servers: [],
       skills: [],
       knowledgeBase: '/legacy',
+      teams_enabled: true,
+      teams_chats: [],
+      outlook_emails_enabled: false,
     };
     const result = withNormalizedAgentKnowledge(agent);
     expect('knowledgeBase' in result).toBe(false);
+    expect('teams_enabled' in result).toBe(false);
+    expect('teams_chats' in result).toBe(false);
+    expect('outlook_emails_enabled' in result).toBe(false);
     expect(result.knowledge.knowledgeBase).toBe('/kb');
   });
 });
@@ -88,7 +108,7 @@ describe('isProfileV2', () => {
   });
 
   it('returns false for V1 profile with authProvider', () => {
-    const profile = { alias: 'alice', chats: [], authProvider: 'github' } as any;
+    const profile = { alias: 'alice', chats: [], authProvider: 'microsoft' } as any;
     expect(isProfileV2(profile)).toBe(false);
   });
 

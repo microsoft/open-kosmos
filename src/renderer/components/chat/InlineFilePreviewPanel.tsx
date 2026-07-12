@@ -6,12 +6,14 @@
  * continuing to chat.
  *
  * Supports: Markdown (rendered), code (Monaco), JSON, HTML, PDF, text.
- * Read-only — editing is not supported in inline mode.
+ * Read-only previews use the shared OverlayFileViewer content renderer; local
+ * text-like files can still enter inline edit mode.
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   X,
+  ArrowLeft,
   FileText,
   FileSpreadsheet,
   FileIcon,
@@ -31,15 +33,21 @@ import {
   Monitor,
   Minimize,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { isInstallableSkillArtifact } from '../../lib/skills/installableSkillArtifacts';
-import rehypeRaw from 'rehype-raw';
 import type * as monaco from 'monaco-editor';
-import { FrontMatter, parseFrontMatter } from '../../lib/utils/yamlFrontMatter';
+import FileContentRenderer, {
+  classifyFileContent,
+  getFileExtension,
+  getMonacoLanguage,
+  isTextFileContentCategory,
+  type FileContentCategory,
+  type FileContentViewMode,
+} from '../ui/FileContentRenderer';
 import { useToast } from '../ui/ToastProvider';
+import { useI18n } from '../../lib/i18n/useI18n';
 import '../../styles/InlineFilePreviewPanel.css';
 import { createLogger } from '../../lib/utilities/logger';
+import { formatFileSize, getLocalPath, isLocalFile } from '../ui/fileViewerMetadata';
 const logger = createLogger('[InlineFilePreviewPanel]');
 
 // ============================================================
@@ -58,115 +66,22 @@ export interface InlineFilePreviewPanelProps {
   file: InlineFileDescriptor | null;
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Optional back affordance. When provided, a left-arrow button renders at the
+   * start of the header and returns to the workspace file tree (instead of
+   * destroying the sidepane). Used only for tree-origin previews.
+   */
+  onBack?: () => void;
   onDirtyStateChange?: (isDirty: boolean) => void;
   onInstallSkill?: (filePath: string) => void;
   style?: React.CSSProperties;
 }
 
 // ============================================================
-// Helpers (duplicated from OverlayFileViewer to stay decoupled)
+// Helpers
 // ============================================================
 
-type FileCategory = 'code' | 'text' | 'json' | 'markdown' | 'html' | 'pdf' | 'office' | 'other';
-type RenderViewMode = 'render' | 'source';
-
-const HTML_EXTENSIONS = new Set(['html', 'htm']);
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown']);
-const JSON_EXTENSIONS = new Set(['json']);
-const CODE_EXTENSIONS = new Set([
-  'js','jsx','mjs','cjs','ts','tsx','css','scss','less','sass',
-  'py','rb','java','kt','kts','scala','groovy',
-  'c','h','cpp','cc','cxx','hpp','hxx','cs','go','rs','swift','m',
-  'sh','bash','zsh','ps1','bat','cmd','sql','graphql','gql',
-  'xml','svg','yaml','yml','toml','ini',
-  'dockerfile','makefile','php','pl','pm','lua','r','dart','ex','exs','hs',
-]);
-const TEXT_EXTENSIONS = new Set(['txt','csv','tsv','cfg','conf','env','log','gitignore']);
-const PDF_EXTENSIONS = new Set(['pdf']);
-const OFFICE_EXTENSIONS = new Set(['doc','docx','xls','xlsx','ppt','pptx','odt','ods','odp']);
-
-const MONACO_EXTENSION_LANG: Record<string, string> = {
-  html:'html', htm:'html', md:'markdown', markdown:'markdown', json:'json',
-  txt:'plaintext', csv:'plaintext', tsv:'plaintext', cfg:'plaintext',
-  conf:'plaintext', env:'plaintext', log:'plaintext', gitignore:'plaintext',
-};
-
-const CODE_EXTENSION_LANG: Record<string, string> = {
-  js:'javascript',jsx:'jsx',mjs:'javascript',cjs:'javascript',ts:'typescript',tsx:'tsx',
-  css:'css',scss:'scss',less:'less',sass:'sass',py:'python',rb:'ruby',
-  java:'java',kt:'kotlin',kts:'kotlin',scala:'scala',groovy:'groovy',
-  c:'c',h:'c',cpp:'cpp',cc:'cpp',cxx:'cpp',hpp:'cpp',hxx:'cpp',cs:'csharp',
-  go:'go',rs:'rust',swift:'swift',m:'objectivec',
-  sh:'bash',bash:'bash',zsh:'bash',ps1:'powershell',bat:'batch',cmd:'batch',
-  sql:'sql',graphql:'graphql',gql:'graphql',
-  xml:'xml',svg:'xml',yaml:'yaml',yml:'yaml',toml:'toml',ini:'ini',
-  dockerfile:'docker',makefile:'makefile',
-  php:'php',pl:'perl',pm:'perl',lua:'lua',r:'r',dart:'dart',ex:'elixir',exs:'elixir',hs:'haskell',
-};
-
-const PRISM_TO_MONACO: Record<string, string> = {
-  javascript:'javascript',jsx:'javascript',typescript:'typescript',tsx:'typescript',
-  css:'css',scss:'scss',less:'less',sass:'scss',python:'python',ruby:'ruby',
-  java:'java',kotlin:'kotlin',scala:'scala',groovy:'plaintext',
-  c:'c',cpp:'cpp',csharp:'csharp',go:'go',rust:'rust',swift:'swift',objectivec:'objective-c',
-  bash:'shell',powershell:'powershell',batch:'bat',sql:'sql',graphql:'graphql',
-  xml:'xml',yaml:'yaml',toml:'plaintext',ini:'ini',docker:'dockerfile',makefile:'plaintext',
-  php:'php',perl:'perl',lua:'lua',r:'r',dart:'dart',elixir:'plaintext',haskell:'plaintext',
-};
-
-function getExtension(filename: string): string {
-  const parts = filename.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-}
-
-function classifyFile(file: InlineFileDescriptor): FileCategory {
-  const ext = getExtension(file.name);
-  if (file.mimeType) {
-    if (file.mimeType === 'application/pdf') return 'pdf';
-    if (file.mimeType === 'text/html') return 'html';
-    if (file.mimeType === 'text/markdown') return 'markdown';
-    if (file.mimeType === 'application/json') return 'json';
-    if (file.mimeType.startsWith('text/')) return 'text';
-    if (file.mimeType.includes('msword') || file.mimeType.includes('spreadsheet') ||
-        file.mimeType.includes('presentation') || file.mimeType.includes('officedocument')) return 'office';
-  }
-  if (HTML_EXTENSIONS.has(ext)) return 'html';
-  if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown';
-  if (JSON_EXTENSIONS.has(ext)) return 'json';
-  if (CODE_EXTENSIONS.has(ext)) return 'code';
-  if (TEXT_EXTENSIONS.has(ext)) return 'text';
-  if (PDF_EXTENSIONS.has(ext)) return 'pdf';
-  if (OFFICE_EXTENSIONS.has(ext)) return 'office';
-  return 'other';
-}
-
-function isLocalFile(url: string): boolean {
-  if (url.startsWith('file://')) return true;
-  if (url.startsWith('/')) return true;
-  if (/^[a-zA-Z]:[/\\]/.test(url)) return true;
-  return false;
-}
-
-function getLocalPath(url: string): string {
-  if (url.startsWith('file://')) return decodeURIComponent(url.replace('file://', ''));
-  return url;
-}
-
-function getMonacoLanguage(ext: string): string {
-  if (MONACO_EXTENSION_LANG[ext]) return MONACO_EXTENSION_LANG[ext];
-  const prismLang = CODE_EXTENSION_LANG[ext];
-  if (!prismLang) return 'plaintext';
-  return PRISM_TO_MONACO[prismLang] || 'plaintext';
-}
-
-function formatFileSize(bytes?: number): string {
-  if (bytes === undefined || bytes === null) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function getFileIcon(category: FileCategory) {
+function getFileIcon(category: FileContentCategory) {
   switch (category) {
     case 'code': return <Code size={16} />;
     case 'text': return <FileText size={16} />;
@@ -180,64 +95,6 @@ function getFileIcon(category: FileCategory) {
 }
 
 // ============================================================
-// Read-only Monaco viewer (lazy-loaded)
-// ============================================================
-
-const ReadonlyMonacoViewer: React.FC<{ content: string; language: string }> = ({ content, language }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    let destroyed = false;
-    import(/* webpackChunkName: "monaco-editor" */ 'monaco-editor').then((mod) => {
-      if (destroyed || !containerRef.current) return;
-      const editor = mod.editor.create(containerRef.current, {
-        value: content, language, theme: 'vs-dark',
-        automaticLayout: true, readOnly: true, domReadOnly: true,
-        minimap: { enabled: false }, fontSize: 15,
-        fontFamily: "'Menlo','Monaco','Courier New',monospace",
-        lineHeight: 23, padding: { top: 12, bottom: 12 },
-        scrollBeyondLastLine: false, wordWrap: 'off', tabSize: 2,
-        renderWhitespace: 'none', overviewRulerLanes: 0,
-        hideCursorInOverviewRuler: true, overviewRulerBorder: false,
-        scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
-        folding: true, lineNumbers: 'on', contextmenu: false,
-      });
-      editorRef.current = editor;
-      setIsReady(true);
-    });
-    return () => { destroyed = true; editorRef.current?.dispose(); editorRef.current = null; };
-  }, [content, language]);
-
-  return (
-    <div className="inline-preview-monaco-wrapper">
-      {!isReady && <div className="inline-preview-loading"><div className="inline-preview-spinner" /><span>Loading…</span></div>}
-      <div ref={containerRef} className="inline-preview-monaco-container" />
-    </div>
-  );
-};
-
-// ============================================================
-// Front-matter table (for Markdown YAML header)
-// ============================================================
-
-const FrontMatterTable: React.FC<{ frontMatter: FrontMatter }> = ({ frontMatter }) => {
-  const entries = Object.entries(frontMatter);
-  if (entries.length === 0) return null;
-  return (
-    <div className="inline-preview-frontmatter">
-      <table>
-        <tbody>
-          {entries.map(([k, v]) => <tr key={k}><td className="fm-key">{k}</td><td className="fm-val">{String(v)}</td></tr>)}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-// ============================================================
 // Component
 // ============================================================
 
@@ -245,15 +102,23 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
   file,
   isOpen,
   onClose,
+  onBack,
   onDirtyStateChange,
   onInstallSkill,
   style,
 }) => {
   const { showSuccess, showError } = useToast();
+  const { t } = useI18n();
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<RenderViewMode>('render');
+  const [viewMode, setViewMode] = useState<FileContentViewMode>('render');
   const [isContentReady, setIsContentReady] = useState(false);
   const [fileSize, setFileSize] = useState<number | undefined>(undefined);
   const [isEditing, setIsEditing] = useState(false);
@@ -269,19 +134,12 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
   const savedContentRef = useRef<string>('');
 
   const fileKey = file ? `${file.name}|${file.url}` : null;
-  const category: FileCategory = file ? classifyFile(file) : 'other';
+  const category: FileContentCategory = file ? classifyFileContent(file) : 'other';
   const isEditable = useMemo(() => {
     if (!file) return false;
     if (!isLocalFile(file.url)) return false;
-    return category === 'text' || category === 'code' || category === 'json' || category === 'markdown' || category === 'html';
+    return isTextFileContentCategory(category);
   }, [file, category]);
-
-  const htmlBlobUrl = useMemo(() => {
-    if (category !== 'html' || !textContent) return null;
-    return URL.createObjectURL(new Blob([textContent], { type: 'text/html;charset=utf-8' }));
-  }, [category, textContent]);
-
-  useEffect(() => { return () => { if (htmlBlobUrl) URL.revokeObjectURL(htmlBlobUrl); }; }, [htmlBlobUrl]);
 
   useEffect(() => {
     onDirtyStateChange?.(isDirty);
@@ -309,8 +167,7 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
     setIsDirty(false);
     setSaveError(null);
 
-    const isText = category === 'text' || category === 'code' || category === 'json' || category === 'markdown' || category === 'html';
-    if (!isText) {
+    if (!isTextFileContentCategory(category)) {
       setIsLoading(false); setIsContentReady(true); loadedFileKeyRef.current = fileKey;
       return;
     }
@@ -323,27 +180,27 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
           const stat = await window.electronAPI?.fs?.stat(localPath);
           if (cancelled) return;
           if (stat?.success && stat.stats?.size !== undefined) setFileSize(stat.stats.size);
-          if (!stat?.success) { setLoadError(`File not found: ${localPath}`); setIsLoading(false); return; }
+          if (!stat?.success) { setLoadError(tRef.current('viewer.file.fileNotFound', { path: localPath })); setIsLoading(false); return; }
           const result = await window.electronAPI?.fs?.readFile(localPath, 'utf-8');
           if (cancelled) return;
           if (result?.success && result.content !== undefined) {
             setTextContent(result.content); loadedFileKeyRef.current = fileKey;
           } else {
-            setLoadError(result?.error || 'Failed to load file');
+            setLoadError(result?.error || tRef.current('viewer.file.failedToLoadFile'));
           }
           setIsLoading(false);
         } catch {
-          if (!cancelled) { setLoadError(`Cannot read: ${localPath}`); setIsLoading(false); }
+          if (!cancelled) { setLoadError(tRef.current('viewer.file.cannotRead', { path: localPath })); setIsLoading(false); }
         }
       })();
     } else {
       fetch(file.url)
         .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
         .then(text => { if (!cancelled) { setTextContent(text); loadedFileKeyRef.current = fileKey; setIsLoading(false); } })
-        .catch(() => { if (!cancelled) { setLoadError('Failed to load file'); setIsLoading(false); } });
+        .catch(() => { if (!cancelled) { setLoadError(tRef.current('viewer.file.failedToLoadFile')); setIsLoading(false); } });
     }
     return () => { cancelled = true; };
-  }, [isOpen, file, category]);
+  }, [isOpen, file, category, fileKey]);
 
   // Auto-refresh: poll file mtime and re-read when changed on disk
   const lastMtimeRef = useRef<number | null>(null);
@@ -352,8 +209,7 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
       lastMtimeRef.current = null;
       return;
     }
-    const isText = category === 'text' || category === 'code' || category === 'json' || category === 'markdown' || category === 'html';
-    if (!isText) return;
+    if (!isTextFileContentCategory(category)) return;
 
     const localPath = getLocalPath(file.url);
 
@@ -399,7 +255,7 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
 
     savedContentRef.current = textContent;
 
-    const ext = file ? getExtension(file.name) : '';
+    const ext = file ? getFileExtension(file.name) : '';
     const language = getMonacoLanguage(ext);
 
     let destroyed = false;
@@ -458,8 +314,8 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
 
   const confirmDiscardChanges = useCallback(() => {
     if (!isDirty) return true;
-    return window.confirm('You have unsaved changes. Do you want to discard them?');
-  }, [isDirty]);
+    return window.confirm(t('viewer.file.discardUnsavedConfirm'));
+  }, [isDirty, t]);
 
   const handleEdit = useCallback(() => {
     if (!isEditable || textContent === null) return;
@@ -493,19 +349,19 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
         setTextContent(content);
         savedContentRef.current = content;
         setIsDirty(false);
-        showSuccess(`Saved ${file.name}`);
+        showSuccess(t('viewer.file.saved', { name: file.name }));
       } else {
-        const errorMessage = result?.error || 'Failed to save file';
+        const errorMessage = result?.error || t('viewer.file.saveFailed');
         setSaveError(errorMessage);
         showError(errorMessage);
       }
     } catch {
-      showError('Failed to save file');
-      setSaveError('Failed to save file');
+      showError(t('viewer.file.saveFailed'));
+      setSaveError(t('viewer.file.saveFailed'));
     } finally {
       setIsSaving(false);
     }
-  }, [file, isEditable, isDirty, showError, showSuccess]);
+  }, [file, isEditable, isDirty, showError, showSuccess, t]);
 
   const handleDownload = useCallback(() => {
     if (!file) return;
@@ -557,6 +413,12 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
     onClose();
   }, [confirmDiscardChanges, onClose]);
 
+  const handleBack = useCallback(() => {
+    if (!onBack) return;
+    if (!confirmDiscardChanges()) return;
+    onBack();
+  }, [confirmDiscardChanges, onBack]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -582,11 +444,11 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isEditing, handleCancelEdit, handleClose, handleSave]);
+  }, [isOpen, isEditing, handleCancelEdit, handleClose, handleSave, toggleFullscreen]);
 
   if (!isOpen || !file) return null;
 
-  const ext = getExtension(file.name);
+  const ext = getFileExtension(file.name);
 
   const renderBody = () => {
     const isNonText = category === 'pdf' || category === 'office' || category === 'other';
@@ -596,13 +458,13 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
     }
 
     if (!isNonText && (isLoading || !isContentReady || loadedFileKeyRef.current !== fileKey)) {
-      return <div className="inline-preview-loading"><div className="inline-preview-spinner" /><span>Loading…</span></div>;
+      return <div className="inline-preview-loading"><div className="inline-preview-spinner" /><span>{t('viewer.inline.loading')}</span></div>;
     }
 
     if (isEditing) {
       return (
         <div className="inline-preview-edit-wrapper">
-          {isEditorLoading && <div className="inline-preview-loading"><div className="inline-preview-spinner" /><span>Loading editor…</span></div>}
+          {isEditorLoading && <div className="inline-preview-loading"><div className="inline-preview-spinner" /><span>{t('viewer.loadingEditor')}</span></div>}
           {saveError && (
             <div className="inline-preview-save-error">
               <AlertTriangle size={14} />
@@ -615,37 +477,19 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
     }
 
     switch (category) {
-      case 'html':
-        if (viewMode === 'source') return <ReadonlyMonacoViewer content={textContent ?? ''} language="html" />;
-        if (!htmlBlobUrl) return null;
-        return <iframe className="inline-preview-iframe" src={htmlBlobUrl} title={file.name} sandbox="allow-scripts allow-popups" />;
-
       case 'json':
-        return <ReadonlyMonacoViewer content={textContent ?? ''} language="json" />;
-
-      case 'markdown': {
-        if (viewMode === 'source') return <ReadonlyMonacoViewer content={textContent ?? ''} language="markdown" />;
-        const { frontMatter, content: body } = parseFrontMatter(textContent ?? '');
-        return (
-          <div className="inline-preview-markdown">
-            {frontMatter && <FrontMatterTable frontMatter={frontMatter} />}
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
-              components={{
-                a: ({ href, children, ...props }) => {
-                  if (href && /^https?:\/\//.test(href)) {
-                    return <a {...props} href={href} onClick={e => { e.preventDefault(); window.open(href, '_blank', 'noopener,noreferrer'); }} title={href} style={{ cursor: 'pointer' }}>{children}</a>;
-                  }
-                  return <a {...props} href={href}>{children}</a>;
-                },
-              }}
-            >{body}</ReactMarkdown>
-          </div>
-        );
-      }
-
+      case 'markdown':
       case 'code':
       case 'text':
-        return <ReadonlyMonacoViewer content={textContent ?? ''} language={getMonacoLanguage(ext)} />;
+      case 'html':
+        return (
+          <FileContentRenderer
+            name={file.name}
+            mimeType={file.mimeType}
+            content={textContent ?? ''}
+            viewMode={viewMode}
+          />
+        );
 
       case 'pdf': {
         const src = isLocalFile(file.url) ? `file://${getLocalPath(file.url)}` : file.url;
@@ -658,8 +502,8 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
         return (
           <div className="inline-preview-fallback">
             <FileIcon size={40} />
-            <p>This file type cannot be previewed inline.</p>
-            <button className="inline-preview-open-btn" onClick={handleOpenExternal}>Open with Default App</button>
+            <p>{t('viewer.file.inlineUnsupported')}</p>
+            <button className="inline-preview-open-btn" onClick={handleOpenExternal}>{t('viewer.file.openDefaultApp')}</button>
           </div>
         );
     }
@@ -670,15 +514,20 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
       {/* Header */}
       <div className="inline-preview-header">
         <div className="inline-preview-file-info">
+          {onBack && (
+            <button className="inline-preview-btn inline-preview-back" onClick={handleBack} title={t('viewer.file.backToFiles')}>
+              <ArrowLeft size={16} />
+            </button>
+          )}
           <span className="inline-preview-icon">{getFileIcon(category)}</span>
           <div className="inline-preview-title-block">
             <span className="inline-preview-filename" title={file.name}>{file.name}</span>
             <span className="inline-preview-meta">
-              {ext.toUpperCase() || 'FILE'}
+              {ext.toUpperCase() || t('viewer.file.fileLabel')}
               {fileSize !== undefined ? ` · ${formatFileSize(fileSize)}` : ''}
               {file.lastModified ? ` · ${file.lastModified}` : ''}
               <span className={`inline-preview-mode-badge ${isEditing ? 'inline-preview-mode-edit' : 'inline-preview-mode-preview'}`}>
-                {isEditing ? 'EDIT' : 'PREVIEW'}
+                {isEditing ? t('viewer.file.editMode') : t('viewer.file.previewMode')}
               </span>
             </span>
           </div>
@@ -686,10 +535,10 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
         <div className="inline-preview-actions">
           {isEditing ? (
             <>
-              <button className={`inline-preview-btn ${isDirty ? 'inline-preview-btn-dirty' : ''}`} onClick={handleSave} disabled={isSaving || !isDirty} title={isDirty ? 'Save (Ctrl/Cmd+S)' : 'No changes'}>
+              <button className={`inline-preview-btn ${isDirty ? 'inline-preview-btn-dirty' : ''}`} onClick={handleSave} disabled={isSaving || !isDirty} title={isDirty ? t('viewer.file.saveCtrlShortcut') : t('viewer.file.noChanges')}>
                 <Save size={16} />
               </button>
-              <button className="inline-preview-btn" onClick={handleCancelEdit} disabled={isSaving} title="Exit Edit Mode">
+              <button className="inline-preview-btn" onClick={handleCancelEdit} disabled={isSaving} title={t('viewer.file.exitEditMode')}>
                 <LogOut size={16} />
               </button>
             </>
@@ -697,32 +546,32 @@ export const InlineFilePreviewPanel: React.FC<InlineFilePreviewPanelProps> = ({
             <>
               {(category === 'html' || category === 'markdown') && (
                 <button className="inline-preview-btn" onClick={() => setViewMode(v => v === 'render' ? 'source' : 'render')}
-                  title={viewMode === 'render' ? 'View Source' : 'View Rendered'}>
+                  title={viewMode === 'render' ? t('viewer.file.viewSource') : t('viewer.file.viewRenderedTitle')}>
                   {viewMode === 'render' ? <Code size={16} /> : <Eye size={16} />}
                 </button>
               )}
               {isEditable && (
-                <button className="inline-preview-btn" onClick={handleEdit} title="Edit">
+                <button className="inline-preview-btn" onClick={handleEdit} title={t('common.edit')}>
                   <Pencil size={16} />
                 </button>
               )}
-              <button className="inline-preview-btn" onClick={handleOpenExternal} title="Open externally">
+              <button className="inline-preview-btn" onClick={handleOpenExternal} title={t('viewer.file.openExternally')}>
                 <ExternalLink size={16} />
               </button>
-              <button className="inline-preview-btn" onClick={handleDownload} title="Show in folder">
+              <button className="inline-preview-btn" onClick={handleDownload} title={t('viewer.file.showInFolder')}>
                 <Download size={16} />
               </button>
               {onInstallSkill && isLocalFile(file.url) && isInstallableSkillArtifact(getLocalPath(file.url)) && (
-                <button className="inline-preview-btn inline-preview-btn-install" onClick={() => onInstallSkill(getLocalPath(file.url))} title="Install Skill">
+                <button className="inline-preview-btn inline-preview-btn-install" onClick={() => onInstallSkill(getLocalPath(file.url))} title={t('viewer.file.installSkill')}>
                   <Download size={16} />
                 </button>
               )}
-              <button className="inline-preview-btn" onClick={() => { void toggleFullscreen(); }} title={isFullscreen ? 'Exit Fullscreen (Ctrl+Shift+F)' : 'Fullscreen (Ctrl+Shift+F)'}>
+              <button className="inline-preview-btn" onClick={() => { void toggleFullscreen(); }} title={isFullscreen ? t('viewer.file.exitFullscreenCtrlShortcut') : t('viewer.file.fullscreenCtrlShortcut')}>
                 {isFullscreen ? <Minimize size={16} /> : <Monitor size={16} />}
               </button>
             </>
           )}
-          <button className="inline-preview-btn inline-preview-close" onClick={handleClose} title="Close preview">
+          <button className="inline-preview-btn inline-preview-close" onClick={handleClose} title={t('viewer.file.closePreview')}>
             <X size={16} />
           </button>
         </div>

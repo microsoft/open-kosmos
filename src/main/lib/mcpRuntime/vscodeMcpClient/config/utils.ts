@@ -206,6 +206,7 @@ export function getPlatformInfo(platform?: SupportedPlatform): PlatformInfo {
   return {
     platform: currentPlatform,
     isSupported: isPlatformSupported(currentPlatform),
+    vscodeConfigPath: configPaths[0] || '',
     vscodeConfigPaths: configPaths,
     displayName: getPlatformDisplayName(currentPlatform)
   };

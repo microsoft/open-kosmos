@@ -39,7 +39,7 @@ describe('AgentDropdownMenu', () => {
       chats: [],
       data: {
         profile: {
-          primaryAgent: 'Primary Agent',
+          primaryChat: 'other-chat',
         },
       },
     });
@@ -68,7 +68,7 @@ describe('AgentDropdownMenu', () => {
       ],
       data: {
         profile: {
-          primaryAgent: 'Primary Agent',
+          primaryChat: 'other-chat',
         },
       },
     });
@@ -121,7 +121,7 @@ describe('AgentDropdownMenu', () => {
       ],
       data: {
         profile: {
-          primaryAgent: 'Primary Agent',
+          primaryChat: 'other-chat',
         },
       },
     });

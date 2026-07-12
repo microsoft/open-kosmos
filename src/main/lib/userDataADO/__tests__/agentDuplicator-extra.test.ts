@@ -70,12 +70,12 @@ function makePcm(chats: ChatConfig[], opts: { addSuccess?: boolean } = {}) {
     addChatConfig: vi.fn(async (alias: string, chat: ChatConfig) => {
       if (!addSuccess) return false;
       if (chat.agent) {
-        if (!chat.agent.workspace || chat.agent.workspace === '') {
-          chat.agent.workspace = `/workspace/agent-${chat.agent.name?.toLowerCase().replace(/\s+/g, '-')}-on-device`;
+        if (!chat.workspace || chat.workspace === '') {
+          chat.workspace = `/workspace/chat-${chat.agent.name?.toLowerCase().replace(/\s+/g, '-')}`;
         }
         if (!chat.agent.knowledge?.knowledgeBase) {
           const p = require('path');
-          chat.agent.knowledge = { knowledgeBase: p.join(chat.agent.workspace, 'knowledge') };
+          chat.agent.knowledge = { knowledgeBase: p.join('/agents', chat.agent.id || 'agent-new', 'knowledge') };
         }
       }
       chatStore.set(chat.chat_id, chat);
@@ -134,7 +134,7 @@ describe('duplicateAgent', () => {
 
   it('sets scheduleCopyFailed when createJob rejects', async () => {
     vi.mocked(schedulerManager.listJobs).mockResolvedValue([
-      { id: 'sched_20260101_a_001', name: 'Job', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, agentId: 'chat_src', message: 'go', status: 'pending' } as any,
+      { id: 'sched_20260101_a_001', name: 'Job', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, chat_id: 'chat_src', message: 'go', status: 'pending' } as any,
     ]);
     vi.mocked(schedulerManager.createJob).mockRejectedValue(new Error('sched error'));
 
@@ -147,7 +147,7 @@ describe('duplicateAgent', () => {
 
   it('sets scheduleCopyFailed when some createJob calls fail', async () => {
     vi.mocked(schedulerManager.listJobs).mockResolvedValue([
-      { id: 'sched_20260101_a_001', name: 'Job 1', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, agentId: 'chat_src', message: 'go', status: 'pending' } as any,
+      { id: 'sched_20260101_a_001', name: 'Job 1', scheduleType: 'cron', cronExpression: '0 9 * * *', enabled: true, chat_id: 'chat_src', message: 'go', status: 'pending' } as any,
     ]);
     vi.mocked(schedulerManager.createJob).mockRejectedValue(new Error('rejected'));
 
@@ -155,5 +155,70 @@ describe('duplicateAgent', () => {
     const pcm = makePcm([chat]);
     const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
     expect(result.scheduleCopyFailed).toBe(true);
+  });
+
+  it('defaults chat_type to single_agent when source chat_type is missing', async () => {
+    const chat = makeChat({ chat_type: undefined as any, agent: makeAgent({ workspace: '', knowledge: { knowledgeBase: '' } }) });
+    const pcm = makePcm([chat]);
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(true);
+  });
+
+  it('uses empty knowledge path when the new chat cannot be resolved', async () => {
+    const source = makeChat();
+    const pcm = {
+      getChatConfig: vi.fn((_alias: string, chatId: string) => (chatId === 'chat_src' ? source : null)),
+      addChatConfig: vi.fn(async () => true),
+    } as unknown as ProfileCacheManager;
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(true);
+    expect(result.knowledgeCopyFailed).toBe(false);
+  });
+
+  it('returns Unknown error when a non-Error is thrown', async () => {
+    const pcm = {
+      getChatConfig: vi.fn(() => { throw 'boom'; }),
+      addChatConfig: vi.fn(async () => true),
+    } as unknown as ProfileCacheManager;
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unknown error');
+  });
+
+  it('skips copy when the source knowledge path is not a directory', async () => {
+    (fs.promises.stat as any).mockResolvedValue({ isDirectory: () => false });
+    const chat = makeChat();
+    const pcm = makePcm([chat]);
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(true);
+    expect(result.knowledgeCopyFailed).toBe(false);
+  });
+
+  it('recurses into nested subdirectories when copying knowledge', async () => {
+    (fs.promises.stat as any).mockResolvedValue({ isDirectory: () => true });
+    (fs.promises.readdir as any)
+      .mockResolvedValueOnce(['sub'])
+      .mockResolvedValueOnce([]);
+    const chat = makeChat();
+    const pcm = makePcm([chat]);
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(true);
+    expect(fs.promises.readdir).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not carry the source agent store id to the duplicate (a fresh id is minted downstream)', async () => {
+    // If the duplicate reused the source's store id, addChatConfig -> persistNewChatAgents
+    // would OVERWRITE agents/{sourceId}/agent.json and point the copy at the source's
+    // knowledge. The duplicate must be handed to addChatConfig with no id so a fresh
+    // UUID is minted (via ensureInlineAgentIds) for its own store dir.
+    const sourceAgent = makeAgent({ id: 'agent_20260101010101_src123abc', workspace: '', knowledge: { knowledgeBase: '' } });
+    const chat = makeChat({ agent: sourceAgent });
+    const pcm = makePcm([chat]);
+    const result = await duplicateAgent(pcm, 'alice', 'chat_src', 'Copy');
+    expect(result.success).toBe(true);
+    const passedChat = (pcm.addChatConfig as any).mock.calls[0][1];
+    expect(passedChat.agent.id).toBeUndefined();
+    // The source agent object is untouched (its store id is preserved).
+    expect(sourceAgent.id).toBe('agent_20260101010101_src123abc');
   });
 });

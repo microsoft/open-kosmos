@@ -20,9 +20,9 @@ Connects Hermes to the OpenKosmos desktop app via WebSocket, allowing users to c
 
 3. Configure environment variables:
    ```bash
-   export OpenKosmos_URL="ws://<openkosmos-host>:9527"
-   export OpenKosmos_TOKEN="<your-token>"
-   export OpenKosmos_ALLOW_ALL_USERS=true
+   export OPENKOSMOS_URL="ws://<openkosmos-host>:9527"
+   export OPENKOSMOS_TOKEN="<your-token>"
+   export OPENKOSMOS_ALLOW_ALL_USERS=true
    ```
 
 4. Configure LLM provider in `~/.hermes/config.yaml`:
@@ -30,7 +30,7 @@ Connects Hermes to the OpenKosmos desktop app via WebSocket, allowing users to c
    model:
      default: claude-opus-4.6
      provider: custom-local
-   
+
    providers:
      custom-local:
        base_url: http://localhost:4141/v1
@@ -47,7 +47,7 @@ Connects Hermes to the OpenKosmos desktop app via WebSocket, allowing users to c
 The adapter connects as a WS client to OpenKosmos's WS server (port 9527):
 
 - Auth: `{"type": "auth", "token": "..."}`
-- User message (OpenKosmos → Hermes): `{"type": "message", "text": "...", "conversationId": "..."}`  
+- User message (OpenKosmos → Hermes): `{"type": "message", "text": "...", "conversationId": "..."}`
 - Reply (Hermes → OpenKosmos): `{"type": "push", "text": "...", "conversationId": "..."}`
 - End reply: `{"type": "push_end", "conversationId": "..."}`
 

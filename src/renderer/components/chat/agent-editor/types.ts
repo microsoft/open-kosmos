@@ -1,5 +1,7 @@
 // Agent Chat Editor type definitions
 
+import type { AgentSystemPrompt } from '@shared/types/agentSystemPrompt';
+
 // Agent MCP Server config - contains server name and selected tools
 export interface AgentMcpServer {
   name: string;
@@ -10,36 +12,34 @@ export interface AgentConfig {
   id: string
   name: string
   emoji: string
-  avatar?: string // Agent avatar URL (only for IN-LIBRARY agents)
+  avatar?: string
   role: string
   model: string
-  workspace?: string // Agent working directory path
+  workspace?: string // Chat working directory path
   knowledgeBase?: string // Knowledge Base directory path, defaults to workspace/knowledge
   version?: string // Agent version number
-  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL' // Agent source
+  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL'
   mcpServers: AgentMcpServer[] // MCP server config array
-  systemPrompt: string
+  systemPrompt: AgentSystemPrompt
   skills?: string[] // List of Skill names used by this Agent
-  enabledPlugins?: string[] // Plugin IDs enabled for this Agent
-  subAgents?: string[] // List of Sub-Agent names used by this Agent
+  hooks?: string[] // List of Hook ids bound to this Agent
   authToken?: string // Auth token for external agent WS authentication
   createdAt: Date
   updatedAt: Date
 }
 
-export type AgentEditorTabName = 'basic' | 'knowledge' | 'mcp' | 'skills' | 'plugins' | 'schedules' | 'sub_agents' | 'prompt'
+export type AgentEditorTabName = 'basic' | 'knowledge' | 'mcp' | 'skills' | 'hooks' | 'schedules' | 'prompt'
 
 export interface TabComponentProps {
   mode: 'add' | 'update'
-  agentId?: string
+  chatId?: string
   agentData?: AgentConfig
   onSave: (data: Partial<AgentConfig>) => Promise<AgentConfig> // Returns the fully updated AgentConfig
   onAgentCreated?: (agentId: string) => void // Callback after Basic Tab creation succeeds in Add mode
   onDataChange?: (tabName: AgentEditorTabName, data: Partial<AgentConfig>, hasChanges: boolean) => void // Change tracking callback
   cachedData?: Partial<AgentConfig> | null // Cached modified data, used to preserve changes when switching tabs
   fieldErrors?: Record<string, string> // Field-level error messages
-  readOnly?: boolean // Read-only mode, prevents editing for IN-LIBRARY agents
-  isFromLibrary?: boolean // Whether from Library, for fine-grained edit permission control (e.g., model editable but name not editable in Basic Tab)
+  readOnly?: boolean
 }
 
 export interface TabState {
@@ -49,9 +49,8 @@ export interface TabState {
     knowledge: boolean
     mcp: boolean
     skills: boolean
-    plugins: boolean
+    hooks: boolean
     schedules: boolean
-    sub_agents: boolean
     prompt: boolean
   }
   agentCreated: boolean // Flag indicating whether the agent has been created in Add mode
@@ -70,4 +69,5 @@ export interface MarkdownEditorProps {
   showPreview: boolean
   onTogglePreview: () => void
   readOnly?: boolean // Read-only mode, prevents editing content
+  emptyTips?: readonly string[] // Guidance shown when the editor is empty
 }

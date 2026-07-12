@@ -7,6 +7,7 @@ import {
   isValidChatSessionIdFormat,
 } from '../../../shared/utils/idFormats';
 import { generateChatSessionId as generateRuntimeChatSessionId } from '../utilities/idFactory';
+import { isSafeAgentId } from './agentStoreManager';
 import { createLogger } from '../unifiedLogger';
 const logger = createLogger();
 
@@ -57,34 +58,26 @@ export function getProfileDirectoryPath(alias: string): string {
   return profileDir;
 }
 
-export interface Mem0StoragePaths {
-  basePath: string;
-  historyDirectory: string;
-  historyDbPath: string;
-}
-
-export function ensureMem0StoragePaths(
-  alias: string,
-  baseDir?: string
-): Mem0StoragePaths {
-  const profileDir = baseDir ? path.resolve(baseDir) : getProfileDirectoryPath(alias);
-  const ragBasePath = path.join(profileDir, 'rag');
-  const historyDirectory = path.join(ragBasePath, 'history');
-
-  [ragBasePath, historyDirectory].forEach(ensureDirectoryExists);
-
-  const historyDbPath = path.join(historyDirectory, 'openkosmos_memory.db');
-
-  return {
-    basePath: ragBasePath,
-    historyDirectory,
-    historyDbPath,
-  };
+/**
+ * Per-profile directory for Agent Hook scripts and artifacts.
+ * Hook command actions can reference files here via the
+ * `${OPENKOSMOS_HOOKS_ARTIFACTS_PATH}` placeholder, and the same path is
+ * exported as the `OPENKOSMOS_HOOKS_ARTIFACTS_PATH` env var to spawned
+ * hook processes. The directory is created on first access.
+ */
+export function getHooksArtifactsPath(alias: string): string {
+  const profileDir = getProfileDirectoryPath(alias);
+  const artifactsDir = path.join(profileDir, 'hooks-artifacts');
+  ensureDirectoryExists(artifactsDir);
+  return artifactsDir;
 }
 
 /**
  * Get the default workspace path for a specific chat
  * Path format: {profile_directory}/chat_workspaces/{chat_id}/
+ *
+ * Chat workspaces are keyed by `chat_id` in the separated Agent/Chat model.
+ * This is the canonical workspace resolver for both new and existing chats.
  */
 export function getDefaultWorkspacePath(alias: string, chatId: string): string {
   if (!alias) {
@@ -92,6 +85,15 @@ export function getDefaultWorkspacePath(alias: string, chatId: string): string {
   }
   if (!chatId) {
     throw new Error('Chat ID is required to resolve workspace path.');
+  }
+  // Confine chatId to a single safe path segment (twin of getAgentKnowledgePath).
+  // chatId is profile-supplied (a corrupted/imported profile.json can carry a
+  // malicious chat_id like '../../evil'), and this is the canonical resolver for
+  // every chat workspace (schedules, logs, month dirs), so an unguarded segment
+  // would let ensureDirectoryExists create — and downstream code read/write — a
+  // directory OUTSIDE chat_workspaces (path-traversal).
+  if (!isSafeAgentId(chatId)) {
+    throw new Error(`Chat ID must be a safe path segment: ${JSON.stringify(chatId)}`);
   }
 
   const profileDir = getProfileDirectoryPath(alias);
@@ -105,8 +107,35 @@ export function getDefaultWorkspacePath(alias: string, chatId: string): string {
 }
 
 /**
+ * Get the per-agent knowledge directory under the standalone agent store.
+ * Path format: {profile_directory}/agents/{agentId}/knowledge/
+ * Replaces the legacy chat_workspaces/agent-{name}-{source}/knowledge layout.
+ */
+export function getAgentKnowledgePath(alias: string, agentId: string): string {
+  if (!alias) {
+    throw new Error('Profile alias is required to resolve knowledge path.');
+  }
+  // Confine the id to a single safe path segment (twin of agentStoreManager.getAgentDir).
+  // agentId here can be a caller/profile-supplied value (addChatConfig derives it from the
+  // inline agent), so a corrupt/malicious id like '../../evil' must never build a knowledge
+  // dir outside agents/{id}. isSafeAgentId also rejects empty/non-string ids.
+  if (!isSafeAgentId(agentId)) {
+    throw new Error(`Agent ID is required and must be a safe path segment: ${JSON.stringify(agentId)}`);
+  }
+  const profileDir = getProfileDirectoryPath(alias);
+  const knowledgePath = path.join(profileDir, 'agents', agentId, 'knowledge');
+  ensureDirectoryExists(knowledgePath);
+  return knowledgePath;
+}
+
+/**
  * Get the default workspace path for a new agent
  * Path format: {profile_directory}/chat_workspaces/agent-{name}-{source}/
+ *
+ * @deprecated Chat workspaces are keyed by `chat_id` in the separated
+ * Agent/Chat model. Use {@link getDefaultWorkspacePath} (chat_id-keyed) for new
+ * chats. Retained only for the load-time consolidation migration that moves
+ * legacy agent-name-keyed dirs onto their chat_id.
  *
  * @param alias - User profile alias
  * @param agentName - Agent name (spaces will be replaced with hyphens, converted to lowercase)
@@ -192,8 +221,18 @@ export function moveContentsToDirectory(srcDir: string, destDir: string, skipIte
       }
       const srcPath = path.join(srcDir, item);
       const destPath = path.join(destDir, item);
-      // Skip if destination already exists
       if (fs.existsSync(destPath)) {
+        // Both sides directories: recursively merge so same-named subtrees
+        // (e.g. a month dir like 202606 present in both the legacy and the
+        // chat_id workspace) combine instead of being skipped wholesale. Any
+        // other conflict (file-vs-file, file-vs-dir) keeps the existing
+        // destination so user data is never overwritten.
+        if (fs.statSync(srcPath).isDirectory() && fs.statSync(destPath).isDirectory()) {
+          movedCount += moveContentsToDirectory(srcPath, destPath, skipItems);
+          if (fs.readdirSync(srcPath).length === 0) {
+            fs.rmdirSync(srcPath);
+          }
+        }
         continue;
       }
       fs.renameSync(srcPath, destPath);
@@ -269,6 +308,15 @@ export function getChatSessionsChatPath(alias: string, chatId: string): string {
   }
   if (!chatId) {
     throw new Error('Chat ID is required to resolve chat sessions path.');
+  }
+  // Confine chatId to a single safe path segment (twin of getDefaultWorkspacePath).
+  // chatId is profile-supplied (a corrupted/imported profile.json can carry a
+  // malicious chat_id like '../../evil'), and this is the canonical resolver every
+  // chat_sessions read/write sink derives from (index/month/session files), so an
+  // unguarded segment would let ensureDirectoryExists create — and downstream code
+  // read/write — a directory OUTSIDE chat_sessions (path-traversal).
+  if (!isSafeAgentId(chatId)) {
+    throw new Error(`Chat ID must be a safe path segment: ${JSON.stringify(chatId)}`);
   }
 
   const chatSessionsRoot = getChatSessionsRootPath(alias);
@@ -404,6 +452,14 @@ export function removeChatSessionsDirectory(alias: string, chatId: string): bool
   if (!alias || !chatId) {
     return false;
   }
+  // Never build a recursive-delete target from an unsafe segment: a corrupt
+  // chat_id like '../../evil' would otherwise make removeDirectoryRecursively
+  // delete a directory OUTSIDE chat_sessions (destructive path-traversal).
+  // Mirrors removeDefaultWorkspaceDirectory's guard for chat_workspaces.
+  if (!isSafeAgentId(chatId)) {
+    logger.error(`[pathUtils] Refusing to remove chat sessions for unsafe chat id: ${JSON.stringify(chatId)}`);
+    return false;
+  }
 
   try {
     const profileDir = getProfileDirectoryPath(alias);
@@ -426,6 +482,13 @@ export function removeChatSessionsDirectory(alias: string, chatId: string): bool
  */
 export function removeDefaultWorkspaceDirectory(alias: string, chatId: string): boolean {
   if (!alias || !chatId) {
+    return false;
+  }
+  // Never build a recursive-delete target from an unsafe segment: a corrupt
+  // chat_id like '../../evil' would otherwise make removeDirectoryRecursively
+  // delete a directory OUTSIDE chat_workspaces (destructive path-traversal).
+  if (!isSafeAgentId(chatId)) {
+    logger.error(`[pathUtils] Refusing to remove workspace for unsafe chat id: ${JSON.stringify(chatId)}`);
     return false;
   }
 

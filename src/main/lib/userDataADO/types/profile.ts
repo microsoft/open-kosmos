@@ -3,9 +3,15 @@
  */
 
 import { BUILTIN_DEFAULTS_VERSION } from '../../../../shared/constants/builtinSkills';
+import { buildChatSessionId } from '../../../../shared/utils/idFormats';
+import { createDefaultAgentSystemPrompt, normalizeAgentSystemPrompt, type AgentSystemPrompt } from '../../../../shared/types/agentSystemPrompt';
+import type { HookDefinition } from '../../../../shared/agentHooks/profileTypes';
+export type { AgentHookEvent, CommandHookAction, HookAction, HookDefinition, HttpHookAction, HttpHookMethod } from '../../../../shared/agentHooks/profileTypes';
+import type { CodingCliId } from '../../../../shared/types/codingCli';
+export type { CodingCliId } from '../../../../shared/types/codingCli';
 
 /** Default model ID — consistent with GhcModelsManager.getDefaultModel() */
-const DEFAULT_MODEL_ID = 'claude-sonnet-4.6';
+const DEFAULT_MODEL_ID = 'claude-opus-4.6';
 
 /**
  * Skill configuration
@@ -17,14 +23,52 @@ export interface SkillConfig {
   description: string;
   /** Skill version */
   version: string;
-  /** Remote version from CDN (for IN-LIBRARY skills) */
+  /** Inert legacy version metadata retained for persisted-profile compatibility */
   remoteVersion?: string;
-  /** Skill source: IN-LIBRARY (from skill library), ON-DEVICE (from local machine), or PLUGIN (from plugin system) */
-  source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN';
+  /** Legacy Skill origin metadata retained for persisted profile compatibility. */
+  source: 'IN-LIBRARY' | 'ON-DEVICE';
+}
+
+/** Schema version of the standalone skills.json file */
+export const SKILLS_FILE_VERSION = '2.0.0';
+
+/**
+ * Standalone skills file (`skills.json`) — the global skill registry, persisted
+ * separately from `profile.json`. `ProfileV2.skills` is hydrated from this file
+ * at load time and is NOT written back into `profile.json`.
+ */
+export interface SkillsFileV2 {
+  /** Schema version */
+  version: string;
+  /** Last updated timestamp */
+  updatedAt: string;
+  /** Global skill registry */
+  skills: SkillConfig[];
+}
+
+/** Schema version of the standalone hooks.json file */
+export const HOOKS_FILE_VERSION = '1.0.0';
+
+/**
+ * Standalone hooks file (`hooks.json`) — the global Agent Hook library, persisted
+ * separately from `profile.json`. `ProfileV2.hooks` is hydrated from this file at
+ * load time and is NOT written back into `profile.json`.
+ *
+ * NOTE: only the hook *list* moves to this file. The Hooks master switch
+ * (`ProfileV2.hooksEnabled`) intentionally stays in `profile.json`.
+ */
+export interface HooksFileV2 {
+  /** Schema version */
+  version: string;
+  /** Last updated timestamp */
+  updatedAt: string;
+  /** Global Agent Hook library */
+  hooks: HookDefinition[];
 }
 
 /**
- * Chat-level resolved Skill snapshot item
+ * Chat-level resolved Skill snapshot item.
+ * In-memory only (held by ChatSkillSnapshotStore); never persisted to disk.
  */
 export interface ChatSkillSnapshotItem {
   /** Skill name */
@@ -38,7 +82,9 @@ export interface ChatSkillSnapshotItem {
 }
 
 /**
- * Chat-level Skill snapshot used by AgentChat at turn boundaries
+ * Chat-level Skill snapshot used by AgentChat at turn boundaries.
+ * In-memory only (held by ChatSkillSnapshotStore); never persisted to disk.
+ * Rebuilt lazily on the next turn after a cold cache or binding/registry change.
  */
 export interface ChatSkillSnapshot {
   /** Signature of normalized chat.agent.skills */
@@ -49,114 +95,34 @@ export interface ChatSkillSnapshot {
   generated_at: string;
   /** Resolved valid skills */
   skills: ChatSkillSnapshotItem[];
-  /** Missing skill names referenced by the agent but not found in profile.skills */
+  /** Missing skill names referenced by the agent but not found in the installed skill registry */
   missing_skill_names?: string[];
   /** Prebuilt prompt text consumed by AgentChat */
   prompt: string;
 }
 
 /**
- * Sub-Agent lightweight index — stored in profile.json
- * Only retains the minimum fields needed for ProfileCacheManager notification mechanism and CDN updates.
- * Full configuration is read from agents/{name}/AGENT.md files.
- */
-export interface SubAgentIndex {
-  /** Sub-agent unique name (matches directory name and name in AGENT.md) */
-  name: string;
-  /** Local version number */
-  version: string;
-  /** CDN remote version number (for StartupUpdateService) */
-  remoteVersion?: string;
-  /** Source: CDN library or locally created */
-  source: 'IN-LIBRARY' | 'ON-DEVICE';
-}
-
-/**
- * Sub-Agent MCP server configuration
- * Compatible with Claude Code's mcpServers (supports referencing by name or inline definition)
- */
-export type SubAgentMcpServerConfig =
-  | string                          // Reference a configured server name (Claude Code format)
-  | AgentMcpServer;                 // OpenKosmos inline definition format
-
-/**
- * Sub-Agent full configuration — parsed from AGENT.md files
- * Compatible with Claude Code sub-agent front-matter standard fields
- *
- * Design principles:
- * - Claude Code standard fields at top, OpenKosmos extension fields isolated via x-openkosmos namespace
- * - system_prompt is parsed from AGENT.md Markdown body, not present in YAML front-matter
+ * Sub-Agent configuration consumed by the ad-hoc runtime.
+ * Ad-hoc sub-agents are spawned inline by the LLM via the `sub_agent` tool;
+ * their config is built synthetically in-memory and never persisted to disk.
  */
 export interface SubAgentConfig {
-  // ========== Claude Code Standard Fields ==========
-  /** Unique identifier and display name (lowercase letters + digits + hyphens), must be unique */
+  /** Unique identifier and display name */
   name: string;
-  /** Description used by Claude for delegation decisions, required */
+  /** Description of the sub-agent's purpose */
   description: string;
-  /**
-   * Claude Code tool list (omit to inherit all)
-   * Stores Claude Code original tool names (e.g., Read, Grep, Glob, Bash),
-   * mapped to OpenKosmos tool names at runtime by SubAgentManager
-   */
-  tools?: string[];
-  /** Disallowed tools list — corresponds to Claude Code's disallowedTools */
-  disallowedTools?: string[];
   /** Model selection: specific model name or 'inherit' (default: inherit) */
   model?: string;
-  /** Pre-loaded Skills name list */
-  skills?: string[];
-  /** MCP server configuration (camelCase, compatible with Claude Code mcpServers) */
-  mcpServers?: SubAgentMcpServerConfig[];
-
-  // ========== OpenKosmos Extension Fields (in AGENT.md under x-openkosmos namespace) ==========
   /** Sub-agent built-in tool whitelist (e.g., read_file, execute_command) (empty array = no restriction) */
   builtin_tools?: string[];
-  /**
-   * Sub-agent disallowed built-in tool blacklist (e.g., write_file, execute_command)
-   * Excluded from available built-in tools at runtime.
-   * When importing Claude Code AGENT.md, auto-generated from disallowedTools mapping.
-   */
+  /** Sub-agent disallowed built-in tool blacklist (excluded from available built-in tools at runtime) */
   disallow_builtin_tools?: string[];
-  /**
-   * Whether to inherit parent Agent's MCP server configuration (default: true)
-   * - true: merge parent + sub-agent's own MCP servers at runtime (sub-agent's same-name servers take priority)
-   * - false: only use sub-agent's own configured MCP servers
-   */
-  inherit_mcp_servers?: boolean;
-  /**
-   * Whether to inherit parent Agent's Skills configuration (default: true)
-   * - true: union of parent + sub-agent's own Skills at runtime (deduplicated)
-   * - false: only use sub-agent's own configured Skills
-   */
-  inherit_skills?: boolean;
-  /**
-   * Whether to inherit parent Agent's Knowledge Base (default: true)
-   * - true: use parent's knowledge base when sub-agent has none
-   * - false: do not inherit parent knowledge base
-   */
-  inherit_knowledge_base?: boolean;
-  /** Knowledge base path (sub-agent's own; takes priority over inherited) */
-  knowledgeBase?: string;
-
-  // ========== Runtime Fields (not persisted to AGENT.md YAML, parsed from Markdown body) ==========
-  /** Sub-agent system prompt (parsed from AGENT.md Markdown body) */
+  /** Sub-agent system prompt */
   system_prompt: string;
-
+  /** Inline MCP server configuration */
+  mcp_servers?: AgentMcpServer[];
 }
 
-/**
- * Default sub-agent configuration
- */
-export const DEFAULT_SUB_AGENT_CONFIG: Partial<SubAgentConfig> = {
-  model: 'inherit',
-  mcpServers: [],
-  skills: [],
-  tools: [],
-  builtin_tools: [],
-  disallow_builtin_tools: [],
-  inherit_mcp_servers: true,
-  inherit_skills: true,
-};
 
 /**
  * Sub-agent resource limit constants
@@ -172,7 +138,7 @@ export const SUB_AGENT_LIMITS = {
 } as const;
 
 /**
- * Default system prompt for ad-hoc sub-agents (created inline without AGENT.md).
+ * Default system prompt for ad-hoc sub-agents (created inline at spawn time).
  * Kept intentionally generic so the LLM can specialize via the task description.
  */
 export const DEFAULT_ADHOC_SYSTEM_PROMPT =
@@ -182,7 +148,7 @@ export const DEFAULT_ADHOC_SYSTEM_PROMPT =
 
 /**
  * Sub-agent task execution result
- * Returned by SubAgentManager.spawnSubAgent(), contains complete task execution information
+ * Returned by SubAgentManager.spawnAdhocSubAgent(), contains complete task execution information
  */
 export interface SubAgentTaskResult {
   subAgentName: string;
@@ -276,65 +242,6 @@ export interface SubAgentRuntimeState {
 }
 
 /**
- * CDN sub-agent library item
- * Sub-agent metadata fetched from CDN sub_agent_lib.json,
- * used for SubAgentLibraryView display and installation.
- */
-export interface SubAgentLibraryItem {
-  /** Sub-agent unique name (corresponds to SubAgentConfig.name) */
-  name: string;
-  /** Display name */
-  display_name: string;
-  /** Description */
-  description: string;
-  /** Emoji icon */
-  emoji: string;
-  /** Latest version on CDN */
-  version: string;
-  /** Sub-agent system prompt */
-  system_prompt: string;
-  /** Required MCP server configuration */
-  mcp_servers: AgentMcpServer[];
-  /** Required Skills name list */
-  skills?: string[];
-  /** Built-in tool whitelist */
-  builtin_tools?: string[];
-  /** Knowledge base path */
-  knowledgeBase?: string;
-  /** Context access mode */
-  context_access: 'isolated';
-  /** Maximum conversation turns — removed, sub-agents run until done */
-  // max_turns?: number;
-  /** Whether to inherit parent MCP servers */
-  inherit_mcp_servers?: boolean;
-  /** Whether to inherit parent Skills */
-  inherit_skills?: boolean;
-  /** Whether to inherit parent Knowledge Base */
-  inherit_knowledge_base?: boolean;
-  /** Category tags (for library browse page filtering) */
-  tags?: string[];
-  /** Author information */
-  author?: string;
-}
-
-/**
- * Sub-agent update information
- * Comparison result returned when StartupUpdateService checks for updates
- */
-export interface SubAgentUpdateInfo {
-  /** Sub-agent name */
-  name: string;
-  /** Current local version */
-  currentVersion: string;
-  /** Latest version on CDN */
-  latestVersion: string;
-  /** Whether an update is available */
-  hasUpdate: boolean;
-  /** Updated sub-agent configuration (for one-click update) */
-  updatedConfig?: SubAgentConfig;
-}
-
-/**
  * MCP Server configuration
  */
 export interface McpServerConfig {
@@ -354,10 +261,10 @@ export interface McpServerConfig {
   in_use: boolean;
   /** MCP server version */
   version?: string;
-  /** Remote version from CDN (for IN-LIBRARY MCP servers) */
+  /** Inert legacy version metadata retained for persisted profile compatibility. */
   remoteVersion?: string;
-  /** MCP server source: IN-LIBRARY (from MCP library), ON-DEVICE (from local machine), or PLUGIN (from plugin) */
-  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN';
+  /** Legacy MCP origin metadata retained for persisted profile compatibility. */
+  source?: 'IN-LIBRARY' | 'ON-DEVICE';
   /** If true, server is managed by the system and hidden from user-facing UI */
   hidden?: boolean;
   /** HTTP headers for sse/http transports (e.g. Authorization) */
@@ -522,8 +429,6 @@ export interface ChatSession {
   starred?: boolean;
   /** Timestamp of the latest star action */
   starredAt?: string;
-  /** Session source; treated as a local session when not set */
-  source?: { type: 'local' } | { type: 'remote'; channel: string } | null;
 }
 
 /**
@@ -541,8 +446,6 @@ export interface StarredChatSessionIndexItem {
   lastUpdated: string;
   /** Latest read status snapshot */
   readStatus?: ChatSessionReadStatus;
-  /** Session source snapshot */
-  source?: { type: 'local' } | { type: 'remote'; channel: string } | null;
   /** Agent display name snapshot */
   agentName: string;
   /** Agent emoji snapshot */
@@ -568,7 +471,7 @@ export interface AgentMcpServer {
 }
 
 export interface AgentKnowledge {
-  /** Knowledge Base directory path, defaults to workspace/knowledge */
+  /** Knowledge Base directory path, defaults to agents/{id}/knowledge */
   knowledgeBase?: string;
 }
 
@@ -576,9 +479,11 @@ export interface AgentKnowledge {
  * Quick Start configuration item
  */
 export interface QuickStartItem {
+  /** Stable identifier for persisted card references (8-char hex, auto-generated) */
+  id?: string;
   /** Quick start title */
   title: string;
-  /** Image URL (optional) */
+  /** Image source (optional): remote http(s) URL, local absolute path, or file:// URL */
   image?: string;
   /** Description */
   description: string;
@@ -605,34 +510,22 @@ export const DEFAULT_ZERO_STATES: ZeroStates = {
 };
 
 /**
- * Context Enhancement configuration
- */
-export interface ContextEnhancement {
-  /** Memory search configuration */
-  search_memory: {
-    /** Whether to enable memory search */
-    enabled: boolean;
-    /** Semantic similarity threshold, range [0,1] */
-    semantic_similarity_threshold: number;
-    /** Semantic similarity top N result count */
-    semantic_top_n: number;
-  };
-  /** Memory generation configuration */
-  generate_memory: {
-    /** Whether to enable memory generation */
-    enabled: boolean;
-  };
-}
-
-/**
  * Chat Agent configuration (V2)
  */
 export interface ChatAgent {
+  /**
+   * Stable agent id (UUID-style `agent_{timestamp}_{random}`), minted once at
+   * creation and carried so a rename never changes it. Legacy inline agents that
+   * predate the standalone store have no id and fall back to the name-derived
+   * `buildAgentId`. The standalone store's `AgentConfig` requires this field;
+   * here it is optional so pre-store profiles still type-check.
+   */
+  id?: string;
   /** Agent role */
   role: string;
   /** Agent emoji */
   emoji: string;
-  /** Agent avatar URL (only for IN-LIBRARY agents, ON-DEVICE agents should have this field empty) */
+  /** Inert legacy avatar metadata retained for persisted-profile compatibility */
   avatar?: string;
   /** Agent name */
   name: string;
@@ -640,20 +533,26 @@ export interface ChatAgent {
   model: string;
   /** Auth token for external agent WebSocket authentication */
   authToken?: string;
-  /** Working directory path */
+  /**
+   * @deprecated Workspace is chat-owned and derived from `chat_id` after the
+   * Agent/Chat separation. This optional field remains only so legacy inline
+   * agents can be migrated safely.
+   */
   workspace?: string;
   /** Unified knowledge configuration persisted in profile.json */
   knowledge?: AgentKnowledge;
+  /** @deprecated Use knowledge.knowledgeBase */
+  knowledgeBase?: string;
   /** Agent version */
   version?: string;
-  /** Remote version from CDN (for IN-LIBRARY agents) */
+  /** Inert legacy version metadata retained for persisted-profile compatibility */
   remoteVersion?: string;
-  /** Agent source: IN-LIBRARY (from agent library), ON-DEVICE (from local machine), or EXTERNAL (remote agent via WebSocket) */
+  /** Agent origin metadata; IN-LIBRARY is a legacy persisted value with no remote behavior. */
   source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'EXTERNAL';
   /** Agent-specific MCP server list (new structure: includes tool selection) */
   mcp_servers: AgentMcpServer[];
-  /** System prompt */
-  system_prompt: string;
+  /** System prompt files, stored as a filename-to-content map. */
+  system_prompt: AgentSystemPrompt;
   /**
    * Per-chat reasoning effort selected by the user.
    * Only meaningful for models whose capabilities expose `reasoning_effort`.
@@ -662,14 +561,10 @@ export interface ChatAgent {
    * reasoning_effort parameter".
    */
   reasoningEffort?: string;
-  /** Context Enhancement configuration */
-  context_enhancement?: ContextEnhancement;
   /** Skills name list used by the Agent */
   skills?: string[];
-  /** Plugin IDs enabled for this Agent — when enabled, plugin skills/MCP are auto-added */
-  enabled_plugins?: string[];
-  /** Sub-agent name list referenced by the Agent */
-  sub_agents?: string[];
+  /** Agent Hook ids bound to this Agent (mirrors skills/mcp_servers selection) */
+  hooks?: string[];
   /** Zero States configuration - Agent initial state display */
   zero_states?: ZeroStates;
 }
@@ -682,12 +577,42 @@ export interface ChatConfig {
   chat_id: string;
   /** Chat type */
   chat_type: 'single_agent' | 'multi_agent';
+  /** Runtime-only chat workspace path derived from alias + chat_id; not persisted in profile.json. */
+  workspace?: string;
   /** Single agent configuration (when chat_type is single_agent) */
   agent?: ChatAgent;
   /** Multi-agent configuration (when chat_type is multi_agent) */
   agents?: ChatAgent[];
-  /** Chat-level resolved skill snapshot, refreshed lazily at next-turn boundary */
-  skill_snapshot?: ChatSkillSnapshot;
+  /**
+   * Target mapping (1 Chat : N Agents): agent ids owned by this chat, length ≥ 1.
+   * Additive during migration — once standalone agents land, chats reference
+   * agents by id here and the inline `agent`/`agents` fields are removed.
+   */
+  agent_ids?: string[];
+}
+
+/**
+ * One archived chat. Archiving removes the chat from {@link ProfileV2.chats} and
+ * records it here (in `profile.json`), referencing its agents by id (resolved
+ * from the standalone agent store) rather than inlining the agent config. This
+ * is the SSOT for the archive list and replaces the former standalone
+ * `agents/archived_chats.json` file. Workspace dirs and chat sessions are keyed
+ * by `chat_id` and preserved on disk so the chat can be restored intact; the
+ * workspace path itself is derived at runtime and is not persisted here.
+ */
+export interface ArchivedChatEntry {
+  /** ISO timestamp when the chat was archived. */
+  archived_at?: string;
+  /** The archived chat's id; its workspace + sessions live under this id. */
+  chat_id: string;
+  /** @deprecated Runtime-only compatibility field; archived chat workspaces are derived from chat_id. */
+  workspace?: string;
+  /** Chat type captured at archive time. */
+  chat_type?: ChatConfig['chat_type'];
+  /** Agent ids the chat owned, resolved against the standalone agent store. */
+  agent_ids: string[];
+  /** Starred sessions captured at archive time, restored on unarchive. */
+  starred_sessions?: StarredChatSessionIndexItem[];
 }
 
 /**
@@ -700,30 +625,86 @@ export interface ChatConfigRuntime extends ChatConfig {
 }
 
 /**
- * Browser Control settings configuration
+ * Profile-level Embedded Browser configuration (stored in profile.json).
+ * Per-profile feature switch.
+ *
+ * Controls both:
+ * 1. Availability of the agent-facing `browser` built-in tool, and
+ * 2. Visibility of the Browser entry (Globe button) in the ChatView header.
  */
-export interface BrowserControlSettings {
-  /** Browser type */
-  browser: 'chrome' | 'edge';
-  /** Control mode */
-  mode?: 'extension' | 'cdp';
+export interface BrowserSettings {
+  /** Master switch: whether the embedded browser tool + header entry are enabled */
+  enabled: boolean;
 }
 
 /**
- * DevTools MCP (Browser Control CDP) settings configuration
+ * Profile-level Memex Memory configuration (stored in profile.json).
+ * Per-profile feature switch.
+ *
+ * Controls both:
+ * 1. Availability of the agent-facing `memex_memory` built-in tool, and
+ * 2. Visibility of the Agent Memory entry (Brain button) in the ChatView header.
+ */
+export interface MemexSettings {
+  /** Master switch: whether the memex_memory tool + header entry are enabled */
+  enabled: boolean;
+}
+
+/**
+ * Profile-level Computer Use configuration (stored in profile.json).
+ * Per-profile feature switch for the agent-facing `computer_use` built-in tool,
+ * which drives the real local desktop (screenshots + synthetic mouse/keyboard on
+ * native apps). Off by default; safety comes from this switch, OS permissions,
+ * default confirmation, and the per-app allowlist rather than sandbox isolation.
+ */
+export interface ComputerUseSettings {
+  /** Any-App master switch: whether the computer_use tool is enabled. Default false. */
+  enabled: boolean;
+  /**
+   * Bundle ids / process names whose ordinary (non high-impact) actions skip the
+   * per-action confirmation requirement. The high-impact guard is never bypassed.
+   */
+  alwaysAllowedApps: string[];
+  /**
+   * When true (default), mutating actions in apps that are not always-allowed
+   * require explicit user confirmation before input is dispatched.
+   */
+  requireConfirmation: boolean;
+}
+
+/**
+ * DevTools MCP settings configuration
  */
 export interface DevToolsMcpSettings {
   /** Browser type */
   browser: 'chrome' | 'edge';
 }
 
-// ═══════════════════════════════════════════
-// Remote Channel Types
-// ═══════════════════════════════════════════
+/**
+ * Coding Agent settings configuration (profile-level).
+ * Selects which coding-agent CLI the `coding_agent` built-in tool drives.
+ */
+export interface CodingAgentSettings {
+  /**
+   * Master switch for the coding_agent built-in tool. When false the tool is neither
+   * advertised to the model nor runnable, and the Settings page hides CLI selection.
+   * Defaults to false.
+   */
+  enabled: boolean;
+  /** Default coding CLI used by the coding_agent built-in tool. */
+  cli: CodingCliId;
+}
 
-/** Remote channels configuration — mounted on ProfileV2.remoteChannels */
-export interface RemoteChannelsConfig {
-  [channelId: string]: { boundChatId?: string };
+/**
+ * Sync settings configuration
+ */
+export interface SyncSettings {
+  /** Whether sync is enabled */
+  enabled: boolean;
+  /** GitHub repository URL */
+  repoUrl: string;
+  /** Last sync timestamp */
+  lastSyncTime: string | null;
 }
 
 export interface InlineEditRegenerateConfirmationSettings {
@@ -750,30 +731,81 @@ export interface ProfileV2 {
   alias: string;
   /** Whether First Run Experience is completed */
   freDone?: boolean;
-  /** Primary Agent, displayed first in AgentChatList and used as the default Agent on app startup. Defaults to Kobi */
-  primaryAgent?: string;
-  /** MCP server configuration */
-  mcp_servers: McpServerConfig[];
-  /** Skills configuration list */
+  /** Primary chat id — the chat displayed first in AgentChatList and selected as the default on app startup. Empty/unset falls back to the first chat. */
+  primaryChat?: string;
+  /**
+   * Installed global MCP server configs (transient, DEPRECATED for direct use).
+   *
+   * @deprecated Installed MCP server configs are owned by `McpConfigManager` and persisted in
+   * `mcp.json`, decoupled from `profile.json`. This field is populated only transiently
+   * during the profile load/migration window (so legacy migrations can inspect it) and is
+   * stripped from the cached profile before it is handed to consumers. Runtime reads MUST go
+   * through `mcpConfigManager.getServers(alias)` — do NOT read or write this field directly.
+   */
+  mcp_servers?: McpServerConfig[];
+  /**
+   * Global skill registry — the user's installed/registered skills (transient,
+   * DEPRECATED for direct use). It contains local configuration only.
+   *
+   * @deprecated The skill registry is owned by `SkillsConfigManager` and persisted in
+   * `skills.json` (see {@link SkillsFileV2}), decoupled from `profile.json`. This field is
+   * populated only transiently during the profile load/migration window (so legacy
+   * migrations can inspect it) and is stripped from the cached profile before it is handed
+   * to consumers. Runtime reads MUST go through `skillsConfigManager.getSkills(alias)` — do
+   * NOT read or write this field directly.
+   */
   skills?: SkillConfig[];
   /**
-   * Sub-Agent lightweight index (file-based)
-   * Full configuration is stored in agents/{name}/AGENT.md files,
-   * only name/version/remoteVersion/source are kept here for ProfileCacheManager notification and CDN updates.
+   * Agent Hooks library (profile-level resource, like mcp_servers and skills) —
+   * the user's installed/created global hooks (transient, DEPRECATED for direct use).
+   * Resolved into effective Hooks per Agent at runtime via direct/indirect bindings.
+   *
+   * @deprecated The hook library is owned by `HooksConfigManager` and persisted in
+   * `hooks.json` (see {@link HooksFileV2}), decoupled from `profile.json`. This field is
+   * populated only transiently during the profile load/migration window (so legacy
+   * migrations can inspect it) and is stripped from the cached profile before it is handed
+   * to consumers. Runtime reads MUST go through `hooksConfigManager.getHooks(alias)` — do
+   * NOT read or write this field directly. The Hooks master switch (`hooksEnabled`) is the
+   * exception: it stays in `profile.json` and is NOT moved to `hooks.json`.
    */
-  sub_agents?: SubAgentIndex[];
+  hooks?: HookDefinition[];
+  /**
+   * Profile-level master switch for Hooks runtime execution and management UI.
+   * Defaults to false. Persisted in `profile.json` (NOT in `hooks.json`).
+   */
+  hooksEnabled?: boolean;
   /** Chat configuration */
   chats: ChatConfig[];
+  /**
+   * Archived chats (removed from {@link chats}), each referencing its agents by
+   * id. SSOT for the archive list; replaces the standalone
+   * `agents/archived_chats.json`. Omitted when nothing is archived.
+   */
+  archived_chats?: ArchivedChatEntry[];
   /** Profile-level starred session index for sidebar rendering */
   'starred-chat-sessions'?: StarredChatSessionIndexItem[];
-  /** Browser Control settings configuration */
-  browserControl?: BrowserControlSettings;
-  /** DevTools MCP (Browser Control CDP) settings configuration */
+  /** Voice Input settings configuration */
+  voiceInputSettings?: VoiceInputSettings;
+  /** Embedded Browser feature switch (per-profile). Controls the agent `browser` tool and the header Browser entry. */
+  browser?: BrowserSettings;
+  /** Memex Memory feature switch (per-profile). Controls the agent `memex_memory` tool and the header Agent Memory entry. */
+  memex?: MemexSettings;
+  /** Computer Use feature switch (per-profile). Controls the agent `computer_use` tool that drives the native desktop. */
+  computerUse?: ComputerUseSettings;
+  /** DevTools MCP settings configuration */
   devToolsMcpSettings?: DevToolsMcpSettings;
+  /** Coding Agent settings configuration (selected coding-agent CLI) */
+  codingAgentSettings?: CodingAgentSettings;
+  /**
+   * Migration markers
+   * Records completed one-time data migrations to prevent re-execution.
+   * sanitizeProfileV2 preserves this field but does not actively clean it up.
+   */
+  _migrationFlags?: Record<string, boolean>;
+  /** Sync settings configuration */
+  syncSettings?: SyncSettings;
   /** Confirmation dialog preferences */
   confirmationSettings?: ConfirmationSettings;
-  /** Remote channels configuration */
-  remoteChannels?: RemoteChannelsConfig;
   /** Built-in defaults migration version. Tracks which version of built-in tools/skills has been applied to existing agents. */
   builtinDefaultsVersion?: number;
   /** Profile data migration version. Tracks which one-time migrations have been applied. */
@@ -803,6 +835,24 @@ export function isProfileV2(profile: any): profile is ProfileV2 {
 
 
 /**
+ * Generic version detector
+ */
+export function detectProfileVersion(profile: any): 'v2' | 'unknown' {
+  if (isProfileV2(profile)) {
+    return 'v2';
+  } else {
+    return 'unknown';
+  }
+}
+
+/**
+ * Type guard to check if an object is a valid Profile (legacy)
+ */
+export function isProfile(obj: any): obj is Profile {
+  return isProfileV2(obj);
+}
+
+/**
  * Type guard to check if an object is a valid MCP Server Config
  */
 export function isMcpServerConfig(obj: any): obj is McpServerConfig {
@@ -818,20 +868,6 @@ export function isMcpServerConfig(obj: any): obj is McpServerConfig {
     typeof obj.in_use === 'boolean'
   );
 }
-
-/**
- * Default Context Enhancement configuration
- */
-export const DEFAULT_CONTEXT_ENHANCEMENT: ContextEnhancement = {
-  search_memory: {
-    enabled: false,
-    semantic_similarity_threshold: 0.0,
-    semantic_top_n: 5
-  },
-  generate_memory: {
-    enabled: false
-  }
-};
 
 /**
  * Default Chat Agent configuration
@@ -853,8 +889,7 @@ export const DEFAULT_CHAT_AGENT: ChatAgent = {
       tools: []  // Empty array means use all tools from the server
     }
   ],
-  system_prompt: "You are a highly capable AI assistant designed to help users with a wide variety of tasks. Your core capabilities include:\n\n**Communication & Analysis:**\n- Provide clear, accurate, and helpful responses to questions\n- Analyze complex problems and break them down into manageable parts\n- Adapt your communication style to match the user's needs and expertise level\n\n**Technical Assistance:**\n- Help with programming, debugging, and code review across multiple languages\n- Assist with data analysis, research, and information synthesis\n- Provide guidance on best practices and technical decision-making\n\n**Creative & Productive Support:**\n- Generate creative content including writing, brainstorming, and ideation\n- Help with planning, organization, and project management\n- Assist with document creation, editing, and formatting\n\n**Interaction Guidelines:**\n- Always strive for accuracy and cite sources when appropriate\n- Ask clarifying questions when requirements are unclear\n- Provide step-by-step explanations for complex procedures\n- Respect user privacy and maintain confidentiality\n- Be honest about limitations and uncertainties\n\n**Tools & Integration:**\n- Leverage available MCP servers and tools to enhance capabilities\n- Use web browsing, file operations, and data processing tools when beneficial\n- Integrate multiple information sources to provide comprehensive responses\n\nYour goal is to be a reliable, knowledgeable, and adaptable assistant that helps users accomplish their objectives efficiently and effectively.",
-  context_enhancement: DEFAULT_CONTEXT_ENHANCEMENT,
+  system_prompt: normalizeAgentSystemPrompt("You are a highly capable AI assistant designed to help users with a wide variety of tasks. Your core capabilities include:\n\n**Communication & Analysis:**\n- Provide clear, accurate, and helpful responses to questions\n- Analyze complex problems and break them down into manageable parts\n- Adapt your communication style to match the user's needs and expertise level\n\n**Technical Assistance:**\n- Help with programming, debugging, and code review across multiple languages\n- Assist with data analysis, research, and information synthesis\n- Provide guidance on best practices and technical decision-making\n\n**Creative & Productive Support:**\n- Generate creative content including writing, brainstorming, and ideation\n- Help with planning, organization, and project management\n- Assist with document creation, editing, and formatting\n\n**Interaction Guidelines:**\n- Always strive for accuracy and cite sources when appropriate\n- Ask clarifying questions when requirements are unclear\n- Provide step-by-step explanations for complex procedures\n- Respect user privacy and maintain confidentiality\n- Be honest about limitations and uncertainties\n\n**Tools & Integration:**\n- Leverage available MCP servers and tools to enhance capabilities\n- Use web browsing, file operations, and data processing tools when beneficial\n- Integrate multiple information sources to provide comprehensive responses\n\nYour goal is to be a reliable, knowledgeable, and adaptable assistant that helps users accomplish their objectives efficiently and effectively."),
   skills: ['skill-creator'],
   zero_states: DEFAULT_ZERO_STATES
 };
@@ -865,16 +900,29 @@ export function getAgentKnowledge(agent?: ChatAgent | null): AgentKnowledge {
       knowledgeBase: '',
     };
   }
-
   return {
-    knowledgeBase: agent.knowledge?.knowledgeBase ?? '',
+    knowledgeBase: agent.knowledge?.knowledgeBase ?? agent.knowledgeBase ?? '',
   };
 }
 
+export { createDefaultAgentSystemPrompt, normalizeAgentSystemPrompt, type AgentSystemPrompt };
+
 export function withNormalizedAgentKnowledge(agent: ChatAgent): ChatAgent {
-  const { knowledgeBase: _legacy, ...rest } = agent as any;
+  const {
+    knowledgeBase: _legacyKnowledgeBase,
+    teams_enabled: _legacyTeamsEnabled,
+    teams_chats: _legacyTeamsChats,
+    outlook_emails_enabled: _legacyOutlookEmailsEnabled,
+    ...normalizedAgent
+  } = agent as ChatAgent & {
+    knowledgeBase?: string;
+    teams_enabled?: unknown;
+    teams_chats?: unknown;
+    outlook_emails_enabled?: unknown;
+  };
+
   return {
-    ...rest,
+    ...normalizedAgent,
     knowledge: getAgentKnowledge(agent),
   };
 }
@@ -885,7 +933,6 @@ export function withNormalizedAgentKnowledge(agent: ChatAgent): ChatAgent {
 export const DEFAULT_PROFILE_V2: Partial<ProfileV2> = {
   version: "2.0.0",
   freDone: false,
-  primaryAgent: "Kobi",
   mcp_servers: [],
   'starred-chat-sessions': [],
   confirmationSettings: {
@@ -915,18 +962,29 @@ export const DEFAULT_MCP_SERVER: McpServerConfig = {
 };
 
 /**
- * Default Browser Control configuration
- */
-export const DEFAULT_BROWSER_CONTROL_SETTINGS: BrowserControlSettings = {
-  browser: 'edge',
-  mode: 'extension'
-};
-
-/**
- * Default DevTools MCP (Browser Control CDP) settings configuration
+ * Default DevTools MCP settings configuration
  */
 export const DEFAULT_DEVTOOLS_MCP_SETTINGS: DevToolsMcpSettings = {
   browser: 'edge'
+};
+
+/**
+ * Default Coding Agent settings configuration.
+ * The feature is off by default (the user opts in from Settings → Coding CLI); the
+ * default CLI is Claude Code, preserving the original single-CLI behavior once enabled.
+ */
+export const DEFAULT_CODING_AGENT_SETTINGS: CodingAgentSettings = {
+  enabled: false,
+  cli: 'claude'
+};
+
+/**
+ * Default Sync settings configuration
+ */
+export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
+  enabled: false,
+  repoUrl: '',
+  lastSyncTime: null,
 };
 
 export const DEFAULT_CONFIRMATION_SETTINGS: ConfirmationSettings = {
@@ -936,27 +994,128 @@ export const DEFAULT_CONFIRMATION_SETTINGS: ConfirmationSettings = {
 };
 
 /**
- * Built-in Agent name constants
- *
- * ===== Built-in Agents System =====
- *
- * Built-in agents are system-preset agents with the following characteristics:
- * 1. 🏷️ Displayed with a "Built-in" badge
- * 2. 📍 Pinned below the navigation bar Divider (higher position priority than primaryAgent)
- * 3. 🔒 Cannot be deleted (delete button hidden in frontend + backend protection)
+ * Default Embedded Browser settings (per-profile, disabled by default)
  */
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
+  enabled: false,
+};
 
-/** Built-in agent list for openkosmos (Kobi only) */
+/**
+ * Default Memex Memory settings (per-profile, disabled by default)
+ */
+export const DEFAULT_MEMEX_SETTINGS: MemexSettings = {
+  enabled: false,
+};
+
+/**
+ * Default Computer Use settings (per-profile, disabled by default). When the
+ * feature is enabled the agent can drive the real desktop; mutating actions
+ * still require confirmation unless the target app is always-allowed.
+ */
+export const DEFAULT_COMPUTER_USE_SETTINGS: ComputerUseSettings = {
+  enabled: false,
+  alwaysAllowedApps: [],
+  requireConfirmation: true,
+};
+
+/**
+ * Whisper model size options
+ */
+export type WhisperModelSize = 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
+
+/**
+ * Whisper model information
+ */
+export interface WhisperModelInfo {
+  /** Model size identifier */
+  size: WhisperModelSize;
+  /** Model file name */
+  fileName: string;
+  /** Model file size in bytes */
+  fileSize: number;
+  /** Human-readable file size */
+  fileSizeDisplay: string;
+  /** Download URL */
+  downloadUrl: string;
+  /** Description */
+  description: string;
+}
+
+/**
+ * Voice Input Settings configuration
+ */
+export interface VoiceInputSettings {
+  /** Whisper model size to use for voice input */
+  whisperModel: WhisperModelSize;
+  /** Language for speech recognition: 'auto' for auto-detect or specific language code */
+  language: string;
+  /** Enable GPU acceleration (Vulkan on Windows/Linux, Metal on macOS) */
+  useGPU?: boolean;
+  /** Enable translation to English (only available for 'small', 'medium', and 'turbo' models) */
+  translate?: boolean;
+}
+
+/**
+ * Default Voice Input Settings
+ */
+export const DEFAULT_VOICE_INPUT_SETTINGS: VoiceInputSettings = {
+  whisperModel: 'base',
+  language: 'auto',
+  useGPU: false,
+  translate: false
+};
+
+/**
+ * Whisper model definitions with download URLs and metadata
+ */
+export const WHISPER_MODELS: Record<WhisperModelSize, WhisperModelInfo> = {
+  tiny: {
+    size: 'tiny',
+    fileName: 'ggml-tiny.bin',
+    fileSize: 75_000_000,
+    fileSizeDisplay: '75 MB',
+    downloadUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    description: 'Fast, good accuracy'
+  },
+  base: {
+    size: 'base',
+    fileName: 'ggml-base.bin',
+    fileSize: 142_000_000,
+    fileSizeDisplay: '142 MB',
+    downloadUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+    description: 'Balanced (Recommended)'
+  },
+  small: {
+    size: 'small',
+    fileName: 'ggml-small-q8_0.bin',
+    fileSize: 264_000_000,
+    fileSizeDisplay: '264 MB',
+    downloadUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q8_0.bin',
+    description: 'Better accuracy'
+  },
+  medium: {
+    size: 'medium',
+    fileName: 'ggml-medium-q5_0.bin',
+    fileSize: 539_000_000,
+    fileSizeDisplay: '539 MB',
+    downloadUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin',
+    description: 'Best accuracy'
+  },
+  turbo: {
+    size: 'turbo',
+    fileName: 'ggml-large-v3-turbo-q5_0.bin',
+    fileSize: 574_000_000,
+    fileSizeDisplay: '574 MB',
+    downloadUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin',
+    description: 'Best accuracy'
+  }
+};
+
+/** Built-in system agents that are pinned and protected from deletion. */
 export const BUILTIN_AGENT_NAMES_OpenKosmos: string[] = ['Kobi'];
 
 /**
  * Get the built-in agent name list.
- *
- * @param _brandName unused — kept for call-site compatibility
- * @returns built-in agent name array
- *
- * @example
- * getBuiltinAgentNames()  // ['Kobi']
  */
 export function getBuiltinAgentNames(_brandName?: string): string[] {
   return BUILTIN_AGENT_NAMES_OpenKosmos;
@@ -966,7 +1125,7 @@ export function getBuiltinAgentNames(_brandName?: string): string[] {
  * Check whether the specified agent is a built-in agent.
  *
  * @param agentName agent name (case-insensitive)
- * @param _brandName unused — kept for call-site compatibility
+ * @param _brandName retained for compatibility with existing call sites
  * @returns true if it is a built-in agent, false otherwise
  *
  * @example
@@ -975,7 +1134,8 @@ export function getBuiltinAgentNames(_brandName?: string): string[] {
  */
 export function isBuiltinAgent(agentName: string | undefined | null, _brandName?: string): boolean {
   if (!agentName) return false;
-  return BUILTIN_AGENT_NAMES_OpenKosmos.some(
+  const builtinNames = getBuiltinAgentNames();
+  return builtinNames.some(
     name => name.toLowerCase() === agentName.toLowerCase()
   );
 }
@@ -986,11 +1146,13 @@ export function isBuiltinAgent(agentName: string | undefined | null, _brandName?
 export class ChatSessionUtils {
   /**
    * Generate ChatSession ID
+   * Uses renderer-safe entropy instead of the main-process device ID generator,
+   * because this shared profile type module is imported by renderer bundles.
    */
   static generateChatSessionId(): string {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { generateChatSessionId } = require('../../utilities/idFactory') as typeof import('../../utilities/idFactory');
-    return generateChatSessionId();
+    const cryptoApi = globalThis.crypto;
+    const deviceId = cryptoApi?.randomUUID?.() || Math.random().toString(36).slice(2);
+    return buildChatSessionId(deviceId);
   }
 
   /**
@@ -1035,7 +1197,6 @@ export class ChatSessionUtils {
         last_updated: chatSession.last_updated,
         title: chatSession.title || "Untitled ChatSession",
         readStatus: chatSession.readStatus === 'read' ? 'read' : 'unread',
-        source: chatSession.source ? {...chatSession.source} : undefined,
       }));
   }
 }

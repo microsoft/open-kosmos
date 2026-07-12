@@ -222,15 +222,6 @@ describe('AgentList — search rendering', () => {
     expect(onSelectChat).toHaveBeenCalledWith(chat.chat_id);
   });
 
-  it('shows remote badge for remote source sessions in search results', async () => {
-    const session = makeSession({ title: 'RemoteChatXYZ', source: { type: 'remote' } });
-    const chat = makeChat({ chatSessions: [session] });
-    render(<AgentList chats={[chat]} showSearch />);
-    const input = screen.getByPlaceholderText('Search conversations');
-    await act(async () => { fireEvent.change(input, { target: { value: 'RemoteChatXYZ' } }); });
-    await waitFor(() => expect(screen.getByText('Remote')).toBeDefined());
-  });
-
   it('shows unread dot for unread sessions in search', async () => {
     const session = makeSession({ title: 'UnreadSessionXYZ', readStatus: 'unread' });
     const chat = makeChat({ chatSessions: [session] });
@@ -555,13 +546,21 @@ describe('AgentList — starred sessions', () => {
   });
 });
 
-describe('AgentList — agent click starts new conversation', () => {
-  it('calls onSelectChat when agent NavItem is clicked', async () => {
+describe('AgentList - new-chat button starts new conversation', () => {
+  it('does not call onSelectChat when the agent NavItem is clicked (toggles expansion)', async () => {
     const onSelectChat = vi.fn();
     const chat = makeChat();
     render(<AgentList chats={[chat]} onSelectChat={onSelectChat} />);
     const btn = screen.getByTestId(`nav-${chat.agent.name}`);
     await act(async () => { fireEvent.click(btn); });
+    expect(onSelectChat).not.toHaveBeenCalled();
+  });
+
+  it('calls onSelectChat when the new-chat button is clicked', async () => {
+    const onSelectChat = vi.fn();
+    const chat = makeChat();
+    render(<AgentList chats={[chat]} onSelectChat={onSelectChat} />);
+    await act(async () => { fireEvent.click(screen.getByLabelText('Start new conversation')); });
     expect(onSelectChat).toHaveBeenCalledWith(chat.chat_id);
   });
 });

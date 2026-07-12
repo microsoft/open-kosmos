@@ -1,28 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, FolderOpen, MoreHorizontal, File, FolderPlus, Clipboard, ChevronDown, ChevronRight } from 'lucide-react';
 import {
-  getWorkspaceFileTree,
-  getDirectoryChildren,
-  clearFileTreeCache,
   isValidWorkspacePath,
-  startWatch,
-  stopWatch,
   copyPathToWorkspace,
   copyPathsToWorkspace,
   openInSystemExplorer,
   FileTreeNode,
-  FileTreeData,
-  workspaceOps
 } from '../../../lib/chat/workspaceOps';
-
-// Shared ignore directory patterns
-const IGNORE_PATTERNS = [
-  'node_modules', '.git', 'dist', 'build', '.next',
-  'out', 'coverage', '.vscode', '.idea'
-];
 import FileTreeExplorer from './FileTreeExplorer';
 import { usePasteToWorkspace } from './PasteToWorkspaceProvider';
 import { WorkspaceMenuActions } from './WorkspaceExplorerSidepane';
+import { useFileExplorerSort, type SortField, type SortOrder } from './useFileExplorerSort';
+import { useWorkspaceFileTree } from './useWorkspaceFileTree';
+import { useWorkspaceRefreshWatcher } from './useWorkspaceRefreshWatcher';
+import { useI18n } from '../../../lib/i18n/useI18n';
+
+export type { SortField, SortOrder };
 
 // Image file extensions set
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico', 'tiff', 'tif']);
@@ -48,6 +41,12 @@ interface FileExplorerSectionProps {
   emptyMessage?: string;
   /** Hide action buttons (Add Files, Add Folder, Paste) in empty state */
   hideEmptyActions?: boolean;
+  /** Default sort field. Defaults to 'name'. */
+  defaultSortField?: SortField;
+  /** Default sort order. Defaults to 'asc'. */
+  defaultSortOrder?: SortOrder;
+  /** Show the sort toggle button. Defaults to false. */
+  showSortButton?: boolean;
 }
 
 const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
@@ -62,13 +61,20 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
   onMenuToggle,
   emptyMessage,
   hideEmptyActions,
+  defaultSortField = 'name',
+  defaultSortOrder = 'asc',
+  showSortButton = false,
 }) => {
-  const [workspacePath, setWorkspacePath] = useState<string>('');
-  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
+  const { t } = useI18n();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Sort state (encapsulated in a custom hook to keep this component focused).
+  const { needsMetadata, cycleSort, SortIcon, sortTooltip, sortNodes } = useFileExplorerSort({
+    defaultSortField,
+    defaultSortOrder,
+    showSortButton,
+  });
 
   // Paste to Workspace - using global context
   const { openPasteDialog } = usePasteToWorkspace();
@@ -77,207 +83,12 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
   const [directoryStack, setDirectoryStack] = useState<FileTreeNode[]>([]);
 
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const watchStartedRef = useRef(false);
-  const fileChangeListenerRef = useRef<(() => void) | null>(null);
-  // Subdirectory lazy loading cache: key = directory absolute path, value = true means loaded
-  const childrenCache = useRef<Map<string, true>>(new Map());
-
-  // Deeply inject child nodes into directory node at specified path in tree
-  const injectChildren = useCallback((nodes: FileTreeNode[], dirPath: string, children: FileTreeNode[]): FileTreeNode[] => {
-    return nodes.map(node => {
-      if (node.path === dirPath) {
-        return { ...node, children };
-      }
-      if (node.type === 'directory' && node.children) {
-        return { ...node, children: injectChildren(node.children, dirPath, children) };
-      }
-      return node;
-    });
-  }, []);
-
-  // Lazy load child nodes: called when user expands directory
-  const handleLoadChildren = useCallback(async (dirPath: string) => {
-    if (childrenCache.current.has(dirPath)) return;
-    try {
-      const result = await getDirectoryChildren(dirPath, { ignorePatterns: IGNORE_PATTERNS });
-      const children = result.success ? (result.data?.children as FileTreeNode[] || []) : [];
-      childrenCache.current.set(dirPath, true);
-      setFileTree(prev => injectChildren(prev, dirPath, children));
-    } catch (error) { /* ignore */ }
-  }, [injectChildren]);
-
-
-
-  // Update workspacePath when currentPath changes
-  useEffect(() => {
-    if (currentPath !== workspacePath) {
-      setWorkspacePath(currentPath);
-    }
-  }, [currentPath]);
-
-  // Load file tree (only load direct children of root directory)
-  const loadFileTree = useCallback(async (path: string) => {
-    if (!path || path.trim() === '') {
-      setFileTree([]);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await getWorkspaceFileTree(path, {
-        maxDepth: 1,
-        ignorePatterns: IGNORE_PATTERNS
-      });
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to load file tree');
-      }
-
-      const treeData = result.data as FileTreeData;
-      setFileTree(treeData.tree || []);
-    } catch (error) {
-      setFileTree([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const reloadRootTree = useCallback(async (path: string, options?: { clearAllCaches?: boolean }) => {
-    childrenCache.current.clear();
-    try {
-      if (options?.clearAllCaches) {
-        await clearFileTreeCache();
-      } else {
-        await clearFileTreeCache(path);
-      }
-    } catch (error) { /* ignore */ }
-    await loadFileTree(path);
-  }, [loadFileTree]);
-
-  // Load file tree when workspacePath changes
-  useEffect(() => {
-    if (isValidWorkspacePath(workspacePath)) {
-      void reloadRootTree(workspacePath);
-    } else {
-      childrenCache.current.clear();
-      setFileTree([]);
-    }
-  }, [workspacePath, reloadRootTree]);
-
-  // Handle refresh button click (restore previously expanded directories after refresh)
-  const handleRefresh = useCallback(async () => {
-    if (isValidWorkspacePath(workspacePath)) {
-      // Read currently expanded directory list, restore after refresh
-      const storageKey = `fileTree_expanded_${workspacePath}`;
-      let prevExpanded: string[] = [];
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) prevExpanded = JSON.parse(saved) as string[];
-      } catch { /* ignore */ }
-      // Sort by path depth to ensure parent directories load before subdirectories
-      prevExpanded.sort((a, b) => a.split('/').length - b.split('/').length);
-
-      await reloadRootTree(workspacePath, { clearAllCaches: true });
-
-      // Sequentially reload child nodes of previously expanded directories
-      for (const dirPath of prevExpanded) {
-        await handleLoadChildren(dirPath);
-      }
-    }
-  }, [workspacePath, reloadRootTree, handleLoadChildren]);
+  const { workspacePath, fileTree, isLoading, setFileTree, handleLoadChildren, isChildrenLoaded, reloadRootTree } = useWorkspaceFileTree(currentPath, needsMetadata);
+  const { handleRefresh } = useWorkspaceRefreshWatcher(workspacePath, revealRequest, onRevealHandled, reloadRootTree, handleLoadChildren);
 
   useEffect(() => {
-    if (!revealRequest || revealRequest.path !== workspacePath) {
-      return;
-    }
-
-    setIsCollapsed(false);
-    handleRefresh().finally(() => {
-      onRevealHandled?.();
-    });
-  }, [handleRefresh, onRevealHandled, revealRequest, workspacePath]);
-
-  // ========== File watching feature ==========
-
-  // Handle file change events - clear lazy loading cache and reload, while restoring expanded state
-  const handleFileChanges = useCallback(async () => {
-    if (isValidWorkspacePath(workspacePath)) {
-      // Read currently expanded directory list, restore after refresh
-      const storageKey = `fileTree_expanded_${workspacePath}`;
-      let prevExpanded: string[] = [];
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) prevExpanded = JSON.parse(saved) as string[];
-      } catch { /* ignore */ }
-      prevExpanded.sort((a, b) => a.split('/').length - b.split('/').length);
-
-      await reloadRootTree(workspacePath, { clearAllCaches: true });
-
-      // Sequentially reload child nodes of previously expanded directories
-      for (const dirPath of prevExpanded) {
-        await handleLoadChildren(dirPath);
-      }
-    }
-  }, [workspacePath, reloadRootTree, handleLoadChildren]);
-
-  // Start file watching
-  const startFileWatcher = useCallback(async (path: string) => {
-    if (!path || !isValidWorkspacePath(path)) return;
-    if (watchStartedRef.current) return;
-
-    try {
-      // Remove old listener
-      if (fileChangeListenerRef.current) {
-        fileChangeListenerRef.current();
-        fileChangeListenerRef.current = null;
-      }
-
-      // Add refresh listener
-      const removeListener = workspaceOps.onRefresh(handleFileChanges);
-      fileChangeListenerRef.current = removeListener;
-
-      // Start backend file watching
-      const result = await startWatch(path, {
-        excludes: [
-          'node_modules', '.git', 'dist', 'build', '.next',
-          'out', 'coverage', '.vscode', '.idea', '.DS_Store', 'Thumbs.db'
-        ]
-      });
-
-      if (result.success) {
-        watchStartedRef.current = true;
-      }
-    } catch (error) { /* ignore */ }
-  }, [handleFileChanges]);
-
-  // Stop file watching
-  const stopFileWatcher = useCallback(async () => {
-    if (!watchStartedRef.current) return;
-
-    try {
-      if (fileChangeListenerRef.current) {
-        fileChangeListenerRef.current();
-        fileChangeListenerRef.current = null;
-      }
-      await stopWatch();
-      watchStartedRef.current = false;
-    } catch (error) { /* ignore */ }
-  }, []);
-
-  // Restart file watching when workspacePath changes
-  useEffect(() => {
-    if (isValidWorkspacePath(workspacePath)) {
-      stopFileWatcher().then(() => {
-        startFileWatcher(workspacePath);
-      });
-    } else {
-      stopFileWatcher();
-    }
-
-    return () => {
-      stopFileWatcher();
-    };
-  }, [workspacePath, startFileWatcher, stopFileWatcher]);
+    if (revealRequest?.path === workspacePath) setIsCollapsed(false);
+  }, [revealRequest, workspacePath]);
 
 
 
@@ -305,6 +116,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
       window.dispatchEvent(new CustomEvent('fileViewer:open', {
         detail: {
           file: { name: node.name, url: node.path },
+          origin: 'tree',
         },
       }));
     }
@@ -369,7 +181,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
     }
   }, [workspacePath, reloadRootTree]);
 
-  // Build file tree (with path safety validation)
+  // Build file tree (with path safety validation and sorting)
   const fileTreeWithRoot = useMemo(() => {
     if (!isValidWorkspacePath(workspacePath)) return [];
 
@@ -385,9 +197,9 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
 
     const validatedFileTree = fileTree.length > 0 ? filterValidNodes(fileTree) : [];
 
-    // Return root directory contents directly, hide root node
-    return validatedFileTree;
-  }, [workspacePath, fileTree]);
+    // Apply client-side sorting (directories first, then within-group ordering).
+    return sortNodes(validatedFileTree);
+  }, [workspacePath, fileTree, sortNodes]);
 
   // Check if empty
   const isEmpty = useMemo(() => {
@@ -400,7 +212,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
 
     try {
       const result = await window.electronAPI?.fs?.selectFiles?.({
-        title: 'Select Files or Folders to Add',
+        title: t('workspace.explorer.selectFilesTitle'),
         allowMultiple: true,
       });
 
@@ -420,7 +232,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
         } catch (error) { /* ignore */ }
       }
     } catch (error) { /* ignore */ }
-  }, [workspacePath, reloadRootTree]);
+  }, [workspacePath, reloadRootTree, t]);
 
   // Handle add folder
   const handleAddFolder = useCallback(async () => {
@@ -473,10 +285,10 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
   // Get empty state message
   const getEmptyStateMessage = useCallback(() => {
     return {
-      title: 'Add documents, code files, images, and more.',
-      subtitle: `Drag and drop files to add them here.`
+      title: t('workspace.explorer.defaultEmptyTitle'),
+      subtitle: t('workspace.explorer.emptySubtitle'),
     };
-  }, [title]);
+  }, [t]);
 
   // Toggle collapse state
   const handleToggleCollapse = useCallback(() => {
@@ -495,14 +307,12 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
       prevExpanded.sort((a, b) => a.split('/').length - b.split('/').length);
       // Only load expanded directories not yet cached
       prevExpanded.forEach(dirPath => {
-        if (!childrenCache.current.has(dirPath)) {
+        if (!isChildrenLoaded(dirPath)) {
           handleLoadChildren(dirPath);
         }
       });
     }
-    // Only trigger on fileTree or workspacePath changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileTree, workspacePath, isLoading]);
+  }, [fileTree, workspacePath, isLoading, isChildrenLoaded, handleLoadChildren]);
 
   return (
     <div
@@ -520,12 +330,21 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
           <span className="sidepane-section-title-text">{title}</span>
         </div>
         <div className="sidepane-section-header-actions" onClick={(e) => e.stopPropagation()}>
+          {!isCollapsed && showSortButton && isValidWorkspacePath(workspacePath) && fileTree.length > 0 && (
+            <button
+              className="sidepane-action-btn"
+              onClick={cycleSort}
+              title={sortTooltip}
+            >
+              <SortIcon size={14} />
+            </button>
+          )}
           {!isCollapsed && isValidWorkspacePath(workspacePath) && (
             <button
               className="sidepane-action-btn"
               onClick={handleRefresh}
               disabled={isLoading}
-              title={`Refresh ${title} file tree`}
+              title={t('workspace.explorer.refreshFileTree', { title })}
             >
               <RefreshCw size={14} />
             </button>
@@ -537,7 +356,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
               className="sidepane-action-btn"
               onClick={handleMenuToggle}
               disabled={!currentChatId}
-              title="More options"
+              title={t('common.moreOptions')}
             >
               <MoreHorizontal size={14} />
             </button>
@@ -553,7 +372,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
             <div className="drop-overlay">
               <div className="drop-overlay-content">
                 <div className="drop-icon">📁</div>
-                <p>Drop files or folders here to copy to {title}</p>
+                <p>{t('workspace.explorer.dropToCopy', { title })}</p>
               </div>
             </div>
           )}
@@ -563,7 +382,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <g clipPath="url(#clip0_section)">
                     <circle cx="10" cy="10" r="9" stroke="black" strokeOpacity="0.15" strokeWidth="2"/>
-                    <path d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19" stroke="#272320" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19" stroke="var(--color-warm-900)" strokeWidth="2" strokeLinecap="round"/>
                   </g>
                   <defs>
                     <clipPath id="clip0_section">
@@ -572,14 +391,14 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
                   </defs>
                 </svg>
               </div>
-              <p>Loading {title.toLowerCase()}...</p>
+              <p>{t('workspace.explorer.loadingTitle', { title })}</p>
             </div>
           ) : !isValidWorkspacePath(workspacePath) ? (
             <div className="empty-state">
               <div className="empty-icon">📂</div>
-              <p>Default {title.toLowerCase()} for this chat</p>
-              <small style={{ fontSize: '0.85em', color: '#888', marginTop: '8px', display: 'block' }}>
-                Path: {workspacePath || 'Not initialized'}
+              <p>{t('workspace.explorer.defaultForChat', { title })}</p>
+              <small style={{ fontSize: '0.85em', color: 'var(--color-warm-400)', marginTop: '8px', display: 'block' }}>
+                {t('common.path')}: {workspacePath || t('common.notInitialized')}
               </small>
             </div>
           ) : isEmpty ? (
@@ -594,15 +413,15 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
                   <div className="sidepane-workspace-empty-actions">
                     <button className="sidepane-workspace-empty-btn primary" onClick={handleAddFiles}>
                       <File size={16} />
-                      <span>Add Files</span>
+                      <span>{t('workspace.explorer.addFiles')}</span>
                     </button>
                     <button className="sidepane-workspace-empty-btn secondary" onClick={handleAddFolder}>
                       <FolderPlus size={16} />
-                      <span>Add Folder</span>
+                      <span>{t('workspace.explorer.addFolder')}</span>
                     </button>
                     <button className="sidepane-workspace-empty-btn secondary" onClick={handleOpenPasteDialog}>
                       <Clipboard size={16} />
-                      <span>Paste Text</span>
+                      <span>{t('workspace.explorer.pasteText')}</span>
                     </button>
                   </div>
                 )}
@@ -616,6 +435,7 @@ const FileExplorerSection: React.FC<FileExplorerSectionProps> = ({
               className="workspace-file-tree"
               directoryStack={directoryStack}
               onDirectoryStackChange={setDirectoryStack}
+              showBreadcrumb={false}
               onLoadChildren={handleLoadChildren}
             />
           )}

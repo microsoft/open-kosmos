@@ -23,7 +23,7 @@
 .say-hi-action-group-title {
   font-size: 12px;
   font-weight: 600;
-  color: #e8853a;
+  color: var(--color-orange-400);
   letter-spacing: 0.02em;
   padding-left: 2px;
 }
@@ -43,9 +43,9 @@
   gap: 6px;
   padding: 7px 14px;
   border: 1px solid rgba(249, 115, 22, 0.30);
-  border-radius: 18px;
+  border-radius: var(--radius-full);
   background: rgba(249, 115, 22, 0.08);
-  color: #e8853a;
+  color: var(--color-orange-400);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
@@ -59,7 +59,7 @@
 .say-hi-action-chip:hover {
   background: rgba(249, 115, 22, 0.18);
   border-color: rgba(249, 115, 22, 0.50);
-  color: #f59e0b;
+  color: var(--color-warning-500);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
 }

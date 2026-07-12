@@ -7,6 +7,7 @@ import { SquareModel, uuid } from '../model';
 import Resizer from './shape-resizer';
 import { DragLimiter, type MEvent } from '../../common/drag-limiter';
 import { StrokeEvent, CapturedHooks } from '../../common/keyboard-painter';
+import { getString } from '../../common/localString';
 
 interface PaintState {
   stroke: string;
@@ -72,7 +73,7 @@ class SquarePainter extends PureComponent<PaintProps, PaintState> {
     const [x, y, w, h] = rect;
     // use 0.01 to make sure that the painter rect is visible
     const attrs = { x, y, width: w || 0.01, height: h || 0.01, stroke, strokeWidth, fill: 'none'};
-    return <rect {...attrs} aria-live="assertive" aria-label='render rect'/>
+    return <rect {...attrs} aria-live="assertive" aria-label={getString('renderRect')}/>
   }
 }
 

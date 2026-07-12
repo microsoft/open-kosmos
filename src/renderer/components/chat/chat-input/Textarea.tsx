@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from 'react';
 import { profileDataManager } from '@/lib/userData/profileDataManager';
-import { validateImageFile } from '@shared/types/chatTypes';
 import {
   getCurrentSearchQuery,
   insertMention,
@@ -16,6 +15,8 @@ import { MentionHighlight } from '../MentionHighlight';
 import { getChatInputEnterAction } from '@/lib/chat/chatInputKeyboard';
 import { ContextMenuAtom, zeroContextMenuState } from './context-menu.atom';
 import { atom } from '@/atom';
+import { handleTextareaPaste } from './textareaPaste';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 const NOOP = () => {};
 function useContextMenu(enabled?: boolean) {
@@ -47,6 +48,8 @@ interface TextAreaProps {
   handleSend: () => void;
   handleImageSelect: (file: File) => Promise<void>;
   textareaStateAtom: TextareaStateAtom;
+  onDraftChange?: (text: string) => void;
+  updatePromptHistoryDraft?: boolean;
 }
 
 export function createTextareaAtom() {
@@ -56,8 +59,19 @@ export function createTextareaAtom() {
 export type TextareaStateAtom = ReturnType<typeof createTextareaAtom>;
 
 export function TextArea(props: TextAreaProps) {
-  const { textareaRef, title, readOnly, supportsImages, enableContextMenu, handleSend, handleImageSelect, textareaStateAtom } = props;
-  // Used to prevent triggering edit monitoring when handling history
+  const {
+    textareaRef,
+    title,
+    readOnly,
+    supportsImages,
+    enableContextMenu,
+    handleSend,
+    handleImageSelect,
+    textareaStateAtom,
+    onDraftChange,
+    updatePromptHistoryDraft = true,
+  } = props;
+  const { t } = useI18n();
   const isNavigatingHistory = useRef(false);
   const [contextMenuState, {
     onContextMenuTrigger,
@@ -67,9 +81,25 @@ export function TextArea(props: TextAreaProps) {
     onContextMenuSelect,
   }] = useContextMenu(enableContextMenu);
   const [message, { set: setMessage }] = textareaStateAtom.use();
+  const onDraftChangeRef = useRef(onDraftChange);
+  const updatePromptHistoryDraftRef = useRef(updatePromptHistoryDraft);
 
+  useEffect(() => {
+    onDraftChangeRef.current = onDraftChange;
+  }, [onDraftChange]);
 
-  // Get cursor position information
+  useEffect(() => {
+    updatePromptHistoryDraftRef.current = updatePromptHistoryDraft;
+  }, [updatePromptHistoryDraft]);
+
+  const setDraftMessage = (text: string, options?: { updatePromptHistoryDraft?: boolean }) => {
+    setMessage(text);
+    onDraftChangeRef.current?.(text);
+    if (updatePromptHistoryDraftRef.current && options?.updatePromptHistoryDraft !== false) {
+      profileDataManager.setCurrentEditingPrompt(text);
+    }
+  };
+
   const getCursorPosition = (): {
     position: number;
     isAtStart: boolean;
@@ -90,7 +120,6 @@ export function TextArea(props: TextAreaProps) {
     return { position, isAtStart, isAtEnd, isInMiddle };
   };
 
-  // Set cursor position
   const setCursorPosition = (position: number) => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -99,7 +128,6 @@ export function TextArea(props: TextAreaProps) {
     }
   };
 
-  // Get the bounding rect of the ChatInput container
   const getInputContainerRect = (): DOMRect | null => {
     const container =
       (textareaRef.current?.closest('.textarea-layer-container') as HTMLElement | null) ||
@@ -107,16 +135,12 @@ export function TextArea(props: TextAreaProps) {
     return container?.getBoundingClientRect() || null;
   };
 
-  // Handle mention selection
   const handleMentionSelect = (option: ContextOption, fromKeyboard: boolean = false) => {
     if (!textareaRef.current) return;
 
-    // If this is the default option (no relativePath or value), close the menu
-    // and let the existing ContextMenu onSelect flow handle it
     if (!option.relativePath && !option.value) {
 
       if (fromKeyboard) {
-        // Keyboard selection: close the menu and restore focus
         onContextMenuClose();
         setTimeout(() => {
           if (textareaRef.current) {
@@ -125,18 +149,13 @@ export function TextArea(props: TextAreaProps) {
         }, 0);
       }
 
-      // Do nothing here; let ContextMenu's onSelect call ChatView's handler
       return;
     }
 
-    // FIX: Read the current text from the DOM directly to avoid React state / DOM desync.
-    // When the user types quickly, React state (message) may not yet reflect the DOM value.
-    // Using the DOM value ensures cursorPos and text always agree.
     const currentText = textareaRef.current.value;
     const cursorPos = textareaRef.current.selectionStart;
     const pathToInsert = option.value || option.relativePath || '';
 
-    // Determine sourceType from the option type
     let sourceType: MentionSourceType | undefined;
     if (option.type === ContextMenuOptionType.KnowledgeBase) {
       sourceType = MentionSourceType.KnowledgeBase;
@@ -151,10 +170,9 @@ export function TextArea(props: TextAreaProps) {
       sourceType,
     );
 
-    setMessage(newText);
+    setDraftMessage(newText);
     onContextMenuClose?.();
 
-    // Restore focus and set the cursor position
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -163,7 +181,6 @@ export function TextArea(props: TextAreaProps) {
     }, 0);
   };
 
-  // Listen for mention selection events from ChatView
   useEffect(() => {
     const handleMentionSelectEvent = (e: CustomEvent) => {
       const { option } = e.detail;
@@ -182,16 +199,11 @@ export function TextArea(props: TextAreaProps) {
     };
   }, []);
 
-
-  // Listen for skill mention selection events from ChatView
   useEffect(() => {
     const handleSkillMentionSelectEvent = (e: CustomEvent) => {
       const { skillName } = e.detail;
       if (!textareaRef.current || !skillName) return;
 
-      // FIX: Read the current text from the DOM directly to avoid React state / DOM desync.
-      // When the user types quickly, React state (message) may not yet reflect the DOM value.
-      // Using the DOM value ensures cursorPos and text always agree.
       const currentText = textareaRef.current.value;
       const cursorPos = textareaRef.current.selectionStart;
       const { newText, newCursorPos } = insertSkillMention(
@@ -200,10 +212,9 @@ export function TextArea(props: TextAreaProps) {
         skillName,
       );
 
-      setMessage(newText);
+      setDraftMessage(newText);
       onContextMenuClose();
 
-      // Restore focus and set the cursor position
       setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus();
@@ -224,15 +235,13 @@ export function TextArea(props: TextAreaProps) {
     };
   }, []);
 
-  // Listen for fill-input-box events from AgentPage
   useEffect(() => {
     const handleFillInputEvent = (e: CustomEvent) => {
       const { text } = e.detail;
 
       if (text && typeof text === 'string') {
-        setMessage(text);
+        setDraftMessage(text);
 
-        // Focus the input and move the cursor to the end
         setTimeout(() => {
           if (textareaRef.current) {
             textareaRef.current.focus();
@@ -258,7 +267,7 @@ export function TextArea(props: TextAreaProps) {
   useEffect(() => {
     const handleTriggerMention = (e: Event) => {
       const focusIndex = (e as CustomEvent)?.detail?.focusIndex;
-      setMessage('@');
+      setDraftMessage('@');
       setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus();
@@ -293,7 +302,7 @@ export function TextArea(props: TextAreaProps) {
         const previousPrompt = profileDataManager.getPreviousPrompt();
         if (previousPrompt !== null) {
           isNavigatingHistory.current = true;
-          setMessage(previousPrompt);
+          setDraftMessage(previousPrompt, { updatePromptHistoryDraft: false });
           // After selecting up, cursor defaults to start
           setTimeout(() => {
             setCursorPosition(0);
@@ -310,7 +319,7 @@ export function TextArea(props: TextAreaProps) {
         const nextPrompt = profileDataManager.getNextPrompt();
         if (nextPrompt !== null) {
           isNavigatingHistory.current = true;
-          setMessage(nextPrompt);
+          setDraftMessage(nextPrompt, { updatePromptHistoryDraft: false });
           // After selecting down, cursor defaults to end
           setTimeout(() => {
             setCursorPosition(nextPrompt.length);
@@ -388,7 +397,7 @@ export function TextArea(props: TextAreaProps) {
           const end = textarea.selectionEnd;
           const currentValue = textarea.value;
           const newValue = currentValue.substring(0, start) + '\n' + currentValue.substring(end);
-          setMessage(newValue);
+          setDraftMessage(newValue);
 
           setTimeout(() => {
             textarea.selectionStart = textarea.selectionEnd = start + 1;
@@ -416,7 +425,7 @@ export function TextArea(props: TextAreaProps) {
     const newValue = e.target.value;
     const cursorPos = e.target.selectionStart;
 
-    setMessage(newValue);
+    setDraftMessage(newValue);
 
     // Check the trigger type (@ or #) using the unified triggerType check
     const triggerType = getContextMenuTriggerType(newValue, cursorPos);
@@ -439,92 +448,20 @@ export function TextArea(props: TextAreaProps) {
       onContextMenuClose();
     }
 
-    // If not navigating history, record as editing behavior
-    if (!isNavigatingHistory.current) {
-      profileDataManager.setCurrentEditingPrompt(newValue);
-    }
+    // Prompt-history navigation updates visible text only. The saved draft is
+    // overwritten when the user edits again.
   };
 
-  // Handle clipboard paste events - supports screenshot paste and text trimming
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) {
-      return;
-    }
-
-    // FIX: Prefer plain text over images.
-    // When copying a table from Excel/Word the clipboard contains both text and image formats;
-    // text should take priority.
-    const hasTextContent = clipboardData.types.includes('text/plain');
-    const textContent = clipboardData.getData('text/plain');
-
-    // If there is non-empty text content, handle the paste manually and trim surrounding whitespace
-    if (hasTextContent && textContent.trim().length > 0) {
-      e.preventDefault();
-      const trimmedText = textContent.trim();
-
-      // Get the current cursor position
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const newMessage = message.slice(0, start) + trimmedText + message.slice(end);
-        setMessage(newMessage);
-
-        // Set the new cursor position and scroll to it
-        const newCursorPos = start + trimmedText.length;
-        requestAnimationFrame(() => {
-          textarea.selectionStart = newCursorPos;
-          textarea.selectionEnd = newCursorPos;
-          // Scroll to the cursor position (bottom)
-          textarea.scrollTop = textarea.scrollHeight;
-        });
-      } else {
-        setMessage(message + trimmedText);
-      }
-      return;
-    }
-
-    // Check whether the current model supports images
-    if (!supportsImages) {
-      return;
-    }
-
-    // Check whether the clipboard contains image files (only process images when there is no text)
-    const items = Array.from(clipboardData.items);
-    const imageItems = items.filter((item) => item.type.startsWith('image/'));
-
-    if (imageItems.length === 0) {
-      return;
-    }
-
-    // Prevent default paste behaviour (only for pure image pastes)
-    e.preventDefault();
-
-    // Process each image item
-    for (const item of imageItems) {
-      const file = item.getAsFile();
-      if (file) {
-
-        // Validate image format
-        if (!validateImageFile(file)) {
-          alert(
-            `Unsupported image format: ${file.type}. Please paste a PNG, JPEG, GIF, WEBP, or BMP image.`,
-          );
-          continue;
-        }
-
-        // Generate a file name for the pasted image
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const extension = file.type.split('/')[1] || 'png';
-        const fileName = `screenshot-${timestamp}.${extension}`;
-
-        // Create a new File object with the generated file name
-        const renamedFile = new File([file], fileName, { type: file.type });
-
-        await handleImageSelect(renamedFile);
-      }
-    }
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    await handleTextareaPaste({
+      event: e,
+      message,
+      supportsImages,
+      textarea: textareaRef.current,
+      setDraftMessage,
+      handleImageSelect,
+      getUnsupportedImageMessage: (type) => t('chat.attachments.unsupportedPastedImage', { type }),
+    });
   };
 
 
@@ -544,8 +481,8 @@ export function TextArea(props: TextAreaProps) {
         title={title}
         placeholder={
           supportsImages
-            ? 'Type a message, drag files/images, paste screenshot, @ to mention files, # for skills...'
-            : 'Type a message, drag files, @ to mention files, # for skills...'
+            ? t('chat.input.placeholderWithImages')
+            : t('chat.input.placeholderTextOnly')
         }
         className="chat-textarea"
       />

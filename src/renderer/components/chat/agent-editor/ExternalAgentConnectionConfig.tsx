@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { externalAgentApi, externalAgentEvents } from '../../../ipc/externalAgent'
 import type { ExternalAgentConnectionInfo } from '@shared/ipc/externalAgent'
 import { useToast } from '../../ui/ToastProvider'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 interface Props {
   token?: string;
@@ -16,6 +17,7 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
   const [info, setInfo] = useState<ExternalAgentConnectionInfo | null>(null)
   const [showToken, setShowToken] = useState(false)
   const { showToast } = useToast()
+  const { t } = useI18n()
 
   useEffect(() => {
     const load = async () => {
@@ -35,26 +37,26 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
 
   const handleCopy = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
-    showToast('Copied to clipboard', 'success')
-  }, [showToast])
+    showToast(t('common.copiedToClipboard'), 'success')
+  }, [showToast, t])
 
   if (!info) return null
 
   return (
     <div className="form-section">
-      <label className="form-label">External Agent Connection</label>
+      <label className="form-label">{t('agent.create.externalConnection')}</label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Status */}
         <div className="agent-meta-row">
           <div className="agent-meta-item">
-            <span className="agent-meta-label">Status:</span>
+            <span className="agent-meta-label">{t('common.status')}:</span>
             <span
               className="agent-meta-badge"
               style={{
-                color: info.connected ? 'var(--color-success, #16a34a)' : 'var(--text-secondary)',
+                color: info.connected ? 'var(--color-success, var(--color-success-600))' : 'var(--text-secondary)',
               }}
             >
-              {info.connected ? '● Connected' : '○ Disconnected'}
+              {info.connected ? t('agent.create.connected') : t('agent.create.disconnected')}
             </span>
           </div>
         </div>
@@ -62,7 +64,7 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
         {/* WS URLs */}
         {info.port && info.addresses.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span className="agent-meta-label">WebSocket URL:</span>
+            <span className="agent-meta-label">{t('agent.create.websocketUrl')}</span>
             {info.addresses.map(addr => {
               const url = `ws://${addr}:${info.port}`
               return (
@@ -72,7 +74,7 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
                     padding: '4px 8px',
                     borderRadius: '4px',
                     fontSize: '13px',
-                    backgroundColor: 'var(--bg-secondary, #f5f5f5)',
+                    backgroundColor: 'var(--bg-secondary, var(--color-neutral-100))',
                     fontFamily: 'monospace',
                   }}>
                     {url}
@@ -84,13 +86,13 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
                       padding: '4px 8px',
                       fontSize: '12px',
                       cursor: 'pointer',
-                      border: '1px solid var(--border-color, #ddd)',
+                      border: '1px solid var(--border-color, var(--color-neutral-200))',
                       borderRadius: '4px',
                       backgroundColor: 'transparent',
                       color: 'var(--text-secondary)',
                     }}
                   >
-                    Copy
+                    {t('common.copy')}
                   </button>
                 </div>
               )
@@ -101,14 +103,14 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
         {/* Token (read-only, per bot) */}
         {token && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span className="agent-meta-label">Auth Token:</span>
+            <span className="agent-meta-label">{t('agent.create.authToken')}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <code style={{
                 flex: 1,
                 padding: '4px 8px',
                 borderRadius: '4px',
                 fontSize: '13px',
-                backgroundColor: 'var(--bg-secondary, #f5f5f5)',
+                backgroundColor: 'var(--bg-secondary, var(--color-neutral-100))',
                 fontFamily: 'monospace',
               }}>
                 {showToken ? token : '••••••••••••••••'}
@@ -120,14 +122,14 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
                   padding: '4px 8px',
                   fontSize: '12px',
                   cursor: 'pointer',
-                  border: '1px solid var(--border-color, #ddd)',
+                  border: '1px solid var(--border-color, var(--color-neutral-200))',
                   borderRadius: '4px',
                   backgroundColor: 'transparent',
                   color: 'var(--text-secondary)',
                   minWidth: '50px',
                 }}
               >
-                {showToken ? 'Hide' : 'Show'}
+                {showToken ? t('common.hide') : t('common.show')}
               </button>
               <button
                 type="button"
@@ -136,13 +138,13 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
                   padding: '4px 8px',
                   fontSize: '12px',
                   cursor: 'pointer',
-                  border: '1px solid var(--border-color, #ddd)',
+                  border: '1px solid var(--border-color, var(--color-neutral-200))',
                   borderRadius: '4px',
                   backgroundColor: 'transparent',
                   color: 'var(--text-secondary)',
                 }}
               >
-                Copy
+                {t('common.copy')}
               </button>
             </div>
           </div>
@@ -152,18 +154,18 @@ const ExternalAgentConnectionConfig: React.FC<Props> = ({ token }) => {
         <div style={{
           padding: '10px 12px',
           borderRadius: '6px',
-          backgroundColor: 'var(--bg-secondary, #f5f5f5)',
+          backgroundColor: 'var(--bg-secondary, var(--color-neutral-100))',
           fontSize: '12px',
           color: 'var(--text-secondary)',
           lineHeight: '1.6',
         }}>
-          <div style={{ fontWeight: 500, marginBottom: '4px' }}>OpenClaw Setup</div>
-          <div>Add the following to your OpenClaw <code>config.yaml</code>:</div>
+          <div style={{ fontWeight: 500, marginBottom: '4px' }}>{t('agent.create.openClawSetup')}</div>
+          <div>{t('agent.create.openClawConfigHint')} <code>config.yaml</code>:</div>
           <pre style={{
             margin: '6px 0 0',
             padding: '8px',
             borderRadius: '4px',
-            backgroundColor: 'var(--bg-primary, #fff)',
+            backgroundColor: 'var(--bg-primary, var(--color-white))',
             fontSize: '11px',
             overflow: 'auto',
             whiteSpace: 'pre',

@@ -266,7 +266,22 @@ describe('ensureVenvMatchesPinnedPython', () => {
     const venvDir = path.join(testUserData, 'python-venv');
     fs.mkdirSync(venvDir, { recursive: true });
     // Write pyvenv.cfg with matching version
-    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), 'version_info = 3.12\n');
+    const homeDir = process.platform === 'win32'
+      ? path.join(venvDir, 'base-home')
+      : path.join(venvDir, 'base-home', 'bin');
+    fs.mkdirSync(homeDir, { recursive: true });
+    fs.writeFileSync(path.join(homeDir, process.platform === 'win32' ? 'python.exe' : 'python'), '');
+    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), `home = ${homeDir}\nversion_info = 3.12\n`);
+    // Healthy venv: its base interpreter launcher must resolve, otherwise the venv
+    // is treated as dangling and rebuilt.
+    const launcher = process.platform === 'win32'
+      ? path.join(venvDir, 'Scripts', 'python.exe')
+      : path.join(venvDir, 'bin', 'python');
+    fs.mkdirSync(path.dirname(launcher), { recursive: true });
+    fs.writeFileSync(launcher, '');
+    if (process.platform !== 'win32') {
+      fs.writeFileSync(path.join(path.dirname(launcher), 'python3'), '');
+    }
     const recreateSpy = vi.spyOn(manager as any, 'recreateVenv').mockResolvedValue(undefined);
     await (manager as any).ensureVenvMatchesPinnedPython('3.12.9');
     expect(recreateSpy).not.toHaveBeenCalled();

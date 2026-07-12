@@ -10,19 +10,19 @@ vi.mock('electron', () => ({
 }));
 
 // We deliberately do NOT mock 'fs' or 'crypto' — we rely on the real filesystem
-// with a temp directory injected via OpenKosmos_TEST_USER_DATA_PATH.
+// with a temp directory injected via OPENKOSMOS_TEST_USER_DATA_PATH.
 
 describe('idFactory', () => {
   let tmpDir: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idFactory-test-'));
-    process.env.OpenKosmos_TEST_USER_DATA_PATH = tmpDir;
+    process.env.OPENKOSMOS_TEST_USER_DATA_PATH = tmpDir;
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    delete process.env.OpenKosmos_TEST_USER_DATA_PATH;
+    delete process.env.OPENKOSMOS_TEST_USER_DATA_PATH;
     vi.resetModules();
   });
 
@@ -30,7 +30,7 @@ describe('idFactory', () => {
     const { getOrCreateInstallationDeviceId } = await import('../idFactory');
     const id = getOrCreateInstallationDeviceId();
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    const idFilePath = path.join(tmpDir, 'analytics-device-id');
+    const idFilePath = path.join(tmpDir, 'installation-device-id');
     expect(fs.existsSync(idFilePath)).toBe(true);
     expect(fs.readFileSync(idFilePath, 'utf8').trim()).toBe(id);
   });
@@ -43,7 +43,7 @@ describe('idFactory', () => {
   });
 
   it('getOrCreateInstallationDeviceId reads an existing ID from disk', async () => {
-    const idFilePath = path.join(tmpDir, 'analytics-device-id');
+    const idFilePath = path.join(tmpDir, 'installation-device-id');
     const existingId = '00000000-0000-0000-0000-000000000001';
     fs.writeFileSync(idFilePath, existingId, 'utf8');
 
@@ -52,15 +52,29 @@ describe('idFactory', () => {
     expect(id).toBe(existingId);
   });
 
-  it('getOrCreateInstallationDeviceId uses os.tmpdir fallback when OpenKosmos_TEST_USER_DATA_PATH is not set', async () => {
-    delete process.env.OpenKosmos_TEST_USER_DATA_PATH;
+  it('migrates the legacy analytics device ID to the neutral installation path', async () => {
+    const legacyIdFilePath = path.join(tmpDir, 'analytics-device-id');
+    const idFilePath = path.join(tmpDir, 'installation-device-id');
+    const existingId = '00000000-0000-0000-0000-000000000002';
+    fs.writeFileSync(legacyIdFilePath, existingId, 'utf8');
+
+    const { getOrCreateInstallationDeviceId } = await import('../idFactory');
+    const id = getOrCreateInstallationDeviceId();
+
+    expect(id).toBe(existingId);
+    expect(fs.readFileSync(idFilePath, 'utf8').trim()).toBe(existingId);
+    expect(fs.existsSync(legacyIdFilePath)).toBe(false);
+  });
+
+  it('getOrCreateInstallationDeviceId uses os.tmpdir fallback when OPENKOSMOS_TEST_USER_DATA_PATH is not set', async () => {
+    delete process.env.OPENKOSMOS_TEST_USER_DATA_PATH;
     // electron app.getPath is mocked to throw, so it will fall back to os.tmpdir()
     const { getOrCreateInstallationDeviceId } = await import('../idFactory');
     const id = getOrCreateInstallationDeviceId();
     expect(typeof id).toBe('string');
     expect(id.length).toBeGreaterThan(0);
     // Restore for other tests
-    process.env.OpenKosmos_TEST_USER_DATA_PATH = tmpDir;
+    process.env.OPENKOSMOS_TEST_USER_DATA_PATH = tmpDir;
   });
 
   it('getOrCreateInstallationDeviceId falls back to a random UUID if write fails', async () => {

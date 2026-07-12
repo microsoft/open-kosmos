@@ -484,6 +484,11 @@ describe('ChatContainer user-message editing', () => {
       }
     }
     (window as any).ResizeObserver = MockResizeObserver;
+    const fireResizeObservers = () => {
+      for (const callback of resizeCallbacks) {
+        callback([], {} as ResizeObserver);
+      }
+    };
 
     const scrollMetrics = installScrollMetrics({
       scrollHeight: 1000,
@@ -506,13 +511,13 @@ describe('ChatContainer user-message editing', () => {
 
       scrollMetrics.setScrollTop(500);
       fireEvent.scroll(scrollContainer);
-      resizeCallbacks[0]?.([], {} as ResizeObserver);
+      fireResizeObservers();
 
       expect(scrollMetrics.scrollTopWrites.length).toBe(writesAfterInitialRender);
 
       scrollMetrics.setScrollTop(600);
       fireEvent.scroll(scrollContainer);
-      resizeCallbacks[0]?.([], {} as ResizeObserver);
+      fireResizeObservers();
 
       expect(scrollMetrics.scrollTopWrites).toHaveLength(writesAfterInitialRender + 1);
       expect(scrollMetrics.scrollTopWrites.at(-1)).toBe(1000);

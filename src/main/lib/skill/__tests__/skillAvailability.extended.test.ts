@@ -1,5 +1,6 @@
 import { getSkillAvailability } from '../skillAvailability';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
@@ -8,20 +9,29 @@ vi.mock('../../userDataADO', async () => ({
   },
 }));
 
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
+  },
+}));
+
 describe('getSkillAvailability — extended coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (skillsConfigManager.hasSkill as Mock).mockReturnValue(true);
   });
 
-  it('returns not installed when profile is null', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue(null);
+  it('returns not installed when the registry does not have the skill', () => {
+    (skillsConfigManager.hasSkill as Mock).mockReturnValue(false);
     const result = getSkillAvailability({ userAlias: 'tester', skillName: 'pdf' });
     expect(result.installed).toBe(false);
     expect(result.callableInCurrentChat).toBe(false);
   });
 
-  it('returns installed=false with no chatId when skill is not in profile', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [] });
+  it('returns installed=false with no chatId when skill is not in the registry', () => {
+    (skillsConfigManager.hasSkill as Mock).mockReturnValue(false);
     const result = getSkillAvailability({ userAlias: 'tester', skillName: 'pdf' });
     expect(result.installed).toBe(false);
     expect(result.callableInCurrentChat).toBe(false);
@@ -29,7 +39,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('returns CHAT_NOT_FOUND when chatConfig is null', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue(null);
     const result = getSkillAvailability({ userAlias: 'tester', skillName: 'pdf', chatId: 'chat-1' });
     expect(result.installed).toBe(true);
@@ -38,7 +47,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('returns AGENT_NOT_RESOLVED when single_agent chat has no agent', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       chat_type: 'single_agent',
       // no agent field
@@ -48,7 +56,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('resolves multi_agent chat when agentName provided and matched', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       chat_type: 'multi_agent',
       agents: [{ name: 'Kobi', skills: ['pdf'] }],
@@ -64,7 +71,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('returns AGENT_NOT_RESOLVED for multi_agent when agentName not found', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       chat_type: 'multi_agent',
       agents: [{ name: 'Other', skills: [] }],
@@ -79,7 +85,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('returns installed=true but callableInCurrentChat=false when skill not in agent.skills', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       chat_type: 'single_agent',
       agent: { name: 'Kobi', skills: [] },
@@ -91,7 +96,6 @@ describe('getSkillAvailability — extended coverage', () => {
   });
 
   it('trims skillName before lookup', () => {
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
     (profileCacheManager.getChatConfig as Mock).mockReturnValue({
       chat_type: 'single_agent',
       agent: { name: 'Kobi', skills: ['pdf'] },

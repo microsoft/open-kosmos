@@ -1,12 +1,10 @@
 /**
- * sub_agent — Unified sub-agent tool
+ * sub_agent — Ad-hoc sub-agent tool
  *
- * Replaces the 4 legacy tools (spawn_subagent, spawn_subagents, spawn_adhoc_subagent,
- * spawn_adhoc_subagents) with a single tool aligned with Claude Code's Agent tool pattern.
+ * Single tool aligned with Claude Code's Agent tool pattern.
  *
- * - When `subagent_type` is provided → spawns a pre-configured named agent
- * - When omitted → spawns an ad-hoc inline agent
- * - `run_in_background` → async fire-and-forget, results delivered at next turn
+ * - Spawns an ad-hoc inline agent with a custom system_prompt and optional tool subset.
+ * - `run_in_background` → async fire-and-forget, results delivered at next turn.
  *
  * File location: src/main/lib/mcpRuntime/builtinTools/subAgentTool.ts
  */
@@ -14,6 +12,8 @@
 import type { ToolExecutionResult } from './types';
 import { BuiltinToolsManager } from './builtinToolsManager';
 import { createConsoleLogger } from '../../unifiedLogger';
+import { CancellationToken, CancellationTokenSource } from '../../cancellation';
+import type { ToolExecutionContext } from '../../subAgent/types';
 
 // Lazy-init logger
 let logger: any;
@@ -25,10 +25,58 @@ function getLogger() {
   return logger || console;
 }
 
+function createLinkedCancellationToken(
+  parentToken: CancellationToken,
+  signal?: AbortSignal,
+): { token: CancellationToken; dispose(): void } {
+  if (!signal) {
+    return { token: parentToken, dispose: () => {} };
+  }
+
+  const source = new CancellationTokenSource();
+  const parentRegistration = parentToken.onCancellationRequested(() => source.cancel());
+  const abort = () => source.cancel();
+
+  if (parentToken.isCancellationRequested || signal.aborted) {
+    source.cancel();
+  } else {
+    signal.addEventListener('abort', abort, { once: true });
+  }
+
+  return {
+    token: source.token,
+    dispose: () => {
+      signal.removeEventListener('abort', abort);
+      parentRegistration.dispose();
+      source.dispose();
+    },
+  };
+}
+
+function createActivityEventSender(context: any) {
+  const sender = context.eventSender;
+  if (!sender) {
+    return undefined;
+  }
+
+  return new Proxy(sender, {
+    get(target, prop) {
+      if (prop === 'send') {
+        const send = Reflect.get(target, prop, target);
+        return (...args: unknown[]) => {
+          context.reportActivity?.();
+          return send.apply(target, args);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 export interface SubAgentToolArgs {
   description?: string;
   prompt: string;
-  subagent_type?: string;
   system_prompt?: string;
   tools?: string[];
   model?: string;
@@ -38,60 +86,62 @@ export interface SubAgentToolArgs {
 
 export class SubAgentTool {
   static getDefinition() {
+    const description =
+      'Launch a sub-agent to handle a task. ' +
+      'Provide a custom system_prompt and tools to create an ad-hoc agent. ' +
+      'Add `run_in_background: true` to run without blocking — results will be delivered as a <task-notification> at your next turn.';
+
+    const properties: Record<string, unknown> = {
+      description: {
+        type: 'string',
+        description: 'A short (3-5 word) description of the task',
+      },
+      prompt: {
+        type: 'string',
+        description: 'The task for the sub-agent to perform',
+      },
+      system_prompt: {
+        type: 'string',
+        description: 'Custom system prompt for the ad-hoc agent',
+      },
+      tools: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional tool subset from the parent agent\'s tool set. Omit or pass [] to inherit the parent MCP tools by default.',
+      },
+      model: {
+        type: 'string',
+        description: 'Model override (default: inherit from parent)',
+      },
+      run_in_background: {
+        type: 'boolean',
+        description: 'Run without blocking. Results delivered as <task-notification> at your next turn.',
+        default: false,
+      },
+      no_auto_promote: {
+        type: 'boolean',
+        description: 'Disable auto-promotion to background after 120s (default: false)',
+        default: false,
+      },
+    };
+
     return {
       name: 'sub_agent',
-      description:
-        'Launch a sub-agent to handle a task. ' +
-        'Use `subagent_type` to spawn a pre-configured agent, or omit it to create an ad-hoc agent with custom system_prompt and tools. ' +
-        'Add `run_in_background: true` to run without blocking — results will be delivered as a <task-notification> at your next turn.',
+      description,
       inputSchema: {
         type: 'object',
-        properties: {
-          description: {
-            type: 'string',
-            description: 'A short (3-5 word) description of the task',
-          },
-          prompt: {
-            type: 'string',
-            description: 'The task for the sub-agent to perform',
-          },
-          subagent_type: {
-            type: 'string',
-            description: 'Name of a pre-configured sub-agent. Omit to create an ad-hoc agent.',
-          },
-          system_prompt: {
-            type: 'string',
-            description: 'Custom system prompt (ad-hoc mode only; ignored when subagent_type is set)',
-          },
-          tools: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Tool subset from parent\'s tool set (ad-hoc only; empty = inherit all)',
-          },
-          model: {
-            type: 'string',
-            description: 'Model override (default: inherit from parent)',
-          },
-          run_in_background: {
-            type: 'boolean',
-            description: 'Run without blocking. Results delivered as <task-notification> at your next turn.',
-            default: false,
-          },
-          no_auto_promote: {
-            type: 'boolean',
-            description: 'Disable auto-promotion to background after 120s (default: false)',
-            default: false,
-          },
-        },
+        properties,
         required: ['prompt'],
       },
     };
   }
 
-  static async execute(args: SubAgentToolArgs, options?: { signal?: AbortSignal }): Promise<ToolExecutionResult> {
+  static async execute(args: SubAgentToolArgs, options?: { signal?: AbortSignal; executionContext?: ToolExecutionContext | null }): Promise<ToolExecutionResult> {
     try {
       // ── Get execution context ──
-      const context = BuiltinToolsManager.getExecutionContext();
+      const context = options?.executionContext === undefined
+        ? BuiltinToolsManager.getExecutionContext()
+        : options.executionContext;
       if (!context) {
         return {
           success: false,
@@ -110,12 +160,7 @@ export class SubAgentTool {
       const { SubAgentManager } = await import('../../subAgent/subAgentManager');
       const manager = SubAgentManager.getInstance();
 
-      // ── Route: named agent vs ad-hoc ──
-      if (args.subagent_type) {
-        return await SubAgentTool.executeNamed(args, context, manager);
-      } else {
-        return await SubAgentTool.executeAdhoc(args, context, manager);
-      }
+      return await SubAgentTool.executeAdhoc(args, context, manager, options?.signal);
     } catch (error) {
       return {
         success: false,
@@ -125,74 +170,13 @@ export class SubAgentTool {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Named agent path (equivalent to old spawn_subagent)
-  // ─────────────────────────────────────────────────────────
-  private static async executeNamed(
-    args: SubAgentToolArgs,
-    context: any,
-    manager: any,
-  ): Promise<ToolExecutionResult> {
-    const subAgentName = args.subagent_type!;
-
-    // Validate sub-agent existence
-    const subAgentConfig = context.getSubAgentConfig(subAgentName);
-    if (!subAgentConfig) {
-      return {
-        success: false,
-        error: `Sub-agent "${subAgentName}" not found or not enabled for this agent`,
-      };
-    }
-
-    // Background path
-    if (args.run_in_background) {
-      const asyncResult = await manager.spawnSubAgentAsync({
-        parentSessionId: context.chatSessionId,
-        parentChatId: context.chatId,
-        userAlias: context.userAlias,
-        subAgentName,
-        task: args.prompt,
-        eventSender: context.eventSender,
-        correlationId: context.currentToolCallId,
-      });
-      if (asyncResult.status === 'error') {
-        return {
-          success: false,
-          error: asyncResult.error || `Failed to launch background sub-agent "${subAgentName}"`,
-        };
-      }
-      return {
-        success: true,
-        data: `Sub-agent "${subAgentName}" launched in background (taskId: ${asyncResult.taskId}). Results will be delivered at your next turn. Use get_subagent_status to check progress.`,
-      };
-    }
-
-    // Sync path
-    getLogger().info?.('[SubAgentTool] Spawning named sub-agent', 'executeNamed', {
-      subAgentName,
-    });
-
-    const result = await manager.spawnSubAgent({
-      parentSessionId: context.chatSessionId,
-      parentChatId: context.chatId,
-      userAlias: context.userAlias,
-      subAgentName,
-      task: args.prompt,
-      cancellationToken: context.cancellationToken,
-      eventSender: context.eventSender,
-      correlationId: context.currentToolCallId,
-      noAutoPromote: args.no_auto_promote,
-    });
-
-    return SubAgentTool.formatResult(result, subAgentName);
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // Ad-hoc agent path (equivalent to old spawn_adhoc_subagent)
+  // Ad-hoc agent path.
   // ─────────────────────────────────────────────────────────
   private static async executeAdhoc(
     args: SubAgentToolArgs,
     context: any,
     manager: any,
+    signal?: AbortSignal,
   ): Promise<ToolExecutionResult> {
     // Background path
     if (args.run_in_background) {
@@ -200,14 +184,12 @@ export class SubAgentTool {
         parentSessionId: context.chatSessionId,
         parentChatId: context.chatId,
         userAlias: context.userAlias,
-        subAgentName: `adhoc-${Date.now()}`,
         task: args.prompt,
         systemPrompt: args.system_prompt,
         tools: args.tools,
         model: args.model,
         eventSender: context.eventSender,
         correlationId: context.currentToolCallId,
-        adhoc: true,
       });
       if (asyncResult.status === 'error') {
         return {
@@ -224,24 +206,30 @@ export class SubAgentTool {
     // Sync path
     getLogger().info?.('[SubAgentTool] Spawning ad-hoc sub-agent', 'executeAdhoc', {
       hasCustomPrompt: !!args.system_prompt,
-      toolCount: args.tools?.length ?? 'all',
+      toolCount: args.tools && args.tools.length > 0 ? args.tools.length : 'inherit-parent',
     });
 
-    const result = await manager.spawnAdhocSubAgent({
-      parentSessionId: context.chatSessionId,
-      parentChatId: context.chatId,
-      userAlias: context.userAlias,
-      task: args.prompt,
-      systemPrompt: args.system_prompt,
-      tools: args.tools,
-      model: args.model,
-      cancellationToken: context.cancellationToken,
-      eventSender: context.eventSender,
-      correlationId: context.currentToolCallId,
-      noAutoPromote: args.no_auto_promote,
-    });
+    const linkedCancellation = createLinkedCancellationToken(context.cancellationToken, signal);
+    try {
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: context.chatSessionId,
+        parentChatId: context.chatId,
+        userAlias: context.userAlias,
+        task: args.prompt,
+        systemPrompt: args.system_prompt,
+        tools: args.tools,
+        model: args.model,
+        cancellationToken: linkedCancellation.token,
+        eventSender: createActivityEventSender(context),
+        correlationId: context.currentToolCallId,
+        noAutoPromote: args.no_auto_promote,
+        onProgress: () => context.reportActivity?.(),
+      });
 
-    return SubAgentTool.formatResult(result, result.subAgentName || 'ad-hoc agent');
+      return SubAgentTool.formatResult(result, result.subAgentName || 'ad-hoc agent');
+    } finally {
+      linkedCancellation.dispose();
+    }
   }
 
   // ─────────────────────────────────────────────────────────

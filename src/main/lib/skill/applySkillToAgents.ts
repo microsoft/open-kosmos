@@ -1,6 +1,9 @@
 import { createLogger } from '../unifiedLogger';
 import { profileCacheManager } from '../userDataADO';
+import { skillsConfigManager } from '../userDataADO/skillsConfigManager';
+import { chatSkillSnapshotStore } from '../userDataADO/chatSkillSnapshotStore';
 import type { ChatAgent, ChatConfig } from '../userDataADO/types/profile';
+import { getChatAgents, getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 
 const logger = createLogger();
 
@@ -32,14 +35,6 @@ export interface ApplySkillToAgentsResult {
 
 function normalizeStringArray(values?: string[]): string[] {
   return Array.from(new Set((values || []).map(value => value?.trim()).filter((value): value is string => !!value)));
-}
-
-function getChatAgents(chat: ChatConfig): ChatAgent[] {
-  if (chat.chat_type === 'single_agent') {
-    return chat.agent ? [chat.agent] : [];
-  }
-
-  return chat.agents || [];
 }
 
 function targetKey(target: SkillAgentTarget): string {
@@ -109,7 +104,7 @@ export async function applySkillToAgents(
   }
 
   const profile = profileCacheManager.getCachedProfile(userAlias);
-  if (!profile || !Array.isArray(profile.skills)) {
+  if (!profile) {
     return {
       success: false,
       skillName,
@@ -123,7 +118,7 @@ export async function applySkillToAgents(
     };
   }
 
-  const installedSkill = profile.skills.find(skill => skill.name === skillName);
+  const installedSkill = skillsConfigManager.getSkill(userAlias, skillName);
   if (!installedSkill) {
     return {
       success: false,
@@ -137,8 +132,6 @@ export async function applySkillToAgents(
       error: 'SKILL_NOT_INSTALLED',
     };
   }
-
-  const analyticsSource = installedSkill.source === 'IN-LIBRARY' ? 'library' : 'local';
 
   const resolvedTargets = resolveTargets(profile.chats || [], options);
   if (resolvedTargets.length === 0) {
@@ -188,7 +181,7 @@ export async function applySkillToAgents(
     }
 
     if (chat.chat_type === 'single_agent') {
-      const agent = chat.agent;
+      const agent = getChatPrimaryAgent(chat);
       if (!agent || !agentNames.has(agent.name)) {
         continue;
       }
@@ -207,10 +200,10 @@ export async function applySkillToAgents(
 
       const success = await profileCacheManager.updateChatConfig(userAlias, chatId, {
         agent: updatedAgent,
-        skill_snapshot: undefined,
       });
 
       if (success) {
+        chatSkillSnapshotStore.clear(userAlias, chatId);
         appliedTargets.push({ chatId, agentName: agent.name });
       } else {
         failedCount += 1;
@@ -220,7 +213,7 @@ export async function applySkillToAgents(
       continue;
     }
 
-    const currentAgents = chat.agents || [];
+    const currentAgents = getChatAgents(chat);
     let didChange = false;
     const updatedAgents = currentAgents.map(agent => {
       if (!agentNames.has(agent.name)) {
@@ -247,8 +240,11 @@ export async function applySkillToAgents(
 
     const success = await profileCacheManager.updateChatConfig(userAlias, chatId, {
       agents: updatedAgents,
-      skill_snapshot: undefined,
     });
+
+    if (success) {
+      chatSkillSnapshotStore.clear(userAlias, chatId);
+    }
 
     for (const agentName of agentNames) {
       const alreadyTracked = skippedTargets.some(target => target.chatId === chatId && target.agentName === agentName && target.reason === 'ALREADY_APPLIED');
@@ -279,10 +275,6 @@ export async function applySkillToAgents(
     : skippedTargets.length > 0 && failedCount === 0
       ? `Skill "${skillName}" was already applied to all resolved target agents.`
       : `Failed to apply skill "${skillName}" to the requested agents.`;
-
-  if (appliedTargets.length > 0) {
-    // Analytics removed: recordSkillAppliedToAgent calls removed
-  }
 
   return {
     success,

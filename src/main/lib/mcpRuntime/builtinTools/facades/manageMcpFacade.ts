@@ -2,14 +2,13 @@
  * manage_mcp facade — unified MCP server management tool.
  *
  * Merges the legacy tools:
- *   get_mcp_template_from_library, create_mcp_server_from_config,
- *   update_mcp_server, get_mcp_status, set_mcp_connection_state
+ *   create_mcp_server_from_config, update_mcp_server,
+ *   get_mcp_status, set_mcp_connection_state
  * into a single action-based interface.
  *
  * Key simplifications:
  * - Flat parameters (no nested mcp_config wrapper)
- * - from_library=true shortcut (auto-fetches template, only env overrides needed)
- * - source/version/remoteVersion managed internally (never exposed to AI)
+ * - Local configuration only; no marketplace or catalog dependency
  */
 
 import {
@@ -18,7 +17,6 @@ import {
   FacadeResult,
   errorResult,
 } from './types';
-import { GetMcpTemplateFromLibraryTool } from '../getMcpTemplateFromLibraryTool';
 import { CreateMcpServerFromConfigTool } from '../createMcpServerFromConfigTool';
 import { UpdateMcpServerTool } from '../updateMcpServerTool';
 import { GetMcpStatusTool } from '../getMcpStatusTool';
@@ -33,8 +31,7 @@ export class ManageMcpFacade {
       name: 'manage_mcp',
       description:
         'Add, update, remove, connect, disconnect, reconnect, or check status of MCP servers. ' +
-        'Use "from_library: true" to auto-fetch config from MCP Library — only env overrides are needed. ' +
-        'For custom servers, provide transport + command (stdio) or url (sse/StreamableHttp).',
+        'Provide transport + command (stdio) or url (sse/StreamableHttp) when adding a server.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -50,7 +47,7 @@ export class ManageMcpFacade {
           transport: {
             type: 'string',
             enum: ['stdio', 'sse', 'StreamableHttp'],
-            description: 'Transport type (required for action=add when from_library is not true)',
+            description: 'Transport type (required for action=add)',
           },
           command: {
             type: 'string',
@@ -64,17 +61,11 @@ export class ManageMcpFacade {
           env: {
             type: 'object',
             additionalProperties: { type: 'string' },
-            description:
-              'Environment variables. For from_library=true, these override library defaults.',
+            description: 'Environment variables passed to the server.',
           },
           url: {
             type: 'string',
             description: 'Server URL (required when transport=sse or StreamableHttp)',
-          },
-          from_library: {
-            type: 'boolean',
-            description:
-              'true = auto-fetch config from MCP Library by name; only env overrides needed',
           },
         },
         required: ['action', 'name'],
@@ -98,9 +89,7 @@ export class ManageMcpFacade {
 
     switch (args.action) {
       case 'add':
-        return args.from_library
-          ? ManageMcpFacade.addFromLibrary(name, args)
-          : ManageMcpFacade.addDirect(name, args);
+        return ManageMcpFacade.addDirect(name, args);
       case 'update':
         return ManageMcpFacade.update(name, args);
       case 'remove':
@@ -116,47 +105,6 @@ export class ManageMcpFacade {
 
   // ---- Action handlers ----
 
-  private static async addFromLibrary(
-    name: string,
-    args: ManageMcpInput,
-  ): Promise<FacadeResult> {
-    // 1. Fetch template
-    const templateResult = await GetMcpTemplateFromLibraryTool.execute({
-      mcp_name: name,
-    });
-
-    if (!templateResult.success || !templateResult.config) {
-      return {
-        success: false,
-        message: templateResult.message || `MCP server "${name}" not found in library.`,
-        error: 'LIBRARY_FETCH_FAILED',
-        hint: 'Use search_mcp to browse available MCP servers, or provide transport/command/url to add a custom server.',
-      };
-    }
-
-    const template = templateResult.config;
-
-    // 2. Merge env: user overrides win
-    const mergedEnv = { ...(template.env || {}), ...(args.env || {}) };
-
-    // 3. Create via legacy tool
-    const createResult = await CreateMcpServerFromConfigTool.execute({
-      mcp_config: {
-        name: template.name,
-        transport: template.transport,
-        command: template.command,
-        args: template.args,
-        env: mergedEnv,
-        url: template.url,
-        source: 'IN-LIBRARY',
-        version: template.version || '1.0.0',
-        remoteVersion: template.version || '1.0.0',
-      },
-    });
-
-    return createResult as unknown as FacadeResult;
-  }
-
   private static async addDirect(
     name: string,
     args: ManageMcpInput,
@@ -164,7 +112,7 @@ export class ManageMcpFacade {
     // Validate transport-specific requirements eagerly
     if (!args.transport) {
       return errorResult(
-        '"transport" is required when from_library is not true.',
+        '"transport" is required when adding an MCP server.',
         'Set transport to "stdio", "sse", or "StreamableHttp".',
       );
     }
@@ -189,9 +137,7 @@ export class ManageMcpFacade {
         args: args.args,
         env: args.env,
         url: args.url,
-        source: 'ON-DEVICE',
         version: '1.0.0',
-        remoteVersion: '',
       },
     });
 
@@ -212,14 +158,11 @@ export class ManageMcpFacade {
     if (!serverInfo?.config) {
       return errorResult(
         `MCP server "${name}" not found.`,
-        'Use search_mcp with installed=true to list installed servers.',
+        'Check the configured MCP servers and try again.',
       );
     }
 
     const existing = serverInfo.config;
-    const existingSource = (existing as any).source || 'ON-DEVICE';
-    const existingVersion = (existing as any).version || '1.0.0';
-
     // Build the update payload — only include changed fields
     const mcpConfig: any = { name };
 
@@ -228,16 +171,6 @@ export class ManageMcpFacade {
     if (args.args) mcpConfig.args = args.args;
     if (args.env) mcpConfig.env = args.env;
     if (args.url) mcpConfig.url = args.url;
-
-    // Auto-manage version/source
-    mcpConfig.source = existingSource;
-    if (existingSource === 'ON-DEVICE') {
-      // Auto-increment patch version
-      mcpConfig.version = ManageMcpFacade.incrementPatch(existingVersion);
-    } else {
-      // IN-LIBRARY: keep existing version
-      mcpConfig.version = existingVersion;
-    }
 
     const updateResult = await UpdateMcpServerTool.execute({ mcp_config: mcpConfig });
     return updateResult as unknown as FacadeResult;
@@ -283,10 +216,4 @@ export class ManageMcpFacade {
     }
   }
 
-  private static incrementPatch(version: string): string {
-    const parts = version.split('.');
-    if (parts.length !== 3) return '1.0.1';
-    const patch = parseInt(parts[2], 10);
-    return `${parts[0]}.${parts[1]}.${isNaN(patch) ? 1 : patch + 1}`;
-  }
 }

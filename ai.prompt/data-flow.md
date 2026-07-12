@@ -1,3 +1,4 @@
+<!-- Last verified: 2026-07-13 -->
 # Data Flow
 
 Reference: `src/shared/ipc/base.ts`, `src/main/lib/chat/agentChat.ts`, `src/main/lib/mcpRuntime/mcpClientManager.ts`, `src/renderer/lib/streaming/`
@@ -29,7 +30,7 @@ See [ai.prompt.md](../src/shared/ipc/ai.prompt.md). Two factory functions cover 
 - Main side pushes via `webContents.send()`; renderer subscribes via `ipcRenderer.on()`
 - Main process also emits `navigate:to` to trigger renderer-side route changes
 
-Currently adopted by: screenshot overlay, remote channels, browser control, scheduler, plugin, buddy.
+Currently adopted by: screenshot overlay, embedded browser, scheduler, buddy, and memex.
 
 See [IPC Framework details](../src/shared/ipc/ai.prompt.md)
 
@@ -66,6 +67,12 @@ Total end-to-end lag: up to 700ms between user action and React component update
 
 ---
 
+## App Config Update Flow
+
+App-level settings in `{userData}/app.json` use the legacy string IPC path (`app:getAppConfig`, `app:updateAppConfig`, `app:configUpdated`). `AppCacheManager.updateConfig()` serializes writes so each partial update merges against the latest in-memory cache, then schedules a 150ms debounced push to every live renderer window. Each successful write also increments an in-memory `revision` that is returned by `app:updateAppConfig`, returned by `app:getAppConfig`, and included in every `app:configUpdated` payload. The revision is not persisted to `app.json`; renderers use it only to order coalesced live updates, such as concurrent UI-language writes from multiple windows.
+
+---
+
 ## MCP Tool Execution Flow
 
 1. LLM requests a tool call during chat generation
@@ -82,7 +89,7 @@ See [MCP Runtime](../src/main/lib/mcpRuntime/ai.prompt.md)
 
 ## Sub-Agent Execution Flow
 
-1. Parent agent's LLM requests `spawn_subagent` or `spawn_multiple_subagents` tool call
+1. Parent agent's LLM requests the ad-hoc `sub_agent` tool call
 2. `BuiltinToolsManager` dispatches to `SubAgentManager`
 3. `SubAgentManager` validates resource limits (max 5 parallel, max 20 per session) and creates sub-agent instance
 4. `SubAgentChat` runs a non-streaming conversation loop (≤25 turns, 30s timeout) with the inherited parent model

@@ -43,7 +43,7 @@ plugins:
     openkosmos:
       enabled: true
       config:
-        url: "ws://YOUR_OpenKosmos_IP:9527"    # WebSocket URL from OpenKosmos UI
+        url: "ws://YOUR_OPENKOSMOS_IP:9527"    # WebSocket URL from OpenKosmos UI
         accounts:
           <openclaw-agent-id>:               # Must match your OpenClaw agent id
             token: "YOUR_AUTH_TOKEN"        # Auth token from OpenKosmos agent settings

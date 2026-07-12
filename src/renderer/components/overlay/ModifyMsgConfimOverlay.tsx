@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState, memo } from 'react';
+import { useCallback, useEffect, useRef, useState, memo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useProfileData } from '../userData/userDataProvider';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 function Overlay() {
   const [inlineEditConfirmState, setInlineEditConfirmState] = useState<{
@@ -25,10 +26,15 @@ function Overlay() {
     dontAskAgain: false,
   });
   const profileData = useProfileData();
+  const { t } = useI18n();
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const currentAlias = profileData?.data.profile?.alias || null;
   const skipInlineEditRegenerateConfirm =
     profileData?.data.profile?.confirmationSettings?.inlineEditRegenerate?.skipConfirmation === true;
+  const skipInlineEditRegenerateConfirmRef = useRef(skipInlineEditRegenerateConfirm);
+  skipInlineEditRegenerateConfirmRef.current = skipInlineEditRegenerateConfirm;
 
   const resolveInlineEditConfirm = useCallback((confirmed: boolean) => {
     setInlineEditConfirmState((prev) => {
@@ -71,7 +77,7 @@ function Overlay() {
         return;
       }
 
-      if (skipInlineEditRegenerateConfirm) {
+      if (skipInlineEditRegenerateConfirmRef.current) {
         window.dispatchEvent(new CustomEvent('chatInput:confirmInlineEditResult', {
           detail: {
             requestId: customEvent.detail.requestId,
@@ -84,7 +90,7 @@ function Overlay() {
       setInlineEditConfirmState({
         open: true,
         requestId: customEvent.detail.requestId,
-        title: customEvent.detail.title || 'Confirm action',
+        title: customEvent.detail.title || tRef.current('overlay.inlineEdit.confirmAction'),
         description: customEvent.detail.description || '',
         dontAskAgain: false,
       });
@@ -101,7 +107,7 @@ function Overlay() {
         handleInlineEditConfirmRequest as EventListener,
       );
     };
-  }, [skipInlineEditRegenerateConfirm]);
+  }, []);
 
   return (
     <Dialog
@@ -132,7 +138,7 @@ function Overlay() {
                 }));
               }}
             />
-            <span>Don&apos;t show this again</span>
+            <span>{t('common.doNotShowAgain')}</span>
           </label>
           <div className="flex items-center gap-2.5">
             <button
@@ -140,14 +146,14 @@ function Overlay() {
               onClick={() => resolveInlineEditConfirm(false)}
               type="button"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               className="btn-primary px-4 py-2 text-sm"
               onClick={() => resolveInlineEditConfirm(true)}
               type="button"
             >
-              Confirm
+              {t('common.confirm')}
             </button>
           </div>
         </DialogFooter>

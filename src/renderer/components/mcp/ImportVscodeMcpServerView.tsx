@@ -23,18 +23,14 @@ const ImportVscodeMcpServerView: React.FC = () => {
   }
 
   return (
-    <div className="content-view">
+    <div className="add-new-mcp-server-view">
       {/* Header */}
       <ImportVscodeMcpServerViewHeader onBack={handleBack} />
 
       {/* Content */}
-      <div className="content-main">
-        <div className="content-container">
-          <ImportVscodeMcpServerViewContent
-            onImportComplete={handleImportComplete}
-          />
-        </div>
-      </div>
+      <ImportVscodeMcpServerViewContent
+        onImportComplete={handleImportComplete}
+      />
     </div>
   )
 }

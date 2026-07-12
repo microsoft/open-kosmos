@@ -18,6 +18,8 @@ const {
   mockProfileDataManager2,
   mockEditAgentToggle2,
   mockAttachMenuToggle2,
+  mockVoiceInputEnabled2,
+  mockVoiceFeatureFlag2,
   mockCurrentSessionError2,
   mockSubscribeCbRef2,
   mockIsOffice2,
@@ -41,6 +43,8 @@ const {
   };
   const mockEditAgentToggle2 = vi.fn();
   const mockAttachMenuToggle2 = vi.fn();
+  const mockVoiceInputEnabled2 = { value: false };
+  const mockVoiceFeatureFlag2 = { value: false };
   const mockCurrentSessionError2 = { value: null as string | null };
   const mockSubscribeCbRef2 = { cb: null as (() => void) | null };
   const mockIsOffice2 = vi.fn(() => false);
@@ -54,7 +58,7 @@ const {
   return {
     mockShowToast2, mockCancelChat2, mockScreenshotCapture2,
     mockProfileDataManager2, mockEditAgentToggle2, mockAttachMenuToggle2,
-    mockCurrentSessionError2,
+    mockVoiceInputEnabled2, mockVoiceFeatureFlag2, mockCurrentSessionError2,
     mockSubscribeCbRef2, mockIsOffice2, mockIsText2, mockIsImage2,
     mockIsOthers2, mockShouldCompress2, mockSmartCompress2,
   };
@@ -81,6 +85,24 @@ vi.mock('../../../ipc/screenshot-main', () => ({
 }));
 
 vi.mock('../ErrorBar', () => ({ default: () => null }));
+vi.mock('../VoiceInputButton', () => ({
+  VoiceInputButton: ({ onTranscript, disabled }: any) => (
+    <button
+      data-testid="voice-btn2"
+      disabled={disabled}
+      onClick={() => onTranscript('hello world', true)}
+    >
+      Voice
+    </button>
+  ),
+}));
+
+vi.mock('../../../lib/featureFlags', () => ({
+  useFeatureFlag: () => mockVoiceFeatureFlag2.value,
+}));
+vi.mock('../../../lib/userData', () => ({
+  useVoiceInputEnabled: () => mockVoiceInputEnabled2.value,
+}));
 
 vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
   agentChatSessionCacheManager: {
@@ -248,6 +270,8 @@ describe('ChatInput — branch coverage set 2', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('alert', vi.fn());
+    mockVoiceFeatureFlag2.value = false;
+    mockVoiceInputEnabled2.value = false;
     mockCurrentSessionError2.value = null;
     mockSubscribeCbRef2.cb = null;
     mockIsOffice2.mockReturnValue(false);
@@ -282,13 +306,6 @@ describe('ChatInput — branch coverage set 2', () => {
     render(<ChatInput onSendMessage={vi.fn()} />);
     // chatStatus is falsy so isIdle = true; send button in normal state
     expect(document.querySelector('.send-button')).toBeInTheDocument();
-  });
-
-  // ── isReadOnly renders Globe icon ────────────────────────────────────────
-  it('renders read-only banner with Globe icon', () => {
-    render(<ChatInput onSendMessage={vi.fn()} isReadOnly />);
-    expect(screen.getByTestId('globe-icon2')).toBeInTheDocument();
-    expect(screen.getByText(/remote channel/i)).toBeInTheDocument();
   });
 
   // ── drag enter: locked compose ────────────────────────────────────────────

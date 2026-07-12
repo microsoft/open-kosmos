@@ -6,7 +6,6 @@ import { ChatSessionTitleLlmSummarizer } from '../llm/chatSessionTitleLlmSummari
 import { chatSessionStore } from './chatSessionStore';
 import { createLogger } from '../unifiedLogger';
 import { CancellationError, CancellationToken } from '../cancellation';
-import type { StartChatCallbacks } from '@shared/types/chatTypes';
 import { MessageHelper } from '@shared/types/chatTypes';
 import { isToolMessageOrphaned } from './agentChatToolMessageSanitizer';
 
@@ -18,6 +17,12 @@ interface UserMessageEditValidationResult {
   targetUserMessage: Message | null;
   targetContextUserIndex: number;
   error?: string;
+}
+
+export interface PreparedEditedUserMessage {
+  normalizedMessage: UserMessage;
+  targetUserIndex: number;
+  targetContextUserIndex: number;
 }
 
 export interface AgentChatSessionServiceDeps {
@@ -42,12 +47,8 @@ export interface AgentChatSessionServiceDeps {
   setSaveChain(chain: Promise<{ success: boolean; error?: string }>): void;
   addMessageToChatHistory(message: Message): void;
   addMessageToContext(message: Message): Promise<void>;
-  shouldTrackChatSessionActivatedForUserMessage(message: Message): boolean;
-  getChatSessionEntryTypeForUserMessage(message: Message): 'new' | 'continued';
-  trackChatSessionActivated(message: Message, sessionEntryType: 'new' | 'continued'): void;
   exitNewChatSessionState(): void;
   calculateAndNotifyContext(): Promise<void>;
-  startChat(token?: CancellationToken, callbacks?: StartChatCallbacks): Promise<void>;
   getDisplayMessages(): Message[];
   getSkipPersistence(): boolean;
 }
@@ -251,12 +252,11 @@ export class AgentChatSessionService {
     }
   }
 
-  async editUserMessage(
+  prepareEditedUserMessage(
     messageId: string,
     updatedMessage: Message,
     token?: CancellationToken,
-    callbacks?: StartChatCallbacks,
-  ): Promise<Message[]> {
+  ): PreparedEditedUserMessage {
     logger.info('[AgentChat] ✏️ Editing user message', 'editUserMessage', {
       messageId,
       agentName: this.deps.getAgentName(),
@@ -295,18 +295,36 @@ export class AgentChatSessionService {
       content: structuredClone(updatedMessage.content).filter(p => p.type !== 'thinking'),
     };
 
+    return {
+      normalizedMessage,
+      targetUserIndex: validation.targetUserIndex,
+      targetContextUserIndex: validation.targetContextUserIndex,
+    };
+  }
+
+  async applyEditedUserMessage(edit: PreparedEditedUserMessage, token?: CancellationToken): Promise<void> {
+    if (token?.isCancellationRequested) {
+      throw new CancellationError('Edit was cancelled before it was applied');
+    }
+
+    const currentChatSession = this.deps.getCurrentChatSession();
+    if (!currentChatSession) {
+      throw new Error('No current ChatSession to edit');
+    }
+
+    const { normalizedMessage, targetUserIndex, targetContextUserIndex } = edit;
     currentChatSession.chat_history = [
-      ...currentChatSession.chat_history.slice(0, validation.targetUserIndex),
+      ...currentChatSession.chat_history.slice(0, targetUserIndex),
       normalizedMessage,
     ];
 
     currentChatSession.context_history = [
-      ...currentChatSession.context_history.slice(0, validation.targetContextUserIndex),
+      ...currentChatSession.context_history.slice(0, targetContextUserIndex),
       normalizedMessage,
     ];
 
     currentChatSession.last_updated = new Date().toISOString();
-    if (validation.targetUserIndex === 0) {
+    if (targetUserIndex === 0) {
       this.deps.setFirstUserMessage(normalizedMessage);
       currentChatSession.title = 'New Chat';
     }
@@ -316,7 +334,15 @@ export class AgentChatSessionService {
 
     await this.saveChatSession();
     await this.deps.calculateAndNotifyContext();
-    await this.deps.startChat(token, callbacks);
+  }
+
+  async editUserMessage(
+    messageId: string,
+    updatedMessage: Message,
+    token?: CancellationToken,
+  ): Promise<Message[]> {
+    const edit = this.prepareEditedUserMessage(messageId, updatedMessage, token);
+    await this.applyEditedUserMessage(edit, token);
     return this.deps.getDisplayMessages();
   }
 
@@ -476,9 +502,6 @@ export class AgentChatSessionService {
 
     const isFirstMessage = currentChatSession.chat_history.length === 0;
     const isFirstUserMessage = isFirstMessage && message.role === 'user';
-    const shouldTrackChatSessionActivated = this.deps.shouldTrackChatSessionActivatedForUserMessage(message);
-    const chatSessionEntryType = this.deps.getChatSessionEntryTypeForUserMessage(message);
-
     this.deps.addMessageToChatHistory(message);
     await this.deps.addMessageToContext(message);
 
@@ -508,9 +531,6 @@ export class AgentChatSessionService {
           this.deps.exitNewChatSessionState();
         }
 
-        if (result.success && shouldTrackChatSessionActivated) {
-          this.deps.trackChatSessionActivated(message, chatSessionEntryType);
-        }
       }).catch((error) => {
         logger.error('[AgentChat] ❌ Async save failed', 'addMessageToSession', {
           error: error instanceof Error ? error.message : String(error),

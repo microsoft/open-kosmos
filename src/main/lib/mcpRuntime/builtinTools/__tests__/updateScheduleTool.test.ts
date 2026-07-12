@@ -50,7 +50,7 @@ describe('UpdateScheduleTool.execute', () => {
         cronExpression: '0 6 * * *',
         runAt: undefined,
         message: 'hello',
-        agentId: 'agent-1',
+        chat_id: 'agent-1',
         enabled: true,
         status: 'pending',
         lastRunAt: undefined,

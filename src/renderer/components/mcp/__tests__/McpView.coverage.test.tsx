@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // ── hoisted mock vars ──────────────────────────────────────────────────────────
 const mockNavigate = vi.hoisted(() => vi.fn());
@@ -87,6 +87,7 @@ import McpView from '../McpView';
 describe('McpView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     mockServers.length = 0;
     mockRefreshRuntimeInfo.mockResolvedValue(undefined);
     mockOutletContext.onMcpServerConnect = undefined;
@@ -94,6 +95,11 @@ describe('McpView', () => {
     mockOutletContext.onMcpServerReconnect = undefined;
     mockOutletContext.onMcpServerDelete = undefined;
     mockOutletContext.onMcpServerEdit = undefined;
+    mockOutletContext.onMcpAddMenuToggle = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders header and content', () => {
@@ -108,6 +114,17 @@ describe('McpView', () => {
       screen.getByTestId('add-menu').click();
     });
     expect(mockOutletContext.onMcpAddMenuToggle).toHaveBeenCalled();
+  });
+
+  it('falls back to a no-op add-menu handler when no callback is provided', async () => {
+    mockOutletContext.onMcpAddMenuToggle = undefined as any;
+    render(<McpView />);
+
+    await act(async () => {
+      screen.getByTestId('add-menu').click();
+    });
+
+    expect(mockShowError).not.toHaveBeenCalled();
   });
 
   describe('with servers', () => {
@@ -128,6 +145,7 @@ describe('McpView', () => {
 
     it('uses local connect when no external handler', async () => {
       mockMcpConnect.mockResolvedValue({ success: true });
+      vi.useFakeTimers();
       render(<McpView />);
 
       await act(async () => {
@@ -135,6 +153,10 @@ describe('McpView', () => {
       });
 
       expect(mockMcpConnect).toHaveBeenCalledWith('my-server');
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(mockRefreshRuntimeInfo).toHaveBeenCalled();
     });
 
     it('shows error when local connect fails', async () => {
@@ -159,6 +181,17 @@ describe('McpView', () => {
       expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('network error'));
     });
 
+    it('stringifies non-Error connect failures', async () => {
+      mockMcpConnect.mockRejectedValue('network error');
+      render(<McpView />);
+
+      await act(async () => {
+        screen.getByTestId('connect-my-server').click();
+      });
+
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('network error'));
+    });
+
     it('uses external onMcpServerDisconnect when provided', async () => {
       const mockDisc = vi.fn();
       mockOutletContext.onMcpServerDisconnect = mockDisc;
@@ -172,6 +205,7 @@ describe('McpView', () => {
 
     it('uses local disconnect when no external handler', async () => {
       mockMcpDisconnect.mockResolvedValue({ success: true });
+      vi.useFakeTimers();
       render(<McpView />);
 
       await act(async () => {
@@ -179,6 +213,10 @@ describe('McpView', () => {
       });
 
       expect(mockMcpDisconnect).toHaveBeenCalledWith('my-server');
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(mockRefreshRuntimeInfo).toHaveBeenCalled();
     });
 
     it('shows error when local disconnect fails', async () => {
@@ -203,6 +241,17 @@ describe('McpView', () => {
       expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('disc crash'));
     });
 
+    it('stringifies non-Error disconnect failures', async () => {
+      mockMcpDisconnect.mockRejectedValue('disc crash');
+      render(<McpView />);
+
+      await act(async () => {
+        screen.getByTestId('disconnect-my-server').click();
+      });
+
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('disc crash'));
+    });
+
     it('uses external onMcpServerReconnect when provided', async () => {
       const mockReconn = vi.fn();
       mockOutletContext.onMcpServerReconnect = mockReconn;
@@ -216,6 +265,7 @@ describe('McpView', () => {
 
     it('uses local reconnect when no external handler', async () => {
       mockMcpReconnect.mockResolvedValue({ success: true });
+      vi.useFakeTimers();
       render(<McpView />);
 
       await act(async () => {
@@ -223,6 +273,10 @@ describe('McpView', () => {
       });
 
       expect(mockMcpReconnect).toHaveBeenCalledWith('my-server');
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(mockRefreshRuntimeInfo).toHaveBeenCalled();
     });
 
     it('shows error when local reconnect fails', async () => {
@@ -238,6 +292,17 @@ describe('McpView', () => {
 
     it('shows error when local reconnect throws', async () => {
       mockMcpReconnect.mockRejectedValue(new Error('reconn crash'));
+      render(<McpView />);
+
+      await act(async () => {
+        screen.getByTestId('reconnect-my-server').click();
+      });
+
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('reconn crash'));
+    });
+
+    it('stringifies non-Error reconnect failures', async () => {
+      mockMcpReconnect.mockRejectedValue('reconn crash');
       render(<McpView />);
 
       await act(async () => {
@@ -281,6 +346,32 @@ describe('McpView', () => {
 
       await waitFor(() => {
         expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Delete error'));
+      });
+    });
+
+    it('shows error when local delete throws', async () => {
+      mockMcpDelete.mockRejectedValue(new Error('Delete crash'));
+      render(<McpView />);
+
+      await act(async () => {
+        screen.getByTestId('delete-my-server').click();
+      });
+
+      await waitFor(() => {
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Delete crash'));
+      });
+    });
+
+    it('falls back to the default delete failure message when no error text is returned', async () => {
+      mockMcpDelete.mockResolvedValue({ success: false });
+      render(<McpView />);
+
+      await act(async () => {
+        screen.getByTestId('delete-my-server').click();
+      });
+
+      await waitFor(() => {
+        expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Failed to delete server'));
       });
     });
 

@@ -79,11 +79,11 @@ describe('ToastItem type styles', () => {
   });
 
   const typeTests: Array<{ type: ToastMessage['type']; bgClass: string }> = [
-    { type: 'success', bgClass: 'bg-green-50/95' },
-    { type: 'error',   bgClass: 'bg-red-50/95' },
-    { type: 'warning', bgClass: 'bg-amber-50/95' },
-    { type: 'update',  bgClass: 'bg-violet-50/95' },
-    { type: 'info',    bgClass: 'bg-blue-50/95' },
+    { type: 'success', bgClass: 'bg-success-50/95' },
+    { type: 'error',   bgClass: 'bg-danger-50/95' },
+    { type: 'warning', bgClass: 'bg-warning-50/95' },
+    { type: 'update',  bgClass: 'bg-primary-50/95' },
+    { type: 'info',    bgClass: 'bg-primary-50/95' },
   ];
 
   for (const { type, bgClass } of typeTests) {
@@ -164,13 +164,23 @@ describe('ToastItem actions', () => {
     expect(screen.getByText('Dismiss')).toBeInTheDocument();
   });
 
-  it('action with variant=primary has blue bg class', () => {
+  it('action with variant=primary has primary bg class', () => {
     const actions: ToastMessage['actions'] = [
       { label: 'Go', onClick: vi.fn(), variant: 'primary' },
     ];
     const { container } = renderContainer([makeToast({ persistent: true, actions })]);
     const btn = screen.getByText('Go');
-    expect(btn.className).toContain('bg-blue-600');
+    expect(btn.className).toContain('toast-action-primary');
+    expect(btn.className).toContain('bg-primary-600');
+  });
+
+  it('action with variant=secondary has secondary action class', () => {
+    const actions: ToastMessage['actions'] = [
+      { label: 'Dismiss', onClick: vi.fn(), variant: 'secondary' },
+    ];
+    renderContainer([makeToast({ persistent: true, actions })]);
+    const btn = screen.getByText('Dismiss');
+    expect(btn.className).toContain('toast-action-secondary');
   });
 
   it('clicking action button calls action onClick and then closes toast', () => {

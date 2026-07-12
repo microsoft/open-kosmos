@@ -20,13 +20,6 @@ vi.mock('../../../userDataADO/profileCacheManager', () => ({
   },
 }));
 
-vi.mock('../../../startupUpdate/startupUpdateService', () => ({
-  mergeEnv: (local: Record<string, string>, remote: Record<string, string>) => ({
-    ...remote,
-    ...local,
-  }),
-}));
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UpdateMcpServerTool } from '../updateMcpServerTool';
 
@@ -117,79 +110,6 @@ describe('UpdateMcpServerTool', () => {
       expect(result.new_version).toBe('1.0.1');
     });
 
-    it('upgrades ON-DEVICE to IN-LIBRARY when new version is greater', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'IN-LIBRARY', version: '2.0.0' },
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.new_source).toBe('IN-LIBRARY');
-      expect(result.new_version).toBe('2.0.0');
-    });
-
-    it('rejects ON-DEVICE->IN-LIBRARY without version', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'IN-LIBRARY' },
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('VERSION_REQUIRED');
-    });
-
-    it('rejects ON-DEVICE->IN-LIBRARY when new version is not greater', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'IN-LIBRARY', version: '1.0.0' },
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('VERSION_NOT_GREATER');
-    });
-  });
-
-  // ── IN-LIBRARY source rules ────────────────────────────────
-
-  describe('execute – IN-LIBRARY source rules', () => {
-    beforeEach(() => {
-      mockGetMcpServerInfo.mockReturnValue({
-        config: existingConfig({ source: 'IN-LIBRARY', version: '2.0.0' }),
-      });
-    });
-
-    it('cannot downgrade IN-LIBRARY to ON-DEVICE', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'ON-DEVICE' },
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('SOURCE_OVERRIDE_NOT_ALLOWED');
-    });
-
-    it('updates IN-LIBRARY to higher version', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'IN-LIBRARY', version: '3.0.0' },
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.new_version).toBe('3.0.0');
-    });
-
-    it('rejects IN-LIBRARY update without version', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server', source: 'IN-LIBRARY' },
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('VERSION_REQUIRED');
-    });
-
-    it('rejects IN-LIBRARY update when no source specified at all', async () => {
-      const result = await UpdateMcpServerTool.execute({
-        mcp_config: { name: 'my-server' },
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('SOURCE_AND_VERSION_REQUIRED');
-    });
   });
 
   // ── Transport validation ───────────────────────────────────
@@ -225,36 +145,6 @@ describe('UpdateMcpServerTool', () => {
   // ── ENV merge strategies ───────────────────────────────────
 
   describe('execute – ENV merge strategies', () => {
-    it('merges ENV for IN-LIBRARY updates (local values take precedence)', async () => {
-      mockGetMcpServerInfo.mockReturnValue({
-        config: existingConfig({
-          source: 'IN-LIBRARY',
-          version: '2.0.0',
-          env: { LOCAL_KEY: 'local-val', SHARED: 'local-shared' },
-        }),
-      });
-
-      await UpdateMcpServerTool.execute({
-        mcp_config: {
-          name: 'my-server',
-          source: 'IN-LIBRARY',
-          version: '3.0.0',
-          env: { NEW_KEY: 'new-val', SHARED: 'remote-shared' },
-        },
-      });
-
-      expect(mockMcpClientManagerUpdate).toHaveBeenCalledWith(
-        'my-server',
-        expect.objectContaining({
-          env: expect.objectContaining({
-            LOCAL_KEY: 'local-val',
-            SHARED: 'local-shared', // local wins
-            NEW_KEY: 'new-val',
-          }),
-        }),
-      );
-    });
-
     it('replaces ENV entirely for ON-DEVICE updates', async () => {
       await UpdateMcpServerTool.execute({
         mcp_config: {
@@ -351,6 +241,88 @@ describe('UpdateMcpServerTool', () => {
       expect(
         UpdateMcpServerTool.validateConfigForUpdate({ name: 'my-server' }, base),
       ).toMatchObject({ valid: true });
+    });
+  });
+
+  // ── version helpers + env/branch coverage ──────────────────
+  describe('execute – version and branch coverage', () => {
+    it('increments a malformed (non 3-part) ON-DEVICE version', async () => {
+      mockGetMcpServerInfo.mockReturnValue({ config: existingConfig({ version: '1.0' }) });
+
+      const result = await UpdateMcpServerTool.execute({ mcp_config: { name: 'my-server' } });
+
+      expect(result.success).toBe(true);
+      expect(result.new_version).toBe('1.0.1');
+    });
+
+    it('treats non-numeric version segments as zero when incrementing', async () => {
+      mockGetMcpServerInfo.mockReturnValue({ config: existingConfig({ version: 'x.y.z' }) });
+
+      const result = await UpdateMcpServerTool.execute({ mcp_config: { name: 'my-server' } });
+
+      expect(result.success).toBe(true);
+      expect(result.new_version).toBe('0.0.1');
+    });
+
+    it('falls back to ON-DEVICE source and 1.0.0 version when both are missing', async () => {
+      mockGetMcpServerInfo.mockReturnValue({
+        config: existingConfig({ source: undefined, version: undefined }),
+      });
+
+      const result = await UpdateMcpServerTool.execute({ mcp_config: { name: 'my-server' } });
+
+      expect(result.success).toBe(true);
+      expect(result.old_source).toBeUndefined();
+      expect(result.new_version).toBe('1.0.1');
+    });
+
+    it('merges ENV against an empty base when the existing config has no env', async () => {
+      mockGetMcpServerInfo.mockReturnValue({
+        config: existingConfig({ source: 'IN-LIBRARY', version: '1.0.0', env: undefined }),
+      });
+
+      const result = await UpdateMcpServerTool.execute({
+        mcp_config: { name: 'my-server', source: 'IN-LIBRARY', version: '2.0.0', env: { NEW_KEY: 'v' } },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockMcpClientManagerUpdate).toHaveBeenCalledWith(
+        'my-server',
+        expect.objectContaining({ env: { NEW_KEY: 'v' } }),
+      );
+    });
+
+    it('requires a url for sse transport', async () => {
+      mockGetMcpServerInfo.mockReturnValue({
+        config: existingConfig({ transport: 'sse', url: '', command: '' }),
+      });
+
+      const result = await UpdateMcpServerTool.execute({ mcp_config: { name: 'my-server' } });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_CONFIG');
+    });
+
+    it('keeps explicitly provided args array', async () => {
+      const result = await UpdateMcpServerTool.execute({
+        mcp_config: { name: 'my-server', args: ['--flag'] },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockMcpClientManagerUpdate).toHaveBeenCalledWith(
+        'my-server',
+        expect.objectContaining({ args: ['--flag'] }),
+      );
+    });
+
+    it('stringifies a non-Error thrown during update', async () => {
+      mockMcpClientManagerUpdate.mockRejectedValue('raw string failure');
+
+      const result = await UpdateMcpServerTool.execute({ mcp_config: { name: 'my-server' } });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('EXECUTION_ERROR');
+      expect(result.message).toContain('raw string failure');
     });
   });
 });

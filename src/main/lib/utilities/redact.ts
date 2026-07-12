@@ -1,9 +1,8 @@
 /**
  * Debug-info redaction utilities.
  *
- * Ported from `browser-control/native-server/src/scripts/report.ts` and
- * extended with alias-aware and schedule-JSON–aware redaction for the
- * Download Debug Info feature.
+ * Shared alias-aware and schedule-JSON-aware redaction for the Download Debug
+ * Info feature.
  */
 
 import * as os from 'os';
@@ -31,7 +30,7 @@ export function isTextFile(filePath: string): boolean {
 // Literal replacements (homedir, username)
 // ---------------------------------------------------------------------------
 
-function buildLiteralReplacements(extraLiterals?: Array<[string, string]>): Array<[RegExp, string]> {
+function buildLiteralReplacements(): Array<[RegExp, string]> {
   const replacements: Array<[RegExp, string]> = [];
   const ignoreCase = process.platform === 'win32';
 
@@ -43,7 +42,6 @@ function buildLiteralReplacements(extraLiterals?: Array<[string, string]>): Arra
     variants.add(literal.replace(/\//g, '\\'));
 
     for (const v of variants) {
-      if (!v) continue;
       replacements.push([new RegExp(escapeRegExp(v), ignoreCase ? 'gi' : 'g'), replacement]);
     }
   };
@@ -62,12 +60,6 @@ function buildLiteralReplacements(extraLiterals?: Array<[string, string]>): Arra
     }
   } catch {
     // os.userInfo() can throw on some systems — ignore
-  }
-
-  if (extraLiterals) {
-    for (const [literal, replacement] of extraLiterals) {
-      addLiteral(literal, replacement);
-    }
   }
 
   return replacements;

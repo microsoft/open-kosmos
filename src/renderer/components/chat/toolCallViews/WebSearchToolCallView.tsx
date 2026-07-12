@@ -4,6 +4,7 @@
 import React from 'react';
 import { ToolCallViewProps, WebSearchToolResult, WebSearchToolArgs, WebSearchResultItem } from './types';
 import { MessageHelper } from '@shared/types/chatTypes';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 /**
  * Parse tool call arguments
@@ -104,6 +105,7 @@ export const WebSearchToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
   const resultText = toolResult ? MessageHelper.getText(toolResult) : '';
@@ -133,12 +135,12 @@ export const WebSearchToolCallView: React.FC<ToolCallViewProps> = ({
             <div className="web-search-query-header">
               <span className="web-search-query-text">{query}</span>
               {isExecuting && queryIndex === 0 ? (
-                <span className="web-search-loading">Searching...</span>
+                <span className="web-search-loading">{t('chat.tool.webSearch.searching')}</span>
               ) : isInterrupted && queryIndex === 0 ? (
-                <span className="web-search-loading">Interrupted</span>
+                <span className="web-search-loading">{t('chat.tool.webSearch.interrupted')}</span>
               ) : (
                 queryResults.length > 0 && (
-                  <span className="web-search-result-count">{queryResults.length} results</span>
+                  <span className="web-search-result-count">{t('chat.tool.webSearch.results', { count: queryResults.length })}</span>
                 )
               )}
             </div>

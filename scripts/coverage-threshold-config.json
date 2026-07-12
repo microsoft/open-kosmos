@@ -1,0 +1,23 @@
+{
+  "$comment": "Per-file coverage gate for PR-changed source files. Only files matching `include` (mirrors the Vitest coverage include, so root tooling files like vitest.config.ts are never gated) are evaluated. Every such file that is not exempt or allowlisted must meet the thresholds below for lines, functions, branches, and statements. A changed file with no coverage data is treated as 0% and fails. See scripts/check-coverage.js. The allowlist is NOT an escape hatch for code we don't want to test: vendored/third-party code copied into src/ is OUR responsibility and MUST be tested to threshold like any other file. New allowlist entries are forbidden and fail CI. Fix coverage failures with tests, refactoring, or narrow V8 ignore annotations for truly unreachable lines only.",
+  "thresholds": {
+    "lines": 90,
+    "functions": 90,
+    "branches": 90,
+    "statements": 90
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exempt_patterns": [
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.d.ts",
+    "src/**/*.config.ts"
+  ],
+  "allowlist": []
+}

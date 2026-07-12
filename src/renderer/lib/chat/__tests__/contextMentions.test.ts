@@ -135,6 +135,11 @@ describe('insertMention', () => {
     expect(result.newText).toContain('[@chat-session:myfile.txt]');
   });
 
+  it('handles mention value with explicit @workspace: prefix', () => {
+    const result = insertMention('hello @', 7, '@workspace:myfile.txt');
+    expect(result.newText).toContain('[@workspace:myfile.txt]');
+  });
+
   it('returns unchanged text when no @ found', () => {
     const result = insertMention('hello world', 11, 'file.md');
     expect(result.newText).toBe('hello world');

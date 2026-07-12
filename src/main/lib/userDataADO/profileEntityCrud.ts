@@ -1,5 +1,5 @@
 /**
- * Profile entity CRUD operations — MCP servers, skills, and sub-agents.
+ * Profile entity CRUD operations — MCP servers and skills.
  * Extracted from ProfileCacheManager for modularity.
  */
 
@@ -7,547 +7,198 @@ import { createConsoleLogger } from '../unifiedLogger';
 import {
   ProfileV2,
   McpServerConfig,
-  SubAgentConfig,
-  SubAgentIndex,
   isProfileV2,
 } from './types/profile';
-import { clearSkillSnapshotsForAffectedChats } from './profileSanitizer';
-import { SubAgentFileManager } from "../subAgent/subAgentFileManager";
+import { mcpConfigManager } from './mcpConfigManager';
+import { skillsConfigManager, AddSkillInput, UpdateSkillInput } from './skillsConfigManager';
+import { chatSkillSnapshotStore } from './chatSkillSnapshotStore';
 
 const logger = createConsoleLogger();
 
-/**
- * Context interface for entity CRUD operations.
- */
-export interface EntityCrudContext {
+export interface ProfileWriteContext {
   cache: Map<string, ProfileV2>;
-  getProfileDirectoryPath(alias: string): string;
   readProfileFromFile(alias: string): Promise<ProfileV2 | null>;
   writeProfileToFile(alias: string, profile: ProfileV2): Promise<boolean>;
   notifyProfileDataManager(alias: string, immediate?: boolean): Promise<void>;
 }
 
-// ═══════ MCP Server CRUD ═══════
+/**
+ * Context interface for entity CRUD operations.
+ */
+export interface EntityCrudContext extends ProfileWriteContext {
+  getProfileDirectoryPath(alias: string): string;
+}
 
-export async function addMcpServerConfig(ctx: EntityCrudContext, alias: string, mcpServerConfig: McpServerConfig): Promise<boolean> {
+const profileWriteLocks = new Map<string, Promise<void>>();
+
+export async function withProfileWriteLock<T>(alias: string, operation: () => Promise<T>): Promise<T> {
+  const previous = profileWriteLocks.get(alias);
+  /* v8 ignore next -- Promise executors run synchronously, so this placeholder is replaced before finally can release the lock. */
+  let releaseLock: () => void = () => {};
+  const current = new Promise<void>(resolve => {
+    releaseLock = resolve;
+  });
+  profileWriteLocks.set(alias, current);
+  await previous;
   try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
+    return await operation();
+  } finally {
+    releaseLock();
+    if (profileWriteLocks.get(alias) === current) {
+      profileWriteLocks.delete(alias);
     }
+  }
+}
 
-    const existingIndex = profile.mcp_servers.findIndex(server => server.name === mcpServerConfig.name);
-    if (existingIndex >= 0) {
-      return false;
-    }
+// ──────────────────────────── MCP server CRUD ──────────────────────────────
+// Installed global MCP servers live in mcp.json and are owned by McpConfigManager
+// (which serializes its own writes and advances its own updatedAt). These thin
+// wrappers gate on profile existence and fire the profile notification so the
+// renderer cache refreshes — mirroring the skill/sub-agent delegation pattern.
 
-    profile.mcp_servers.push(mcpServerConfig);
-    ctx.cache.set(alias, profile);
-    await ctx.notifyProfileDataManager(alias);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
+/**
+ * Guard for the MCP and skill CRUD wrappers: a config may only be mutated for an
+ * alias that actually has a profile. On a cache miss this loads profile.json
+ * (which also seeds McpConfigManager / SkillsConfigManager) and caches the
+ * stripped profile so a follow-up notification still carries the profile body.
+ * Returns false when no profile exists.
+ */
+export async function ensureProfileLoadedForConfigCrud(ctx: EntityCrudContext, alias: string): Promise<boolean> {
+  if (ctx.cache.has(alias)) {
     return true;
-  } catch (error) {
+  }
+  const fileProfile = await ctx.readProfileFromFile(alias);
+  if (!fileProfile) {
     return false;
   }
+  ctx.cache.set(alias, fileProfile);
+  return true;
+}
+
+export async function addMcpServerConfig(ctx: EntityCrudContext, alias: string, mcpServerConfig: McpServerConfig): Promise<boolean> {
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
+    return false;
+  }
+  const added = await mcpConfigManager.addServer(alias, mcpServerConfig);
+  if (added) {
+    await ctx.notifyProfileDataManager(alias);
+  }
+  return added;
 }
 
 export async function updateMcpServerConfig(ctx: EntityCrudContext, alias: string, serverName: string, updates: Partial<McpServerConfig>): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    const serverIndex = profile.mcp_servers.findIndex(server => server.name === serverName);
-    if (serverIndex < 0) {
-      return false;
-    }
-
-    profile.mcp_servers[serverIndex] = {
-      ...profile.mcp_servers[serverIndex],
-      ...updates
-    };
-
-    ctx.cache.set(alias, profile);
-    await ctx.notifyProfileDataManager(alias, true);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
-  } catch (error) {
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
     return false;
   }
+  const updated = await mcpConfigManager.updateServer(alias, serverName, updates);
+  if (updated) {
+    await ctx.notifyProfileDataManager(alias, true);
+  }
+  return updated;
 }
 
 export async function deleteMcpServerConfig(ctx: EntityCrudContext, alias: string, serverName: string): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    const serverIndex = profile.mcp_servers.findIndex(server => server.name === serverName);
-    if (serverIndex < 0) {
-      return false;
-    }
-
-    profile.mcp_servers.splice(serverIndex, 1);
-    ctx.cache.set(alias, profile);
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
+    return false;
+  }
+  const deleted = await mcpConfigManager.deleteServer(alias, serverName);
+  if (deleted) {
     await ctx.notifyProfileDataManager(alias);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
-  } catch (error) {
-    return false;
+  }
+  return deleted;
+}
+
+// ────────────────────────────── skill CRUD ─────────────────────────────────
+// The global skill registry lives in skills.json and is owned by
+// SkillsConfigManager (which serializes its own writes and advances its own
+// updatedAt). These thin wrappers mirror the MCP ones: gate on profile
+// existence, delegate the persistence to the manager, then invalidate any
+// per-chat skill snapshots that referenced the changed skill (an in-memory
+// eagerness optimization on top of the next-turn signature check) and fire the
+// profile notification so the renderer cache refreshes.
+
+/**
+ * Drop the in-memory snapshots of chats whose single-agent skill binding
+ * references `skillName`, so an affected chat rebuilds its snapshot on the next
+ * turn. Reads the (read-only) cached chat list; no profile.json write.
+ */
+function invalidateChatSnapshotsForSkill(ctx: EntityCrudContext, alias: string, skillName: string): void {
+  const profile = ctx.cache.get(alias);
+  if (!profile || !isProfileV2(profile)) {
+    return;
+  }
+  const cleared = chatSkillSnapshotStore.invalidateAffectedChats(alias, profile.chats, [skillName]);
+  if (cleared > 0) {
+    logger.info('[ProfileCacheManager] Invalidated skill snapshots after registry change', 'invalidateChatSnapshotsForSkill', {
+      alias,
+      skillName,
+      clearedCount: cleared,
+    });
   }
 }
 
-// ═══════ Skill CRUD ═══════
-
-export async function addSkill(ctx: EntityCrudContext, alias: string, skillConfig: { name: string; description: string; version: string; remoteVersion?: string; source: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN' }): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        logger.warn(`[ProfileCacheManager] addSkill failed: profile not found for alias "${alias}"`);
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      logger.warn(`[ProfileCacheManager] addSkill failed: profile for "${alias}" is not V2 format`);
-      return false;
-    }
-
-    if (!profile.skills) {
-      profile.skills = [];
-    }
-
-    const existingIndex = profile.skills.findIndex(skill => skill.name === skillConfig.name);
-    if (existingIndex >= 0) {
-      logger.info(`[ProfileCacheManager] addSkill: skill "${skillConfig.name}" already exists, updating config`);
-      profile.skills[existingIndex] = { ...profile.skills[existingIndex], ...skillConfig };
-    } else {
-      profile.skills.push(skillConfig);
-    }
-
-    const clearedCount = clearSkillSnapshotsForAffectedChats(profile, [skillConfig.name]);
-    if (clearedCount > 0) {
-      logger.info('[ProfileCacheManager] Invalidated skill snapshots after addSkill', 'addSkill', {
-        alias,
-        skillName: skillConfig.name,
-        clearedCount,
-      });
-    }
-
-    ctx.cache.set(alias, profile);
+export async function addSkillConfig(ctx: EntityCrudContext, alias: string, skillConfig: AddSkillInput): Promise<boolean> {
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
+    return false;
+  }
+  const added = await skillsConfigManager.addSkill(alias, skillConfig);
+  if (added) {
+    invalidateChatSnapshotsForSkill(ctx, alias, skillConfig.name);
     await ctx.notifyProfileDataManager(alias);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      logger.warn(`[ProfileCacheManager] addSkill failed: could not write profile to file for "${alias}"`);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    logger.error(`[ProfileCacheManager] addSkill error for "${alias}":`, error instanceof Error ? error.message : String(error));
-    return false;
   }
+  return added;
 }
 
-export async function updateSkill(ctx: EntityCrudContext, alias: string, skillName: string, updates: { description?: string; version?: string; remoteVersion?: string }): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      return false;
-    }
-
-    if (!profile.skills || !Array.isArray(profile.skills)) {
-      return false;
-    }
-
-    const skillIndex = profile.skills.findIndex(skill => skill.name === skillName);
-    if (skillIndex < 0) {
-      return false;
-    }
-
-    profile.skills[skillIndex] = {
-      ...profile.skills[skillIndex],
-      ...updates
-    };
-
-    const clearedCount = clearSkillSnapshotsForAffectedChats(profile, [skillName]);
-    if (clearedCount > 0) {
-      logger.info('[ProfileCacheManager] Invalidated skill snapshots after updateSkill', 'updateSkill', {
-        alias,
-        skillName,
-        clearedCount,
-      });
-    }
-
-    ctx.cache.set(alias, profile);
+export async function updateSkillConfig(ctx: EntityCrudContext, alias: string, skillName: string, updates: UpdateSkillInput): Promise<boolean> {
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
+    return false;
+  }
+  const updated = await skillsConfigManager.updateSkill(alias, skillName, updates);
+  if (updated) {
+    invalidateChatSnapshotsForSkill(ctx, alias, skillName);
     await ctx.notifyProfileDataManager(alias, true);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
-  } catch (error) {
-    return false;
   }
+  return updated;
 }
 
-export async function deleteSkill(ctx: EntityCrudContext, alias: string, skillName: string): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      return false;
-    }
-
-    if (!profile.skills || !Array.isArray(profile.skills)) {
-      return false;
-    }
-
-    const skillIndex = profile.skills.findIndex(skill => skill.name === skillName);
-    if (skillIndex < 0) {
-      return false;
-    }
-
-    profile.skills.splice(skillIndex, 1);
-
-    const clearedCount = clearSkillSnapshotsForAffectedChats(profile, [skillName]);
-    if (clearedCount > 0) {
-      logger.info('[ProfileCacheManager] Invalidated skill snapshots after deleteSkill', 'deleteSkill', {
-        alias,
-        skillName,
-        clearedCount,
-      });
-    }
-
-    ctx.cache.set(alias, profile);
+export async function deleteSkillConfig(ctx: EntityCrudContext, alias: string, skillName: string): Promise<boolean> {
+  if (!(await ensureProfileLoadedForConfigCrud(ctx, alias))) {
+    return false;
+  }
+  const deleted = await skillsConfigManager.deleteSkill(alias, skillName);
+  if (deleted) {
+    invalidateChatSnapshotsForSkill(ctx, alias, skillName);
     await ctx.notifyProfileDataManager(alias, true);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
+  }
+  return deleted;
+}
+
+export async function writeProfileThenCommitCache(
+  ctx: ProfileWriteContext,
+  alias: string,
+  currentProfile: ProfileV2,
+  nextProfile: ProfileV2,
+  immediate = false,
+  notify = true,
+): Promise<boolean> {
+  let success = false;
+  try {
+    success = await ctx.writeProfileToFile(alias, nextProfile);
   } catch (error) {
+    logger.error(`[ProfileCacheManager] Failed to persist profile for "${alias}":`, error instanceof Error ? error.message : String(error));
     return false;
   }
-}
-
-// ═══════ Sub-Agent CRUD ═══════
-
-export async function getSubAgents(ctx: EntityCrudContext): Promise<SubAgentConfig[] | SubAgentIndex[]> {
-  try {
-    const fileManager = SubAgentFileManager.getInstance();
-
-    for (const [alias, profile] of ctx.cache) {
-      if (!isProfileV2(profile)) continue;
-      const profileDir = ctx.getProfileDirectoryPath(alias);
-
-      if (!fileManager.isCacheWarmed(alias)) {
-        const configs = await fileManager.scanAllAgents(profileDir);
-        fileManager.markCacheWarmed(alias);
-        if (configs.length > 0) {
-          return configs;
-        }
-        if (Array.isArray(profile.sub_agents) && profile.sub_agents.length > 0) {
-          const first = profile.sub_agents[0] as any;
-          if ('system_prompt' in first) {
-            return profile.sub_agents as SubAgentIndex[];
-          }
-        }
-        return [];
-      }
-
-      const index = getSubAgentIndex(ctx, alias);
-      const configs: SubAgentConfig[] = [];
-      for (const idx of index) {
-        const config = await fileManager.readAgentConfig(profileDir, idx.name);
-        if (config) {
-          configs.push(config);
-        }
-      }
-      return configs;
-    }
-    return [];
-  } catch (error) {
-    logger.error(`[ProfileCacheManager] getSubAgents error:`, error instanceof Error ? error.message : String(error));
-    for (const [, profile] of ctx.cache) {
-      if (isProfileV2(profile) && Array.isArray(profile.sub_agents)) {
-        return profile.sub_agents as SubAgentIndex[];
-      }
-    }
-    return [];
-  }
-}
-
-export function getSubAgentIndex(ctx: EntityCrudContext, alias?: string): SubAgentIndex[] {
-  if (alias) {
-    const profile = ctx.cache.get(alias);
-    if (profile && isProfileV2(profile)) {
-      return (profile.sub_agents || []) as SubAgentIndex[];
-    }
-    return [];
-  }
-  for (const [, profile] of ctx.cache) {
-    if (isProfileV2(profile)) {
-      return (profile.sub_agents || []) as SubAgentIndex[];
-    }
-  }
-  return [];
-}
-
-export async function addSubAgent(ctx: EntityCrudContext, alias: string, config: SubAgentConfig): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        logger.warn(`[ProfileCacheManager] addSubAgent failed: profile not found for alias "${alias}"`);
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      logger.warn(`[ProfileCacheManager] addSubAgent failed: profile for "${alias}" is not V2 format`);
-      return false;
-    }
-
-    const fileManager = SubAgentFileManager.getInstance();
-    const profileDir = ctx.getProfileDirectoryPath(alias);
-    await fileManager.writeAgentConfig(profileDir, config);
-
-    if (!profile.sub_agents) {
-      profile.sub_agents = [];
-    }
-
-    const newIndex: SubAgentIndex = {
-      name: config.name,
-      version: '1.0.0',
-      source: 'ON-DEVICE',
-    };
-
-    const existingIdx = (profile.sub_agents as SubAgentIndex[]).findIndex(sa => sa.name === config.name);
-    if (existingIdx >= 0) {
-      logger.info(`[ProfileCacheManager] addSubAgent: sub-agent "${config.name}" already exists, updating`);
-      (profile.sub_agents as SubAgentIndex[])[existingIdx] = newIndex;
-    } else {
-      (profile.sub_agents as SubAgentIndex[]).push(newIndex);
-    }
-
-    ctx.cache.set(alias, profile);
-    await ctx.notifyProfileDataManager(alias);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      logger.warn(`[ProfileCacheManager] addSubAgent failed: could not write profile to file for "${alias}"`);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    logger.error(`[ProfileCacheManager] addSubAgent error for "${alias}":`, error instanceof Error ? error.message : String(error));
+  if (!success) {
     return false;
   }
-}
-
-export async function updateSubAgent(ctx: EntityCrudContext, alias: string, name: string, updates: Partial<SubAgentConfig>): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      return false;
-    }
-
-    if (!profile.sub_agents || !Array.isArray(profile.sub_agents)) {
-      return false;
-    }
-
-    const indexArr = profile.sub_agents as SubAgentIndex[];
-    const idxPos = indexArr.findIndex(sa => sa.name === name);
-    if (idxPos < 0) {
-      return false;
-    }
-
-    const fileManager = SubAgentFileManager.getInstance();
-    const profileDir = ctx.getProfileDirectoryPath(alias);
-    let currentConfig = await fileManager.readAgentConfig(profileDir, name);
-
-    if (!currentConfig) {
-      currentConfig = {
-        name,
-        description: '',
-        system_prompt: '',
-      };
-    }
-
-    const mergedConfig: SubAgentConfig = { ...currentConfig, ...updates } as SubAgentConfig;
-    await fileManager.writeAgentConfig(profileDir, mergedConfig);
-
-    indexArr[idxPos] = {
-      name,
-      version: indexArr[idxPos].version || '1.0.0',
-      remoteVersion: indexArr[idxPos].remoteVersion,
-      source: (indexArr[idxPos].source ?? 'ON-DEVICE') as 'IN-LIBRARY' | 'ON-DEVICE',
-    };
-
-    ctx.cache.set(alias, profile);
-    await ctx.notifyProfileDataManager(alias, true);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-export async function deleteSubAgent(ctx: EntityCrudContext, alias: string, name: string): Promise<boolean> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) {
-        return false;
-      }
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) {
-      return false;
-    }
-
-    if (!profile.sub_agents || !Array.isArray(profile.sub_agents)) {
-      return false;
-    }
-
-    const indexArr = profile.sub_agents as SubAgentIndex[];
-    const idxPos = indexArr.findIndex(sa => sa.name === name);
-    if (idxPos < 0) {
-      return false;
-    }
-
-    try {
-      const fileManager = SubAgentFileManager.getInstance();
-      const profileDir = ctx.getProfileDirectoryPath(alias);
-      await fileManager.deleteAgentDirectory(profileDir, name);
-    } catch (err) {
-      logger.warn(`[ProfileCacheManager] deleteSubAgent: failed to delete agent directory for "${name}": ${err}`);
-    }
-
-    indexArr.splice(idxPos, 1);
-
-    for (const chat of profile.chats) {
-      if (chat.agent?.sub_agents) {
-        chat.agent.sub_agents = chat.agent.sub_agents.filter(n => n !== name);
-      }
-    }
-
-    ctx.cache.set(alias, profile);
-    await ctx.notifyProfileDataManager(alias, true);
-    const success = await ctx.writeProfileToFile(alias, profile);
-    if (!success) {
-      return false;
-    }
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-export async function syncSubAgentIndex(ctx: EntityCrudContext, alias: string): Promise<void> {
-  try {
-    let profile = ctx.cache.get(alias);
-    if (!profile) {
-      const fileProfile = await ctx.readProfileFromFile(alias);
-      if (!fileProfile) return;
-      profile = fileProfile;
-    }
-
-    if (!isProfileV2(profile)) return;
-
-    const fileManager = SubAgentFileManager.getInstance();
-    const profileDir = ctx.getProfileDirectoryPath(alias);
-
-    fileManager.invalidateAllCache();
-    const diskConfigs = await fileManager.scanAllAgents(profileDir);
-    const diskNames = new Set(diskConfigs.map(c => c.name));
-
-    const currentIndex = (profile.sub_agents || []) as SubAgentIndex[];
-    const indexNames = new Set(currentIndex.map(i => i.name));
-
-    let changed = false;
-
-    for (const config of diskConfigs) {
-      if (!indexNames.has(config.name)) {
-        currentIndex.push({
-          name: config.name,
-          version: '1.0.0',
-          source: 'ON-DEVICE',
-        });
-        changed = true;
-      }
-    }
-
-    const filtered = currentIndex.filter(i => diskNames.has(i.name));
-    if (filtered.length !== currentIndex.length) {
-      changed = true;
-    }
-
-    if (changed) {
-      profile.sub_agents = filtered;
-      ctx.cache.set(alias, profile);
-      await ctx.writeProfileToFile(alias, profile);
+  Object.assign(currentProfile, nextProfile);
+  ctx.cache.set(alias, currentProfile);
+  if (notify) {
+    if (immediate) {
       await ctx.notifyProfileDataManager(alias, true);
+    } else {
+      await ctx.notifyProfileDataManager(alias);
     }
-
-    fileManager.markCacheWarmed(alias);
-    logger.info(`[ProfileCacheManager] syncSubAgentIndex: synced ${filtered.length} sub-agents for "${alias}"`);
-  } catch (error) {
-    logger.error(`[ProfileCacheManager] syncSubAgentIndex error:`, error instanceof Error ? error.message : String(error));
   }
+  return true;
 }

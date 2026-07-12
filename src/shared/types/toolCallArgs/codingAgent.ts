@@ -1,7 +1,8 @@
+import type { CodingCliId } from '../codingCli';
+
 export interface CodingAgentToolArgs {
   task: string;
   cwd: string;
-  timeoutSeconds?: number;
 }
 
 export interface CodingAgentToolResult {
@@ -12,4 +13,6 @@ export interface CodingAgentToolResult {
   durationMs: number;
   cwd: string;
   truncated?: boolean;
+  /** The coding CLI that produced this result. */
+  cli: CodingCliId;
 }

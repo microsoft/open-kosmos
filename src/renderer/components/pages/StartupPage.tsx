@@ -9,6 +9,7 @@ import { performTwoStageValidation } from '../../lib/startup/startupValidation';
 import '../../styles/StartupPage.css';
 import { APP_NAME } from '@shared/constants/branding';
 import { appIcon } from '../../lib/brandIcon';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface StartupPageProps {
   onComplete: (result: StartupValidationResult) => void;
@@ -24,6 +25,7 @@ interface ValidationStep {
 }
 
 export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
+  const { t } = useI18n();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
   const [showBrand, setShowBrand] = useState(false);
@@ -35,13 +37,20 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
     {
       id: 'stage1',
       stage: ValidationStage.STAGE_1,
-      label: 'Scanning local profiles...',
+      label: t('startup.scanningProfiles'),
       completed: false,
       inProgress: false
     },
   ];
 
   const [steps, setSteps] = useState(validationSteps);
+
+  const updatePrimaryStep = (updateStep: (step: ValidationStep) => ValidationStep) => {
+    setSteps(prev => {
+      const [primaryStep, ...remainingSteps] = prev;
+      return [updateStep(primaryStep), ...remainingSteps];
+    });
+  };
 
   useEffect(() => {
     // Get app version
@@ -84,9 +93,7 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
 
       // Start profile scanning with visual feedback
       logWithTime('📝 Setting step to inProgress...');
-      setSteps(prev => prev.map((step, index) =>
-        index === 0 ? { ...step, inProgress: true } : step
-      ));
+      updatePrimaryStep(step => ({ ...step, inProgress: true }));
       setCurrentStepIndex(0);
       logWithTime('✓ Step state updated to inProgress');
 
@@ -112,19 +119,17 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       // Update completion status with dynamic label showing found profiles
       const totalProfiles = result.stage2.totalProfiles || 0;
       const finalLabel = totalProfiles > 0
-        ? `Scanning local profiles. Found ${totalProfiles} valid profiles`
-        : 'Scanning local profiles. No profiles found';
+        ? t('startup.scanningProfilesFound', { count: totalProfiles })
+        : t('startup.scanningProfilesNoneFound');
 
       logWithTime('📊 Updating step to completed=true...');
-      setSteps(prev => prev.map((step, index) =>
-        index === 0 ? {
-          ...step,
-          inProgress: false,
-          completed: true,
-          label: finalLabel,
-          error: result.stage2.status === ValidationStatus.ERROR ? result.stage2.error : undefined
-        } : step
-      ));
+      updatePrimaryStep(step => ({
+        ...step,
+        inProgress: false,
+        completed: true,
+        label: finalLabel,
+        error: result.stage2.status === ValidationStatus.ERROR ? result.stage2.error : undefined
+      }));
       logWithTime('✓ Step state updated to completed=true');
       logWithTime('🎯 Progress should now be 100% (1/1 steps completed)');
 
@@ -163,14 +168,12 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
       setValidationError(errorMessage);
 
       // Update step to show error
-      setSteps(prev => prev.map((step, index) =>
-        index === 0 ? {
-          ...step,
-          inProgress: false,
-          completed: false,
-          error: errorMessage
-        } : step
-      ));
+      updatePrimaryStep(step => ({
+        ...step,
+        inProgress: false,
+        completed: false,
+        error: errorMessage
+      }));
 
       // Create error result
       const errorResult: StartupValidationResult = {
@@ -208,6 +211,7 @@ export const StartupPage: React.FC<StartupPageProps> = ({ onComplete }) => {
   };
 
   const completedSteps = steps.filter(step => step.completed).length;
+  /* v8 ignore next -- validationSteps always seeds one step and updates only map existing steps. */
   const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
 
   // Debug: Log progress changes

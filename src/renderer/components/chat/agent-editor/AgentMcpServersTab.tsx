@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Settings, RotateCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, Settings } from 'lucide-react';
 
 import '../../../styles/Agent.css';
 import { TabComponentProps, AgentMcpServer } from './types';
@@ -9,13 +9,11 @@ import { useLayout } from '../../layout/LayoutProvider';
 import { useToast } from '../../ui/ToastProvider';
 import ListSearchBox from '../../ui/ListSearchBox';
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[AgentMcpServersTab]');
 
 // Built-in server name constant
 const BUILTIN_SERVER_NAME = 'builtin-tools';
-
-// Plugin MCP server prefix — servers injected by the plugin system
-const PLUGIN_MCP_PREFIX = 'plugin--';
 
 // Server selection state: contains the list of selected tools
 interface ServerSelection {
@@ -31,7 +29,7 @@ interface ToolConflictInfo {
 
 const AgentMcpServersTab: React.FC<TabComponentProps> = ({
   mode,
-  agentId,
+  chatId,
   agentData,
   onSave,
   onDataChange,
@@ -42,6 +40,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { showSuccess, showError, showToast } = useToast();
+  const { t } = useI18n();
 
   // Store selection state for each server: Map<serverName, Set<toolName>>
   // Empty Set means all tools selected; undefined means server is not selected
@@ -310,10 +309,6 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
       if (isKobiAgent && serverName === BUILTIN_SERVER_NAME) {
         return;
       }
-      // Plugin MCP servers are managed by the plugin system — not user-toggleable
-      if (serverName.startsWith(PLUGIN_MCP_PREFIX)) {
-        return;
-      }
 
       setServerSelections((prev) => {
         const newSelections = new Map(prev);
@@ -340,15 +335,15 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
             // Has conflicts — notify user and select only non-conflicting tools
             const conflictMessage = (
               <div>
-                <div className="text-red-700 mb-3">
-                  {conflictingTools.length} tools from{' '}
-                  <span className="font-bold">{serverName}</span> cannot be
-                  selected due to same name tools already selected in other MCP
-                  servers.
+                <div className="text-danger-700 mb-3">
+                  {t('agent.mcp.conflictingToolsFromServer', {
+                    count: conflictingTools.length,
+                    serverName,
+                  })}
                 </div>
                 <ul className="list-none space-y-1 mb-0 ml-2">
                   {conflictingTools.map((tool) => (
-                    <li key={tool} className="text-red-600">
+                    <li key={tool} className="text-danger-600">
                       • {tool}
                     </li>
                   ))}
@@ -374,16 +369,12 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         return newSelections;
       });
     },
-    [isKobiAgent, getAllSelectedToolNames, showError],
+    [isKobiAgent, getAllSelectedToolNames, showError, showToast, t],
   );
 
   // Toggle tool selection state
   const handleToolToggle = useCallback(
     (serverName: string, toolName: string, serverTools: any[]) => {
-      // Plugin MCP servers are managed by the plugin system — not user-toggleable
-      if (serverName.startsWith(PLUGIN_MCP_PREFIX)) {
-        return;
-      }
       setServerSelections((prev) => {
         const newSelections = new Map(prev);
         const currentSelection = newSelections.get(serverName);
@@ -393,10 +384,8 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
           if (checkToolConflict(toolName, serverName)) {
             const conflictMessage = (
               <div>
-                <div className="text-red-700">
-                  <span className="font-bold">{toolName}</span> cannot be
-                  selected due to same name tool already selected in other MCP
-                  servers.
+                <div className="text-danger-700">
+                  {t('agent.mcp.conflictingTool', { toolName })}
                 </div>
               </div>
             );
@@ -430,10 +419,8 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
             if (checkToolConflict(toolName, serverName)) {
               const conflictMessage = (
                 <div>
-                  <div className="text-red-700">
-                    <span className="font-bold">{toolName}</span> cannot be
-                    selected due to same name tool already selected in other MCP
-                    servers.
+                  <div className="text-danger-700">
+                    {t('agent.mcp.conflictingTool', { toolName })}
                   </div>
                 </div>
               );
@@ -457,7 +444,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         return newSelections;
       });
     },
-    [checkToolConflict, showError],
+    [checkToolConflict, showError, showToast, t],
   );
 
   // Toggle server expanded state
@@ -479,72 +466,6 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     sessionStorage.setItem('previousPath', location.pathname);
     navigate('/settings/mcp');
   }, [navigate, location.pathname]);
-
-  /**
-   * Navigate to MCP Library View and select the given MCP Server
-   * Follows ChatViewHeader's approach: use URL query parameters to pass the selection
-   * Also pass returnPath state so the SettingsPage Back button can return correctly
-   */
-  const handleUpdateMcp = useCallback((serverName: string) => {
-    if (!serverName) {
-      logger.warn('Update button clicked but server name is not available');
-      return;
-    }
-
-    logger.debug('Update button clicked for MCP server:', serverName);
-
-    // Navigate to the MCP Library page, passing the server name as a query parameter
-    // Use encodeURIComponent to ensure special characters in the name are correctly encoded
-    // Route path reference AppRoutes.tsx: /settings/mcp/mcp-library
-    const mcpLibraryUrl = `/settings/mcp/mcp-library?selectMcp=${encodeURIComponent(serverName)}`;
-
-    // Pass returnPath state so the SettingsPage Back button can return to the current page
-    navigate(mcpLibraryUrl, { state: { returnPath: location.pathname } });
-  }, [navigate, location.pathname]);
-
-  /**
-   * Compare version strings; returns 1 if v1 > v2
-   * Supports semantic versioning format (e.g. 1.0.0, 2.1.3)
-   */
-  const compareVersions = useCallback((v1: string, v2: string): number => {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-
-    const maxLength = Math.max(parts1.length, parts2.length);
-
-    for (let i = 0; i < maxLength; i++) {
-      const p1 = parts1[i] || 0;
-      const p2 = parts2[i] || 0;
-
-      if (p1 > p2) return 1;
-      if (p1 < p2) return -1;
-    }
-
-    return 0;
-  }, []);
-
-  // Determine whether to show the Update button for an MCP server
-  const shouldShowUpdateButton = useCallback((server: any) => {
-    const { version, remoteVersion, source } = server;
-
-    // ON-DEVICE MCP Servers should not show the Update button
-    // ON-DEVICE servers are user-created and have no remote library version to update from
-    if (source === 'ON-DEVICE') {
-      return false;
-    }
-
-    // Only consider showing button when remoteVersion is non-empty
-    if (!remoteVersion || remoteVersion.trim() === '') {
-      return false;
-    }
-
-    // Show button if version is empty or remoteVersion > version
-    if (!version || version.trim() === '' || compareVersions(remoteVersion, version) > 0) {
-      return true;
-    }
-
-    return false;
-  }, [compareVersions]);
 
   // Get server current state
   const getCurrentState = useCallback((server: any) => {
@@ -606,50 +527,22 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
     }, 0);
   }, [servers, getCurrentState]);
 
-  // Get server status icon
-  const getServerStatusIcon = (server: any) => {
-    switch (server.status) {
-      case 'connected':
-        return '🟢';
-      case 'disconnected':
-        return '🔴';
-      case 'error':
-        return '⚠️';
-      default:
-        return '⚪';
-    }
-  };
-
-  // Get server status text
-  const getServerStatusText = (server: any) => {
-    switch (server.status) {
-      case 'connected':
-        return 'Connected';
-      case 'disconnected':
-        return 'Disconnected';
-      case 'error':
-        return 'Error';
-      default:
-        return 'Unknown';
-    }
-  };
-
   return (
     <div className="agent-tab">
       {/* Tab Header */}
       <div className="tab-header">
         <div className="header-summary">
           <span className="summary-text">
-            {totalSelectedTools} tools selected from available servers
+            {t('agent.mcp.selectedTools', { count: totalSelectedTools })}
           </span>
         </div>
         <div className="header-actions">
           <button
             className="manage-servers-btn"
             onClick={handleManageServers}
-            title="Manage available servers"
+            title={t('agent.mcp.manageAvailableTitle')}
           >
-            Manage Available Servers
+            {t('agent.mcp.manageAvailable')}
           </button>
         </div>
       </div>
@@ -659,7 +552,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         {isLoading ? (
           <div className="loading-state">
             <div className="spinner">🔄</div>
-            <span>Loading MCP servers...</span>
+            <span>{t('agent.mcp.loading')}</span>
           </div>
         ) : servers && servers.length > 0 ? (
           <>
@@ -668,7 +561,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
               <ListSearchBox
                 value={agentMcpSearchQuery}
                 onChange={setAgentMcpSearchQuery}
-                placeholder="Search MCP servers..."
+                placeholder={t('agent.mcp.searchPlaceholder')}
               />
               {servers
                 // Filter out hidden (system-managed) servers
@@ -686,8 +579,7 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                   const serverTools = server.tools || [];
                   const currentState = getCurrentState(server);
                   const isBuiltinServer = server.name === BUILTIN_SERVER_NAME;
-                  const isPluginServer = server.name.startsWith(PLUGIN_MCP_PREFIX);
-                  const isDisabled = isEditDisabled || (isKobiAgent && isBuiltinServer) || isPluginServer;
+                  const isDisabled = isEditDisabled || (isKobiAgent && isBuiltinServer);
                   const isSelected = isServerSelected(server.name);
                   const isFullySelected = isServerFullySelected(
                     server.name,
@@ -701,11 +593,6 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                   const selectedToolsSet = serverSelections.get(server.name);
                   const hasConflicts = serverHasConflicts(server.name);
 
-                  // For display: strip the "plugin--<id>--" prefix to show a cleaner name
-                  const displayName = isPluginServer
-                    ? server.name.replace(/^plugin--.*?--/, '') || server.name
-                    : server.name;
-
                   return (
                     <div
                       key={server.name}
@@ -713,11 +600,9 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                         isBuiltinServer ? 'builtin-server' : ''
                       } ${hasConflicts ? 'has-conflict' : ''}`}
                       title={
-                        isPluginServer
-                          ? 'Managed by plugin — toggle via Plugins tab'
-                          : hasConflicts
-                            ? '⚠️ This server contains conflicting tool names'
-                            : ''
+                        hasConflicts
+                          ? t('agent.mcp.conflictingToolsTitle')
+                          : ''
                       }
                     >
                       <div className="server-card-header">
@@ -744,19 +629,13 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                           />
                           <div className="server-name-group">
                             <div className="server-title-row">
-                              <h4 className="server-name">{displayName}</h4>
+                              <h4 className="server-name">{server.name}</h4>
                               {isBuiltinServer && (
-                                <span className="builtin-badge">Built-in</span>
-                              )}
-                              {isPluginServer && (
-                                <span className="builtin-badge" style={{ background: 'var(--color-accent-secondary, #6b5ce7)' }}>Plugin</span>
-                              )}
-                              {/[/\\]agency(?:\.exe)?$/.test(server.command) && (
-                                <span className="builtin-badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>M365</span>
+                                <span className="builtin-badge">{t('common.builtIn')}</span>
                               )}
                               {hasConflicts && (
                                 <span className="conflict-badge">
-                                  ⚠️ CONFLICT
+                                  {t('agent.mcp.conflict')}
                                 </span>
                               )}
                             </div>
@@ -772,13 +651,13 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                                           ? serverTools.length
                                           : selectedToolsSet.size
                                       }/${serverTools.length} tools`
-                                    : `${serverTools.length} tools`}
+                                    : t('agent.mcp.toolsCount', { selected: serverTools.length, total: serverTools.length })}
                                 </span>
                               )}
                               {hasError && (
                                 <span
                                   className="error-indicator"
-                                  title={server.error || 'Connection error'}
+                                  title={server.error || t('agent.mcp.connectionError')}
                                 >
                                   ⚠️
                                 </span>
@@ -787,26 +666,13 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                           </div>
                         </div>
                         <div className="server-actions">
-                          {shouldShowUpdateButton(server) && (
-                            <button
-                              className="update-mcp-button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUpdateMcp(server.name);
-                              }}
-                              title="Update to the latest version in library"
-                            >
-                              <RotateCw size={14} className="update-mcp-icon" />
-                              <span className="update-mcp-text">Update</span>
-                            </button>
-                          )}
                           <button
                             className="manage-btn always-visible"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleManageServers();
                             }}
-                            title="Manage MCP Servers"
+                            title={t('agent.mcp.manageServersTitle')}
                           >
                             <Settings size={14} />
                           </button>
@@ -843,7 +709,11 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                       {/* Tool List - expandable */}
                       {isExpanded && serverTools.length > 0 && (
                         <div className="tool-list">
-                          {serverTools.map((tool: any) => {
+                          {/* Sort a copy alphabetically by name for stable display order;
+                              the original serverTools order is preserved for counts/conflict checks */}
+                          {[...serverTools]
+                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                            .map((tool: any) => {
                             const isToolSelected = selectedToolsSet
                               ? selectedToolsSet.size === 0 ||
                                 selectedToolsSet.has(tool.name)
@@ -906,14 +776,13 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
                                       <span
                                         className="tool-description"
                                         style={{
-                                          color: '#dc2626',
+                                          color: 'var(--color-danger-600)',
                                           fontWeight: 600,
                                         }}
                                       >
-                                        ⚠️ Conflict: Also appears in{' '}
-                                        {globalConflicts
-                                          .get(tool.name)
-                                          ?.servers.join(', ')}
+                                        {t('agent.mcp.toolConflict', {
+                                          servers: globalConflicts.get(tool.name)?.servers.join(', ') ?? '',
+                                        })}
                                       </span>
                                     )}
                                   </div>
@@ -931,10 +800,10 @@ const AgentMcpServersTab: React.FC<TabComponentProps> = ({
         ) : (
           <div className="empty-state">
             <div className="empty-icon">📡</div>
-            <h4>No MCP Servers Found</h4>
-            <p>No MCP servers are currently configured.</p>
+            <h4>{t('agent.mcp.emptyTitle')}</h4>
+            <p>{t('agent.mcp.emptyDescription')}</p>
             <button className="btn-primary" onClick={handleManageServers}>
-              Configure MCP Servers
+              {t('agent.mcp.configure')}
             </button>
           </div>
         )}

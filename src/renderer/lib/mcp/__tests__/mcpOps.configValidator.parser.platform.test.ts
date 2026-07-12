@@ -521,7 +521,7 @@ describe('platformDetector', () => {
     const info = getPlatformInfo('macOS');
     expect(info.platform).toBe('macOS');
     expect(info.isSupported).toBe(true);
-    expect(info.vscodeConfigPaths[0]).toBeDefined();
+    expect(info.vscodeConfigPath).toBeDefined();
     expect(info.vscodeConfigPaths.length).toBeGreaterThan(0);
     expect(info.displayName).toBe('macOS');
   });

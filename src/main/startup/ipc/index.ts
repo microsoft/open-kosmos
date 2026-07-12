@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { BrowserControlManager } from '../../lib/browserControl/BrowserControlManager';
-import { registerBrowserControlIPC } from '../../lib/browserControl/browserControlIPC';
-import type { UpdateManager } from '../../lib/autoUpdate/updateManager';
+import { registerCodingCliIPC } from '../../lib/codingCli/codingCliIPC';
+import { initEmbeddedBrowserManager } from '../../lib/embeddedBrowser/EmbeddedBrowserManager';
+import { registerEmbeddedBrowserIPC } from '../../lib/embeddedBrowser/embeddedBrowserIPC';
+import { setupMemex } from '../../lib/memex/memexIPC';
+import { registerSyncIPC } from '../../lib/sync/syncIPC';
 import { registerSchedulerIPC } from '../../lib/scheduler/SchedulerIPC';
+import { registerAgentHooksIPC } from '../../lib/agentHooks/agentHooksIpc';
 import { registerBuddyIPC } from '../../lib/buddy/BuddyIPC';
 import { createLogger } from '../../lib/unifiedLogger';
 import { safeConsole } from '../../lib/utilities/safeConsole';
@@ -13,13 +16,11 @@ import {
   getProfileCacheManager,
   getAppCacheManager,
   getTerminalManagerInstance,
-  getRemoteChannelManager,
   getAdvancedLogger,
   useAdvancedLogger,
 } from '../lazy';
 
-import type { Context, ImportConflictResolution } from './shared';
-import { promptImportConflictResolution, collectImportConflicts, planImportTargets } from './shared';
+import type { Context } from './shared';
 
 import handleAppIPC from './app';
 import handleSigninIPC from './signin';
@@ -29,27 +30,45 @@ import handleSubAgentIPC from './sub-agent';
 import handleMcpIPC from './mcp';
 import handleSkillIPC from './skill';
 import handleAgentChatIPC from './agent-chat';
+import handleAgentChatSteeringIPC from './agent-chat-steering';
 import handleFsIPC from './fs';
 import handleWorkspaceIPC from './workspace';
 import handleLlmIPC from './llm';
+import handleWhisperIPC from './whisper';
 import handleWindowIPC from './window';
-import handlePluginIPC from './plugin';
 import handleChatSessionIPC from './chat-session';
 import { registerRendererLogIPC } from './renderer-log';
-import handleDoctorIPC from './doctor';
 
 import { registerExternalAgentIPC } from '../../lib/externalAgent/externalAgentIPC';
 import { openkosmosPlaceholderManager } from "../../lib/userDataADO/openkosmosPlaceholders";
 import { userInputPlaceholderParser } from "../../lib/userDataADO/userInputPlaceholderParser";
 import { getBuiltinToolsManager } from "../../lib/mcpRuntime/builtinTools/builtinToolsManager";
-import { quickStartImageCacheManager } from "../../lib/cache/quickStartImageCacheManager";
-import { schedulerManager } from "../../lib/scheduler/SchedulerManager";
-import { StartupUpdateService } from "../../lib/startupUpdate/startupUpdateService";
+import { nativeModuleManager } from "../../lib/nativeModules";
 import { RuntimeManager } from '../../lib/runtime/RuntimeManager';
 
 const logger = createLogger();
 
 export function setUpIPC(ctx: Context) {
+  // 🔥 Fix: add cleanup handling before app exit
+  app.on('before-quit', (event) => {
+    try {
+      // Ensure SelectionHook is properly cleaned up before app exit
+      ctx.cleanupSelectionHook();
+    } catch (error) {
+      // Ignore cleanup errors to avoid preventing app exit
+      safeConsole.warn('[APP-EXIT] Error during SelectionHook cleanup:', error);
+    }
+  });
+
+  app.on('will-quit', (event) => {
+    try {
+      // Last chance to clean up SelectionHook
+      ctx.cleanupSelectionHook();
+    } catch (error) {
+      // Ignore cleanup errors, ensure app can exit normally
+      safeConsole.warn('[APP-EXIT] Final cleanup error (ignored):', error);
+    }
+  });
   app.on('before-quit', ctx.onBeforeQuit);
 
   handleAppIPC(ctx);
@@ -60,17 +79,18 @@ export function setUpIPC(ctx: Context) {
   handleMcpIPC(ctx);
   handleSkillIPC(ctx);
   handleAgentChatIPC(ctx);
+  handleAgentChatSteeringIPC(ctx);
   handleFsIPC(ctx);
   handleWorkspaceIPC(ctx);
   handleLlmIPC(ctx);
+  handleWhisperIPC(ctx);
   handleWindowIPC(ctx);
-  handlePluginIPC(ctx);
   handleChatSessionIPC(ctx);
-  handleDoctorIPC(ctx);
+  registerAgentHooksIPC(ctx);
   // This will register runtime ipc hanles
   RuntimeManager.getInstance();
 
-  // OpenKosmos Placeholder Operations - handle @OpenKosmos_ placeholder variable substitution
+  // OpenKosmos Placeholder Operations - handle @OPENKOSMOS_ placeholder variable substitution
   ipcMain.handle('openkosmos:replacePlaceholders', async (event, envObj: Record<string, string>) => {
     try {
       if (!ctx.currentUserAlias) {
@@ -202,6 +222,11 @@ export function setUpIPC(ctx: Context) {
           state: { selectedText },
         });
 
+        // 3. Auto-hide ToolBar (configurable)
+        if (ctx.getToolBarAutoHide()) {
+          ctx.hideToolBar();
+        }
+
         return { success: true };
       }
       return { success: false, error: 'Main window not available' };
@@ -216,22 +241,31 @@ export function setUpIPC(ctx: Context) {
   // UI visibility is controlled by feature flag on the renderer side.
   registerBuddyIPC();
 
-  // Browser Control - IPC handlers are always registered;
-  // UI visibility is controlled by feature flag on the renderer side.
-  // (Feature flag is not yet initialized when setupEventHandlers runs synchronously.)
+  // Coding CLI - profile-level setting for the coding_agent built-in tool.
+  // Handlers always register; the feature is controlled by the per-profile master switch
+  // (codingAgentSettings.enabled) surfaced in Settings → Coding CLI.
+  registerCodingCliIPC({ getAlias: () => ctx.currentUserAlias });
+
+  // In-app browser side panel (opens chat-message links inside the app, and is
+  // driven by the agent-facing `browser` built-in tool). Store the manager in a
+  // module singleton so that tool — which runs outside this startup closure —
+  // can reach the same live instance via getEmbeddedBrowserManager().
   {
-    const bcManager = new BrowserControlManager({
-      getAlias: () => ctx.currentUserAlias,
-      getProfileCacheManager,
-      getMainWindow: () => ctx.mainWindow,
-      getUserDataDir: () => app.getPath('userData'),
-      getAppPath: () => app.getAppPath(),
-      getTempDir: () => app.getPath('temp'),
-      isFeatureEnabled,
-    });
-    registerBrowserControlIPC(bcManager);
+    const embeddedBrowserManager = initEmbeddedBrowserManager(() => ctx.mainWindow);
+    registerEmbeddedBrowserIPC(embeddedBrowserManager);
   }
 
+  // Memex Memory — read IPC for the active chat's primary agent memory sidepane.
+  // Handlers always register; each call gates on profile.json `memex.enabled`.
+  // The agent mutates memory via `memex_memory`; this only serves renderer reads.
+  setupMemex(ctx);
+
+  // ============== Sync IPC Handlers ==============
+  registerSyncIPC({
+    getProfileCacheManager,
+    getTerminalManager: getTerminalManagerInstance,
+    getCurrentAlias: () => ctx.currentUserAlias || 'default',
+  });
 
   // Logger management
   ipcMain.handle('logger:manualFlush', async () => {
@@ -279,53 +313,6 @@ export function setUpIPC(ctx: Context) {
   });
 
 
-  // ===============================
-  // Quick Start image cache IPC handlers
-  // ===============================
-
-  // Get or cache image (download and cache if not present)
-  ipcMain.handle('quickStartImageCache:getOrCache', async (event, agentName: string, imageUrl: string) => {
-    try {
-      const result = await quickStartImageCacheManager.getOrCacheImage(agentName, imageUrl);
-      return {
-        success: true,
-        cachedUrl: result // May be file:// URL or null
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        cachedUrl: null
-      };
-    }
-  });
-
-  // Clear image cache for specified Agent
-  ipcMain.handle('quickStartImageCache:clearAgent', async (event, agentName: string) => {
-    try {
-      quickStartImageCacheManager.clearAgentCache(agentName);
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  });
-
-  // Clear all image cache
-  ipcMain.handle('quickStartImageCache:clearAll', async () => {
-    try {
-      quickStartImageCacheManager.clearAllCache();
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  });
-
   // Debug window handlers
   ipcMain.handle('debug:openWindow', async () => {
     try {
@@ -335,175 +322,6 @@ export function setUpIPC(ctx: Context) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
-
-  type UseUpdateManagerResult<T> =
-    { type: 'init-failed'; error: any } |
-    { type: 'call-failed'; error: any } |
-    { type: 'success', error: null, data: T };
-  async function useUpdateManager<T>(call: (manager: UpdateManager) => Promise<T>): Promise<UseUpdateManagerResult<T>> {
-    try {
-      const manager = await ctx.updateManager;
-      try {
-        const data = await call(manager);
-        return { type: 'success', error: null, data };
-      } catch (error) {
-        return { type: 'call-failed', error };
-      }
-    } catch (error) {
-      return { type: 'init-failed', error };
-    }
-  }
-
-  // Update related IPC handlers
-  ipcMain.handle('update:checkForUpdates', async (event, silent: boolean = false) => {
-    try {
-      const result = await useUpdateManager(m => m.checkForUpdates(silent));
-      // 🔥 Fix: try to initialize if update manager is not initialized
-      if (result.type === 'init-failed') {
-        return { success: false, error: 'Failed to initialize update manager: ' + (result.error instanceof Error ? result.error.message : 'Unknown error') };
-      }
-      if (result.type === 'call-failed') throw result.error;
-
-      // 🆕 Also trigger assets library check during silent check (user is logged in at this point)
-      // Non-silent check does not trigger, to avoid extra delay when user manually checks for updates
-      if (silent && ctx.currentUserAlias) {
-        // Execute asynchronously, non-blocking for update check return
-        ctx.checkAssetsLibrariesAsync().catch(error => {
-          safeConsole.warn('[UPDATE] Assets library check failed:', error);
-        });
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-
-  ipcMain.handle('update:downloadUpdate', async (event, downloadUrl?: string) => {
-    const { type, error } = await useUpdateManager(m => m.downloadUpdate(downloadUrl));
-    // 🔥 Fix: try to initialize if update manager is not initialized
-    if (type === 'init-failed') {
-      return { success: false, error: 'Failed to initialize update manager: ' + (error instanceof Error ? error.message : 'Unknown error') };
-    }
-    if (type === 'call-failed') {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle('update:quitAndInstall', async (event, filePath?: string) => {
-    if (isFeatureEnabled('openkosmosFeatureScheduler')) {
-      try {
-        logger.info('scheduler.lifecycle.updater-handoff', 'update:quitAndInstall', {
-          stage: 'before-dispose',
-          filePath,
-          schedulerState: schedulerManager.getRuntimeDiagnostics(),
-        });
-        await schedulerManager.dispose('updater-handoff');
-        logger.info('scheduler.lifecycle.updater-handoff', 'update:quitAndInstall', {
-          stage: 'after-dispose',
-          filePath,
-          schedulerState: schedulerManager.getRuntimeDiagnostics(),
-        });
-      } catch (schedulerError) {
-        logger.warn('scheduler.lifecycle.updater-handoff', 'update:quitAndInstall', {
-          stage: 'dispose-failed',
-          filePath,
-          error: schedulerError instanceof Error ? schedulerError.message : String(schedulerError),
-        });
-      }
-    }
-
-    safeConsole.log('[MAIN] 🚀 update:quitAndInstall IPC handler called!', {
-      timestamp: new Date().toISOString(),
-      filePath,
-      hasUpdateManager: !!ctx.updateManager
-    });
-
-    const { type, error } = await useUpdateManager(async (m) => {
-      safeConsole.log('[MAIN] 📞 Calling updateManager.quitAndInstall...');
-      m.quitAndInstall(filePath);
-      safeConsole.log('[MAIN] ✅ updateManager.quitAndInstall completed');
-    });
-    // 🔥 Fix: try to initialize if update manager is not initialized
-    if (type === 'init-failed') {
-      safeConsole.error('[MAIN] ❌ Failed to initialize update manager:', error);
-      throw error;
-    }
-    if (type === 'call-failed') {
-      safeConsole.error('[MAIN] ❌ update:quitAndInstall error:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('update:getVersion', () => {
-    return app.getVersion();
-  });
-
-  ipcMain.handle('update:skipVersion', async (event, version: string) => {
-    const { type, error } = await useUpdateManager(async (m) => m.skipVersion(version));
-    // 🔥 Fix: try to initialize if update manager is not initialized
-    if (type === 'init-failed') {
-      return { success: false, error: 'Failed to initialize update manager: ' + (error instanceof Error ? error.message : 'Unknown error') };
-    }
-    if (type === 'call-failed') {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle('update:getPreferences', async () => {
-    const result = await useUpdateManager(async (m) => m.getPreferences());
-    if (result.type === 'success') {
-      return { success: true, data: result.data };
-    }
-    const { type, error } = result;
-    // 🔥 Fix: try to initialize if update manager is not initialized
-    if (type === 'init-failed') {
-      return { success: false, error: 'Failed to initialize update manager: ' + (error instanceof Error ? error.message : 'Unknown error') };
-    }
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  });
-
-  ipcMain.handle('update:updatePreferences', async (event, preferences: any) => {
-    const { type, error } = await useUpdateManager(async (m) => m.updatePreferences(preferences));
-    // 🔥 Fix: try to initialize if update manager is not initialized
-    if (type === 'init-failed') {
-      return { success: false, error: 'Failed to initialize update manager: ' + (error instanceof Error ? error.message : 'Unknown error') };
-    }
-    if (type === 'call-failed') {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-    return { success: true };
-  });
-
-  // ===============================
-  // Startup Update IPC handlers
-  // ===============================
-
-  ipcMain.handle('startup:checkAndInstallUpdates', async () => {
-    try {
-      const alias = ctx.currentUserAlias;
-      if (!alias) {
-        return { success: false, error: 'No user logged in' };
-      }
-
-      const service = new StartupUpdateService(alias, (progress) => {
-        // Send progress to renderer
-        if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
-          ctx.mainWindow.webContents.send('startup:updateProgress', progress);
-        }
-      });
-
-      const result = await service.run();
-      return { success: true, data: result };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      safeConsole.error('[Startup] checkAndInstallUpdates failed:', errorMsg);
-      return { success: false, error: errorMsg };
-    }
-  });
-
 
   // ===============================
   // Feature Flags related IPC handlers (read-only)
@@ -531,16 +349,51 @@ export function setUpIPC(ctx: Context) {
 
 
 
+  // ====================================================
+  // NativeModule on-demand download IPC handlers
+  // Manage download of large native modules such as whisper-node-addon / sherpa-onnx
+  // ====================================================
 
-  // Remote Channel IPC handlers (async import — handlers registered before renderer needs them)
-  void import('../../lib/remoteChannel/remoteChannelIPC').then(({ registerRemoteChannelIPC }) => {
-    registerRemoteChannelIPC({
-      getAlias: () => ctx.currentUserAlias,
-      getProfileCacheManager: () => getProfileCacheManager(),
-      getRemoteChannelManager: () => getRemoteChannelManager(),
-    });
+  // Get module status
+  ipcMain.handle('native-module:getStatus', async (_, moduleKey: string) => {
+    try {
+      const info = nativeModuleManager.getStatus(moduleKey);
+      return { success: true, data: info };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   });
 
-  // External Agent IPC handlers (isolated from RemoteChannel)
+  // Trigger download (async, progress pushed via IPC)
+  ipcMain.handle('native-module:ensureDownloaded', async (_, moduleKey: string) => {
+    try {
+      const localPath = await nativeModuleManager.ensureDownloaded(moduleKey);
+      return { success: true, data: { localPath } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Cancel download
+  ipcMain.handle('native-module:cancelDownload', async (_, moduleKey: string) => {
+    try {
+      nativeModuleManager.cancelDownload(moduleKey);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Delete downloaded module (free disk space)
+  ipcMain.handle('native-module:delete', async (_, moduleKey: string) => {
+    try {
+      nativeModuleManager.deleteModule(moduleKey);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // External Agent IPC handlers
   registerExternalAgentIPC();
 }

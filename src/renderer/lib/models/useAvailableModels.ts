@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GhcCopilotModel } from '@shared/types/ghcChatTypes'
 import { getAllOpenKosmosUsedModels } from './ghcModels'
+import { useI18n } from '../i18n/useI18n'
 
 export interface UseAvailableModelsOptions {
   /**
@@ -34,12 +35,14 @@ export interface UseAvailableModelsResult {
  *   IPC call when the cache is empty (`fetchOnEmpty` or explicit `refresh(true)`).
  *
  * Replaces duplicated model-loading code that previously lived in
- * `ModelSelector` and `SubAgentModelSelect`.
+ * `ModelSelector`.
  */
 export function useAvailableModels(
   options: UseAvailableModelsOptions = {},
 ): UseAvailableModelsResult {
   const { fetchOnEmpty = false } = options
+  const { t } = useI18n()
+  const tRef = useRef(t)
 
   const [models, setModels] = useState<GhcCopilotModel[]>(() => {
     try {
@@ -59,6 +62,10 @@ export function useAvailableModels(
     }
   }, [])
 
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
+
   const refresh = useCallback(async (allowBackendFetch = false) => {
     try {
       const cached = getAllOpenKosmosUsedModels()
@@ -73,7 +80,7 @@ export function useAvailableModels(
 
       const modelsApi = window.electronAPI?.models
       if (!modelsApi?.getAllOpenKosmosUsedModels) {
-        setError('Model list is not available yet')
+        setError(tRef.current('models.listUnavailable'))
         return
       }
 
@@ -85,12 +92,12 @@ export function useAvailableModels(
         setModels(result.data || [])
         setError(null)
       } else {
-        setError(result.error || 'Failed to load models')
+        setError(result.error || tRef.current('models.loadFailed'))
       }
     } catch (err) {
       if (!isMountedRef.current) return
       setModels([])
-      setError(err instanceof Error ? err.message : 'Failed to load models')
+      setError(err instanceof Error ? err.message : tRef.current('models.loadFailed'))
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false)

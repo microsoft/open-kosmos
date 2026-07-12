@@ -23,10 +23,8 @@ export function parseArgs(argv: string[]) {
   const skipBuild = args.includes('--skip-build');
   const skipClean = args.includes('--skip-clean');
   const dirOnly = args.includes('--dir');
-  const brandArg = args.find(a => a.startsWith('--brand='));
-  const brand = brandArg ? brandArg.split('=')[1] : process.env.BRAND || 'openkosmos';
 
-  return { skipBuild, skipClean, dirOnly, brand };
+  return { skipBuild, skipClean, dirOnly };
 }
 
 // ─── Shell Command Runner ────────────────────────────────────────
@@ -73,12 +71,12 @@ export function buildVitePackPackageJson(
 async function main() {
   const opts = parseArgs(process.argv);
 
-  console.log(`\n=== Vite Pack (brand: ${opts.brand}) ===\n`);
+  console.log('\n=== Vite Pack ===\n');
 
   // Step 1: Build Vite
   if (!opts.skipBuild) {
     console.log('Step 1/5: Building Vite output...');
-    run('npm run build:vite', { env: { BRAND: opts.brand } });
+    run('npm run build:vite');
   } else {
     console.log('Step 1/5: Skipped (--skip-build)');
   }
@@ -128,7 +126,7 @@ async function main() {
   ];
   if (opts.dirOnly) builderArgs.push('--dir');
 
-  run(builderArgs.join(' '), { env: { BRAND: opts.brand } });
+  run(builderArgs.join(' '));
 
   // Step 5: Clean up
   if (!opts.skipClean) {

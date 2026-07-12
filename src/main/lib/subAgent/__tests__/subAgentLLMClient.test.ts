@@ -298,6 +298,55 @@ describe('SubAgentLLMClient', () => {
       expect(body.tools[0]).toHaveProperty('name', 'web_search'); // flat format — no nested function key
       expect(body.tools[0]).not.toHaveProperty('function');
     });
+
+    it('converts tool-call history into function_call / function_call_output (no input[].tool_calls)', async () => {
+      // Regression for: 400 "Unknown parameter: 'input[N].tool_calls'". A sub-agent
+      // that makes any tool call must not replay assistant.tool_calls + role:'tool'
+      // to the /responses endpoint.
+      vi.mocked(getEndpointForModel).mockReturnValue('/responses');
+
+      const sseLines = [
+        `data: ${JSON.stringify({ type: 'response.completed', response: { output: [] } })}`,
+        'data: [DONE]',
+      ];
+      const stream = makeSseStream(sseLines);
+      const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(true, stream));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const ctxHistory: any[] = [
+        { role: 'user', content: [{ type: 'text', text: 'research' }] },
+        {
+          role: 'assistant',
+          content: [],
+          tool_calls: [
+            { id: 'call_1', type: 'function', function: { name: 'get_current_datetime', arguments: '{}' } },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [{ type: 'text', text: '{"local_datetime":"2026-06-23"}' }],
+          tool_call_id: 'call_1',
+          name: 'get_current_datetime',
+        },
+      ];
+
+      const client = makeClient();
+      await client.callLLM([], ctxHistory, []);
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).toHaveProperty('input');
+      // None of the converted input items may carry a tool_calls field.
+      expect(body.input.every((item: any) => !('tool_calls' in item))).toBe(true);
+      expect(body.input.map((i: any) => i.type)).toEqual([
+        'message',
+        'function_call',
+        'function_call_output',
+      ]);
+      const funcCall = body.input.find((i: any) => i.type === 'function_call');
+      expect(funcCall).toMatchObject({ call_id: 'call_1', name: 'get_current_datetime' });
+      const funcOutput = body.input.find((i: any) => i.type === 'function_call_output');
+      expect(funcOutput).toMatchObject({ call_id: 'call_1', output: '{"local_datetime":"2026-06-23"}' });
+    });
   });
 
   // ── !response.ok error path ──

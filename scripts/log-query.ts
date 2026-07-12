@@ -3,8 +3,7 @@
  * log-query.ts — CLI tool for querying OpenKosmos application log files.
  * Run with: bun scripts/log-query.ts [options]
  *
- * Core parse/filter/format logic lives in src/main/lib/doctor/logQuery/ so the
- * Doctor Agent's read_app_logs tool can reuse the exact same implementation.
+ * Core parse/filter/format logic lives with the unified local logger.
  */
 
 import * as fs from 'fs';
@@ -21,7 +20,7 @@ import {
   formatStalenessHeader,
   type LogEntry,
   type Filters,
-} from '../src/main/lib/doctor/logQuery';
+} from '../src/main/lib/unifiedLogger/logQuery';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -192,19 +191,19 @@ function detectLogDir(): string {
 
   if (platform === "darwin") {
     candidates.push(
-      path.join(home, "Library/Application Support/openkosmos-app/logs"),
+      path.join(home, "Library/Application Support/openkosmos-app/logs")
     );
   } else if (platform === "win32") {
     const appData = process.env.APPDATA || path.join(home, "AppData/Roaming");
     candidates.push(
-      path.join(appData, "openkosmos-app/logs"),
+      path.join(appData, "openkosmos-app/logs")
     );
   } else {
     // Linux / XDG
     const dataDir =
       process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     candidates.push(
-      path.join(dataDir, "openkosmos-app/logs"),
+      path.join(dataDir, "openkosmos-app/logs")
     );
   }
 

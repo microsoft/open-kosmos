@@ -1,5 +1,6 @@
 import { deleteInstalledSkill } from '../../skill/deleteInstalledSkill';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 import { BuiltinToolDefinition } from './types';
 
 interface UninstallSkillsArgs {
@@ -52,7 +53,7 @@ export class UninstallSkillsTool {
     }
 
     const profile = profileCacheManager.getCachedProfile(currentUserAlias);
-    if (!profile || !Array.isArray(profile.skills)) {
+    if (!profile) {
       return {
         success: false,
         message: 'Current profile does not have a skill registry.',
@@ -60,7 +61,7 @@ export class UninstallSkillsTool {
       };
     }
 
-    const installedSkillNames = new Set(profile.skills.map(skill => skill.name));
+    const installedSkillNames = new Set(skillsConfigManager.getSkills(currentUserAlias).map(skill => skill.name));
     const uninstalledSkills: string[] = [];
     const skippedSkills: Array<{ skill_name: string; reason: string }> = [];
 

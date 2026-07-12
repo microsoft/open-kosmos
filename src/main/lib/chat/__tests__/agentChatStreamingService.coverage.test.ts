@@ -18,13 +18,6 @@ vi.mock('../../unifiedLogger', () => ({
   getUnifiedLogger: vi.fn(() => sharedMockLogger),
 }));
 
-vi.mock('../../analytics', () => ({
-  analyticsManager: {
-    recordLlmApiTtft: vi.fn().mockResolvedValue(undefined),
-    recordChatTtft: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
 vi.mock('../../llm/ghcModelApi', () => ({
   getEndpointForModel: vi.fn().mockReturnValue('/chat/completions'),
 }));
@@ -754,5 +747,488 @@ describe('makeStreamingApiCall — reasoning_effort logging', () => {
       (args: any[]) => typeof args[0] === 'string' && args[0].includes('reasoning_effort'),
     );
     expect(reasoningLogs.length).toBeGreaterThan(0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// callWithToolsStreaming — tool injection (tools available)
+// ────────────────────────────────────────────────────────────────────────────
+describe('callWithToolsStreaming — tool injection into request', () => {
+  it('includes tools and tool_choice in request when getCurrentAvailableTools returns tools', async () => {
+    // Restore original module mocks (vi.restoreAllMocks from /responses block breaks them)
+    vi.restoreAllMocks();
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    mockedFilterTools.mockImplementation((tools: any) => ({ filteredTools: tools, deferredTools: [], toolSearchEnabled: false }));
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n',
+      'data: [DONE]\n',
+    ]);
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const tools = [
+      { name: 'my_tool', serverName: 'srv', description: 'does stuff', inputSchema: { type: 'object' } },
+    ];
+
+    // convertMcpToolsToOpenAiFormat is mocked to pass through
+    const { service } = createService({
+      getCurrentAvailableTools: async () => tools,
+      getModelCapabilities: () => ({ supportsTools: true, supportsImages: false } as any),
+    });
+    await service.callWithToolsStreaming();
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    console.log('BODY KEYS:', Object.keys(body), 'tools:', body.tools, 'tool_choice:', body.tool_choice);
+    expect(body.tools).toBeDefined();
+    expect(body.tool_choice).toBe('auto');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// isCancelled chunk handling — cancel mid-stream, chunks skipped
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — isCancelled mid-stream skip', () => {
+  it('skips processing chunks after cancellation and returns partial response', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const source = new CancellationTokenSource();
+
+    // First chunk has content, second chunk should be skipped after cancellation
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    let chunkCount = 0;
+    const { service } = createService({
+      emitStreamingChunk: () => {
+        chunkCount++;
+        // Cancel after first content emission
+        if (chunkCount === 1) source.cancel();
+      },
+    });
+
+    const err = await service
+      .makeStreamingApiCall({ model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true }, source.token)
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(StreamCancellationError);
+    expect(err.partialResponse.finishReason).toBe('cancelled');
+    source.dispose();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// /responses — first tool-call status (response.output_item.done with function_call)
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — /responses first tool-call sets status', () => {
+  it('sets setChatStatus("received_response") on first function_call output item', async () => {
+    mockedGetEndpoint.mockReturnValue('/responses');
+    const reader = createReader([
+      'data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_abc","name":"search","arguments":"{\\"q\\":\\"test\\"}"}}\n\n',
+      'data: {"type":"response.completed","response":{"output":[]}}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service, setChatStatus } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4',
+      messages: [],
+      _maxTokensValue: 100,
+      stream: true,
+    });
+
+    expect(setChatStatus).toHaveBeenCalledWith('received_response');
+    expect(result.message.tool_calls?.[0]).toMatchObject({
+      id: 'call_abc',
+      function: { name: 'search', arguments: '{\"q\":\"test\"}' },
+    });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Usage-only final chunk in /chat/completions
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — usage-only final chunk', () => {
+  it('parses usage from a chunk with empty choices and usage populated', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4',
+      messages: [],
+      _maxTokensValue: 100,
+      stream: true,
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: 10,
+      completionTokens: 5,
+      totalTokens: 15,
+    });
+  });
+
+  it('parses usage with camelCase keys (promptTokens variant)', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"x"},"finish_reason":"stop"}]}\n\n',
+      'data: {"choices":[],"usage":{"promptTokens":20,"completionTokens":10,"totalTokens":30},"model":"gpt-4o"}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4',
+      messages: [],
+      _maxTokensValue: 100,
+      stream: true,
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: 20,
+      completionTokens: 10,
+      totalTokens: 30,
+    });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Streaming chunk parse error
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — streaming chunk parse error', () => {
+  it('logs warning and continues when JSON.parse fails on a streaming chunk', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {invalid json content!!!}\n\n',
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    sharedMockLogger.warn.mockClear();
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4',
+      messages: [],
+      _maxTokensValue: 100,
+      stream: true,
+    });
+
+    // Should still get the valid content
+    expect(result.message.content).toEqual([{ type: 'text', text: 'ok' }]);
+    // Should have warned about the parse failure
+    expect(sharedMockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to parse streaming chunk'),
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// HTTP error — alternate JSON error shapes
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — error JSON parsing fallbacks', () => {
+  beforeEach(() => mockedGetEndpoint.mockReturnValue('/chat/completions'));
+
+  it('extracts message from errorJson.message when error.message is absent', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: () => Promise.resolve(JSON.stringify({ message: 'Invalid model' })),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Invalid model');
+  });
+
+  it('extracts message from errorJson.error (string) fallback', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal',
+      text: () => Promise.resolve(JSON.stringify({ error: 'Something went wrong' })),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Something went wrong');
+  });
+
+  it('falls back to errorBody when JSON parse fails', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: () => Promise.resolve('plain text error'),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('plain text error');
+  });
+
+  it('falls back to statusText when text() throws', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: () => Promise.reject(new Error('read failed')),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Service Unavailable');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Network error — cause and code introspection
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — network error cause/code', () => {
+  beforeEach(() => mockedGetEndpoint.mockReturnValue('/chat/completions'));
+
+  it('includes error.cause in diagnostic when present', async () => {
+    const cause = new Error('ECONNRESET');
+    (cause as any).code = 'ECONNRESET';
+    const fetchErr = new Error('fetch failed');
+    (fetchErr as any).cause = cause;
+    (fetchErr as any).code = 'ERR_NETWORK';
+    vi.spyOn(global, 'fetch').mockRejectedValue(fetchErr);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Fetch failed');
+    // Verify the diagnostic logging captured cause info
+    const errorLog = sharedMockLogger.error.mock.calls.find(
+      (args: any[]) => typeof args[0] === 'string' && args[0].includes('Network error'),
+    );
+    expect(errorLog).toBeDefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// /responses usage — camelCase field names
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — /responses camelCase usage fields', () => {
+  it('handles camelCase usage fields (promptTokens instead of prompt_tokens)', async () => {
+    mockedGetEndpoint.mockReturnValue('/responses');
+    const reader = createReader([
+      'data: {"type":"response.completed","response":{"id":"r1","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],"usage":{"promptTokens":20,"completionTokens":10,"totalTokens":30}}}\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.usage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// /chat/completions usage — camelCase field names in usage-only chunk
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — /chat/completions camelCase usage', () => {
+  it('handles camelCase usage fields in inline usage chunk', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"x"},"finish_reason":"stop"}],"usage":{"promptTokens":8,"completionTokens":3,"totalTokens":11}}\n',
+      'data: [DONE]\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.usage).toEqual({ promptTokens: 8, completionTokens: 3, totalTokens: 11 });
+  });
+
+  it('handles camelCase usage fields in usage-only final chunk', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"y"},"finish_reason":"stop"}]}\n',
+      'data: {"choices":[],"usage":{"promptTokens":12,"completionTokens":4,"totalTokens":16}}\n',
+      'data: [DONE]\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.usage).toEqual({ promptTokens: 12, completionTokens: 4, totalTokens: 16 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Usage field edge case — missing fields default to 0
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — usage with missing fields', () => {
+  it('defaults to 0 when usage fields are undefined', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"content":"z"},"finish_reason":"stop"}],"usage":{}}\n',
+      'data: [DONE]\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.usage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+  });
+
+  it('defaults to 0 for /responses usage with missing fields', async () => {
+    mockedGetEndpoint.mockReturnValue('/responses');
+    const reader = createReader([
+      'data: {"type":"response.completed","response":{"id":"r1","output":[{"type":"message","content":[{"type":"output_text","text":"a"}]}],"usage":{}}}\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.usage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+  });
+
+  it('falls back to errorBody when no known JSON fields match', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: () => Promise.resolve(JSON.stringify({ unknownField: true })),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    // When no known error fields match, errorBody is the stringified JSON
+    expect(err.message).toContain('unknownField');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Edge cases: empty error body, missing statusText, and toolCall.index=0
+// ────────────────────────────────────────────────────────────────────────────
+describe('makeStreamingApiCall — error edge cases', () => {
+  beforeEach(() => mockedGetEndpoint.mockReturnValue('/chat/completions'));
+
+  it('uses statusText when error body is empty string after JSON parse failure', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: () => Promise.resolve(''),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Bad Request');
+  });
+
+  it('uses fallback message when text() throws and statusText is empty', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: '',
+      text: () => Promise.reject(new Error('stream error')),
+      body: null,
+    } as any);
+
+    const { service } = createService();
+    const err = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    }).catch(e => e);
+    expect(err.message).toContain('Failed to read error response');
+  });
+});
+
+describe('makeStreamingApiCall — toolCall.index fallback', () => {
+  it('defaults toolCall.index to 0 when not provided', async () => {
+    mockedGetEndpoint.mockReturnValue('/chat/completions');
+    const reader = createReader([
+      'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_1","function":{"name":"foo","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n',
+      'data: [DONE]\n',
+    ]);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const { service } = createService();
+    const result = await service.makeStreamingApiCall({
+      model: 'gpt-4', messages: [], _maxTokensValue: 100, stream: true,
+    });
+    expect(result.message.tool_calls![0].function.name).toBe('foo');
   });
 });

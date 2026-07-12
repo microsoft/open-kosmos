@@ -40,29 +40,24 @@ vi.mock('../../unifiedLogger', async () => ({
 
 vi.mock('../../userDataADO/profileCacheManager', async () => ({
   profileCacheManager: {
-    getSubAgents: vi.fn(() => []),
     getChatConfig: vi.fn(),
     getAllChatConfigs: vi.fn(() => []),
   },
 }));
 
-const { mockFileManager } = vi.hoisted(() => ({
-  mockFileManager: {
-    readAgentConfig: vi.fn().mockResolvedValue(null),
-    writeAgentConfig: vi.fn().mockResolvedValue(undefined),
-    getCachedConfig: vi.fn().mockReturnValue(undefined),
-    getCachedConfigs: vi.fn().mockReturnValue([]),
-  },
-}));
-
-vi.mock('../subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => mockFileManager),
-  },
-}));
-
 const { mockGetInstanceByChatSessionId } = vi.hoisted(() => ({
   mockGetInstanceByChatSessionId: vi.fn(() => null),
+}));
+
+const { mockGetToolsForSubAgent } = vi.hoisted(() => ({
+  mockGetToolsForSubAgent: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
+  mcpClientManager: {
+    getToolsForSubAgent: mockGetToolsForSubAgent,
+    getAllTools: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 vi.mock('../../chat/agentChatManager', async () => ({
@@ -82,9 +77,44 @@ vi.mock('../subAgentChat', async () => ({
     return {
       run: mockSubAgentRun,
       getTurnCount: vi.fn().mockReturnValue(1),
+      extractPartialResult: vi.fn().mockReturnValue(undefined),
       dispose: vi.fn(),
     };
   }),
+}));
+
+const { mockCreateTask, mockCompleteTask, mockRemoveInMemoryForSession } = vi.hoisted(() => ({
+  mockCreateTask: vi.fn(),
+  mockCompleteTask: vi.fn(),
+  mockRemoveInMemoryForSession: vi.fn(),
+}));
+
+vi.mock('../subAgentTaskStore', async () => ({
+  SubAgentTaskStore: {
+    getInstance: vi.fn(() => ({
+      createTask: mockCreateTask,
+      completeTask: mockCompleteTask,
+      removeInMemoryForSession: mockRemoveInMemoryForSession,
+    })),
+  },
+}));
+
+const { mockGetWatcher } = vi.hoisted(() => ({
+  mockGetWatcher: vi.fn(() => undefined),
+}));
+
+vi.mock('../subAgentTaskWatcherRegistry', async () => ({
+  SubAgentTaskWatcherRegistry: {
+    getInstance: vi.fn(() => ({
+      getWatcher: mockGetWatcher,
+    })),
+  },
+}));
+
+vi.mock('../subAgentDeliveryLedger', async () => ({
+  recordPendingDelivery: vi.fn(),
+  peekPendingDeliveries: vi.fn(() => []),
+  ackPendingDeliveries: vi.fn(),
 }));
 
 vi.mock('../../auth/ghcConfig', async () => ({
@@ -113,7 +143,7 @@ vi.mock('../../token/TokenCounter', async () => ({
 
 import { SubAgentManager } from '../subAgentManager';
 import { TokenCounter } from '../../token/TokenCounter';
-import type { SubAgentConfig, SubAgentRuntimeState } from '../../userDataADO/types/profile';
+import { SUB_AGENT_LIMITS, type SubAgentConfig, type SubAgentRuntimeState } from '../../userDataADO/types/profile';
 import type { CancellationToken } from '../../cancellation/CancellationToken';
 
 function createMockCancellationToken(cancelled = false): CancellationToken {
@@ -145,8 +175,27 @@ describe('SubAgentManager supplemental coverage', () => {
   beforeEach(async () => {
     SubAgentManager.resetInstance();
     manager = SubAgentManager.getInstance();
-    const mockConfig = createMockSubAgentConfig();
-    mockFileManager.readAgentConfig.mockResolvedValue(mockConfig);
+    const { SubAgentChat } = await import('../subAgentChat');
+    (SubAgentChat as any).mockImplementation(function () {
+      return {
+        run: mockSubAgentRun,
+        getTurnCount: vi.fn().mockReturnValue(1),
+        extractPartialResult: vi.fn().mockReturnValue(undefined),
+        dispose: vi.fn(),
+      };
+    });
+    const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+    profileCacheManager.getChatConfig = vi.fn();
+    profileCacheManager.getAllChatConfigs = vi.fn(() => ({
+      find: () => ({ agent: { mcp_servers: [] } }),
+    }));
+    mockGetToolsForSubAgent.mockReset();
+    mockGetToolsForSubAgent.mockResolvedValue([]);
+    mockCreateTask.mockClear();
+    mockCompleteTask.mockClear();
+    mockRemoveInMemoryForSession.mockClear();
+    mockGetWatcher.mockReset();
+    mockGetWatcher.mockReturnValue(undefined);
   });
 
   afterEach(() => {
@@ -341,6 +390,41 @@ describe('SubAgentManager supplemental coverage', () => {
     afterEach(() => {
       mockCountTextTokens.mockReturnValue(1000);
       mockGetInstanceByChatSessionId.mockReturnValue(null);
+      mockGetInstanceByChatSessionId.mockReset();
+      mockGetInstanceByChatSessionId.mockReturnValue(null);
+    });
+
+    it('returns undefined when no parent chat instance exists', async () => {
+      mockGetInstanceByChatSessionId.mockReturnValue(null);
+
+      const result = await (manager as any).buildParentContext('missing_session', 'full_history', true);
+
+      expect(result).toBeUndefined();
+    });
+
+    it('returns full history when token count is within the safe budget', async () => {
+      mockCountTextTokens.mockReturnValue(2000);
+      const mockChat = {
+        getContextHistory: vi.fn().mockReturnValue([
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: { kind: 'object-content' } },
+        ]),
+      };
+      mockGetInstanceByChatSessionId.mockReturnValue(mockChat);
+
+      const result = await (manager as any).buildParentContext('session_history', 'full_history', true);
+
+      expect(result).toContain('user: Hello');
+      expect(result).toContain('assistant: {"kind":"object-content"}');
+    });
+
+    it('falls back to an empty history array when getContextHistory is unavailable', async () => {
+      mockCountTextTokens.mockReturnValue(0);
+      mockGetInstanceByChatSessionId.mockReturnValue({});
+
+      const result = await (manager as any).buildParentContext('session_no_history_method', 'full_history', true);
+
+      expect(result).toBe('<parent_context>\n\n</parent_context>');
     });
 
     it('auto-downgrades full_history to parent_summary when tokens exceed 50% of context window', async () => {
@@ -364,6 +448,19 @@ describe('SubAgentManager supplemental coverage', () => {
       expect(result).toContain('Summary text');
     });
 
+    it('returns undefined when oversized history has no summary fallback', async () => {
+      mockCountTextTokens.mockReturnValue(70000);
+      const mockChat = {
+        getContextHistory: vi.fn().mockReturnValue([{ role: 'user', content: 'Large context' }]),
+        getContextSummary: vi.fn().mockResolvedValue(''),
+      };
+      mockGetInstanceByChatSessionId.mockReturnValue(mockChat);
+
+      const result = await (manager as any).buildParentContext('session_no_summary', 'full_history', true);
+
+      expect(result).toBeUndefined();
+    });
+
     it('continues with full_history when TokenCounter throws', async () => {
       mockCountTextTokens.mockImplementation(() => { throw new Error('token error'); });
 
@@ -380,6 +477,38 @@ describe('SubAgentManager supplemental coverage', () => {
       expect(typeof result === 'string' || result === undefined).toBe(true);
     });
 
+    it('returns undefined from the token-error fallback when history is empty', async () => {
+      mockCountTextTokens.mockImplementation(() => { throw new Error('token error'); });
+      mockGetInstanceByChatSessionId.mockReturnValue({});
+
+      const result = await (manager as any).buildParentContext('session_empty_fallback', 'full_history', true);
+
+      expect(result).toBeUndefined();
+    });
+
+    it('serializes non-string content in the token-error fallback', async () => {
+      mockCountTextTokens.mockImplementation(() => { throw new Error('token error'); });
+      mockGetInstanceByChatSessionId.mockReturnValue({
+        getContextHistory: vi.fn().mockReturnValue([
+          { role: 'assistant', content: { nested: true } },
+        ]),
+      });
+
+      const result = await (manager as any).buildParentContext('session_object_fallback', 'full_history', true);
+
+      expect(result).toContain('assistant: {"nested":true}');
+    });
+
+    it('returns undefined for unsupported context access modes', async () => {
+      mockGetInstanceByChatSessionId.mockReturnValue({
+        getContextHistory: vi.fn().mockReturnValue([{ role: 'user', content: 'Hello' }]),
+      });
+
+      const result = await (manager as any).buildParentContext('session_summary_only', 'parent_summary', true);
+
+      expect(result).toBeUndefined();
+    });
+
     it('returns undefined when buildParentContext outer try throws', async () => {
       mockGetInstanceByChatSessionId.mockImplementation(() => { throw new Error('unexpected'); });
 
@@ -388,15 +517,67 @@ describe('SubAgentManager supplemental coverage', () => {
     });
   });
 
-  // ── spawnSubAgent callbacks ──
-  describe('spawnSubAgent callbacks', () => {
+  // ── spawnAdhocSubAgent callbacks ──
+  describe('spawnAdhocSubAgent callbacks', () => {
     beforeEach(() => {
       mockSubAgentRun.mockResolvedValue('result');
-      mockFileManager.readAgentConfig.mockResolvedValue(createMockSubAgentConfig());
     });
 
     afterEach(() => {
       mockSubAgentRun.mockResolvedValue('mock result');
+    });
+
+    it('forwards streaming chunks when a task watcher is registered', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const watcher = { send: vi.fn() };
+      mockGetWatcher.mockReturnValue(watcher);
+
+      (SubAgentChat as any).mockImplementation(function (this: any, opts: any) {
+        this.run = vi.fn().mockImplementation(async () => {
+          opts.onStreamingChunk?.('streamed text');
+          return 'result';
+        });
+        this.getTurnCount = vi.fn().mockReturnValue(1);
+        this.extractPartialResult = vi.fn().mockReturnValue(undefined);
+        this.dispose = vi.fn();
+      });
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_stream_chunk',
+        parentChatId: 'chat_stream_chunk',
+        userAlias: 'user1',
+        task: 'stream chunks',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(watcher.send).toHaveBeenCalledWith('subAgentTask:streamingChunk', 'streamed text');
+    });
+
+    it('ignores step and turn callbacks fired before runtime state registration', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      const onProgress = vi.fn();
+
+      (SubAgentChat as any).mockImplementation(function (this: any, opts: any) {
+        opts.onTurnComplete?.(1, 'early turn');
+        opts.onStepUpdate?.({ type: 'text', turn: 1, lastTextSnippet: 'too early' });
+        this.run = vi.fn().mockResolvedValue('result');
+        this.getTurnCount = vi.fn().mockReturnValue(1);
+        this.extractPartialResult = vi.fn().mockReturnValue(undefined);
+        this.dispose = vi.fn();
+      });
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_early_callbacks',
+        parentChatId: 'chat_early_callbacks',
+        userAlias: 'user1',
+        task: 'early callbacks',
+        cancellationToken: createMockCancellationToken(),
+        onProgress,
+      });
+
+      expect(result.success).toBe(true);
+      expect(onProgress).toHaveBeenCalledWith(undefined);
     });
 
     it('calls onProgress when onTurnComplete fires', async () => {
@@ -412,11 +593,10 @@ describe('SubAgentManager supplemental coverage', () => {
       });
 
       const onProgress = vi.fn();
-      await manager.spawnSubAgent({
+      await manager.spawnAdhocSubAgent({
         parentSessionId: 'sess1',
         parentChatId: 'chat1',
         userAlias: 'user1',
-        subAgentName: 'test-agent',
         task: 'do something',
         cancellationToken: createMockCancellationToken(),
         onProgress,
@@ -444,11 +624,10 @@ describe('SubAgentManager supplemental coverage', () => {
         this.dispose = vi.fn();
       });
 
-      await expect(manager.spawnSubAgent({
+      await expect(manager.spawnAdhocSubAgent({
         parentSessionId: 'sess2',
         parentChatId: 'chat2',
         userAlias: 'user2',
-        subAgentName: 'test-agent',
         task: 'do something',
         cancellationToken: createMockCancellationToken(),
       })).resolves.toBeDefined();
@@ -468,47 +647,167 @@ describe('SubAgentManager supplemental coverage', () => {
       });
 
       // Should not throw — catch block handles it
-      await expect(manager.spawnSubAgent({
+      await expect(manager.spawnAdhocSubAgent({
         parentSessionId: 'sess3',
         parentChatId: 'chat3',
         userAlias: 'user3',
-        subAgentName: 'test-agent',
         task: 'do something',
         cancellationToken: createMockCancellationToken(),
       })).resolves.toBeDefined();
     });
   });
 
-  // ── spawnMultipleSubAgents rejection path ──
-  describe('spawnMultipleSubAgents', () => {
-    it('handles failed task in batch (line 516)', async () => {
+  describe('spawnAdhocSubAgent ad-hoc edge coverage', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('returns a max-parallel error when the parent already has the limit of active children', async () => {
+      const sessionId = 'sess_parallel_limit';
+      (manager as any).parentChildMap.set(sessionId, {
+        size: SUB_AGENT_LIMITS.MAX_PARALLEL_TASKS,
+        delete: vi.fn(),
+        [Symbol.iterator]: function* () {},
+      });
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: sessionId,
+        parentChatId: 'chat_parallel_limit',
+        userAlias: 'user1',
+        task: 'limit test',
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Max parallel sub-agents');
+    });
+
+    it('validates requested tools when the parent MCP server omits a tools array', async () => {
       const { SubAgentChat } = await import('../subAgentChat');
-      let callCount = 0;
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      profileCacheManager.getAllChatConfigs = vi.fn().mockReturnValue([
+        {
+          chat_id: 'chat_tool_fallback',
+          agent: { mcp_servers: [{ name: 'server-without-tools' }] },
+        },
+      ]);
+      mockGetToolsForSubAgent.mockResolvedValueOnce([{ name: 'allowed_tool', serverName: 'server-without-tools' }]);
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_tool_fallback',
+        parentChatId: 'chat_tool_fallback',
+        userAlias: 'user1',
+        task: 'tool fallback',
+        tools: ['allowed_tool'],
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockGetToolsForSubAgent).toHaveBeenCalledWith([
+        { name: 'server-without-tools', tools: [] },
+      ]);
+      const lastCall = (SubAgentChat as any).mock.calls.at(-1);
+      expect(lastCall[0].allowedToolNames).toEqual(new Set(['allowed_tool']));
+    });
+
+    it('rejects requested tools when no parent agent config is found', async () => {
+      const { profileCacheManager } = await import('../../userDataADO/profileCacheManager');
+      profileCacheManager.getAllChatConfigs = vi.fn().mockReturnValue([]);
+      mockGetToolsForSubAgent.mockResolvedValueOnce([{ name: 'standalone_tool', serverName: 'mock' }]);
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_no_parent_config',
+        parentChatId: 'missing_chat',
+        userAlias: 'user1',
+        task: 'no config tool validation',
+        tools: ['standalone_tool'],
+        cancellationToken: createMockCancellationToken(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Parent agent config not found');
+      expect(mockGetToolsForSubAgent).not.toHaveBeenCalled();
+    });
+
+    it('auto-promotes a slow ad-hoc sub-agent to background', async () => {
+      vi.useFakeTimers();
+      const { SubAgentChat } = await import('../subAgentChat');
+      const sender = { send: vi.fn(), isDestroyed: vi.fn().mockReturnValue(false) } as unknown as Electron.WebContents;
+
       (SubAgentChat as any).mockImplementation(function (this: any) {
-        callCount++;
-        if (callCount === 1) {
-          this.run = vi.fn().mockRejectedValue(new Error('task failed'));
-        } else {
-          this.run = vi.fn().mockResolvedValue('success');
-        }
-        this.getTurnCount = vi.fn().mockReturnValue(0);
+        this.run = vi.fn().mockReturnValue(new Promise(() => {}));
+        this.getTurnCount = vi.fn().mockReturnValue(2);
+        this.extractPartialResult = vi.fn().mockReturnValue('partial progress');
         this.dispose = vi.fn();
       });
 
-      const results = await manager.spawnMultipleSubAgents({
-        parentSessionId: 'batch_sess',
-        parentChatId: 'batch_chat',
-        userAlias: 'user',
+      const spawnPromise = manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_auto_promote',
+        parentChatId: 'chat_auto_promote',
+        userAlias: 'user1',
+        task: 'slow task',
         cancellationToken: createMockCancellationToken(),
-        tasks: [
-          { subAgentName: 'test-agent', task: 'fail task' },
-          { subAgentName: 'test-agent', task: 'succeed task' },
-        ],
+        eventSender: sender,
       });
 
-      // At least one failed result should be present
-      const failed = results.find(r => !r.success);
-      expect(failed).toBeDefined();
+      await vi.advanceTimersByTimeAsync(SUB_AGENT_LIMITS.AUTO_BACKGROUND_TIMEOUT_MS);
+      const result = await spawnPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.autoPromoted).toBe(true);
+      expect(result.result).toContain('Partial progress so far');
+      expect(sender.send).toHaveBeenCalledWith('subAgent:autoPromoted', expect.objectContaining({
+        taskId: result.taskId,
+      }));
+    });
+
+    it('resolves task ids by matching correlation id and returns null when absent', async () => {
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_resolve_corr',
+        parentChatId: 'chat_resolve_corr',
+        userAlias: 'user1',
+        task: 'correlation lookup',
+        cancellationToken: createMockCancellationToken(),
+        correlationId: 'parent_tool_call_123',
+      });
+
+      expect(manager.resolveTaskIdByCorrelationId('parent_tool_call_123')).toBe(result.taskId);
+      expect(manager.resolveTaskIdByCorrelationId('missing_tool_call')).toBeNull();
+    });
+
+    it('delegates cancelAllForSession to lifecycle without throwing', () => {
+      const cancelSpy = vi.spyOn((manager as any).lifecycle, 'cancelAllForSession');
+
+      manager.cancelAllForSession('sess_cancel_all');
+
+      expect(cancelSpy).toHaveBeenCalledWith('sess_cancel_all');
+    });
+
+    it('marks failures as cancelled when the inherited cancellation token is already cancelled', async () => {
+      const { SubAgentChat } = await import('../subAgentChat');
+      (SubAgentChat as any).mockImplementation(function (this: any) {
+        this.run = vi.fn().mockRejectedValue('cancelled by parent');
+        this.getTurnCount = vi.fn().mockReturnValue(3);
+        this.extractPartialResult = vi.fn().mockReturnValue('partial before cancel');
+        this.dispose = vi.fn();
+      });
+
+      const result = await manager.spawnAdhocSubAgent({
+        parentSessionId: 'sess_cancelled_failure',
+        parentChatId: 'chat_cancelled_failure',
+        userAlias: 'user1',
+        task: 'cancelled failure',
+        cancellationToken: createMockCancellationToken(true),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('cancelled by parent');
+      expect(mockCompleteTask).toHaveBeenCalledWith(
+        result.taskId,
+        'cancelled',
+        undefined,
+        'cancelled by parent',
+      );
     });
   });
 

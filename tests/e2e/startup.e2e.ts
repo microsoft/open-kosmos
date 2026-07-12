@@ -61,7 +61,6 @@ test.describe('Startup flow tests', () => {
     );
 
     const title = await mainWindow.title();
-    // Title should contain the brand name (depends on BRAND config)
     expect(title).toMatch(/OpenKosmos|OpenKosmos/i);
   });
 

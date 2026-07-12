@@ -1,12 +1,10 @@
 import { applySkillToAgents } from './applySkillToAgents';
 import { getSkillAvailability } from './skillAvailability';
 import { addSkillFromDevice } from './skillDeviceImporter';
-import { SkillLibraryFetcher } from './skillLibraryFetcher';
 import { profileCacheManager } from '../userDataADO';
+import { getChatAgents, getChatPrimaryAgent } from '../userDataADO/agentAccessor';
 
-type SkillSource =
-  | { type: 'device-path'; value: string }
-  | { type: 'library-name'; value: string };
+type SkillSource = { type: 'device-path'; value: string };
 
 type ActivationMode = 'current-agent' | 'selected-agents' | 'all-agents' | 'install-only';
 
@@ -62,8 +60,6 @@ export interface InstallAndActivateSkillResult {
   inputType?: 'zip' | 'skill' | 'folder';
 }
 
-
-
 function resolveCurrentAgentTarget(userAlias: string, chatId?: string, agentName?: string): SkillActivationTarget | null {
   if (!chatId) {
     return null;
@@ -74,12 +70,13 @@ function resolveCurrentAgentTarget(userAlias: string, chatId?: string, agentName
     return null;
   }
 
-  if (chatConfig.chat_type === 'single_agent' && chatConfig.agent?.name) {
-    return { chatId, agentName: chatConfig.agent.name };
+  const primaryAgent = getChatPrimaryAgent(chatConfig);
+  if (chatConfig.chat_type === 'single_agent' && primaryAgent?.name) {
+    return { chatId, agentName: primaryAgent.name };
   }
 
   if (chatConfig.chat_type === 'multi_agent' && agentName) {
-    const match = chatConfig.agents?.find(agent => agent.name === agentName);
+    const match = getChatAgents(chatConfig).find(agent => agent.name === agentName);
     if (match) {
       return { chatId, agentName: match.name };
     }
@@ -141,45 +138,23 @@ export async function installAndActivateSkill(
   let isOverwrite = false;
 
   try {
-    if (args.source.type === 'device-path') {
-      const installResult = await addSkillFromDevice(args.source.value, args.userAlias, args.confirmOverwrite);
-      if (!installResult.success || !installResult.skillName) {
-        const result = buildResult({
-          success: false,
-          skillName: installResult.skillName || '',
-          installSuccess: false,
-          resolution: 'failed',
-          message: installResult.error || 'Failed to install skill from device.',
-          error: installResult.error || 'INSTALL_FAILED',
-        });
-        return result;
-      }
-
-      skillName = installResult.skillName;
-      skillVersion = installResult.skillVersion;
-      inputType = installResult.inputType;
-      isOverwrite = !!installResult.isOverwrite;
-    } else {
-      const fetcher = SkillLibraryFetcher.getInstance();
-      const installResult = await fetcher.addSkill(args.source.value, args.userAlias, {
-        overwrite: args.overwrite,
+    const installResult = await addSkillFromDevice(args.source.value, args.userAlias, args.confirmOverwrite);
+    if (!installResult.success || !installResult.skillName) {
+      const result = buildResult({
+        success: false,
+        skillName: installResult.skillName || '',
+        installSuccess: false,
+        resolution: 'failed',
+        message: installResult.error || 'Failed to install skill from device.',
+        error: installResult.error || 'INSTALL_FAILED',
       });
-      if (!installResult.success || !installResult.skillName) {
-        const result = buildResult({
-          success: false,
-          skillName: args.source.value,
-          installSuccess: false,
-          resolution: 'failed',
-          message: installResult.error || `Failed to install skill "${args.source.value}" from library.`,
-          error: installResult.error || 'INSTALL_FAILED',
-        });
-        return result;
-      }
-
-      skillName = installResult.skillName;
-      skillVersion = installResult.skillVersion;
-      isOverwrite = installResult.installAction === 'update';
+      return result;
     }
+
+    skillName = installResult.skillName;
+    skillVersion = installResult.skillVersion;
+    inputType = installResult.inputType;
+    isOverwrite = !!installResult.isOverwrite;
 
     const availabilityBeforeApply = getSkillAvailability({
       userAlias: args.userAlias,
@@ -202,7 +177,7 @@ export async function installAndActivateSkill(
         resolution: availabilityBeforeApply.callableInCurrentChat ? 'already_callable' : 'installed_but_not_applied',
         message: availabilityBeforeApply.callableInCurrentChat
           ? `Skill "${skillName}" is already available for the current agent${availabilityBeforeApply.currentAgentName ? ` (${availabilityBeforeApply.currentAgentName})` : ''}.`
-          : `Successfully added skill "${skillName}" to the profile skill library.`,
+          : `Successfully installed skill "${skillName}" on this device.`,
       });
       return result;
     }
@@ -232,11 +207,12 @@ export async function installAndActivateSkill(
     } else if (args.activation.mode === 'all-agents') {
       const profile = profileCacheManager.getCachedProfile(args.userAlias);
       targets = (profile?.chats || []).flatMap(chat => {
-        if (chat.chat_type === 'single_agent' && chat.agent?.name) {
-          return [{ chatId: chat.chat_id, agentName: chat.agent.name }];
+        const primary = getChatPrimaryAgent(chat);
+        if (chat.chat_type === 'single_agent' && primary?.name) {
+          return [{ chatId: chat.chat_id, agentName: primary.name }];
         }
 
-        return (chat.agents || []).map(agent => ({ chatId: chat.chat_id, agentName: agent.name }));
+        return getChatAgents(chat).map(agent => ({ chatId: chat.chat_id, agentName: agent.name }));
       });
     }
 

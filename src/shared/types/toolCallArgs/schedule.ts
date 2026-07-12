@@ -13,7 +13,8 @@ export interface CreateScheduleToolArgs {
   cron_expression?: string;
   run_at?: string;
   message: string;
-  agent_id?: string;
+  /** Target chat_id. When omitted, the current chat is used. */
+  chat_id?: string;
 }
 
 export interface CreateScheduleToolResult {
@@ -24,7 +25,8 @@ export interface CreateScheduleToolResult {
 
 export interface GetScheduleToolArgs {
   description: string;
-  agent_id?: string;
+  /** Optional chat_id filter. When omitted, all schedules are returned. */
+  chat_id?: string;
 }
 
 export interface GetScheduleToolResult {
@@ -38,7 +40,7 @@ export interface GetScheduleToolResult {
     cron_expression?: string;
     run_at?: string;
     message: string;
-    agent_id: string;
+    chat_id: string;
     enabled: boolean;
     status: 'pending' | 'completed' | 'expired' | 'failed';
     last_run_at?: string;
@@ -71,7 +73,7 @@ export interface UpdateScheduleToolResult {
     cron_expression?: string;
     run_at?: string;
     message: string;
-    agent_id: string;
+    chat_id: string;
     enabled: boolean;
     status: 'pending' | 'completed' | 'expired' | 'failed';
     last_run_at?: string;

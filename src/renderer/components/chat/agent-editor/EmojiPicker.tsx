@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 
 import '../../../styles/Agent.css';
 import { EmojiPickerProps } from './types'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 // Emoji category data
 const EMOJI_CATEGORIES: Record<string, string[]> = {
@@ -77,6 +78,7 @@ const EmojiPicker: React.FC<EmojiPickerProps> = ({
 }) => {
   const [selectedEmoji, setSelectedEmoji] = useState(currentEmoji || '🤖')
   const [activeCategory, setActiveCategory] = useState(CATEGORY_NAMES[0])
+  const { t } = useI18n()
 
   // Sync selectedEmoji and activeCategory state when currentEmoji prop changes
   useEffect(() => {
@@ -107,14 +109,14 @@ const EmojiPicker: React.FC<EmojiPickerProps> = ({
       <div className="emoji-picker-modal">
         {/* Header */}
         <div className="picker-header">
-          <h3>Choose Agent Avatar</h3>
+          <h3>{t('agent.create.chooseAvatar')}</h3>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
 
         {/* Selected Display */}
         <div className="selected-display">
           <div className="selected-emoji">{selectedEmoji}</div>
-          <span className="selected-label">Selected</span>
+          <span className="selected-label">{t('agent.create.selected')}</span>
         </div>
 
         {/* Category Tabs */}
@@ -146,10 +148,10 @@ const EmojiPicker: React.FC<EmojiPickerProps> = ({
         {/* Footer */}
         <div className="picker-footer">
           <button className="btn-secondary" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={handleConfirm}>
-            Confirm
+            {t('common.confirm')}
           </button>
         </div>
       </div>

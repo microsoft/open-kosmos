@@ -3,6 +3,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { safeCloseElectronApp } from './electronCleanup';
 import {
   getMockAuthData,
   getMockAuthDataUser2,
@@ -28,51 +29,6 @@ function cleanupTestUserDataDir(dirPath: string): void {
       `[E2E Mock Cleanup] Failed to cleanup test userData: ${dirPath}`,
       e,
     );
-  }
-}
-
-/**
- * Graceful close with force-kill fallback.
- * Electron may have background tasks (analytics, startup update, etc.) that
- * prevent clean shutdown; don't let fixture teardown hang forever.
- *
- * We must call `app.close()` (not skip it) so that Playwright cleans up its
- * internal CDP WebSocket and event listeners — otherwise the worker's Node.js
- * event loop never drains and Playwright reports "Worker teardown timeout".
- *
- * To prevent `app.close()` from hanging (it waits for the process to quit),
- * we start a background timer that force-kills the process after 5 s.
- * Killing the process causes CDP to disconnect, which causes `app.close()`
- * to settle — so the promise is never left dangling.
- */
-async function safeCloseApp(app: ElectronApplication): Promise<void> {
-  const proc = app.process();
-
-  // Background kill-timer: if graceful quit hasn't finished in 5 s, SIGKILL.
-  // This causes CDP disconnect → app.close() settles.
-  const killTimer = setTimeout(() => {
-    try {
-      proc.kill('SIGKILL');
-    } catch {
-      /* already dead */
-    }
-  }, 5_000);
-
-  try {
-    await app.close();
-  } catch {
-    // app.close() may throw if the process was force-killed — that's fine.
-  } finally {
-    clearTimeout(killTimer);
-  }
-
-  // Belt-and-suspenders: ensure process is really dead
-  if (proc.exitCode === null) {
-    try {
-      proc.kill('SIGKILL');
-    } catch {
-      /* already dead */
-    }
   }
 }
 
@@ -113,6 +69,67 @@ async function waitForAppReady(window: Page, label: string): Promise<void> {
       .catch(() => '<unable to read>');
     console.warn(
       `[E2E ${label}] App readiness wait timed out. Body: ${bodyText?.slice(0, 200)}`,
+    );
+  }
+}
+
+async function pushChatProfileCacheUpdated(
+  app: ElectronApplication,
+  alias: string,
+): Promise<void> {
+  await app.evaluate(
+    async ({ BrowserWindow }, params) => {
+      const wins = BrowserWindow.getAllWindows();
+      if (wins.length > 0) {
+        wins[0].webContents.send('profile:cacheUpdated', {
+          alias: params.alias,
+          profile: params.profile,
+          timestamp: Date.now(),
+        });
+      }
+    },
+    { alias, profile: getMockProfileData(alias) },
+  );
+}
+
+async function restoreMockChatAuthentication(
+  window: Page,
+  authData: MockAuthData,
+): Promise<void> {
+  const result = await window.evaluate(async (data) => {
+    const api = (window as any).electronAPI;
+    const setCurrentAuth = api?.auth?.setCurrentAuth;
+    if (typeof setCurrentAuth !== 'function') {
+      return {
+        success: false,
+        error: 'electronAPI.auth.setCurrentAuth is unavailable',
+      };
+    }
+
+    const setResult = await setCurrentAuth(data);
+    if (!setResult?.success) {
+      return {
+        success: false,
+        error: setResult?.error || 'auth:setCurrentSession returned failure',
+      };
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('ghc:authSuccess', {
+        detail: {
+          authData: data,
+          autoLogin: true,
+          source: 'e2e-mocked-chat-recovery',
+        },
+      }),
+    );
+
+    return { success: true };
+  }, authData);
+
+  if (!result.success) {
+    throw new Error(
+      `[E2E Mock Chat] Failed to restore authentication: ${result.error}`,
     );
   }
 }
@@ -197,7 +214,7 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
+        OPENKOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -228,7 +245,7 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
       // (consistent with the return format of real handlers in src/main/main.ts)
 
       // 🚀 app:isReady → immediately return true (skip backend initialization wait)
-      // Real handler requires isAnalyticsReady && isAgentChatReady; mock returns true directly.
+      // Real handler requires AgentChat readiness; the mock returns true directly.
       safeHandle('app:isReady', () => ({
         success: true,
         data: true,
@@ -335,7 +352,7 @@ export const mockedEmptyTest = base.extend<MockedEmptyFixtures>({
     console.log('[E2E Mock Empty] IPC mocks injected successfully.');
 
     await use(app);
-    await safeCloseApp(app);
+    await safeCloseElectronApp(app, '[E2E Mock Cleanup]');
   },
 
   mockedWindow: async ({ mockedApp }, use) => {
@@ -390,7 +407,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
         env: {
           ...process.env,
           NODE_ENV: 'test',
-          OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
+          OPENKOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
         },
         timeout: 30_000,
       });
@@ -579,7 +596,7 @@ export const mockedAuthenticatedTest = base.extend<MockedAuthenticatedFixtures>(
       console.log('[E2E Mock Auth] IPC mocks injected successfully.');
 
       await use(app);
-      await safeCloseApp(app);
+      await safeCloseElectronApp(app, '[E2E Mock Cleanup]');
     },
 
     authenticatedWindow: async ({ authenticatedApp }, use) => {
@@ -630,7 +647,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
+        OPENKOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -807,7 +824,7 @@ export const mockedMultiUserTest = base.extend<MockedMultiUserFixtures>({
     console.log('[E2E Mock MultiUser] IPC mocks injected successfully.');
 
     await use(app);
-    await safeCloseApp(app);
+    await safeCloseElectronApp(app, '[E2E Mock Cleanup]');
   },
 
   multiUserWindow: async ({ multiUserApp }, use) => {
@@ -876,7 +893,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
+        OPENKOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
       },
       timeout: 30_000,
     });
@@ -907,10 +924,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         data: true,
       }));
 
-      // IMPORTANT: Do NOT send app:ready here via setTimeout.
-      // The app:ready event is triggered by a separate app.evaluate() call AFTER this one completes.
-      // This prevents the race condition where the renderer calls the REAL startup:checkAndInstallUpdates
-      // handler before the mock is registered.
+      // The app:ready event is triggered after all mocks are registered.
 
       // ==================== Auth-related ====================
 
@@ -1216,56 +1230,6 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
 
       // ==================== Startup Update ====================
 
-      // startup:checkAndInstallUpdates → immediately succeed (skip update check)
-      safeHandle('startup:checkAndInstallUpdates', () => ({
-        success: true,
-        data: {
-          success: true,
-          hasUpdates: false,
-          updatedMcpCount: 0,
-          updatedSkillCount: 0,
-          updatedAgentCount: 0,
-        },
-      }));
-
-      // ==================== Auto Update (App Version) ====================
-      // These mocks prevent the UpdateManager from running and triggering
-      // "Unsupported platform: linux-x64" errors on Linux CI.
-
-      safeHandle('update:checkForUpdates', () => ({
-        success: true,
-        data: { hasUpdate: false },
-      }));
-
-      safeHandle('update:downloadUpdate', () => ({
-        success: true,
-      }));
-
-      safeHandle('update:quitAndInstall', () => ({
-        success: true,
-      }));
-
-      safeHandle('update:getVersion', () => ({
-        success: true,
-        data: '0.0.0-test',
-      }));
-
-      safeHandle('update:skipVersion', () => ({
-        success: true,
-      }));
-
-      safeHandle('update:getPreferences', () => ({
-        success: true,
-        data: {
-          autoDownload: false,
-          autoInstall: false,
-        },
-      }));
-
-      safeHandle('update:updatePreferences', () => ({
-        success: true,
-      }));
-
       // ==================== AgentChat-related ====================
 
       // Chat session state
@@ -1451,9 +1415,7 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
 
     console.log('[E2E Mock Chat] IPC mocks injected successfully.');
 
-    // Now that ALL mocks are in place (including startup:checkAndInstallUpdates),
-    // trigger the app:ready event. This ensures the renderer won't call the REAL
-    // startup:checkAndInstallUpdates handler.
+    // Trigger app:ready only after all mocks are in place.
     await app.evaluate(({ BrowserWindow }) => {
       const wins = BrowserWindow.getAllWindows();
       if (wins.length > 0) {
@@ -1463,20 +1425,20 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
     console.log('[E2E Mock Chat] app:ready event triggered.');
 
     await use(app);
-    await safeCloseApp(app);
+    await safeCloseElectronApp(app, '[E2E Mock Cleanup]');
   },
 
   chatWindow: async ({ chatApp, preseededAuthData }, use) => {
     const window = await chatApp.firstWindow();
 
-    const alias = preseededAuthData[0].ghcAuth.alias;
+    const authData = preseededAuthData[0];
+    const alias = authData.ghcAuth.alias;
 
     // Capture renderer process console logs (for debugging)
     window.on('console', (msg) => {
       const text = msg.text();
       if (
         text.includes('AgentPage') ||
-        text.includes('StartupUpdate') ||
         text.includes('AgentChatSessionCacheManager')
       ) {
         console.log(`[Renderer] ${text}`);
@@ -1520,21 +1482,8 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
     console.log(`[E2E Mock Chat] After waitForURL. Current URL: ${currentUrl}`);
 
     if (!currentUrl.includes('#/agent')) {
-      // Manually push profile:cacheUpdated as fallback
-      const profileData = getMockProfileData(alias);
-      await chatApp.evaluate(
-        async ({ BrowserWindow }, params) => {
-          const wins = BrowserWindow.getAllWindows();
-          if (wins.length > 0) {
-            wins[0].webContents.send('profile:cacheUpdated', {
-              alias: params.alias,
-              profile: params.profile,
-              timestamp: Date.now(),
-            });
-          }
-        },
-        { alias, profile: profileData },
-      );
+      // Manually push profile:cacheUpdated as fallback.
+      await pushChatProfileCacheUpdated(chatApp, alias);
 
       try {
         await window.waitForURL(/#\/agent/, { timeout: 20_000 });
@@ -1548,34 +1497,27 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         console.warn(
           `[E2E Mock Chat] Failed to reach /agent. URL: ${url2} Body: ${bodyText2?.slice(0, 500)}`,
         );
+
+        console.warn(
+          '[E2E Mock Chat] Restoring mocked auth state and retrying /agent navigation.',
+        );
+        await restoreMockChatAuthentication(window, authData);
+        await pushChatProfileCacheUpdated(chatApp, alias);
+        await window.waitForURL(/#\/agent/, { timeout: 30_000 });
+        console.log('[E2E Mock Chat] Navigated to /agent after auth recovery.');
       }
     }
 
     // Unconditional fallback: re-push profile:cacheUpdated to ensure renderer has profile data.
     // Under CI load, the earlier push during /auto-login → /agent navigation may have been
     // dropped if the renderer wasn't ready to process it yet.
-    await chatApp.evaluate(
-      async ({ BrowserWindow }, params) => {
-        const wins = BrowserWindow.getAllWindows();
-        if (wins.length > 0) {
-          wins[0].webContents.send('profile:cacheUpdated', {
-            alias: params.alias,
-            profile: params.profile,
-            timestamp: Date.now(),
-          });
-        }
-      },
-      { alias, profile: getMockProfileData(alias) },
-    );
+    await pushChatProfileCacheUpdated(chatApp, alias);
 
     // Wait for chat UI ready — chat-textarea visible.
     // This is a hard requirement: if the chat textarea doesn't appear,
     // the test body will fail with a confusing assertion error, so we
     // throw here to surface the real problem (fixture setup failure).
     //
-    // Defense in depth: If the update error overlay appears (race condition where
-    // the REAL startup:checkAndInstallUpdates was called before our mock), we'll
-    // detect and dismiss it, then retry waiting for the chat textarea.
     let chatTextareaVisible = false;
     for (let attempt = 0; attempt < 2 && !chatTextareaVisible; attempt++) {
       try {
@@ -1585,23 +1527,6 @@ export const mockedChatReadyTest = base.extend<MockedChatReadyFixtures>({
         chatTextareaVisible = true;
         console.log('[E2E Mock Chat] Chat textarea visible — chat UI ready.');
       } catch {
-        // Check if the update error overlay is blocking us
-        const updateErrorOverlay = window.locator('text="Update Check Failed"');
-        if (await updateErrorOverlay.isVisible({ timeout: 1000 }).catch(() => false)) {
-          console.warn(
-            `[E2E Mock Chat] Update error overlay detected on attempt ${attempt + 1} — dismissing it (defense in depth).`,
-          );
-          // Click the "Close" button to dismiss the overlay
-          const closeButton = window.locator('button:has-text("Close")');
-          if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
-            await closeButton.click();
-            // Wait for the overlay to close and the app to recover
-            await window.waitForTimeout(500);
-            // Continue to next attempt
-            continue;
-          }
-        }
-        // If no overlay or couldn't dismiss, throw on last attempt
         if (attempt === 1) {
           const bodyText = await window
             .locator('body')

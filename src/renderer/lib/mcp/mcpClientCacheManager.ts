@@ -57,12 +57,14 @@ export interface MCPServerExtended {
   in_use: boolean
   /** MCP server version (from library or user-defined) */
   version?: string
-  /** MCP server source: IN-LIBRARY (from MCP library), ON-DEVICE (from local machine), or PLUGIN (from plugin) */
-  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
-  /** Remote CDN version for IN-LIBRARY servers, empty string for ON-DEVICE servers */
+  /** Persisted MCP origin metadata retained for backward compatibility. */
+  source?: 'IN-LIBRARY' | 'ON-DEVICE'
+  /** Inert legacy version metadata; it must not trigger remote checks. */
   remoteVersion?: string
   /** If true, server is managed by the system and hidden from user-facing UI */
   hidden?: boolean
+  /** HTTP headers for sse/http transports */
+  headers?: Record<string, string>
 
   // Runtime state fields
   status: MCPServerStatus
@@ -398,11 +400,12 @@ export class MCPClientCacheManager {
         env: config.env,
         url: config.url,
         in_use: config.in_use,
-      // 🆕 Add version, source and remoteVersion fields for Library install/update feature
+        // Preserve legacy provenance metadata without interpreting it.
         version: config.version || existingServer?.version,
         source: config.source || existingServer?.source,
         remoteVersion: config.remoteVersion ?? existingServer?.remoteVersion ?? '',
         hidden: config.hidden,
+        headers: config.headers,
         status: runtimeState?.status || existingServer?.status || 'disconnected',
         tools: runtimeState?.tools.map(tool => ({
           name: tool.name,

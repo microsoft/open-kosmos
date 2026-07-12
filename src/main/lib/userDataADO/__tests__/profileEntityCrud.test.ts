@@ -11,36 +11,46 @@ vi.mock('../pathUtils', async () => ({
   getProfileDirectoryPath: vi.fn((alias: string) => `/mock/userData/profiles/${alias}`),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({
-      isCacheWarmed: vi.fn(() => false),
-      scanAllAgents: vi.fn(async () => []),
-      markCacheWarmed: vi.fn(),
-      readAgentConfig: vi.fn(async () => null),
-      writeAgentConfig: vi.fn(async () => {}),
-      deleteAgentDirectory: vi.fn(async () => {}),
-      invalidateAllCache: vi.fn(),
-    })),
-  },
+
+const mcpManagerMock = vi.hoisted(() => ({
+  addServer: vi.fn(async () => true),
+  updateServer: vi.fn(async () => true),
+  deleteServer: vi.fn(async () => true),
+}));
+
+vi.mock('../mcpConfigManager', async () => ({
+  mcpConfigManager: mcpManagerMock,
+}));
+
+const skillsManagerMock = vi.hoisted(() => ({
+  addSkill: vi.fn(async () => true),
+  updateSkill: vi.fn(async () => true),
+  deleteSkill: vi.fn(async () => true),
+}));
+
+vi.mock('../skillsConfigManager', async () => ({
+  skillsConfigManager: skillsManagerMock,
+}));
+
+const chatSnapshotStoreMock = vi.hoisted(() => ({
+  invalidateAffectedChats: vi.fn(() => 0),
+}));
+
+vi.mock('../chatSkillSnapshotStore', async () => ({
+  chatSkillSnapshotStore: chatSnapshotStoreMock,
 }));
 
 import {
   addMcpServerConfig,
   updateMcpServerConfig,
   deleteMcpServerConfig,
-  addSkill,
-  updateSkill,
-  deleteSkill,
-  getSubAgentIndex,
-  addSubAgent,
-  updateSubAgent,
-  deleteSubAgent,
-  getSubAgents,
-  syncSubAgentIndex,
+  addSkillConfig,
+  updateSkillConfig,
+  deleteSkillConfig,
   EntityCrudContext,
 } from '../profileEntityCrud';
 import type { ProfileV2, McpServerConfig } from '../types/profile';
+import type { AddSkillInput } from '../skillsConfigManager';
 
 function makeProfile(alias = 'alice'): ProfileV2 {
   return {
@@ -49,7 +59,6 @@ function makeProfile(alias = 'alice'): ProfileV2 {
     primaryAgent: 'Kobi',
     mcp_servers: [],
     skills: [],
-    sub_agents: [],
     chats: [],
     'starred-chat-sessions': [],
     createdAt: '2026-01-01T00:00:00Z',
@@ -70,284 +79,278 @@ function makeContext(profile?: ProfileV2, alias = 'alice'): EntityCrudContext {
   };
 }
 
-// ── MCP Server CRUD ───────────────────────────────────────────────────────────
+describe('MCP server CRUD delegation', () => {
+  function makeMcpServer(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
+    return {
+      name: 'srv',
+      transport: 'stdio',
+      command: 'npx',
+      args: [],
+      env: {},
+      url: '',
+      in_use: false,
+      source: 'ON-DEVICE',
+      ...overrides,
+    } as McpServerConfig;
+  }
 
-describe('addMcpServerConfig', () => {
-  it('adds a new MCP server to the profile', async () => {
+  beforeEach(() => {
+    mcpManagerMock.addServer.mockClear();
+    mcpManagerMock.updateServer.mockClear();
+    mcpManagerMock.deleteServer.mockClear();
+    mcpManagerMock.addServer.mockResolvedValue(true);
+    mcpManagerMock.updateServer.mockResolvedValue(true);
+    mcpManagerMock.deleteServer.mockResolvedValue(true);
+  });
+
+  it('addMcpServerConfig adds via the manager and notifies when a cached profile exists', async () => {
+    const ctx = makeContext(makeProfile());
+    const ok = await addMcpServerConfig(ctx, 'alice', makeMcpServer({ name: 'added' }));
+
+    expect(ok).toBe(true);
+    expect(mcpManagerMock.addServer).toHaveBeenCalledWith('alice', expect.objectContaining({ name: 'added' }));
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice');
+  });
+
+  it('addMcpServerConfig loads the profile from disk on a cache miss, then caches it', async () => {
     const profile = makeProfile();
-    const ctx = makeContext(profile);
-    const server: McpServerConfig = { name: 'my-server', transport: 'stdio', command: 'node', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' };
-
-    const result = await addMcpServerConfig(ctx, 'alice', server);
-    expect(result).toBe(true);
-    expect(profile.mcp_servers).toHaveLength(1);
-    expect(profile.mcp_servers[0].name).toBe('my-server');
-  });
-
-  it('returns false when server with same name already exists', async () => {
-    const profile = makeProfile();
-    profile.mcp_servers = [{ name: 'my-server', transport: 'stdio', command: 'node', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const server: McpServerConfig = { name: 'my-server', transport: 'stdio', command: 'node', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' };
-
-    expect(await addMcpServerConfig(ctx, 'alice', server)).toBe(false);
-  });
-
-  it('returns false when profile not found in cache or file', async () => {
-    const ctx = makeContext(); // no profile in cache
-    const server: McpServerConfig = { name: 'server', transport: 'stdio', command: '', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' };
-    expect(await addMcpServerConfig(ctx, 'alice', server)).toBe(false);
-  });
-
-  it('reads profile from file when not in cache', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(); // no cache
-    (ctx.readProfileFromFile as any).mockResolvedValue(profile);
-    const server: McpServerConfig = { name: 'srv', transport: 'stdio', command: '', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' };
-    const result = await addMcpServerConfig(ctx, 'alice', server);
-    expect(result).toBe(true);
-  });
-});
-
-describe('updateMcpServerConfig', () => {
-  it('updates an existing MCP server', async () => {
-    const profile = makeProfile();
-    profile.mcp_servers = [{ name: 'srv', transport: 'stdio', command: 'old', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-
-    const result = await updateMcpServerConfig(ctx, 'alice', 'srv', { command: 'new' });
-    expect(result).toBe(true);
-    expect(profile.mcp_servers[0].command).toBe('new');
-  });
-
-  it('returns false when server not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await updateMcpServerConfig(ctx, 'alice', 'nonexistent', {})).toBe(false);
-  });
-
-  it('returns false when profile not found', async () => {
     const ctx = makeContext();
-    expect(await updateMcpServerConfig(ctx, 'alice', 'srv', {})).toBe(false);
-  });
-});
+    vi.mocked(ctx.readProfileFromFile).mockResolvedValue(profile);
 
-describe('deleteMcpServerConfig', () => {
-  it('removes a server from the profile', async () => {
-    const profile = makeProfile();
-    profile.mcp_servers = [{ name: 'srv', transport: 'stdio', command: '', args: [], env: {}, url: '', in_use: false, version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
+    const ok = await addMcpServerConfig(ctx, 'alice', makeMcpServer());
 
-    const result = await deleteMcpServerConfig(ctx, 'alice', 'srv');
-    expect(result).toBe(true);
-    expect(profile.mcp_servers).toHaveLength(0);
+    expect(ok).toBe(true);
+    expect(ctx.readProfileFromFile).toHaveBeenCalledWith('alice');
+    expect(ctx.cache.get('alice')).toBe(profile);
   });
 
-  it('returns false when server not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await deleteMcpServerConfig(ctx, 'alice', 'ghost')).toBe(false);
-  });
-});
-
-// ── Skill CRUD ────────────────────────────────────────────────────────────────
-
-describe('addSkill', () => {
-  it('adds a new skill', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    const result = await addSkill(ctx, 'alice', { name: 'my-skill', description: 'desc', version: '1.0.0', source: 'ON-DEVICE' });
-    expect(result).toBe(true);
-    expect(profile.skills).toHaveLength(1);
-  });
-
-  it('updates existing skill when same name added', async () => {
-    const profile = makeProfile();
-    profile.skills = [{ name: 'my-skill', description: 'old', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    await addSkill(ctx, 'alice', { name: 'my-skill', description: 'new', version: '2.0.0', source: 'ON-DEVICE' });
-    expect(profile.skills[0].version).toBe('2.0.0');
-    expect(profile.skills).toHaveLength(1);
-  });
-
-  it('returns false when profile not found', async () => {
+  it('addMcpServerConfig returns false without mutating when no profile exists', async () => {
     const ctx = makeContext();
-    expect(await addSkill(ctx, 'alice', { name: 'sk', description: '', version: '1.0', source: 'ON-DEVICE' })).toBe(false);
-  });
-});
+    const ok = await addMcpServerConfig(ctx, 'ghost', makeMcpServer());
 
-describe('updateSkill', () => {
-  it('updates an existing skill', async () => {
-    const profile = makeProfile();
-    profile.skills = [{ name: 'sk', description: 'old', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const result = await updateSkill(ctx, 'alice', 'sk', { version: '2.0.0' });
-    expect(result).toBe(true);
-    expect(profile.skills[0].version).toBe('2.0.0');
+    expect(ok).toBe(false);
+    expect(mcpManagerMock.addServer).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
   });
 
-  it('returns false when skill not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await updateSkill(ctx, 'alice', 'ghost', { version: '2.0' })).toBe(false);
+  it('addMcpServerConfig does not notify when the manager reports no change', async () => {
+    mcpManagerMock.addServer.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await addMcpServerConfig(ctx, 'alice', makeMcpServer());
+
+    expect(ok).toBe(false);
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
   });
 
-  it('returns false when profile not found', async () => {
+  it('updateMcpServerConfig updates via the manager and fires an immediate notify', async () => {
+    const ctx = makeContext(makeProfile());
+    const ok = await updateMcpServerConfig(ctx, 'alice', 'srv', { in_use: true });
+
+    expect(ok).toBe(true);
+    expect(mcpManagerMock.updateServer).toHaveBeenCalledWith('alice', 'srv', { in_use: true });
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice', true);
+  });
+
+  it('updateMcpServerConfig returns false (no notify) when the manager reports no change', async () => {
+    mcpManagerMock.updateServer.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await updateMcpServerConfig(ctx, 'alice', 'srv', { in_use: true });
+
+    expect(ok).toBe(false);
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('updateMcpServerConfig returns false when no profile exists', async () => {
     const ctx = makeContext();
-    expect(await updateSkill(ctx, 'alice', 'sk', {})).toBe(false);
-  });
-});
+    const ok = await updateMcpServerConfig(ctx, 'ghost', 'srv', { in_use: true });
 
-describe('deleteSkill', () => {
-  it('removes an existing skill', async () => {
-    const profile = makeProfile();
-    profile.skills = [{ name: 'sk', description: '', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const result = await deleteSkill(ctx, 'alice', 'sk');
-    expect(result).toBe(true);
-    expect(profile.skills).toHaveLength(0);
+    expect(ok).toBe(false);
+    expect(mcpManagerMock.updateServer).not.toHaveBeenCalled();
   });
 
-  it('returns false when skill not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await deleteSkill(ctx, 'alice', 'ghost')).toBe(false);
-  });
-});
+  it('deleteMcpServerConfig deletes via the manager and notifies', async () => {
+    const ctx = makeContext(makeProfile());
+    const ok = await deleteMcpServerConfig(ctx, 'alice', 'srv');
 
-// ── Sub-Agent CRUD ─────────────────────────────────────────────────────────────
-
-describe('getSubAgentIndex', () => {
-  it('returns sub_agents for given alias', () => {
-    const profile = makeProfile();
-    (profile.sub_agents as any) = [{ name: 'sa', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const result = getSubAgentIndex(ctx, 'alice');
-    expect(result).toHaveLength(1);
+    expect(ok).toBe(true);
+    expect(mcpManagerMock.deleteServer).toHaveBeenCalledWith('alice', 'srv');
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice');
   });
 
-  it('returns empty array when profile not found', () => {
+  it('deleteMcpServerConfig does not notify when the manager reports no change', async () => {
+    mcpManagerMock.deleteServer.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await deleteMcpServerConfig(ctx, 'alice', 'srv');
+
+    expect(ok).toBe(false);
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('deleteMcpServerConfig returns false when no profile exists', async () => {
     const ctx = makeContext();
-    expect(getSubAgentIndex(ctx, 'alice')).toEqual([]);
-  });
+    const ok = await deleteMcpServerConfig(ctx, 'ghost', 'srv');
 
-  it('iterates cache when alias not provided', () => {
-    const profile = makeProfile();
-    (profile.sub_agents as any) = [{ name: 'sa', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const result = getSubAgentIndex(ctx);
-    expect(result).toHaveLength(1);
-  });
-
-  it('returns empty when cache is empty and no alias', () => {
-    const ctx = makeContext();
-    expect(getSubAgentIndex(ctx)).toEqual([]);
+    expect(ok).toBe(false);
+    expect(mcpManagerMock.deleteServer).not.toHaveBeenCalled();
   });
 });
 
-describe('addSubAgent', () => {
-  it('adds a sub-agent index entry', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    const result = await addSubAgent(ctx, 'alice', {
-      name: 'my-sub-agent',
-      description: 'desc',
-      system_prompt: 'Hi',
-    });
-    expect(result).toBe(true);
-    expect((profile.sub_agents as any[])).toHaveLength(1);
+// ── Skill CRUD ──────────────────────────────────────────────────────────────────
+
+describe('Skill CRUD delegation', () => {
+  function makeSkill(overrides: Partial<AddSkillInput> = {}): AddSkillInput {
+    return {
+      name: 'pptx',
+      description: 'Create slides',
+      version: '1.0.0',
+      remoteVersion: '',
+      source: 'ON-DEVICE',
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    skillsManagerMock.addSkill.mockClear();
+    skillsManagerMock.updateSkill.mockClear();
+    skillsManagerMock.deleteSkill.mockClear();
+    skillsManagerMock.addSkill.mockResolvedValue(true);
+    skillsManagerMock.updateSkill.mockResolvedValue(true);
+    skillsManagerMock.deleteSkill.mockResolvedValue(true);
+    chatSnapshotStoreMock.invalidateAffectedChats.mockClear();
+    chatSnapshotStoreMock.invalidateAffectedChats.mockReturnValue(0);
   });
 
-  it('updates existing sub-agent index entry when name exists', async () => {
+  it('addSkillConfig adds via the manager, invalidates affected snapshots, and notifies', async () => {
+    chatSnapshotStoreMock.invalidateAffectedChats.mockReturnValue(1);
     const profile = makeProfile();
-    (profile.sub_agents as any) = [{ name: 'my-sa', version: '1.0.0', source: 'ON-DEVICE' }];
     const ctx = makeContext(profile);
-    await addSubAgent(ctx, 'alice', {
-      name: 'my-sa',
-      description: '',
-      system_prompt: '',
-    });
-    expect((profile.sub_agents as any[])![0].version).toBe('1.0.0');
+
+    const ok = await addSkillConfig(ctx, 'alice', makeSkill({ name: 'added' }));
+
+    expect(ok).toBe(true);
+    expect(skillsManagerMock.addSkill).toHaveBeenCalledWith('alice', expect.objectContaining({ name: 'added' }));
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).toHaveBeenCalledWith('alice', profile.chats, ['added']);
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice');
   });
 
-  it('returns false when profile not found', async () => {
+  it('addSkillConfig still notifies when no snapshots were invalidated (cleared === 0)', async () => {
+    chatSnapshotStoreMock.invalidateAffectedChats.mockReturnValue(0);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await addSkillConfig(ctx, 'alice', makeSkill());
+
+    expect(ok).toBe(true);
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice');
+  });
+
+  it('addSkillConfig loads the profile from disk on a cache miss, then caches it', async () => {
+    const profile = makeProfile();
     const ctx = makeContext();
-    expect(await addSubAgent(ctx, 'alice', {
-      name: 'sa',
-      description: '',
-      system_prompt: '',
-    })).toBe(false);
-  });
-});
+    vi.mocked(ctx.readProfileFromFile).mockResolvedValue(profile);
 
-describe('updateSubAgent', () => {
-  it('updates existing sub-agent', async () => {
-    const profile = makeProfile();
-    (profile.sub_agents as any) = [{ name: 'my-sa', version: '1.0.0', source: 'ON-DEVICE' }];
-    const ctx = makeContext(profile);
-    const result = await updateSubAgent(ctx, 'alice', 'my-sa', { description: 'updated' });
-    expect(result).toBe(true);
+    const ok = await addSkillConfig(ctx, 'alice', makeSkill());
+
+    expect(ok).toBe(true);
+    expect(ctx.readProfileFromFile).toHaveBeenCalledWith('alice');
+    expect(ctx.cache.get('alice')).toBe(profile);
   });
 
-  it('returns false when sub-agent not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await updateSubAgent(ctx, 'alice', 'ghost', {})).toBe(false);
-  });
-
-  it('returns false when profile not found', async () => {
+  it('addSkillConfig returns false without mutating when no profile exists', async () => {
     const ctx = makeContext();
-    expect(await updateSubAgent(ctx, 'alice', 'sa', {})).toBe(false);
-  });
-});
+    const ok = await addSkillConfig(ctx, 'ghost', makeSkill());
 
-describe('deleteSubAgent', () => {
-  it('removes sub-agent from index and chat references', async () => {
+    expect(ok).toBe(false);
+    expect(skillsManagerMock.addSkill).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('addSkillConfig does not notify when the manager reports no change', async () => {
+    skillsManagerMock.addSkill.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await addSkillConfig(ctx, 'alice', makeSkill());
+
+    expect(ok).toBe(false);
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('addSkillConfig skips snapshot invalidation when the cached profile is not V2', async () => {
+    const nonV2 = { ...makeProfile(), authProvider: 'github' } as unknown as ProfileV2;
+    const ctx = makeContext(nonV2);
+
+    const ok = await addSkillConfig(ctx, 'alice', makeSkill());
+
+    expect(ok).toBe(true);
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice');
+  });
+
+  it('updateSkillConfig updates via the manager, invalidates snapshots, and fires an immediate notify', async () => {
+    chatSnapshotStoreMock.invalidateAffectedChats.mockReturnValue(2);
     const profile = makeProfile();
-    (profile.sub_agents as any) = [{ name: 'my-sa', version: '1.0.0', source: 'ON-DEVICE' }];
-    profile.chats = [{
-      chat_id: 'c1',
-      chat_type: 'single_agent',
-      agent: { sub_agents: ['my-sa', 'other'] } as any,
-    }];
     const ctx = makeContext(profile);
-    const result = await deleteSubAgent(ctx, 'alice', 'my-sa');
-    expect(result).toBe(true);
-    expect(profile.chats[0].agent!.sub_agents).not.toContain('my-sa');
+
+    const ok = await updateSkillConfig(ctx, 'alice', 'pptx', { version: '2.0.0' });
+
+    expect(ok).toBe(true);
+    expect(skillsManagerMock.updateSkill).toHaveBeenCalledWith('alice', 'pptx', { version: '2.0.0' });
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).toHaveBeenCalledWith('alice', profile.chats, ['pptx']);
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice', true);
   });
 
-  it('returns false when sub-agent not found', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    expect(await deleteSubAgent(ctx, 'alice', 'ghost')).toBe(false);
-  });
-});
+  it('updateSkillConfig returns false (no notify) when the manager reports no change', async () => {
+    skillsManagerMock.updateSkill.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
 
-describe('getSubAgents', () => {
-  it('returns empty array when cache is empty', async () => {
+    const ok = await updateSkillConfig(ctx, 'alice', 'pptx', { version: '2.0.0' });
+
+    expect(ok).toBe(false);
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('updateSkillConfig returns false when no profile exists', async () => {
     const ctx = makeContext();
-    const result = await getSubAgents(ctx);
-    expect(result).toEqual([]);
+    const ok = await updateSkillConfig(ctx, 'ghost', 'pptx', { version: '2.0.0' });
+
+    expect(ok).toBe(false);
+    expect(skillsManagerMock.updateSkill).not.toHaveBeenCalled();
   });
 
-  it('scans disk agents when cache is not warmed', async () => {
+  it('deleteSkillConfig deletes via the manager, invalidates snapshots, and fires an immediate notify', async () => {
+    chatSnapshotStoreMock.invalidateAffectedChats.mockReturnValue(1);
     const profile = makeProfile();
     const ctx = makeContext(profile);
-    const result = await getSubAgents(ctx);
-    expect(Array.isArray(result)).toBe(true);
-  });
-});
 
-describe('syncSubAgentIndex', () => {
-  it('does nothing when profile not found', async () => {
+    const ok = await deleteSkillConfig(ctx, 'alice', 'pptx');
+
+    expect(ok).toBe(true);
+    expect(skillsManagerMock.deleteSkill).toHaveBeenCalledWith('alice', 'pptx');
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).toHaveBeenCalledWith('alice', profile.chats, ['pptx']);
+    expect(ctx.notifyProfileDataManager).toHaveBeenCalledWith('alice', true);
+  });
+
+  it('deleteSkillConfig does not notify when the manager reports no change', async () => {
+    skillsManagerMock.deleteSkill.mockResolvedValue(false);
+    const ctx = makeContext(makeProfile());
+
+    const ok = await deleteSkillConfig(ctx, 'alice', 'pptx');
+
+    expect(ok).toBe(false);
+    expect(chatSnapshotStoreMock.invalidateAffectedChats).not.toHaveBeenCalled();
+    expect(ctx.notifyProfileDataManager).not.toHaveBeenCalled();
+  });
+
+  it('deleteSkillConfig returns false when no profile exists', async () => {
     const ctx = makeContext();
-    await expect(syncSubAgentIndex(ctx, 'alice')).resolves.toBeUndefined();
-  });
+    const ok = await deleteSkillConfig(ctx, 'ghost', 'pptx');
 
-  it('syncs sub-agent index from disk', async () => {
-    const profile = makeProfile();
-    const ctx = makeContext(profile);
-    await syncSubAgentIndex(ctx, 'alice');
-    // No error expected
+    expect(ok).toBe(false);
+    expect(skillsManagerMock.deleteSkill).not.toHaveBeenCalled();
   });
 });

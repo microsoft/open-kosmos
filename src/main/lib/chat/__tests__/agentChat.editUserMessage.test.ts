@@ -61,6 +61,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   UserInputField: class UserInputField {},
 }));
 
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
 }));
@@ -151,12 +152,8 @@ function createSessionServiceForEdit(sessionOverrides?: {
     setSaveChain: vi.fn(),
     addMessageToChatHistory: vi.fn(),
     addMessageToContext: vi.fn().mockResolvedValue(undefined),
-    shouldTrackChatSessionActivatedForUserMessage: () => false,
-    getChatSessionEntryTypeForUserMessage: () => 'continued',
-    trackChatSessionActivated: vi.fn(),
     exitNewChatSessionState: vi.fn(),
     calculateAndNotifyContext: vi.fn().mockResolvedValue(undefined),
-    startChat: vi.fn().mockResolvedValue(undefined),
     getDisplayMessages: () => currentChatSession.chat_history as any,
     getSkipPersistence: () => false,
   });

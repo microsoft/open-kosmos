@@ -17,17 +17,18 @@ export type {
   ChatAgent,
   ChatSession,
   StarredChatSessionIndexItem,
-  ContextEnhancement,
   SkillConfig,
-  SubAgentConfig,
   ZeroStates,
-  QuickStartItem
+  QuickStartItem,
+  BrowserSettings,
+  MemexSettings
 } from '../../../../main/lib/userDataADO/types/profile'
+export { DEFAULT_BROWSER_SETTINGS, DEFAULT_MEMEX_SETTINGS } from '../../../../main/lib/userDataADO/types/profile'
 export type { SchedulerJob } from '../../../../main/lib/scheduler/types'
 
 // Re-export App configuration types
-export type { AppConfig, RuntimeEnvironment, RuntimeMode } from '../../../../main/lib/userDataADO/types/app'
-export { DEFAULT_RUNTIME_ENVIRONMENT, DEFAULT_APP_CONFIG, isAppConfig, isRuntimeEnvironment, isRuntimeMode } from '../../../../main/lib/userDataADO/types/app'
+export type { AppConfig, RuntimeEnvironment, RuntimeMode, UiLanguage, AppearanceConfig, ThemeSource } from '../../../../main/lib/userDataADO/types/app'
+export { DEFAULT_RUNTIME_ENVIRONMENT, DEFAULT_APP_CONFIG, DEFAULT_UI_LANGUAGE, SUPPORTED_UI_LANGUAGES, DEFAULT_APPEARANCE_CONFIG, isAppConfig, isRuntimeEnvironment, isRuntimeMode, isUiLanguage, isThemeSource, isAppearanceConfig } from '../../../../main/lib/userDataADO/types/app'
 
 // Re-export builtin agent constants and utilities
 export {
@@ -42,11 +43,13 @@ export type { GhcModel }
 
 /**
  * MCP Server status enumeration - matches backend
+ * @deprecated Please import this type from mcpClientCacheManager
  */
 export type MCPServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'disconnecting' | 'needs-user-interaction'
 
 /**
  * MCP Tool interface - consistent with backend runtime state
+ * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPTool {
   name: string
@@ -57,6 +60,7 @@ export interface MCPTool {
 
 /**
  * Runtime state for MCP servers - matches backend exactly
+ * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPServerRuntimeState {
   serverName: string
@@ -68,6 +72,7 @@ export interface MCPServerRuntimeState {
 /**
  * Extended MCP server data that includes runtime information
  * Extends backend McpServerConfig with runtime state
+ * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPServerExtended {
   // Base config fields from McpServerConfig
@@ -80,12 +85,14 @@ export interface MCPServerExtended {
   in_use: boolean
   /** MCP server version */
   version?: string
-  /** MCP server source: IN-LIBRARY (from MCP library), ON-DEVICE (from local machine), or PLUGIN (from plugin) */
-  source?: 'IN-LIBRARY' | 'ON-DEVICE' | 'PLUGIN'
-  /** Remote CDN version for IN-LIBRARY servers, empty string for ON-DEVICE servers */
+  /** Persisted MCP origin metadata retained for backward compatibility. */
+  source?: 'IN-LIBRARY' | 'ON-DEVICE'
+  /** Inert legacy version metadata; it must not trigger remote checks. */
   remoteVersion?: string
   /** If true, server is managed by the system and hidden from user-facing UI */
   hidden?: boolean
+  /** HTTP headers for sse/http transports */
+  headers?: Record<string, string>
 
   // Runtime state fields
   status: MCPServerStatus
@@ -109,9 +116,6 @@ export interface ProfileCacheDataV2 {
   // V2: Skills data
   skills: import('../../../../main/lib/userDataADO/types/profile').SkillConfig[]
 
-  // V2: Sub-Agents data (post-migration will be SubAgentIndex[]; Phase 3 adapts renderer)
-  subAgents: import('../../../../main/lib/userDataADO/types/profile').SubAgentConfig[]
-
   lastUpdated: number
   isInitialized: boolean
 }
@@ -128,6 +132,7 @@ export type ProfileDataListener = (data: ProfileCacheData) => void
 
 /**
  * MCP Stats interface
+ * @deprecated Please import this type from mcpClientCacheManager
  */
 export interface MCPStats {
   totalServers: number

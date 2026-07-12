@@ -6,7 +6,9 @@ import { ExternalLink } from 'lucide-react';
 import { ToolCallViewProps, WriteFileToolArgs, WriteFileToolResult } from './types';
 import { MessageHelper } from '@shared/types/chatTypes';
 import { parseStreamingJson } from '@renderer/lib/utils/streamingJsonParser';
+import { buildLocalFileUrl } from '@renderer/lib/utils/urlUtils';
 import FileTypeIcon from '../../ui/FileTypeIcon';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'avif']);
 
@@ -48,11 +50,13 @@ const getFileName = (filePath: string): string => {
 const handleOpenFile = (filePath: string) => {
   const fileName = getFileName(filePath);
   if (isImageFile(filePath)) {
-    // Open image in OverlayImageViewer
+    // Open image in OverlayImageViewer. A bare filesystem path resolves against
+    // the renderer origin and 404s, hanging the viewer's loading spinner; build a
+    // proper file:// URL (Windows-aware) instead.
     window.dispatchEvent(
       new CustomEvent('imageViewer:open', {
         detail: {
-          images: [{ id: `writefile-${filePath}`, url: filePath, alt: fileName }],
+          images: [{ id: `writefile-${filePath}`, url: buildLocalFileUrl(filePath), alt: fileName }],
           initialIndex: 0,
         },
       }),
@@ -80,6 +84,7 @@ export const WriteFileToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
   const resultText = toolResult ? MessageHelper.getText(toolResult) : '';
@@ -103,14 +108,14 @@ export const WriteFileToolCallView: React.FC<ToolCallViewProps> = ({
 
   // If executing (streaming), show content preview
   if (isExecuting && args.content) {
-    const displayName = fileName || 'Generating file...';
+    const displayName = fileName || t('chat.tool.writeFile.generating');
     return (
       <div className="write-file-view">
         <div className="write-file-streaming-container">
           <div className="write-file-streaming-header">
             <FileTypeIcon fileName={displayName} size={16} className="write-file-icon" />
             <span className="write-file-filename">{displayName}</span>
-            <span className="write-file-streaming-indicator">Writing...</span>
+            <span className="write-file-streaming-indicator">{t('chat.tool.writeFile.writing')}</span>
           </div>
           <div className="write-file-content-preview">
             <pre className="write-file-content-pre">{args.content}</pre>
@@ -126,7 +131,7 @@ export const WriteFileToolCallView: React.FC<ToolCallViewProps> = ({
         <div className="write-file-error-container">
           <FileTypeIcon fileName={fileName} size={24} className="write-file-icon error" />
           <span className="write-file-filename">{fileName}</span>
-          <span className="write-file-error-text">Interrupted before file write result was recorded</span>
+          <span className="write-file-error-text">{t('chat.tool.writeFile.interrupted')}</span>
         </div>
       </div>
     );

@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useAuthContext } from '../auth/AuthProvider';
-import { profileDataManager, ProfileCacheData } from '../../lib/userData'
-import { ChatConfigRuntime, ChatAgent, AgentMcpServer, SkillConfig } from '../../lib/userData/types'
-import { MCPServer } from '../../types/profileTypes'
-import { GhcModel } from '@shared/types/ghcChatTypes'
+import { profileDataManager } from '../../lib/userData'
+import type { ProfileCacheData } from '../../lib/userData'
+import type { ChatConfigRuntime, ChatAgent, AgentMcpServer, SkillConfig } from '../../lib/userData/types'
+import type { MCPServer } from '../../types/profileTypes'
+import type { GhcModel } from '@shared/types/ghcChatTypes'
+import { normalizeAgentSystemPrompt } from '@shared/types/agentSystemPrompt'
 
 import { chatOps, ChatOpsManager } from '../../lib/chat/chatOps'
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager'
+import { agentClientCacheManager } from '../../lib/agent'
 
 // 🆕 Refactor: MCP types and state management fetched directly from mcpClientCacheManager
 import {
@@ -122,15 +125,13 @@ export function ProfileDataProvider({ children }: { children: React.ReactNode })
 
       // Compare core config instead of object references, preventing MCP tool changes from being misidentified as Agent changes
       // 🔥 Fix: Only do detailed comparison when currentAgent exists and chatId hasn't changed
-      // 🆕 New: Include version and remoteVersion comparison to ensure Update button responds correctly to remote version updates
       const hasAgentConfigChanged = !currentAgent ||
         currentChatId !== trackedChatId || // 🔥 Key: Force update when chatId changes
         currentAgent.role !== updatedAgent?.role ||
         currentAgent.name !== updatedAgent?.name ||
         currentAgent.emoji !== updatedAgent?.emoji ||
-        currentAgent.system_prompt !== updatedAgent?.system_prompt ||
+        JSON.stringify(normalizeAgentSystemPrompt(currentAgent.system_prompt)) !== JSON.stringify(normalizeAgentSystemPrompt(updatedAgent?.system_prompt)) ||
         currentAgent.version !== updatedAgent?.version ||
-        currentAgent.remoteVersion !== updatedAgent?.remoteVersion ||
         JSON.stringify(currentAgent.skills) !== JSON.stringify(updatedAgent?.skills)
 
       const hasModelChanged = currentModel !== updatedModel
@@ -195,6 +196,12 @@ export function ProfileDataProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (userAlias) {
       chatOps.initialize(userAlias)
+      // Hydrate the normalized agent cache for this alias. The push listener
+      // self-wires at construction; this pull seeds it so the agent editor (and
+      // later consumers) can read agents by id without the inline facade.
+      agentClientCacheManager.initialize(userAlias).catch(err => {
+        logger.error('[ProfileDataProvider] Failed to initialize agentClientCacheManager:', err)
+      })
     }
     return () => {
       chatOps.cleanup()
@@ -424,6 +431,7 @@ export function useChats() {
     chats,
     addChat: (chatConfig: Partial<ChatConfigRuntime>) => chatOps.addChatConfig(chatConfig),
     updateChat: (chatId: string, updates: Partial<ChatConfigRuntime>) => chatOps.updateChatConfig(chatId, updates),
+    updateChatAgent: (chatId: string, agentUpdates: Partial<ChatAgent>) => chatOps.updateChatAgent(chatId, agentUpdates),
     deleteChat: (chatId: string) => chatOps.deleteChatConfig(chatId),
     isLoading
   }
@@ -514,18 +522,6 @@ export function useSkills() {
     stats: profileDataManager.getSkillsStats(),
     getSkillByName: (name: string) => profileDataManager.getSkillByName(name),
     getCurrentAgentSkills: () => profileDataManager.getCurrentAgentSkills(),
-    isLoading
-  }
-}
-
-// ========== Sub-Agents Management Hook ==========
-export function useSubAgents() {
-  const { data, isLoading } = useProfileData()
-
-  return {
-    subAgents: data.subAgents || [],
-    stats: profileDataManager.getSubAgentsStats(),
-    getSubAgentByName: (name: string) => profileDataManager.getSubAgentByName(name),
     isLoading
   }
 }

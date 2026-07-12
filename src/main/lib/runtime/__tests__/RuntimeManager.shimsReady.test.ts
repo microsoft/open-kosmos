@@ -119,10 +119,24 @@ describe('RuntimeManager.setRuntimeMode', () => {
     manager = RuntimeManager.getInstance();
   });
 
-  it('calls initializeInternalMode when switching to internal', async () => {
+  it('calls initializeInternalMode when transitioning from system to internal', async () => {
+    const { appCacheManager } = await import('../../userDataADO/appCacheManager');
+    (appCacheManager.getConfig as any).mockReturnValueOnce({
+      runtimeEnvironment: { mode: 'system', bunVersion: '1.3.6', uvVersion: '0.6.17', pinnedPythonVersion: null },
+    });
     const spy = vi.spyOn(manager, 'initializeInternalMode');
     await manager.setRuntimeMode('internal');
     expect(spy).toHaveBeenCalled();
+  });
+
+  it('does NOT re-init when already internal (avoids duplicate self-heal chain)', async () => {
+    const { appCacheManager } = await import('../../userDataADO/appCacheManager');
+    (appCacheManager.getConfig as any).mockReturnValueOnce({
+      runtimeEnvironment: { mode: 'internal', bunVersion: '1.3.6', uvVersion: '0.6.17', pinnedPythonVersion: null },
+    });
+    const spy = vi.spyOn(manager, 'initializeInternalMode');
+    await manager.setRuntimeMode('internal');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('does not call initializeInternalMode when switching to system', async () => {

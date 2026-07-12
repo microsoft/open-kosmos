@@ -243,7 +243,7 @@ Month file structure:
       "scheduleType": "once",
       "runAt": "2026-03-11T16:47:00.000Z",
       "enabled": true,
-      "agentId": "chat_1773157314718_eiu0ejcgj",
+      "chat_id": "chat_1773157314718_eiu0ejcgj",
       "message": "1",
       "status": "pending"
     },
@@ -254,7 +254,7 @@ Month file structure:
       "scheduleType": "cron",
       "cronExpression": "0 9 * * 1",
       "enabled": true,
-      "agentId": "chat_1773157314718_eiu0ejcgj",
+      "chat_id": "chat_1773157314718_eiu0ejcgj",
       "message": "2",
       "status": "pending"
     }
@@ -369,7 +369,7 @@ For example:
 Expose the following unified commands:
 
 - `initialize(alias)`
-- `listJobs(alias, agentId?)`
+- `listJobs(alias, chatId?)`
 - `getJob(alias, jobId)`
 - `createJob(alias, input)`
 - `updateJob(alias, jobId, patch)`
@@ -511,13 +511,13 @@ Process:
 
 ### 10.3 Reading Job List Projection
 
-Standard entry: `scheduleStore.getJobsProjection(alias, agentId?)`
+Standard entry: `scheduleStore.getJobsProjection(alias, chatId?)`
 
 Process:
 
 1. Read persisted jobs from the required month files via the repository
 2. Merge with already-loaded aggregates in the store as an overlay
-3. If `agentId` is provided, filter accordingly
+3. If `chatId` is provided, filter accordingly
 4. Output a sorted projection
 
 Sorting recommendation:
@@ -744,7 +744,7 @@ These fields belong to schedule settings:
 - `cronExpression`
 - `runAt`
 - `enabled`
-- `agentId`
+- `chat_id`
 - `message`
 - `status`
 - `lastRunAt`

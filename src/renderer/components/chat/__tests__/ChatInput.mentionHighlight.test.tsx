@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { Message } from '@shared/types/chatTypes';
+import type { Message, UserMessage } from '@shared/types/chatTypes';
 
 vi.mock('../../../styles/ChatInput.css', async () => ({}));
 
@@ -24,6 +24,9 @@ vi.mock('../../../lib/chat/agentChatIpc', async () => ({
 
 vi.mock('lucide-react', async () => ({
   Globe: () => <svg data-testid="globe-icon" />,
+  CornerDownRight: () => <svg data-testid="corner-down-right-icon" />,
+  Pencil: () => <svg data-testid="pencil-icon" />,
+  Trash2: () => <svg data-testid="trash-icon" />,
 }));
 
 vi.mock('../../../ipc/screenshot-main', async () => ({
@@ -37,8 +40,8 @@ const { mockProfileDataManager, mockSessionIdle } = vi.hoisted(() => ({
     getSelectedModel: vi.fn(() => 'model-1'),
     subscribe: vi.fn(() => vi.fn()),
     addPromptToHistory: vi.fn(),
-    getPreviousPrompt: vi.fn(() => null),
-    getNextPrompt: vi.fn(() => null),
+    getPreviousPrompt: vi.fn<() => string | null>(() => null),
+    getNextPrompt: vi.fn<() => string | null>(() => null),
     setCurrentEditingPrompt: vi.fn(),
     getCurrentAgent: vi.fn(() => null),
   },
@@ -185,12 +188,22 @@ vi.mock('../../../lib/workspace/workspaceSearchService', async () => ({
 }));
 
 vi.mock('../ErrorBar', () => ({ default: () => null }));
+vi.mock('../../../lib/featureFlags', async () => ({
+  useFeatureFlag: vi.fn(() => false),
+}));
+vi.mock('../VoiceInputButton', async () => ({
+  VoiceInputButton: () => null,
+}));
+vi.mock('../../../lib/userData', async () => ({
+  useVoiceInputEnabled: vi.fn(() => false),
+}));
 vi.mock('../../../lib/chat/chatInputKeyboard', async () => ({
   getChatInputEnterAction: vi.fn(() => 'send'),
   getChatInputShortcutHint: vi.fn(() => 'Enter to send'),
 }));
 
 import ChatInput from '../ChatInput';
+import { chatSessionInputDraftManager } from '../../../lib/chat/chatSessionInputDraftManager';
 
 function createMessageWithAttachment(): Message {
   return {
@@ -219,6 +232,9 @@ describe('ChatInput mention highlight layout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSessionIdle.value = true;
+    mockProfileDataManager.getPreviousPrompt.mockReturnValue(null);
+    mockProfileDataManager.getNextPrompt.mockReturnValue(null);
+    chatSessionInputDraftManager.clearAll();
 
     class ResizeObserverMock {
       observe() {}
@@ -572,7 +588,7 @@ describe('ChatInput mention highlight layout', () => {
     }
   });
 
-  it('keeps the send button disabled while chat status is sending_response', () => {
+  it('shows the queue button instead of send while chat status is sending_response', () => {
     mockSessionIdle.value = false;
     const onSendMessage = vi.fn();
     const { container } = render(
@@ -591,8 +607,8 @@ describe('ChatInput mention highlight layout', () => {
       },
     });
 
-    const cancelButton = screen.getByTitle('Cancel Chat');
-    expect(cancelButton).toBeInTheDocument();
+    const queueButton = screen.getByTitle('Queue message after current response');
+    expect(queueButton).toBeInTheDocument();
 
     expect(onSendMessage).not.toHaveBeenCalled();
   });
@@ -620,7 +636,7 @@ describe('ChatInput mention highlight layout', () => {
       />,
     );
 
-    const cancelButton = screen.getByTitle('Cancel Chat');
+    const cancelButton = screen.getByTitle('Cancel current response');
     expect(cancelButton).toBeInTheDocument();
   });
 
@@ -631,6 +647,257 @@ describe('ChatInput mention highlight layout', () => {
       />,
     );
 
-    expect(screen.queryByTitle('Cancel Chat')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Cancel current response')).not.toBeInTheDocument();
+  });
+
+  it('restores compose drafts independently when switching chat sessions', () => {
+    chatSessionInputDraftManager.set('session-a', 'draft for A');
+    chatSessionInputDraftManager.set('session-b', 'draft for B');
+
+    const { rerender } = render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+      />,
+    );
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('draft for A');
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-b"
+      />,
+    );
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('draft for B');
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: {
+        value: 'updated draft B',
+      },
+    });
+
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('draft for A');
+    expect(chatSessionInputDraftManager.get('session-b')).toBe('updated draft B');
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+      />,
+    );
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('draft for A');
+  });
+
+  it('persists programmatic fill input to the current session after switching sessions', async () => {
+    const { rerender } = render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+      />,
+    );
+
+    fireEvent(window, new CustomEvent('agent:fillInput', {
+      detail: { text: 'filled draft A' },
+    }));
+
+    await waitFor(() => {
+      expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('filled draft A');
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('filled draft A');
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-b"
+      />,
+    );
+
+    await waitFor(() => {
+      expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+    });
+
+    fireEvent(window, new CustomEvent('agent:fillInput', {
+      detail: { text: 'filled draft B' },
+    }));
+
+    await waitFor(() => {
+      expect(chatSessionInputDraftManager.get('session-b')).toBe('filled draft B');
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('filled draft A');
+  });
+
+  it('syncs the hydrated session draft into prompt-history navigation state', () => {
+    chatSessionInputDraftManager.set('session-a', 'draft for A');
+    chatSessionInputDraftManager.set('session-b', 'draft for B');
+
+    const { rerender } = render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+      />,
+    );
+
+    expect(mockProfileDataManager.setCurrentEditingPrompt).toHaveBeenLastCalledWith('draft for A');
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-b"
+      />,
+    );
+
+    expect(mockProfileDataManager.setCurrentEditingPrompt).toHaveBeenLastCalledWith('draft for B');
+  });
+
+  it('persists prompt-history navigation text as the active session draft without resetting the history cursor', async () => {
+    chatSessionInputDraftManager.set('session-a', 'draft for A');
+    mockProfileDataManager.getPreviousPrompt.mockReturnValue('history prompt');
+    mockProfileDataManager.getNextPrompt.mockReturnValue('draft for A');
+
+    render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+      />,
+    );
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('draft for A');
+
+    mockProfileDataManager.setCurrentEditingPrompt.mockClear();
+    textarea.setSelectionRange(0, 0);
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('history prompt');
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('history prompt');
+    expect(mockProfileDataManager.setCurrentEditingPrompt).not.toHaveBeenCalled();
+
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('draft for A');
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('draft for A');
+    expect(mockProfileDataManager.setCurrentEditingPrompt).not.toHaveBeenCalled();
+  });
+
+  it('clears only the active chat session draft after sending', () => {
+    chatSessionInputDraftManager.set('session-a', 'draft for A');
+    chatSessionInputDraftManager.set('session-b', 'draft for B');
+    const onSendMessage = vi.fn();
+
+    render(
+      <ChatInput
+        onSendMessage={onSendMessage}
+        chatSessionId="session-a"
+      />,
+    );
+
+    const sendButton = screen
+      .getAllByTitle('Enter to send')
+      .find((element) => element.tagName === 'BUTTON');
+    expect(sendButton).toBeDefined();
+    fireEvent.click(sendButton!);
+
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('');
+    expect(chatSessionInputDraftManager.get('session-b')).toBe('draft for B');
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('preserves the compose draft while editing and canceling a queued message', async () => {
+    chatSessionInputDraftManager.set('session-a', 'original compose draft');
+    const queuedUserMessage: UserMessage = {
+      id: 'queued-1',
+      role: 'user',
+      timestamp: Date.now(),
+      content: [{ type: 'text', text: 'queued draft text' }],
+    };
+    const queuedMessage = {
+      id: 'queued-1',
+      chatId: 'chat-1',
+      chatSessionId: 'session-a',
+      message: queuedUserMessage,
+      createdAt: Date.now(),
+      status: 'editing' as const,
+    };
+    const { rerender } = render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+        queuedMessages={[]}
+      />,
+    );
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('original compose draft');
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+        queuedMessages={[queuedMessage]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('queued draft text');
+    });
+
+    mockProfileDataManager.setCurrentEditingPrompt.mockClear();
+    fireEvent.change(textarea, {
+      target: {
+        value: 'edited queued draft',
+      },
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('original compose draft');
+    expect(mockProfileDataManager.setCurrentEditingPrompt).not.toHaveBeenCalled();
+
+    rerender(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+        queuedMessages={[]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('original compose draft');
+    });
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('original compose draft');
+  });
+
+  it('does not read or write compose drafts in inline edit mode', () => {
+    chatSessionInputDraftManager.set('session-a', 'compose draft');
+
+    render(
+      <ChatInput
+        onSendMessage={vi.fn()}
+        chatSessionId="session-a"
+        mode="edit-inline"
+        initialMessage={createMessageWithAttachment()}
+        onSubmitEditedMessage={vi.fn()}
+        onCancelEdit={vi.fn()}
+      />,
+    );
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('[#skill:figma-make]');
+
+    mockProfileDataManager.setCurrentEditingPrompt.mockClear();
+    fireEvent.change(textarea, {
+      target: {
+        value: 'inline edit draft',
+      },
+    });
+
+    expect(chatSessionInputDraftManager.get('session-a')).toBe('compose draft');
+    expect(mockProfileDataManager.setCurrentEditingPrompt).not.toHaveBeenCalled();
   });
 });

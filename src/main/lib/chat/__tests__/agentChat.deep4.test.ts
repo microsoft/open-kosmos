@@ -82,7 +82,8 @@ vi.mock('../../userDataADO/openkosmosPlaceholders', async () => ({
 vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   userInputPlaceholderParser: {},
   UserInputField: class {},
-}));vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
+}));
+vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class {},
 }));
 vi.mock('../../userDataADO/profileCacheManager', async () => ({
@@ -116,17 +117,6 @@ vi.mock('../agentChatUtilities', async () => ({
   sanitizeToolCallsForApi: vi.fn(),
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn(() => undefined) })),
-  },
-}));
-vi.mock('../../analytics', async () => ({
-  analyticsManager: { recordChatSessionActivated: vi.fn().mockResolvedValue(undefined) },
-}));
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: { execute: vi.fn().mockResolvedValue({ additionalContexts: [] }) },
-}));
 vi.mock('../agentChatManager', async () => ({ agentChatManager: mockAgentChatManager }));
 vi.mock('../externalAgentChatHandler', async () => ({
   handleExternalAgentMessage: vi.fn().mockResolvedValue([]),
@@ -143,7 +133,6 @@ vi.mock('../agentChatTurnRunner', async () => ({
 vi.mock('../agentChatPromptService', async () => ({
   AgentChatPromptService: vi.fn().mockImplementation(function (this: any) {
     this.getAgentSpecificSystemPrompt = vi.fn(() => []);
-    this.buildSubAgentsSystemPrompt = vi.fn(() => '');
     this.getCombinedSystemPromptForContext = vi.fn(() => []);
     this.getLatestCustomSystemPrompt = vi.fn(() => []);
     this.getCombinedSystemPromptForCurrentTurn = vi.fn(async () => []);
@@ -194,8 +183,6 @@ vi.mock('../agentChatToolPostProcessor', async () => ({
   AgentChatToolPostProcessor: vi.fn().mockImplementation(function (this: any) {
     this.postProcessToolResult = vi.fn(async (_tc: any, tr: any) => tr);
     this.postProcessForRequestInteractiveInputTool = vi.fn(async (r: any) => r);
-    this.postProcessForGetMcpTemplateFromLibraryTool = vi.fn(async (r: any) => r);
-    this.postProcessForGetAgentTemplateFromLibraryTool = vi.fn(async (r: any) => r);
   }),
 }));
 vi.mock('../agentChatToolExecutor', async () => ({

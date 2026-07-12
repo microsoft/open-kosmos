@@ -1,4 +1,6 @@
 import {
+  buildAgentId,
+  buildAgentUuid,
   buildChatId,
   buildChatSessionId,
   buildEvalSessionId,
@@ -131,6 +133,67 @@ describe('idFormats', () => {
 
     it('collapses multiple consecutive hyphens', () => {
       expect(normalizeDeviceIdSegment('a---b')).toBe('a-b');
+    });
+  });
+
+  describe('buildAgentId', () => {
+    it('builds id from name and source, lowercasing and hyphenating', () => {
+      expect(buildAgentId('Kobi', 'ON-DEVICE')).toBe('agent-kobi-on-device');
+      expect(buildAgentId('My Cool Agent', 'Cloud')).toBe('agent-my-cool-agent-cloud');
+    });
+
+    it('strips special chars, collapses repeats, and trims edge hyphens', () => {
+      expect(buildAgentId('  Foo!! Bar  ', 'Source')).toBe('agent-foo-bar-source');
+      expect(buildAgentId('a@@@b', 'x')).toBe('agent-a-b-x');
+    });
+
+    it('defaults source to on-device when undefined', () => {
+      expect(buildAgentId('Solo', undefined)).toBe('agent-solo-on-device');
+    });
+
+    it('falls back to "agent" when name is empty or all special chars', () => {
+      expect(buildAgentId('', 'x')).toBe('agent-agent-x');
+      expect(buildAgentId('@@@', 'x')).toBe('agent-agent-x');
+    });
+
+    it('preserves Unicode (CJK) letters so non-ASCII names are not collapsed', () => {
+      expect(buildAgentId('软件运营Agent', 'ON-DEVICE')).toBe('agent-软件运营agent-on-device');
+      expect(buildAgentId('日本語', 'Cloud')).toBe('agent-日本語-cloud');
+      expect(buildAgentId('中文', undefined)).toBe('agent-中文-on-device');
+    });
+
+    it('keeps distinct CJK names distinct (no id collision)', () => {
+      const a = buildAgentId('软件运营Agent', 'ON-DEVICE');
+      const b = buildAgentId('财务Agent', 'ON-DEVICE');
+      expect(a).not.toBe(b);
+      expect(a).toBe('agent-软件运营agent-on-device');
+      expect(b).toBe('agent-财务agent-on-device');
+    });
+
+    it('mixes CJK with spaces, ascii, symbols, and emoji correctly', () => {
+      expect(buildAgentId('  团队 Mgr!! ', 'Source')).toBe('agent-团队-mgr-source');
+      expect(buildAgentId('emoji😀name', 'x')).toBe('agent-emoji-name-x');
+    });
+  });
+
+  describe('buildAgentUuid', () => {
+    it('builds a name-independent id: agent_{timestamp}_{random}', () => {
+      const id = buildAgentUuid(fixedDate, 'abc123');
+      expect(id).toBe('agent_20260330150405_abc123');
+    });
+
+    it('matches the shared timestamped id shape', () => {
+      expect(buildAgentUuid()).toMatch(/^agent_\d{14}_[a-z0-9]+$/);
+    });
+
+    it('is unique across calls (different random segments)', () => {
+      expect(buildAgentUuid()).not.toBe(buildAgentUuid());
+    });
+
+    it('does not encode the agent name (stable across renames)', () => {
+      // Same injected timestamp/random -> identical id regardless of any name,
+      // proving the id is independent of the agent name.
+      expect(buildAgentUuid(fixedDate, 'seg')).toBe(buildAgentUuid(fixedDate, 'seg'));
     });
   });
 

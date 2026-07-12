@@ -9,6 +9,8 @@
  * Only dynamically imported when a tool is actually executed, reducing startup time
  */
 
+import * as path from 'path';
+import { app } from 'electron';
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 import { isFeatureEnabled } from '../../featureFlags';
 import type { ToolExecutionContext } from '../../subAgent/types';
@@ -23,12 +25,20 @@ import { ExecuteCommandTool } from './executeCommandTool';
 // ManageProcessTool uses lazy import to avoid ipcMain side effects in tests
 import { GetCurrentDateTimeTool } from './getCurrentDateTimeTool';
 import { RequestInteractiveInputTool } from './requestInteractiveInputTool';
-import { GetAgentTemplateFromLibraryTool } from './getAgentTemplateFromLibraryTool';
 import { CreateMcpServerFromConfigTool } from './createMcpServerFromConfigTool';
+import { UpdateMcpServerTool } from './updateMcpServerTool';
+import { GetMcpStatusTool } from './getMcpStatusTool';
 import { SearchSkillsTool } from './searchSkillsTool';
+import { ApplySkillToAgentsTool } from './applySkillToAgentsTool';
+import { UninstallSkillsTool } from './uninstallSkillsTool';
+import { RemoveSkillsFromAgentsTool } from './removeSkillsFromAgentsTool';
 import { APP_NAME } from '../../../../shared/constants/branding';
+import { getComputerUseUnsupportedReason, isComputerUsePlatformSupported } from '../../computerUse/platformSupport';
 import { CreateAgentFromConfigTool } from './createAgentFromConfigTool';
+import { UpdateAgentTool } from './updateAgentTool';
+import { GetAgentStatusTool } from './getAgentStatusTool';
 import { ListAgentsTool } from './listAgentsTool';
+import { SetPrimaryAgentTool } from './setPrimaryAgentTool';
 import { MoveFileTool } from './moveFileTool';
 import { PresentTool } from './presentDeliverablesTool';
 import { CreateScheduleTool } from './createScheduleTool';
@@ -37,14 +47,22 @@ import { UpdateScheduleTool } from './updateScheduleTool';
 import { RunScheduleTool } from './runScheduleTool';
 import { CodingAgentTool } from './codingAgentTool';
 import { ToolSearchTool } from './toolSearchTool';
+import { MemexMemoryTool } from './memexMemoryTool';
+import { executeMemexMemoryTool } from './memexMemoryToolDispatcher';
 import type { McpTool } from '../../chat/toolSearchFilter';
 
 // Facade tools — simplified AI-friendly interfaces wrapping existing tools
 import { ManageSkillsFacade } from './facades/manageSkillsFacade';
 import { ManageMcpFacade } from './facades/manageMcpFacade';
 import { ManageAgentsFacade } from './facades/manageAgentsFacade';
-import { SearchMcpFacade } from './facades/searchMcpFacade';
-import { SearchAgentsFacade } from './facades/searchAgentsFacade';
+import { ManageHooksFacade } from './facades/manageHooksFacade';
+import { embeddedBrowserToolDefinition } from './embeddedBrowserToolDefinition';
+import { computerUseToolDefinition } from './computerUseToolDefinition';
+
+import { createLogger } from '../../unifiedLogger';
+import { profileCacheManager } from "../../userDataADO";
+const logger = createLogger();
+
 // 🐢 Heavy tools - lazy loaded (depend on playwright, mammoth, etc.)
 // BingWebSearchTool, BingImageSearchTool
 // FetchWebContentTool, ReadOfficeFileTool, DownloadFileTool, SetMcpConnectionStateTool
@@ -62,7 +80,7 @@ export interface BuiltinToolInfo {
 export class BuiltinToolsManager {
   private static instance: BuiltinToolsManager | null = null;
   private tools = new Map<string, BuiltinToolDefinition>();
-  // Internal-only tools: callable by renderer code (FRE, agent library UI) via
+  // Internal-only tools: callable by renderer code (for example FRE) via
   // executeTool(), but NOT returned by getAllTools() so they stay hidden from AI.
   private internalTools = new Map<string, BuiltinToolDefinition>();
   private isInitialized = false;
@@ -72,11 +90,16 @@ export class BuiltinToolsManager {
    *
    * Lifecycle: Set by AgentChat.executeToolCall() before calling BuiltinToolsManager.executeTool(),
    *           cleared after executeTool() returns.
-   * Thread safety: Electron main process uses a single-threaded event loop, only one executeTool() runs at a time,
-   *           so the static variable has no race conditions.
    *
-   * Note: Existing built-in tools do not need modification; they do not read this context.
-   *       Only sub_agent uses it.
+   * ⚠️ RACE CONDITION WARNING: Although Electron's main process is single-threaded,
+   * executeTool() calls are async and can interleave across await boundaries. This
+   * static variable may be overwritten by a concurrent tool call before the previous
+   * one completes. Tools that need the execution context across async boundaries
+   * MUST receive the captured snapshot from executeTool() or capture it before their
+   * first await, then use that snapshot throughout.
+   *
+   * Tools using captured execution context:
+   *   - sub_agent, create_schedule, memex_memory, manage_hooks, coding_agent, computer_use
    */
   private static currentExecutionContext: ToolExecutionContext | null = null;
 
@@ -239,24 +262,14 @@ export class BuiltinToolsManager {
       this.tools.set('manage_skills', ManageSkillsFacade.getDefinition());
       this.tools.set('manage_mcp', ManageMcpFacade.getDefinition());
       this.tools.set('manage_agents', ManageAgentsFacade.getDefinition());
-      this.tools.set('search_mcp', SearchMcpFacade.getDefinition());
-      this.tools.set('search_agents', SearchAgentsFacade.getDefinition());
+      this.tools.set('manage_hooks', ManageHooksFacade.getDefinition());
+      this.tools.set('move_file', MoveFileTool.getDefinition());
 
-      // Legacy tools — not exposed to AI, but still called programmatically by
-      // renderer code (FreSettingUpView, AddFromAgentLibraryViewContent).
-      // Registered in internalTools so executeTool()'s guard passes without
-      // polluting getAllTools() / the AI tool inventory.
-      // TODO: Migrate renderer callers to dedicated IPC channels, then remove.
-      this.internalTools.set('get_agent_template_from_library', GetAgentTemplateFromLibraryTool.getDefinition());
+      // Local configuration helpers remain available for programmatic callers,
+      // but stay out of the AI-visible tool inventory.
       this.internalTools.set('create_mcp_server_from_config', CreateMcpServerFromConfigTool.getDefinition());
       this.internalTools.set('create_agent_from_config', CreateAgentFromConfigTool.getDefinition());
       this.internalTools.set('list_agents', ListAgentsTool.getDefinition());
-
-      // 🔒 Register MoveFileTool (file move tool) - browserControl feature flag protected
-      if (isFeatureEnabled('browserControl')) {
-        const moveFileTool = MoveFileTool.getDefinition();
-        this.tools.set('move_file', moveFileTool);
-      }
 
       // Register PresentTool (present final deliverables)
       const presentTool = PresentTool.getDefinition();
@@ -277,11 +290,32 @@ export class BuiltinToolsManager {
         this.tools.set('run_schedule', runScheduleTool);
       }
 
-      // Register CodingAgentTool (foreground coding agent execution)
-      if (isFeatureEnabled('openkosmosFeatureCodingAgent')) {
-        const codingAgentTool = CodingAgentTool.getDefinition();
-        this.tools.set('coding_agent', codingAgentTool);
-      }
+      // Register CodingAgentTool (foreground coding agent execution). Always register
+      // the metadata so the Settings → Coding CLI master switch can update the advertised
+      // inventory without rebuilding this singleton. shouldExposeTool() hides it while the
+      // profile switch is off, and executeTool() still gates execution.
+      const codingAgentTool = CodingAgentTool.getDefinition();
+      this.tools.set('coding_agent', codingAgentTool);
+
+      // 🌐 EmbeddedBrowserTool - agent control of the in-app embedded browser.
+      // Always register the metadata so Settings → Browser toggles can update the
+      // advertised inventory without rebuilding this singleton. Public inventory
+      // accessors hide it while disabled, and executeTool() still gates execution.
+      this.tools.set('browser', embeddedBrowserToolDefinition);
+
+      // MemexMemoryTool — persistent long-term memory with agent and profile scopes.
+      // Always register the metadata so the Settings → Memex Memory toggle can
+      // update the advertised inventory without rebuilding this singleton.
+      // Public inventory accessors hide it while disabled, and executeTool()
+      // still gates execution on the app-level master switch.
+      this.tools.set('memex_memory', MemexMemoryTool.getDefinition());
+
+      // 🖥️ ComputerUseTool - agent control of the real local desktop (screenshots
+      // + synthetic mouse/keyboard on native apps). Always register the metadata
+      // so Settings → Computer Use toggles can update the advertised inventory
+      // without rebuilding this singleton. Public inventory accessors hide it
+      // while disabled, and executeTool() still gates execution.
+      this.tools.set('computer_use', computerUseToolDefinition);
 
       // ===== Heavy tools (using static definitions, lazy-loaded actual modules) =====
       // ⚠️ IMPORTANT CAUTION FOR LLM / DEVELOPERS:
@@ -310,8 +344,7 @@ export class BuiltinToolsManager {
             queries: { type: 'array', items: { type: 'string' }, description: 'Array of search queries' },
             lang: { type: 'string', description: 'Search language: en or zh' },
             locale: { type: 'string', description: 'Search locale: us or cn' },
-            maxResults: { type: 'number', description: 'Max results per query (default 5)' },
-            timeout: { type: 'number', description: 'Timeout in seconds (default 60)' }
+            maxResults: { type: 'number', description: 'Max results per query (default 5)' }
           },
           required: ['description', 'queries', 'lang', 'locale']
         }
@@ -328,8 +361,7 @@ export class BuiltinToolsManager {
             queries: { type: 'array', items: { type: 'string' }, description: 'Array of search queries' },
             lang: { type: 'string', description: 'Search language: en or zh' },
             locale: { type: 'string', description: 'Search locale: us or cn' },
-            maxResults: { type: 'number', description: 'Max results per query (default 5)' },
-            timeout: { type: 'number', description: 'Timeout in seconds (default 60)' }
+            maxResults: { type: 'number', description: 'Max results per query (default 5)' }
           },
           required: ['description', 'queries']
         }
@@ -344,7 +376,6 @@ export class BuiltinToolsManager {
           properties: {
             description: { type: 'string', description: 'A brief one-sentence description of what this fetch is for' },
             urls: { type: 'array', items: { type: 'string' }, description: 'Array of web page URLs to fetch (max 20)' },
-            timeoutSeconds: { type: 'number', description: 'Request timeout in seconds (default: 30, range: 5-60)' },
             maxContentSize: { type: 'number', description: 'Max content size per URL in bytes (default: 1MB)' }
           },
           required: ['description', 'urls']
@@ -380,40 +411,7 @@ export class BuiltinToolsManager {
         }
       });
 
-      // 🐢 ManageRemoteChannelTool - remote channel management (lazy load)
-      if (isFeatureEnabled('openkosmosFeatureRemoteChannel')) {
-        const teamsBotName = `${APP_NAME} Bot`;
-        this.tools.set('manage_remote_channel', {
-          name: 'manage_remote_channel',
-          description:
-            `Control remote channel connections (e.g., Teams via "${teamsBotName}"). ` +
-            'Supports starting/stopping the connection, binding/unbinding with a code, and checking status. ' +
-            'Use action "status" to check current state, "start" to connect, "stop" to disconnect, ' +
-            `"bind" with a bind_code to pair with a Teams user (user gets the code by sending .bind to ${teamsBotName} in Teams), "unbind" to unpair.`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              action: {
-                type: 'string',
-                enum: ['status', 'start', 'stop', 'bind', 'unbind'],
-                description: 'The action to perform',
-              },
-              channel_id: {
-                type: 'string',
-                description: 'Channel ID (defaults to "teams")',
-              },
-              bind_code: {
-                type: 'string',
-                description: 'Bind code from Teams (required for "bind" action)',
-              },
-            },
-            required: ['action'],
-          },
-        });
-      }
-
-      // ──── Sub-Agent tool (unified, lazy load) ────
-      // Always available; named spawning gated at execution time.
+      // ──── Sub-Agent tool (ad-hoc, lazy load) ────
       {
         const { SubAgentTool } = await import('./subAgentTool');
         const def = SubAgentTool.getDefinition();
@@ -488,7 +486,14 @@ export class BuiltinToolsManager {
    *
    * 🚀 Performance optimization: heavy tools dynamically import modules at execution time
    */
-  async executeTool(name: string, args: any, signal?: AbortSignal, chatSessionId?: string): Promise<ToolExecutionResult> {
+  async executeTool(
+    name: string,
+    args: any,
+    signal?: AbortSignal,
+    chatSessionId?: string,
+    capturedExecutionContext?: ToolExecutionContext | null,
+    workspaceRoot?: string,
+  ): Promise<ToolExecutionResult> {
     if (!this.isInitialized) {
       throw new Error('BuiltinToolsManager not initialized');
     }
@@ -503,6 +508,10 @@ export class BuiltinToolsManager {
     if (signal?.aborted) {
       return { success: false, error: `Tool execution aborted: ${name}` };
     }
+
+    const callExecutionContext = capturedExecutionContext === undefined
+      ? BuiltinToolsManager.getExecutionContext()
+      : capturedExecutionContext;
 
     try {
       let result;
@@ -519,7 +528,7 @@ export class BuiltinToolsManager {
       } else if (name === 'search_files') {
         result = await SearchFilesTool.execute(args, { signal });
       } else if (name === 'execute_command') {
-        result = await ExecuteCommandTool.execute(args, { signal });
+        result = await ExecuteCommandTool.execute(args, { signal, executionContext: callExecutionContext });
       } else if (name === 'manage_process') {
         const { ManageProcessTool } = await import('./manageProcessTool');
         result = await ManageProcessTool.execute(args, { signal });
@@ -530,15 +539,10 @@ export class BuiltinToolsManager {
       } else if (name === 'search_skills') {
         result = await SearchSkillsTool.execute(args);
       }
-      // ===== Legacy tools (kept for programmatic renderer calls, not exposed to AI) =====
-      // TODO: Migrate renderer callers (FreSettingUpView, AddFromAgentLibraryViewContent)
-      // to dedicated IPC channels, then remove these dispatch routes.
-      else if (name === 'get_agent_template_from_library') {
-        result = await GetAgentTemplateFromLibraryTool.execute(args);
+      else if (name === 'tool_search') {
+        result = ToolSearchTool.execute(args, chatSessionId);
       } else if (name === 'create_mcp_server_from_config') {
         result = await CreateMcpServerFromConfigTool.execute(args);
-      } else if (name === 'tool_search') {
-        result = ToolSearchTool.execute(args, chatSessionId);
       } else if (name === 'create_agent_from_config') {
         result = await CreateAgentFromConfigTool.execute(args);
       } else if (name === 'list_agents') {
@@ -551,20 +555,19 @@ export class BuiltinToolsManager {
         result = await ManageMcpFacade.execute(args);
       } else if (name === 'manage_agents') {
         result = await ManageAgentsFacade.execute(args);
-      } else if (name === 'search_mcp') {
-        result = await SearchMcpFacade.execute(args);
-      } else if (name === 'search_agents') {
-        result = await SearchAgentsFacade.execute(args);
-      } else if (name === 'move_file') {
-        // 🔒 browserControl feature flag protected
-        if (!isFeatureEnabled('browserControl')) {
-          return { success: false, error: 'move_file tool is not available when browserControl feature is disabled' };
+      } else if (name === 'manage_hooks') {
+        const hooksProfileAlias = callExecutionContext?.userAlias ?? profileCacheManager.getCurrentUserAlias();
+        if (!this.isHooksEnabledForProfile(hooksProfileAlias)) {
+          result = { content: [{ type: 'text', text: 'manage_hooks tool is disabled (enable Agent Hooks in Settings)' }], isError: true };
+        } else {
+          result = await ManageHooksFacade.execute(args, { userAlias: hooksProfileAlias });
         }
+      } else if (name === 'move_file') {
         result = await MoveFileTool.execute(args, { signal });
       } else if (name === 'present_deliverables') {
         result = await PresentTool.execute(args);
       } else if (name === 'create_schedule') {
-        result = await CreateScheduleTool.execute(args);
+        result = await CreateScheduleTool.execute(args, { executionContext: callExecutionContext });
       } else if (name === 'get_schedule') {
         result = await GetScheduleTool.execute(args);
       } else if (name === 'update_schedule') {
@@ -572,48 +575,74 @@ export class BuiltinToolsManager {
       } else if (name === 'run_schedule') {
         result = await RunScheduleTool.execute(args);
       } else if (name === 'coding_agent') {
-        if (!isFeatureEnabled('openkosmosFeatureCodingAgent')) {
-          result = { content: [{ type: 'text', text: 'coding_agent tool is disabled (openkosmosFeatureCodingAgent feature flag is off)' }], isError: true };
+        const codingAgentProfileAlias = callExecutionContext?.userAlias ?? profileCacheManager.getCurrentUserAlias();
+        if (!this.isCodingAgentEnabledForProfile(codingAgentProfileAlias)) {
+          result = { content: [{ type: 'text', text: 'coding_agent tool is disabled (enable it in Settings → Coding CLI)' }], isError: true };
         } else {
-          result = await CodingAgentTool.execute(args, { signal });
+          result = await CodingAgentTool.execute(args, { signal, executionContext: callExecutionContext });
         }
+      } else if (name === 'browser') {
+        const browserAlias = callExecutionContext?.userAlias ?? profileCacheManager.getCurrentUserAlias();
+        if (!browserAlias || profileCacheManager.getBrowserSettings(browserAlias).enabled !== true) {
+          result = { ok: false, error: 'browser tool is disabled (enable it in Settings → Browser)' };
+        } else {
+          const { EmbeddedBrowserTool } = await import('./embeddedBrowserTool');
+          result = await EmbeddedBrowserTool.execute(args, { signal, chatSessionId, workspaceRoot });
+        }
+      } else if (name === 'computer_use') {
+        if (capturedExecutionContext === undefined || !callExecutionContext) {
+          result = { ok: false, error: 'computer_use requires an active main-agent execution context.' };
+        } else if (callExecutionContext.isSubAgent === true) {
+          result = { ok: false, error: 'computer_use is unavailable to sub-agents; real desktop control is main-agent only.' };
+        } else if (callExecutionContext.interactionPolicy !== 'allow-ui') {
+          result = { ok: false, error: 'computer_use is unavailable in non-interactive runs; real desktop control requires the local app UI.' };
+        } else {
+          const unsupportedReason = getComputerUseUnsupportedReason();
+          if (unsupportedReason) {
+            result = { ok: false, error: unsupportedReason };
+          } else {
+            const computerUseAlias = callExecutionContext.userAlias;
+            const computerUseSettings = computerUseAlias ? profileCacheManager.getComputerUseSettings(computerUseAlias) : null;
+            if (!computerUseSettings || computerUseSettings.enabled !== true) {
+              result = { ok: false, error: 'computer_use tool is disabled (enable it in Settings → Computer Use)' };
+            } else {
+              const { ComputerUseTool } = await import('./computerUseTool');
+              result = await ComputerUseTool.execute(args, {
+                signal,
+                chatSessionId,
+                workspaceRoot,
+                settings: {
+                  alwaysAllowedApps: computerUseSettings.alwaysAllowedApps,
+                  requireConfirmation: computerUseSettings.requireConfirmation,
+                },
+              });
+            }
+          }
+        }
+      } else if (name === 'memex_memory') {
+        result = await executeMemexMemoryTool(args, callExecutionContext ?? undefined, signal);
       }
       // ===== Heavy tools (lazy loaded) =====
       else if (name === 'bing_web_search') {
         const { BingWebSearchTool } = await import('./bingWebSearchTool');
-        result = await BingWebSearchTool.execute(args, { signal });
+        result = await BingWebSearchTool.execute(args, { signal, executionContext: callExecutionContext });
       } else if (name === 'bing_image_search') {
         const { BingImageSearchTool } = await import('./bingImageSearchTool');
-        result = await BingImageSearchTool.execute(args, { signal });
+        result = await BingImageSearchTool.execute(args, { signal, executionContext: callExecutionContext });
       } else if (name === 'fetch_web_content') {
         const { FetchWebContentTool } = await import('./fetchWebContentTool');
-        result = await FetchWebContentTool.execute(args, { signal });
+        result = await FetchWebContentTool.execute(args, { signal, executionContext: callExecutionContext });
       } else if (name === 'read_office_file') {
         const { ReadOfficeFileTool } = await import('./readOfficeFileTool');
         result = await ReadOfficeFileTool.execute(args, { signal });
       } else if (name === 'download_file') {
         const { DownloadFileTool } = await import('./downloadFileTool');
-        result = await DownloadFileTool.execute(args, { signal });
+        result = await DownloadFileTool.execute(args, { signal, executionContext: callExecutionContext });
       }
-      // ──── Remote Control tool (lazy load) ────
-      else if (name === 'manage_remote_channel') {
-        // 🔒 openkosmosFeatureRemoteChannel feature flag protected
-        if (!isFeatureEnabled('openkosmosFeatureRemoteChannel')) {
-          result = { content: [{ type: 'text', text: 'Remote channel feature is disabled.' }], isError: true };
-        } else {
-          const { ManageRemoteChannelTool } = await import('./manageRemoteChannelTool');
-          result = await ManageRemoteChannelTool.execute(args, { signal });
-        }
-      }
-      // ──── Unified Sub-Agent tool ────
+      // ──── Ad-hoc Sub-Agent tool ────
       else if (name === 'sub_agent') {
-        // Named sub-agent spawning (subagent_type) requires feature flag; adhoc always allowed
-        if (args.subagent_type && !isFeatureEnabled('openkosmosFeatureSubAgent')) {
-          result = { content: [{ type: 'text', text: 'Named Sub-Agent feature is disabled. You can still use ad-hoc sub-agents by omitting subagent_type.' }], isError: true };
-        } else {
-          const { SubAgentTool } = await import('./subAgentTool');
-          result = await SubAgentTool.execute(args, { signal });
-        }
+        const { SubAgentTool } = await import('./subAgentTool');
+        result = await SubAgentTool.execute(args, { signal, executionContext: callExecutionContext });
       } else if (name === 'get_subagent_status') {
         const context = BuiltinToolsManager.getExecutionContext();
         if (!context) {
@@ -678,6 +707,7 @@ export class BuiltinToolsManager {
     }
   }
 
+
   /**
    * Get OpenAI format tool definitions
    * For seamless integration with the MCP tool system, unifying tool format
@@ -686,6 +716,9 @@ export class BuiltinToolsManager {
     const definitions = [];
 
     for (const [name, tool] of this.tools) {
+      if (!this.shouldExposeTool(name)) {
+        continue;
+      }
       definitions.push({
         type: 'function',
         function: {
@@ -704,11 +737,15 @@ export class BuiltinToolsManager {
    * Get all registered tool definitions
    */
   getAllTools(): BuiltinToolDefinition[] {
-    return Array.from(this.tools.values());
+    return Array.from(this.tools.entries())
+      .filter(([name]) => this.shouldExposeTool(name))
+      .map(([, tool]) => tool);
   }
 
   /**
-   * Check if a tool is registered
+   * Check if a tool is registered. This intentionally does not apply
+   * inventory visibility gates: execution must still reach per-tool disabled
+   * branches so stale calls receive recoverable settings errors.
    */
   hasTool(name: string): boolean {
     return this.tools.has(name);
@@ -718,6 +755,9 @@ export class BuiltinToolsManager {
    * Get a specific tool definition
    */
   getTool(name: string): BuiltinToolDefinition | undefined {
+    if (!this.shouldExposeTool(name)) {
+      return undefined;
+    }
     return this.tools.get(name);
   }
 
@@ -729,6 +769,9 @@ export class BuiltinToolsManager {
     const toolsInfo: BuiltinToolInfo[] = [];
 
     for (const [name, tool] of this.tools) {
+      if (!this.shouldExposeTool(name)) {
+        continue;
+      }
       toolsInfo.push({
         name: tool.name,
         description: tool.description,
@@ -745,6 +788,9 @@ export class BuiltinToolsManager {
    * Get detailed info for a specific tool (MCP format compatible)
    */
   getToolInfo(name: string): BuiltinToolInfo | undefined {
+    if (!this.shouldExposeTool(name)) {
+      return undefined;
+    }
     const tool = this.tools.get(name);
     if (!tool) {
       return undefined;
@@ -762,11 +808,45 @@ export class BuiltinToolsManager {
    * Get statistics
    */
   getStats() {
+    const exposedTools = Array.from(this.tools.keys()).filter((name) => this.shouldExposeTool(name));
     return {
-      totalTools: this.tools.size,
-      tools: Array.from(this.tools.keys()),
+      totalTools: exposedTools.length,
+      tools: exposedTools,
       isInitialized: this.isInitialized
     };
+  }
+
+  private shouldExposeTool(name: string): boolean {
+    if (name === 'browser') {
+      const alias = profileCacheManager.getCurrentUserAlias();
+      return typeof alias === 'string' && alias.length > 0 && profileCacheManager.getBrowserSettings(alias).enabled === true;
+    }
+    if (name === 'memex_memory') {
+      const alias = profileCacheManager.getCurrentUserAlias();
+      return typeof alias === 'string' && alias.length > 0 && profileCacheManager.getMemexSettings(alias).enabled === true;
+    }
+    if (name === 'computer_use') {
+      const alias = profileCacheManager.getCurrentUserAlias();
+      return isComputerUsePlatformSupported() &&
+        typeof alias === 'string' &&
+        alias.length > 0 &&
+        profileCacheManager.getComputerUseSettings(alias).enabled === true;
+    }
+    if (name === 'coding_agent') {
+      return this.isCodingAgentEnabledForProfile();
+    }
+    if (name === 'manage_hooks') {
+      return this.isHooksEnabledForProfile();
+    }
+    return true;
+  }
+
+  private isHooksEnabledForProfile(alias = profileCacheManager.getCurrentUserAlias()): boolean {
+    return typeof alias === 'string' && alias.length > 0 && profileCacheManager.isHooksEnabled(alias) === true;
+  }
+
+  private isCodingAgentEnabledForProfile(alias = profileCacheManager.getCurrentUserAlias()): boolean {
+    return typeof alias === 'string' && alias.length > 0 && profileCacheManager.getCodingAgentSettings(alias).enabled === true;
   }
 
   /**
@@ -794,3 +874,8 @@ export const getBuiltinToolsManager = (): BuiltinToolsManager => {
   return BuiltinToolsManager.getInstance();
 };
 
+/**
+ * Export default instance for backward compatibility
+ * @deprecated Use getBuiltinToolsManager() or BuiltinToolsManager.getInstance()
+ */
+export const builtinToolsManager = BuiltinToolsManager.getInstance();

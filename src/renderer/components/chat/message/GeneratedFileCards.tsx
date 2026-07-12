@@ -10,9 +10,11 @@ import { useCurrentChatId, CurrentSessionIdle } from '../../../lib/chat/agentCha
 import { isInstallableSkillArtifact } from '../../../lib/skills/installableSkillArtifacts';
 import { createLogger } from '../../../lib/utilities/logger';
 import { ApplySkillDialogAtom } from '../../skills/ApplySkillToAgentsDialog';
+import { getFileOpenAction, openLocalFile } from '../../../lib/utils/fileTypeUtils';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[GeneratedFileCards]');
+const GENERATED_FILES_DEFAULT_GROUP_LABEL = 'Final deliverables';
 
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'avif']);
 
 export interface GeneratedFileCardItem {
   filePath: string;
@@ -36,7 +38,7 @@ export function normalizePresentedFilesToGeneratedFileItems(files: PresentedFile
       if (Array.isArray(parsed)) {
         return parsed.map((filePath: string) => ({
           filePath: typeof filePath === 'string' ? filePath.trim() : filePath,
-          groupLabel: file.description || 'Final deliverables',
+          groupLabel: file.description || GENERATED_FILES_DEFAULT_GROUP_LABEL,
         }));
       }
     } catch {
@@ -45,7 +47,7 @@ export function normalizePresentedFilesToGeneratedFileItems(files: PresentedFile
 
     return [{
       filePath: file.filePath.trim(),
-      groupLabel: file.description || 'Final deliverables',
+      groupLabel: file.description || GENERATED_FILES_DEFAULT_GROUP_LABEL,
     }];
   });
 }
@@ -60,38 +62,13 @@ function getFileName(filePath: string): string {
   return filePath;
 }
 
-function isImageFile(filePath: string): boolean {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  return IMAGE_EXTENSIONS.has(ext);
-}
 
 function previewGeneratedFile(filePath: string): void {
-  const fileName = getFileName(filePath);
-  if (isImageFile(filePath)) {
-    window.dispatchEvent(
-      new CustomEvent('imageViewer:open', {
-        detail: {
-          images: [{ id: `generated-file-${filePath}`, url: filePath, alt: fileName }],
-          initialIndex: 0,
-        },
-      }),
-    );
-    return;
-  }
-
-  window.dispatchEvent(
-    new CustomEvent('fileViewer:open', {
-      detail: {
-        file: {
-          name: fileName,
-          url: filePath,
-        },
-      },
-    }),
-  );
+  openLocalFile(filePath);
 }
 
 export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items }) => {
+  const { t } = useI18n();
   const [fileMenuOpen, setFileMenuOpen] = useState<Record<string, boolean>>({});
   const [fileMenuPosition, setFileMenuPosition] = useState<Record<string, { top: number; left: number }>>({});
   const [fileExistsCache, setFileExistsCache] = useState<Record<string, boolean>>(() => {
@@ -261,11 +238,11 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
       if (result?.success) {
         setFileMenuOpen({});
       } else {
-        showToast(result?.error || 'Unable to open file', 'error');
+        showToast(result?.error || t('chat.files.openFileFailed'), 'error');
       }
     } catch (error) {
       logger.error('[GeneratedFileCards] Failed to open file:', error);
-      showToast('Unable to open file', 'error');
+      showToast(t('chat.files.openFileFailed'), 'error');
     }
   };
 
@@ -275,38 +252,40 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
       if (result?.success) {
         setFileMenuOpen({});
       } else {
-        showToast(result?.error || 'Unable to open folder', 'error');
+        showToast(result?.error || t('chat.files.openFolderFailed'), 'error');
       }
     } catch (error) {
       logger.error('[GeneratedFileCards] Failed to show in folder:', error);
-      showToast('Unable to open folder', 'error');
+      showToast(t('chat.files.openFolderFailed'), 'error');
     }
   };
 
   const handleAddToKnowledge = async (filePath: string) => {
     try {
       setFileMenuOpen({});
-      const knowledgeBasePath = currentAgent?.knowledge?.knowledgeBase;
+      const knowledgeBasePath = currentAgent?.knowledge?.knowledgeBase ?? currentAgent?.knowledgeBase;
       if (!knowledgeBasePath) {
-        showToast('Current agent has no knowledge base configured', 'error');
+        showToast(t('chat.files.noKnowledgeBase'), 'error');
         return;
       }
 
-      const result = await moveFileToKnowledgeBase(filePath, knowledgeBasePath);
+      const result = await moveFileToKnowledgeBase(filePath, knowledgeBasePath, {
+        replaceExistingConfirm: (name) => t('chat.files.replaceExistingConfirm', { name }),
+      });
       if (result?.success) {
-        showToast('File moved to knowledge base', 'success', 5000, {
+        showToast(t('chat.files.movedToKnowledgeBase'), 'success', 5000, {
           actions: [
             {
-              label: 'Open Knowledge Base',
+              label: t('chat.files.openKnowledgeBase'),
               onClick: async () => {
                 try {
                   const openResult = await window.electronAPI?.workspace?.openPath(knowledgeBasePath);
                   if (!openResult?.success) {
-                    showToast(openResult?.error || 'Unable to open knowledge base', 'error');
+                    showToast(openResult?.error || t('chat.files.openKnowledgeBaseFailed'), 'error');
                   }
                 } catch (error) {
                   logger.error('[GeneratedFileCards] Failed to open knowledge base:', error);
-                  showToast('Unable to open knowledge base', 'error');
+                  showToast(t('chat.files.openKnowledgeBaseFailed'), 'error');
                 }
               },
               variant: 'primary',
@@ -314,29 +293,29 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
           ],
         });
       } else if (result?.error !== 'User cancelled replacement') {
-        showToast(result?.error || 'Failed to move file to knowledge base', 'error');
+        showToast(result?.error || t('chat.files.moveToKnowledgeBaseFailed'), 'error');
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showToast(`Failed to move to knowledge base: ${errorMessage}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showToast(t('chat.files.moveToKnowledgeBaseFailedWithError', { error: errorMessage }), 'error');
     }
   };
 
   const handleInstallSkill = async (filePath: string) => {
     try {
-      if (!window.electronAPI?.skillLibrary?.installSkillFromFilePath) {
-        showToast('Install skill API not available', 'error');
+      if (!window.electronAPI?.skills?.installSkillFromFilePath) {
+        showToast(t('skills.install.apiUnavailable'), 'error');
         return;
       }
 
-      const result = await window.electronAPI.skillLibrary.installSkillFromFilePath(filePath, {
+      const result = await window.electronAPI.skills.installSkillFromFilePath(filePath, {
         chatId: currentChatId || undefined,
         applyToCurrentAgent: !!currentChatId,
         requestSource: 'generated-file',
       });
 
       if (result.success) {
-        showToast(result.message || `Skill "${result.skillName}" installed successfully`, 'success');
+        showToast(result.message || t('skills.install.success', { name: result.skillName || '' }), 'success');
 
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('skills:refreshFolderExplorer', {
@@ -351,8 +330,8 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
         showToast(result.error, 'error', undefined, { persistent: true });
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showToast(`Failed to install skill: ${errorMessage}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
+      showToast(t('skills.install.failed', { error: errorMessage }), 'error');
     }
   };
 
@@ -372,7 +351,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
         key={`${filePath}-${index}`}
         className={`file-attachment-item ${isAvailable ? 'clickable' : 'deleted'}`}
         onClick={() => isAvailable && previewGeneratedFile(filePath)}
-        title={!fileExists ? `File deleted: ${filePath}` : `Click to open: ${filePath}`}
+        title={!fileExists ? t('chat.files.deletedTitle', { path: filePath }) : t('chat.files.openTitle', { path: filePath })}
         style={
           !isAvailable
             ? { ...responsiveCardStyle, opacity: 0.6, cursor: 'not-allowed' }
@@ -389,20 +368,20 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
           <span className="file-attachment-deleted-badge" style={{
             marginLeft: '6px',
             fontSize: '11px',
-            color: '#ef4444',
+            color: 'var(--color-danger-500)',
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
             padding: '1px 6px',
             borderRadius: '4px',
             fontWeight: 500,
           }}>
-            deleted
+            {t('chat.files.deleted')}
           </span>
         )}
         {isAvailable && (
           <button
             className="file-attachment-menu-trigger"
             onClick={(event) => handleFileMenuToggle(filePath, event)}
-            title="More options"
+            title={t('common.moreOptions')}
           >
             <MoreHorizontal size={16} strokeWidth={2} />
           </button>
@@ -419,7 +398,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
             {group.label && (
               <div className="presented-files-header">
                 <Package size={18} className="presented-files-icon" />
-                <span className="presented-files-description">{group.label}</span>
+                <span className="presented-files-description">{group.label === GENERATED_FILES_DEFAULT_GROUP_LABEL ? t('chat.files.finalDeliverables') : group.label}</span>
               </div>
             )}
 
@@ -449,6 +428,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
               left: `${menuPos.left}px`,
             }}
           >
+            {getFileOpenAction(filePath) !== 'external' && (
             <button
               className="file-attachment-menu-item"
               onClick={() => {
@@ -459,8 +439,9 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
               <span className="file-attachment-menu-item-icon">
                 <Eye size={16} strokeWidth={2} />
               </span>
-              <span className="file-attachment-menu-item-text">Preview file</span>
+              <span className="file-attachment-menu-item-text">{t('chat.files.previewFile')}</span>
             </button>
+            )}
             <button
               className="file-attachment-menu-item"
               onClick={() => handleOpenWithDefaultApp(filePath)}
@@ -468,7 +449,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
               <span className="file-attachment-menu-item-icon">
                 <FolderOpen size={16} strokeWidth={2} />
               </span>
-              <span className="file-attachment-menu-item-text">Open file with default app</span>
+              <span className="file-attachment-menu-item-text">{t('chat.files.openFileWithDefaultApp')}</span>
             </button>
             <button
               className="file-attachment-menu-item"
@@ -477,7 +458,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
               <span className="file-attachment-menu-item-icon">
                 <Folder size={16} strokeWidth={2} />
               </span>
-              <span className="file-attachment-menu-item-text">Open file in folder</span>
+              <span className="file-attachment-menu-item-text">{t('chat.files.openFileInFolder')}</span>
             </button>
             <button
               className="file-attachment-menu-item"
@@ -489,7 +470,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
               <span className="file-attachment-menu-item-icon">
                 <Copy size={16} strokeWidth={2} />
               </span>
-              <span className="file-attachment-menu-item-text">Copy file path</span>
+              <span className="file-attachment-menu-item-text">{t('common.copyFilePath')}</span>
             </button>
             {isInstallableSkillArtifact(filePath) && (
               <button
@@ -502,10 +483,10 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
                 <span className="file-attachment-menu-item-icon">
                   <Download size={16} strokeWidth={2} />
                 </span>
-                <span className="file-attachment-menu-item-text">Install skill</span>
+                <span className="file-attachment-menu-item-text">{t('workspace.fileTree.installSkill')}</span>
               </button>
             )}
-            {shouldShowMoveToKnowledgeBaseOption(filePath, currentAgent?.knowledge?.knowledgeBase, isSessionIdle) && (
+            {shouldShowMoveToKnowledgeBaseOption(filePath, currentAgent?.knowledge?.knowledgeBase ?? currentAgent?.knowledgeBase, isSessionIdle) && (
               <button
                 className="file-attachment-menu-item"
                 onClick={() => handleAddToKnowledge(filePath)}
@@ -513,7 +494,7 @@ export const GeneratedFileCards: React.FC<GeneratedFileCardsProps> = ({ items })
                 <span className="file-attachment-menu-item-icon">
                   <BookPlus size={16} strokeWidth={2} />
                 </span>
-                <span className="file-attachment-menu-item-text">Move to Knowledge Base</span>
+                <span className="file-attachment-menu-item-text">{t('chat.files.moveToKnowledgeBase')}</span>
               </button>
             )}
           </div>,

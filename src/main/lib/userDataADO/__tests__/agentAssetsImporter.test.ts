@@ -55,7 +55,6 @@ describe('importChatSessionFromFile', () => {
         title: 'Imported session',
         last_updated: '2026-03-19T01:01:01.000Z',
         readStatus: 'read',
-        source: { type: 'local' },
       },
       file: {
         chatSession_id: 'chatSession_20260319010101',

@@ -8,18 +8,13 @@ vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
 
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({
-      cacheQuickStartImages: vi.fn(),
-      clearAgentCache: vi.fn(),
-    })),
-  },
-}));
-
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
   getDefaultAgentWorkspacePath: vi.fn(() => '/mock/workspace/agent'),
+  getProfileDirectoryPath: vi.fn((alias: string) => `/mock/userData/profiles/${alias}`),
+  getAgentKnowledgePath: vi.fn((alias: string, agentId: string) =>
+    `/mock/userData/profiles/${alias}/agents/${agentId}/knowledge`
+  ),
   ensureWorkspaceExists: vi.fn(),
   removeChatSessionsDirectory: vi.fn(),
   removeDefaultWorkspaceDirectory: vi.fn(),
@@ -51,7 +46,25 @@ vi.mock('../../chat/chatSessionStore', async () => ({
   },
 }));
 
+// Mock only the disk I/O of skillsFileStore; keep the real pure helpers so the
+// SkillsConfigManager dirty-check behaves exactly as in production.
+vi.mock('../skillsFileStore', async () => {
+  const actual = await vi.importActual<typeof import('../skillsFileStore')>('../skillsFileStore');
+  return {
+    ...actual,
+    loadSkillsForProfile: vi.fn(async (_dir: string, raw: { skills?: unknown }) => ({
+      skills: Array.isArray(raw?.skills) ? raw.skills : [],
+      needsProfileRewrite: false,
+    })),
+    writeSkillsFile: vi.fn(async () => {}),
+    readSkillsFile: vi.fn(async () => null),
+  };
+});
+
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProfileCacheManager } from '../profileCacheManager';
+import { skillsConfigManager } from '../skillsConfigManager';
+import { chatSkillSnapshotStore } from '../chatSkillSnapshotStore';
 import type { ChatSkillSnapshot, ProfileV2 } from '../types/profile';
 
 function createSnapshot(overrides: Partial<ChatSkillSnapshot> = {}): ChatSkillSnapshot {
@@ -79,7 +92,6 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
     updatedAt: '2026-03-20T00:00:00.000Z',
     alias: 'testUser',
     freDone: true,
-    primaryAgent: 'Kobi',
     mcp_servers: [],
     skills: [
       {
@@ -101,16 +113,15 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent One',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledge: { knowledgeBase: '' },
+          knowledgeBase: '',
           version: '1.0.0',
           remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: 'test',
+          system_prompt: { 'Base.md': 'test', 'AGENTS.md': '' },
           skills: ['pptx'],
           zero_states: { greeting: '', quick_starts: [] },
         },
-        skill_snapshot: createSnapshot(),
       },
       {
         chat_id: 'chat-2',
@@ -122,28 +133,15 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
           name: 'Agent Two',
           model: 'claude-sonnet-4.6',
           workspace: '',
-          knowledge: { knowledgeBase: '' },
+          knowledgeBase: '',
           version: '1.0.0',
           remoteVersion: '',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: 'test',
+          system_prompt: { 'Base.md': 'test', 'AGENTS.md': '' },
           skills: ['other-skill'],
           zero_states: { greeting: '', quick_starts: [] },
         },
-        skill_snapshot: createSnapshot({
-          binding_signature: '["other-skill"]',
-          registry_signature: '[{"name":"other-skill"}]',
-          skills: [
-            {
-              name: 'other-skill',
-              description: 'Other skill',
-              version: '2.0.0',
-              file_path: '/mock/userData/profiles/testUser/skills/other-skill/SKILL.md',
-            },
-          ],
-          prompt: 'other prompt',
-        }),
       },
     ],
     'starred-chat-sessions': [],
@@ -151,10 +149,10 @@ function createTestProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
   };
 }
 
-describe('ProfileCacheManager skill snapshot invalidation', () => {
+describe('ProfileCacheManager skill snapshot invalidation (in-memory store)', () => {
   let manager: ProfileCacheManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     (ProfileCacheManager as any).instance = undefined;
     manager = ProfileCacheManager.getInstance();
     (manager as any).writeProfileToFile = vi.fn().mockResolvedValue(true);
@@ -164,11 +162,24 @@ describe('ProfileCacheManager skill snapshot invalidation', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    skillsConfigManager.clearAll();
+    chatSkillSnapshotStore.clearAll();
   });
+
+  async function primeRegistryAndSnapshots(profile: ProfileV2): Promise<void> {
+    (manager as any).cache.set('testUser', profile);
+    await skillsConfigManager.loadForAlias('testUser', profile);
+    chatSkillSnapshotStore.set('testUser', 'chat-1', createSnapshot());
+    chatSkillSnapshotStore.set('testUser', 'chat-2', createSnapshot({
+      binding_signature: '["other-skill"]',
+      registry_signature: '[{"name":"other-skill"}]',
+      prompt: 'other prompt',
+    }));
+  }
 
   it('invalidates only affected chat snapshots when addSkill updates an existing skill', async () => {
     const profile = createTestProfile();
-    (manager as any).cache.set('testUser', profile);
+    await primeRegistryAndSnapshots(profile);
 
     const result = await manager.addSkill('testUser', {
       name: 'pptx',
@@ -179,26 +190,38 @@ describe('ProfileCacheManager skill snapshot invalidation', () => {
     });
 
     expect(result).toBe(true);
-    expect(profile.chats[0].skill_snapshot).toBeUndefined();
-    expect(profile.chats[1].skill_snapshot).toBeDefined();
-    expect(profile.skills![0].version).toBe('1.1.0');
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeUndefined();
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-2')).toBeDefined();
+    expect(skillsConfigManager.getSkill('testUser', 'pptx')?.version).toBe('1.1.0');
   });
 
   it('invalidates only affected chat snapshots when deleteSkill removes a referenced skill', async () => {
     const profile = createTestProfile();
-    (manager as any).cache.set('testUser', profile);
+    await primeRegistryAndSnapshots(profile);
 
     const result = await manager.deleteSkill('testUser', 'pptx');
 
     expect(result).toBe(true);
-    expect(profile.skills).toEqual([]);
-    expect(profile.chats[0].skill_snapshot).toBeUndefined();
-    expect(profile.chats[1].skill_snapshot).toBeDefined();
+    expect(skillsConfigManager.hasSkill('testUser', 'pptx')).toBe(false);
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeUndefined();
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-2')).toBeDefined();
+  });
+
+  it('updates skill config and notifies without touching unaffected snapshots when updateSkill runs', async () => {
+    const profile = createTestProfile();
+    await primeRegistryAndSnapshots(profile);
+
+    const result = await manager.updateSkill('testUser', 'pptx', { version: '2.0.0' });
+
+    expect(result).toBe(true);
+    expect(skillsConfigManager.getSkill('testUser', 'pptx')?.version).toBe('2.0.0');
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeUndefined();
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-2')).toBeDefined();
   });
 
   it('clears the chat snapshot when updateChatAgent changes skills', async () => {
     const profile = createTestProfile();
-    (manager as any).cache.set('testUser', profile);
+    await primeRegistryAndSnapshots(profile);
 
     const result = await manager.updateChatAgent('testUser', 'chat-1', {
       skills: ['new-skill'],
@@ -206,52 +229,30 @@ describe('ProfileCacheManager skill snapshot invalidation', () => {
 
     expect(result).toBe(true);
     expect(profile.chats[0].agent?.skills).toEqual(['new-skill']);
-    expect(profile.chats[0].skill_snapshot).toBeUndefined();
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeUndefined();
   });
 
   it('keeps the chat snapshot when updateChatAgent receives the same skills', async () => {
     const profile = createTestProfile();
-    (manager as any).cache.set('testUser', profile);
+    await primeRegistryAndSnapshots(profile);
 
     const result = await manager.updateChatAgent('testUser', 'chat-1', {
       skills: ['pptx'],
     });
 
     expect(result).toBe(true);
-    expect(profile.chats[0].skill_snapshot).toBeDefined();
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeDefined();
   });
 
   it('keeps the chat snapshot when updateChatAgent changes unrelated fields only', async () => {
     const profile = createTestProfile();
-    (manager as any).cache.set('testUser', profile);
+    await primeRegistryAndSnapshots(profile);
 
     const result = await manager.updateChatAgent('testUser', 'chat-1', {
-      system_prompt: 'updated prompt only',
+      system_prompt: { 'Base.md': 'updated prompt only', 'AGENTS.md': '' },
     });
 
     expect(result).toBe(true);
-    expect(profile.chats[0].skill_snapshot).toBeDefined();
-  });
-
-  it('persists a refreshed chat skill snapshot via updateChatSkillSnapshot', async () => {
-    const profile = createTestProfile({
-      chats: [
-        {
-          ...createTestProfile().chats[0],
-          skill_snapshot: undefined,
-        },
-      ],
-    });
-    (manager as any).cache.set('testUser', profile);
-
-    const nextSnapshot = createSnapshot({
-      missing_skill_names: ['missing-skill'],
-    });
-
-    const result = await manager.updateChatSkillSnapshot('testUser', 'chat-1', nextSnapshot);
-
-    expect(result).toBe(true);
-    expect(profile.chats[0].skill_snapshot).toEqual(nextSnapshot);
-    expect((manager as any).writeProfileToFile).toHaveBeenCalledWith('testUser', profile);
+    expect(chatSkillSnapshotStore.get('testUser', 'chat-1')).toBeDefined();
   });
 });

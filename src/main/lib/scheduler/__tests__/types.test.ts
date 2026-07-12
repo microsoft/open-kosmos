@@ -46,20 +46,18 @@ describe('scheduler types', () => {
         cronExpression: '0 * * * *',
         runAt: '2026-05-11T12:00:00.000Z',
         enabled: true,
-        agentId: 'agent-1',
+        chat_id: 'agent-1',
         message: 'hello',
         status: 'pending',
         lastRunAt: '2026-05-10T12:00:00.000Z',
         lastFinishedAt: '2026-05-10T12:01:00.000Z',
         executedAt: '2026-05-10T12:01:00.000Z',
-        notifyOnCompletion: false,
       });
 
       expect(result.id).toBe('sched_20260401000000_dev_abc123456');
       expect(result.name).toBe('My Job');
       expect(result.scheduleType).toBe('cron');
       expect(result.enabled).toBe(true);
-      expect(result.notifyOnCompletion).toBe(false);
     });
 
     it('defaults missing optional fields', () => {
@@ -68,13 +66,12 @@ describe('scheduler types', () => {
       expect(result.name).toBe('');
       expect(result.scheduleType).toBe('cron');
       expect(result.enabled).toBe(true);
-      expect(result.agentId).toBe('');
+      expect(result.chat_id).toBe('');
       expect(result.message).toBe('');
       expect(result.status).toBe('pending');
       expect(result.lastRunAt).toBeUndefined();
       expect(result.lastFinishedAt).toBeUndefined();
       expect(result.executedAt).toBeUndefined();
-      expect(result.notifyOnCompletion).toBe(true);
     });
 
     it('normalizes scheduleType once', () => {
@@ -91,6 +88,51 @@ describe('scheduler types', () => {
       const result = normalizeSchedulerJob({ id: 'x', enabled: 'yes' as any });
       expect(result.enabled).toBe(true);
     });
+
+    it('normalizes valid historyRetention', () => {
+      const result = normalizeSchedulerJob({
+        id: 'x',
+        historyRetention: { successfulLimit: 30, failedLimit: 15 },
+      });
+      expect(result.historyRetention).toEqual({ successfulLimit: 30, failedLimit: 15 });
+    });
+
+    it('normalizes historyRetention with only successfulLimit', () => {
+      const result = normalizeSchedulerJob({
+        id: 'x',
+        historyRetention: { successfulLimit: 25 } as any,
+      });
+      expect(result.historyRetention).toEqual({ successfulLimit: 25, failedLimit: 10 });
+    });
+
+    it('normalizes historyRetention with only failedLimit', () => {
+      const result = normalizeSchedulerJob({
+        id: 'x',
+        historyRetention: { failedLimit: 5 } as any,
+      });
+      expect(result.historyRetention).toEqual({ successfulLimit: 20, failedLimit: 5 });
+    });
+
+    it('returns undefined historyRetention for non-object', () => {
+      const result = normalizeSchedulerJob({
+        id: 'x',
+        historyRetention: 'invalid' as any,
+      });
+      expect(result.historyRetention).toBeUndefined();
+    });
+
+    it('returns undefined historyRetention when both limits are invalid', () => {
+      const result = normalizeSchedulerJob({
+        id: 'x',
+        historyRetention: { successfulLimit: -1, failedLimit: -5 } as any,
+      });
+      expect(result.historyRetention).toBeUndefined();
+    });
+
+    it('returns undefined historyRetention for undefined', () => {
+      const result = normalizeSchedulerJob({ id: 'x' });
+      expect(result.historyRetention).toBeUndefined();
+    });
   });
 
   describe('normalizeScheduleMonthFile', () => {
@@ -106,7 +148,7 @@ describe('scheduler types', () => {
     it('normalizes jobs from valid input', () => {
       const result = normalizeScheduleMonthFile({
         schedulerJobs: [
-          { id: 'sched_x', name: 'job', enabled: true, agentId: 'a', message: 'm', status: 'pending', scheduleType: 'cron', description: '' },
+          { id: 'sched_x', name: 'job', enabled: true, chat_id: 'a', message: 'm', status: 'pending', scheduleType: 'cron', description: '' },
         ],
       });
       expect(result.schedulerJobs).toHaveLength(1);

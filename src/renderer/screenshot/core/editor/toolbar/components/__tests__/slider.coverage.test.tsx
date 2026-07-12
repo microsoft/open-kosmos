@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockStartTransaction = vi.hoisted(() => vi.fn());
@@ -193,6 +193,29 @@ describe('SliderThumb', () => {
     const blurSpy = vi.spyOn(thumb, 'blur');
     fireEvent.keyDown(thumb, { key: 'Enter' });
     expect(blurSpy).toHaveBeenCalled();
+  });
+
+  it('debounces repeated keyboard commits and ignores unknown keys', () => {
+    vi.useFakeTimers();
+    try {
+      const onChange = vi.fn();
+      render(<SliderThumb min={0} max={100} value={50} onChange={onChange} />);
+      const thumb = screen.getByRole('slider');
+
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      fireEvent.keyDown(thumb, { key: 'Escape' });
+
+      expect(mockStartTransaction).toHaveBeenCalledOnce();
+      expect(onChange).toHaveBeenCalledTimes(2);
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(mockEndTransaction).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows tooltip on mouseEnter', () => {

@@ -9,7 +9,7 @@ describe('CommandParser - dir command', () => {
   describe('Windows dir command switch recognition', () => {
     test('should correctly identify paths and exclude the /b switch', () => {
       const paths = CommandParser.extractPathsFromCommand(
-        'dir C:\\Users\\yanhu\\AppData\\Local\\uv\\cache\\archive-v0\\zS-2m9Hp6-b4wTQFnL302\\lib\\site-packages\\some_mcp_package\\..\\..\\temp\\titan_query_results_*.csv /b'
+        'dir C:\\Users\\yanhu\\AppData\\Local\\uv\\cache\\archive-v0\\zS-2m9Hp6-b4wTQFnL302\\lib\\site-packages\\example_mcp\\..\\..\\temp\\titan_query_results_*.csv /b'
       );
 
       expect(paths).toHaveLength(1);
@@ -53,7 +53,7 @@ describe('CommandParser - dir command', () => {
       const command = 'cmd';
       const parameters = [
         'dir',
-        'C:\\Users\\yanhu\\AppData\\Local\\uv\\cache\\archive-v0\\zS-2m9Hp6-b4wTQFnL302\\lib\\site-packages\\some_mcp_package\\..\\..\\temp\\titan_query_results_*.csv',
+        'C:\\Users\\yanhu\\AppData\\Local\\uv\\cache\\archive-v0\\zS-2m9Hp6-b4wTQFnL302\\lib\\site-packages\\example_mcp\\..\\..\\temp\\titan_query_results_*.csv',
         '/b',
         '/o:d'
       ];

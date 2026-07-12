@@ -5,6 +5,8 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AgentKnowledgeBaseTab from '../AgentKnowledgeBaseTab';
 import type { AgentConfig, TabComponentProps } from '../types';
+import { WithStore } from '../../../../atom';
+import { appDataManager } from '../../../../lib/userData/appDataManager';
 
 const mockGetWorkspaceFileTree = vi.fn();
 const mockGetDirectoryChildren = vi.fn();
@@ -82,17 +84,20 @@ function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
 function renderTab(overrides: Partial<TabComponentProps> = {}) {
   const props: TabComponentProps = {
     mode: 'update',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: createAgent(),
     onSave: vi.fn(async () => createAgent()),
     onDataChange: vi.fn(),
     cachedData: null,
     readOnly: false,
-    isFromLibrary: false,
     ...overrides,
   };
 
-  return render(<AgentKnowledgeBaseTab {...props} />);
+  return render(
+    <WithStore>
+      <AgentKnowledgeBaseTab {...props} />
+    </WithStore>
+  );
 }
 
 function createDeferred<T>() {
@@ -115,6 +120,7 @@ const baseTree = [
 describe('AgentKnowledgeBaseTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (appDataManager as any).cache = { uiLanguage: 'en' };
 
     mockGetWorkspaceFileTree.mockResolvedValue({
       success: true,
@@ -266,13 +272,6 @@ describe('AgentKnowledgeBaseTab', () => {
     await screen.findByDisplayValue('/knowledge');
     expect(screen.queryByText('Add')).not.toBeInTheDocument();
     expect(screen.queryByText('Select Knowledge Base Folder')).not.toBeInTheDocument();
-  });
-
-  it('renders isFromLibrary state - no select path button in main area but path input disabled', async () => {
-    renderTab({ isFromLibrary: true });
-    await screen.findByDisplayValue('/knowledge');
-    const selectBtn = screen.getByRole('button', { name: /select path/i });
-    expect(selectBtn).toBeDisabled();
   });
 
   it('calls selectWorkspaceFolder when select path button is clicked', async () => {
@@ -477,7 +476,20 @@ describe('AgentKnowledgeBaseTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /clear current folder/i }));
 
     await waitFor(() => expect((window as any).electronAPI.fs.deletePaths).toHaveBeenCalled());
+    expect(window.confirm).toHaveBeenCalledWith('Are you sure you want to clear all 3 items in the current folder?\n\nThis action cannot be undone.');
     await waitFor(() => expect(mockGetWorkspaceFileTree.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('localizes clear current folder confirmation', async () => {
+    (appDataManager as any).cache = { uiLanguage: 'zh-CN' };
+    window.confirm = vi.fn(() => false);
+    renderTab();
+    await screen.findByText('cycles');
+
+    fireEvent.click(screen.getByRole('button', { name: '清空当前文件夹' }));
+
+    expect(window.confirm).toHaveBeenCalledWith('确定要清空当前文件夹中的全部 3 个项目吗？\n\n此操作无法撤销。');
+    expect((window as any).electronAPI.fs.deletePaths).not.toHaveBeenCalled();
   });
 
   it('does not clear folder when user cancels confirmation', async () => {
@@ -729,4 +741,3 @@ describe('AgentKnowledgeBaseTab', () => {
     expect(screen.getByText(/Knowledge Agent can use them/)).toBeInTheDocument();
   });
 });
-

@@ -27,7 +27,7 @@ export interface McpConfigFormatterParams {
 
 /**
  * MCP configuration LLM formatter
- * Uses LLM API to format and validate MCP configuration
+ * Uses GitHub Copilot models to format and validate MCP configuration
  */
 export class McpConfigLlmFormatter {
   // Hard-coded prompt template from .vscode/mcpConfigFormattingExample.md
@@ -90,6 +90,7 @@ You are a professional MCP (Model Context Protocol) server configuration formatt
 
 **Optional Fields**:
 - \`env\` (object): Environment variable key-value pairs
+- \`headers\` (object): HTTP headers key-value pairs (e.g. x-apikey, Authorization)
 
 **Standard Format Example**:
 \`\`\`json
@@ -103,6 +104,17 @@ You are a professional MCP (Model Context Protocol) server configuration formatt
 }
 \`\`\`
 
+**Example with HTTP Headers**:
+\`\`\`json
+
+{
+  "url": "http://localhost:8000/sse",
+  "headers": {
+    "x-apikey": "your-api-key"
+  }
+}
+\`\`\`
+
 ### 3. StreamableHttp Transport Type (StreamableHttp)
 
 **Purpose**: Communicate with remote servers through HTTP streaming connections
@@ -112,6 +124,7 @@ You are a professional MCP (Model Context Protocol) server configuration formatt
 
 **Optional Fields**:
 - \`env\` (object): Environment variable key-value pairs
+- \`headers\` (object): HTTP headers key-value pairs (e.g. x-apikey, Authorization)
 
 **Standard Format Example**:
 \`\`\`json
@@ -121,6 +134,17 @@ You are a professional MCP (Model Context Protocol) server configuration formatt
   "env": {
     "AUTH_TOKEN": "bearer-token",
     "REQUEST_TIMEOUT": "60"
+  }
+}
+\`\`\`
+
+**Example with HTTP Headers**:
+\`\`\`json
+
+{
+  "url": "http://localhost:3000/mcp",
+  "headers": {
+    "Authorization": "Bearer your-token"
   }
 }
 
@@ -351,7 +375,7 @@ The config field should contain the server configuration directly (NOT nested un
 }
 
 For stdio type, config should contain: command, args, and optionally env.
-For sse/StreamableHttp type, config should contain: url, and optionally env.
+For sse/StreamableHttp type, config should contain: url, and optionally env and headers (for HTTP headers like x-apikey, Authorization).
 
 Do NOT nest the configuration under the server name. The config field should directly contain the server configuration object.`;
 

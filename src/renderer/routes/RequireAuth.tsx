@@ -1,9 +1,11 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthContext } from '../components/auth/AuthProvider';
+import { useI18n } from '../lib/i18n/useI18n';
 
 export const RequireAuth: React.FC = () => {
   const { isAuthenticated, loading } = useAuthContext();
+  const { t } = useI18n();
   const location = useLocation();
 
   if (loading) {
@@ -15,8 +17,8 @@ export const RequireAuth: React.FC = () => {
               <div className="absolute inset-0 border-4 border-primary-500/30 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
-            <h2 className="text-xl font-semibold text-neutral-700 mb-2">Loading...</h2>
-            <p className="text-neutral-500 text-sm">Verifying authentication...</p>
+            <h2 className="text-xl font-semibold text-neutral-700 mb-2">{t('auth.require.loading')}</h2>
+            <p className="text-neutral-500 text-sm">{t('auth.require.verifying')}</p>
           </div>
         </div>
       </div>

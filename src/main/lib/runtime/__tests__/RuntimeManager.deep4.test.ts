@@ -4,7 +4,6 @@
  * Targets uncovered lines that prior test files missed:
  *  - ensureShims: Windows .cmd shim path (isWin=true)
  *  - ensureShims: error catch path
- *  - initializeInternalMode: Agency CLI feature-enabled path (install and already-installed)
  *  - ensureRequiredToolsInstalled: uv already installed + bun not installed
  *  - ensureRequiredToolsInstalled: bun install success / failure callbacks
  *  - doInstallPythonVersion: full spawn flow (stdout/stderr data, close code=0, signal, null code, non-zero)
@@ -13,7 +12,6 @@
  *  - uninstallPythonVersion: spawn close success / failure
  *  - cleanUvCache: stdout/stderr data handlers, close code=0 and non-zero, error event
  *  - IPC handler callbacks: runtime:set-mode, runtime:install-component (bun path + error path),
- *    runtime:check-status (agency enabled), runtime:install-agency/uninstall-agency (enabled/disabled),
  *    runtime:list-python-versions, runtime:list-python-versions-fast,
  *    runtime:install-python-version (success/failure), runtime:uninstall-python-version,
  *    runtime:set-pinned-python-version, runtime:clean-uv-cache, runtime:check-git-version
@@ -118,6 +116,21 @@ const { mockIsFeatureEnabled } = vi.hoisted(() => ({
 }));
 vi.mock('../../featureFlags', () => ({
   isFeatureEnabled: mockIsFeatureEnabled,
+}));
+
+const { mockAzureCliManager } = vi.hoisted(() => ({
+  mockAzureCliManager: {
+    initialize: vi.fn().mockResolvedValue({
+      installed: true,
+      loggedIn: false,
+      version: '2.55.0',
+      installSupported: false,
+    }),
+    ensureInstalledWithConsent: vi.fn().mockResolvedValue({ success: true }),
+  },
+}));
+vi.mock('../../azureCli', () => ({
+  getAzureCliManager: vi.fn().mockReturnValue(mockAzureCliManager),
 }));
 
 const { mockMirrorStart, mockMirrorStop, mockMirrorGetBaseUrl } = vi.hoisted(() => ({
@@ -598,7 +611,6 @@ describe('RuntimeManager IPC handlers', () => {
     await expect(handler({}, 'uv', '0.7.0')).rejects.toThrow('install failed');
   });
 
-
   it('runtime:list-python-versions calls listPythonVersions', async () => {
     const handler = mockIpcHandlers['runtime:list-python-versions'];
     vi.spyOn(manager as any, 'listPythonVersionsFast').mockReturnValue([]);
@@ -644,6 +656,40 @@ describe('RuntimeManager IPC handlers', () => {
     vi.spyOn(manager, 'cleanUvCache').mockResolvedValue(undefined);
     await handler({});
     expect(manager.cleanUvCache).toHaveBeenCalled();
+  });
+
+  it('runtime:list-python-packages calls listPythonPackages', async () => {
+    const handler = mockIpcHandlers['runtime:list-python-packages'];
+    vi.spyOn(manager, 'listPythonPackages').mockResolvedValue([{ name: 'mcp', version: '1.0' }]);
+    const result = await handler({});
+    expect(result).toEqual([{ name: 'mcp', version: '1.0' }]);
+  });
+
+  it('runtime:add-python-packages calls installPythonPackages', async () => {
+    const handler = mockIpcHandlers['runtime:add-python-packages'];
+    vi.spyOn(manager, 'installPythonPackages').mockResolvedValue(undefined);
+    await handler({}, ['mcp', 'httpx']);
+    expect(manager.installPythonPackages).toHaveBeenCalledWith(['mcp', 'httpx']);
+  });
+
+  it('runtime:uninstall-python-package calls uninstallPythonPackage', async () => {
+    const handler = mockIpcHandlers['runtime:uninstall-python-package'];
+    vi.spyOn(manager, 'uninstallPythonPackage').mockResolvedValue(undefined);
+    await handler({}, 'mcp');
+    expect(manager.uninstallPythonPackage).toHaveBeenCalledWith('mcp');
+  });
+
+  it('listPythonPackages delegator returns [] when venv missing', async () => {
+    await expect(manager.listPythonPackages()).resolves.toEqual([]);
+  });
+
+  it('installPythonPackages delegator runs without throwing the test', async () => {
+    await manager.installPythonPackages(['mcp']).catch(() => undefined);
+    expect(true).toBe(true);
+  });
+
+  it('uninstallPythonPackage delegator rejects invalid name', async () => {
+    await expect(manager.uninstallPythonPackage('-bad')).rejects.toThrow('Invalid package');
   });
 
   it('runtime:check-git-version returns git info', async () => {

@@ -263,7 +263,7 @@ describe('getPlatformDetectionInfo', () => {
     mockGetPlatformInfo.mockReturnValue({
       platform: 'macOS',
       isSupported: true,
-      vscodeConfigPaths: ['/Users/user/Library/...']
+      vscodeConfigPath: '/Users/user/Library/...'
     });
     const info = getPlatformDetectionInfo();
     expect(info.platform).toBe('macOS');
@@ -273,20 +273,20 @@ describe('getPlatformDetectionInfo', () => {
   });
 
   it('returns Windows detection info', () => {
-    mockGetPlatformInfo.mockReturnValue({ platform: 'Windows', isSupported: true, vscodeConfigPaths: [''] });
+    mockGetPlatformInfo.mockReturnValue({ platform: 'Windows', isSupported: true, vscodeConfigPath: '' });
     const info = getPlatformDetectionInfo();
     expect(info.supportedFormats).toContain('mcp.json with servers section');
     expect(info.detectionStrategy).toMatch(/portable/i);
   });
 
   it('returns Linux detection info', () => {
-    mockGetPlatformInfo.mockReturnValue({ platform: 'Linux', isSupported: true, vscodeConfigPaths: [''] });
+    mockGetPlatformInfo.mockReturnValue({ platform: 'Linux', isSupported: true, vscodeConfigPath: '' });
     const info = getPlatformDetectionInfo();
     expect(info.supportedFormats).toContain('settings.json with mcp.servers section');
   });
 
   it('returns empty formats for unknown platform', () => {
-    mockGetPlatformInfo.mockReturnValue({ platform: 'Other', isSupported: false, vscodeConfigPaths: [''] });
+    mockGetPlatformInfo.mockReturnValue({ platform: 'Other', isSupported: false, vscodeConfigPath: '' });
     const info = getPlatformDetectionInfo();
     expect(info.supportedFormats).toEqual([]);
     expect(info.detectionStrategy).toMatch(/not defined/);

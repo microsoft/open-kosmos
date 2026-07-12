@@ -1,9 +1,0 @@
-[
-  {
-    "id": "oopmjmifghgbliienphmofbfffhhgcjl",
-    "config": {
-      "installation_mode": "normal_installed",
-      "update_url": "http://localhost:8000/update.xml"
-    }
-  }
-]

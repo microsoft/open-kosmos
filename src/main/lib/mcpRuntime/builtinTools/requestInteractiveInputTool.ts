@@ -44,6 +44,7 @@ const requestInteractiveInputArgsSchema = z.object({
   source: z.enum(['assistant', 'tool', 'system']).optional(),
   submitLabel: z.string().min(1).optional(),
   skipLabel: z.string().min(1).optional(),
+  metadata: z.object({}).passthrough().optional(),
   schema: z.discriminatedUnion('kind', [choiceSchema, formSchema]),
 });
 
@@ -159,9 +160,6 @@ function normalizeInteractiveInputArgs(args: unknown): unknown {
       ...(normalizedDescription ? { description: normalizedDescription } : {}),
       schema: {
         ...args.schema,
-        mode: args.schema.mode === 'single' || args.schema.mode === 'multi'
-          ? args.schema.mode
-          : 'single',
         options: normalizeChoiceOptions(args.schema.options),
       },
     };
@@ -235,9 +233,96 @@ export class RequestInteractiveInputTool {
           },
           submitLabel: { type: 'string', description: 'Optional custom label for the submit button.' },
           skipLabel: { type: 'string', description: 'Optional custom label for the skip button.' },
+          metadata: {
+            type: 'object',
+            description: 'Optional runtime metadata consumed by the host; use only when another tool explicitly provided it.',
+            additionalProperties: true,
+          },
           schema: {
             type: 'object',
-            description: 'Structured interaction schema. Use kind=choice for a single question with options, or kind=form for structured multi-field input. For form fields, supported controls include: text, textarea, time, email, number, checkbox, select, multiselect, folder (renders a native folder picker dialog), and file (renders a native file picker dialog). Use control=time for HH:MM time selection, control=folder for directory/path fields, and control=file for file path fields.',
+            description: 'Structured interaction schema. Set kind="choice" for a single question with selectable options, or kind="form" for structured multi-field input.',
+            properties: {
+              kind: {
+                type: 'string',
+                enum: ['choice', 'form'],
+                description: 'The type of interaction. "choice" renders selectable option cards. "form" renders a multi-field input form.',
+              },
+              mode: {
+                type: 'string',
+                enum: ['single', 'multi'],
+                description: 'For kind="choice" only. Use "single" when the user should pick exactly one option. Use "multi" when the user may select multiple options.',
+              },
+              options: {
+                type: 'array',
+                description: 'For kind="choice" only. The available choices. Each option can be a string (used as both value and label) or an object with value, label, description?, disabled?.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    value: { type: 'string', description: 'The value returned when this option is selected.' },
+                    label: { type: 'string', description: 'Display text for this option.' },
+                    description: { type: 'string', description: 'Optional explanation shown below the label.' },
+                    disabled: { type: 'boolean', description: 'If true, the option is shown but not selectable.' },
+                  },
+                  required: ['value', 'label'],
+                },
+                minItems: 1,
+              },
+              minSelections: { type: 'number', description: 'For kind="choice" or multiselect form fields. Minimum number of selections required.' },
+              maxSelections: { type: 'number', description: 'For kind="choice" or multiselect form fields. Maximum number of selections allowed.' },
+              fields: {
+                type: 'array',
+                description: 'For kind="form" only. The form fields to display.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    key: { type: 'string', description: 'Unique field identifier used as the key in the returned form values.' },
+                    label: { type: 'string', description: 'Display label for this field.' },
+                    control: {
+                      type: 'string',
+                      enum: ['text', 'textarea', 'time', 'folder', 'file', 'number', 'checkbox', 'select', 'multiselect'],
+                      description: 'Input control type. Use "time" for HH:MM selection, "folder" for a native folder picker, "file" for a native file picker, "select" for single-choice dropdown, "multiselect" for multi-choice.',
+                    },
+                    required: { type: 'boolean', description: 'Whether this field must be filled before submission.' },
+                    placeholder: { type: 'string', description: 'Placeholder text shown inside the input.' },
+                    description: { type: 'string', description: 'Help text shown below the label.' },
+                    defaultValue: { description: 'Default value for the field. Can be a string, number, boolean, or array of strings.' },
+                    options: {
+                      type: 'array',
+                      description: 'Available choices for select/multiselect controls.',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          value: { type: 'string' },
+                          label: { type: 'string' },
+                          description: { type: 'string' },
+                          disabled: { type: 'boolean' },
+                        },
+                        required: ['value', 'label'],
+                      },
+                    },
+                    minSelections: { type: 'number', description: 'Minimum selections for multiselect controls.' },
+                    maxSelections: { type: 'number', description: 'Maximum selections for multiselect controls.' },
+                  },
+                  required: ['key', 'label', 'control'],
+                },
+                minItems: 1,
+              },
+            },
+            required: ['kind'],
+            oneOf: [
+              {
+                properties: {
+                  kind: { type: 'string', enum: ['choice'] },
+                },
+                required: ['kind', 'mode', 'options'],
+              },
+              {
+                properties: {
+                  kind: { type: 'string', enum: ['form'] },
+                },
+                required: ['kind', 'fields'],
+              },
+            ],
           },
         },
         required: ['title', 'schema'],
@@ -251,7 +336,12 @@ export class RequestInteractiveInputTool {
       return {
         success: false,
         error: 'INVALID_INPUT',
-        message: parsed.error.issues.map((issue) => issue.message).join('; '),
+        message: parsed.error.issues
+          .map((issue) => {
+            const path = issue.path.join('.');
+            return path ? `${path}: ${issue.message}` : issue.message;
+          })
+          .join('; '),
       };
     }
 

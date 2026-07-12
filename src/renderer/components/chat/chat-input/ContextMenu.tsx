@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { ContextOption, ContextMenuOptionType } from '@/lib/chat/contextMentions';
 import { ContextMenuAtom } from './context-menu.atom';
+import { useI18n } from '@/lib/i18n/useI18n';
 
 export const ContextMenu: React.FC = () => {
   const [state, actions] = ContextMenuAtom.use();
+  const { t } = useI18n();
   const { show, options, selectedIndex, position } = state;
   const { selectMenu: onSelect, closeMenu: onClose, hoverMenu: onHover }  = actions;
 
@@ -34,8 +36,18 @@ export const ContextMenu: React.FC = () => {
 
   if (!show) return null;
 
+  const getOptionFileName = (option: ContextOption) => (
+    option.fileNameKey ? t(option.fileNameKey, option.fileNameParams) : option.fileName
+  );
+
+  const getOptionDescription = (option: ContextOption) => (
+    option.descriptionKey ? t(option.descriptionKey, option.descriptionParams) : option.description
+  );
+
   const renderOptionContent = (option: ContextOption) => {
     const hasValue = Boolean(option.value || option.relativePath);
+    const fileName = getOptionFileName(option);
+    const description = getOptionDescription(option);
 
     // 🆕 NoResults type option display (hint text)
     if (option.type === ContextMenuOptionType.NoResults) {
@@ -49,16 +61,16 @@ export const ContextMenu: React.FC = () => {
             gap: '2px',
             textAlign: 'left',
           }}>
-          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--vscode-errorForeground, #e74c3c)' }}>
-            {option.fileName}
+          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--vscode-errorForeground, var(--color-danger-500))' }}>
+           {fileName}
           </span>
-          {option.description && (
+          {description && (
             <span
               style={{
                 fontSize: '11px',
                 opacity: 0.7,
               }}>
-              {option.description}
+             {description}
             </span>
           )}
         </div>
@@ -79,8 +91,8 @@ export const ContextMenu: React.FC = () => {
             justifyContent: 'space-between',
             textAlign: 'left',
           }}>
-          <span style={{ fontSize: '13px', fontWeight: 500 }}>{option.fileName}</span>
-          {option.description && (
+          <span style={{ fontSize: '13px', fontWeight: 500 }}>{fileName}</span>
+          {description && (
             <span
               style={{
                 whiteSpace: 'nowrap',
@@ -91,7 +103,7 @@ export const ContextMenu: React.FC = () => {
                 opacity: 0.65,
                 fontSize: '11px',
               }}>
-              {option.description}
+              {description}
             </span>
           )}
         </div>
@@ -114,7 +126,7 @@ export const ContextMenu: React.FC = () => {
         }
 
         const pathParts = path.split(/[\\/]/).filter(Boolean);
-        const filename = pathParts[pathParts.length - 1] || option.fileName;
+        const filename = pathParts[pathParts.length - 1] || fileName;
         const folderPath = pathParts.slice(0, -1).join('/');
 
         // Build display path: show ./parent/path if parent directory exists, otherwise .
@@ -149,21 +161,23 @@ export const ContextMenu: React.FC = () => {
         );
       } else {
         // Show default option
-        let label = option.fileName;
+        let label = fileName;
         if (!label) {
           if (option.type === ContextMenuOptionType.KnowledgeBase) {
-            label = 'Add Knowledge File';
+            label = t('chat.context.addKnowledgeFile');
           } else if (option.type === ContextMenuOptionType.ChatSession) {
-            label = 'Add Chat Session File';
+            label = t('chat.context.addChatSessionFile');
           } else {
-            label = `Add ${option.type === ContextMenuOptionType.File ? 'Files' : 'Folder'}`;
+            label = option.type === ContextMenuOptionType.File
+              ? t('chat.context.addFiles')
+              : t('chat.context.addFolder');
           }
         }
         return <span style={{ fontSize: '13px' }}>{label}</span>;
       }
     }
 
-    return <span style={{ fontSize: '13px' }}>{option.fileName}</span>;
+    return <span style={{ fontSize: '13px' }}>{fileName}</span>;
   };
 
   const isOptionSelectable = (option: ContextOption): boolean => {
@@ -192,7 +206,7 @@ export const ContextMenu: React.FC = () => {
 
     if (option.type === ContextMenuOptionType.File) {
       // Return different icon based on file extension
-      const filename = option.fileName || option.value || '';
+      const filename = getOptionFileName(option) || option.value || '';
       const ext = filename.split('.').pop()?.toLowerCase();
       switch (ext) {
         case 'ts':
@@ -320,7 +334,7 @@ export const ContextMenu: React.FC = () => {
             color: 'var(--vscode-foreground)',
             opacity: 0.7,
           }}>
-          <span style={{ fontSize: '13px' }}>No results found</span>
+          <span style={{ fontSize: '13px' }}>{t('chat.context.noResults')}</span>
         </div>
       )}
     </div>

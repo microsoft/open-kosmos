@@ -27,7 +27,7 @@ const {
   const mockNavigate = vi.fn();
   const mockLocation = { pathname: '/agent/chat/chat-1' };
   const mockChats: any[] = [];
-  const mockProfileData = { profile: { primaryAgent: 'Kobi' } };
+  const mockProfileData = { profile: { primaryChat: 'chat-1' } };
   const mockCurrentChatId = { value: null as string | null };
   const mockCurrentChatSessionId = { value: null as string | null };
   let _subscriber: ((id: string | null) => void) | null = null;
@@ -237,6 +237,7 @@ describe('NavigationSection — builtin agents (openkosmos)', () => {
   });
 });
 
+
 describe('NavigationSection — subscribeToCurrentChatSessionId', () => {
   it('updates currentChatSessionId on subscription callback', () => {
     render(<NavigationSection />);
@@ -247,12 +248,5 @@ describe('NavigationSection — subscribeToCurrentChatSessionId', () => {
       cb('new-session-id');
     });
     // No crash expected; just verify it runs without error
-  });
-});
-
-describe('NavigationSection — onChatStatusChanged listener', () => {
-  it('does not crash when electronAPI.agentChat.onChatStatusChanged is absent', () => {
-    (window as any).electronAPI = {};
-    expect(() => render(<NavigationSection />)).not.toThrow();
   });
 });

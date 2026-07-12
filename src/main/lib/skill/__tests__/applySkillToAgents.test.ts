@@ -1,5 +1,9 @@
 import { applySkillToAgents } from '../applySkillToAgents';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
+import { chatSkillSnapshotStore } from '../../userDataADO/chatSkillSnapshotStore';
+
+const mockRecordSkillAppliedToAgent = vi.fn();
 
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
@@ -8,9 +12,36 @@ vi.mock('../../userDataADO', async () => ({
   },
 }));
 
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/chatSkillSnapshotStore', () => ({
+  chatSkillSnapshotStore: {
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    clearForAlias: vi.fn(),
+    clearAll: vi.fn(),
+    invalidateAffectedChats: vi.fn(),
+  },
+}));
+
 describe('applySkillToAgents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRecordSkillAppliedToAgent.mockResolvedValue(undefined);
+    (skillsConfigManager.getSkill as Mock).mockReturnValue({
+      name: 'pptx',
+      description: 'PPTX skill',
+      version: '1.0.0',
+      remoteVersion: '',
+      source: 'ON-DEVICE',
+    });
   });
 
   it('applies a skill to matching single-agent and multi-agent targets', async () => {
@@ -20,7 +51,6 @@ describe('applySkillToAgents', () => {
         {
           chat_id: 'chat-1',
           chat_type: 'single_agent',
-          skill_snapshot: { prompt: 'old' },
           agent: { name: 'Deck Builder', skills: [], role: '', emoji: 'A', model: '', mcp_servers: [], system_prompt: '' },
         },
         {
@@ -54,7 +84,6 @@ describe('applySkillToAgents', () => {
       'chat-1',
       expect.objectContaining({
         agent: expect.objectContaining({ skills: ['pptx'] }),
-        skill_snapshot: undefined,
       }),
     );
     expect(profileCacheManager.updateChatConfig).toHaveBeenNthCalledWith(
@@ -68,5 +97,8 @@ describe('applySkillToAgents', () => {
         ]),
       }),
     );
+    expect(chatSkillSnapshotStore.clear).toHaveBeenCalledTimes(2);
+    expect(chatSkillSnapshotStore.clear).toHaveBeenNthCalledWith(1, 'tester', 'chat-1');
+    expect(chatSkillSnapshotStore.clear).toHaveBeenNthCalledWith(2, 'tester', 'chat-2');
   });
 });

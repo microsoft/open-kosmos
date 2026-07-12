@@ -1,0 +1,43 @@
+name: PR I18n Check
+
+# Fail pull requests that leave renderer-owned UI copy in changed files without
+# routing it through the locale catalogs and active-language translation helpers.
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  i18n-check:
+    name: I18n Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run i18n check
+        run: |
+          npm run check:i18n -- \
+            --base-ref ${{ github.event.pull_request.base.sha }} \
+            --head-ref HEAD \
+            --output i18n-report.md
+
+      - name: Append report to job summary
+        if: always()
+        run: |
+          cat i18n-report.md >> "$GITHUB_STEP_SUMMARY"

@@ -13,6 +13,9 @@ import {
 import { profileDataManager } from '../../lib/userData';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { mcpClientCacheManager } from '../../lib/mcp/mcpClientCacheManager';
+import { agentClientCacheManager } from '../../lib/agent/agentClientCacheManager';
+import { skillClientCacheManager } from '../../lib/skill/skillClientCacheManager';
+import { hookClientCacheManager } from '../../lib/hook/hookClientCacheManager';
 import { createLogger } from '../../lib/utilities/logger';
 const logger = createLogger('[AuthProvider]');
 
@@ -108,6 +111,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logger.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
       }
 
+      try {
+        agentClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ AgentClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean AgentClientCacheManager cache:', error);
+      }
+
+      try {
+        skillClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ SkillClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean SkillClientCacheManager cache:', error);
+      }
+
+      try {
+        hookClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ HookClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean HookClientCacheManager cache:', error);
+      }
+
       // Call the main process's unified signOut interface
       await authManager.signOut();
       setAuthData(null);
@@ -188,6 +212,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logger.debug('[AuthProvider] ✅ MCPClientCacheManager cache cleaned');
       } catch (error) {
         logger.error('[AuthProvider] ❌ Failed to clean MCPClientCacheManager cache:', error);
+      }
+
+      try {
+        // Clean up AgentClientCacheManager cache
+        agentClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ AgentClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean AgentClientCacheManager cache:', error);
+      }
+
+      try {
+        skillClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ SkillClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean SkillClientCacheManager cache:', error);
+      }
+
+      try {
+        hookClientCacheManager.cleanup();
+        logger.debug('[AuthProvider] ✅ HookClientCacheManager cache cleaned');
+      } catch (error) {
+        logger.error('[AuthProvider] ❌ Failed to clean HookClientCacheManager cache:', error);
       }
 
       setAuthData(null);

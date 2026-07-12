@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-26 -->
+<!-- Last verified: 2026-07-05 -->
 # Log Analysis Guide
 
 ## Overview
@@ -24,6 +24,76 @@ Each line: `{ISO_TIMESTAMP} {LEVEL} [{SOURCE}] {MESSAGE} {optional JSON metadata
 - Levels: `DEBUG`, `INFO`, `WARN`, `ERROR`
 - Source: module identifier (e.g., `main`, `chat`, `mcp:tool`, `Analytics`, `AppCacheManager`)
 - Lines starting with `#` are internal cache object markers (ignored by the query script)
+
+## Adding Logs
+
+Use the shared logger paths so logs are queryable, persisted consistently, and safe for production.
+
+### Main process
+
+Main-process code should import the unified logger with the correct relative path for the file being edited and cache the global logger in a module-level const:
+
+```ts
+// Example from a file under src/main/lib/<module>/.
+import { createLogger } from '../unifiedLogger';
+
+const logger = createLogger();
+
+logger.info('Agent session started', 'chat:session', {
+  chatId,
+  agentId,
+  messageCount,
+});
+```
+
+- Use `logger.debug/info/warn/error(message, source, metadata)`.
+- `createLogger()` returns the shared main-process logger singleton. Module identity comes from the `source` argument, not from distinct logger instances.
+- Keep `source` stable and filterable. Prefer existing prefixes such as `chat:*`, `mcp:*`, `scheduler:*`, `RuntimeManager`, or the owning module name.
+- Put structured dimensions in `metadata`: IDs, counts, durations, state names, feature flags, and short error messages.
+- Do not place secrets, OAuth tokens, API keys, cookies, full prompts, full model responses, raw tool payloads, file contents, or large serialized objects in logs.
+
+### Renderer process
+
+Renderer code should use the renderer logger:
+
+```ts
+import { createLogger } from '@renderer/lib/utilities/logger';
+
+const logger = createLogger('[AgentPage]');
+
+logger.info('Session selected', { chatId, agentId });
+logger.debug('Draft changed', { length: draft.length });
+```
+
+In development, `src/renderer/lib/utilities/logger.ts` writes human-readable DevTools output and forwards a structured entry through `window.electronAPI.logger.sendLog()`. The main process receives it on `logger:rendererLog` and writes it through the dev logger. In production, renderer logs remain console-only and are not persisted by this bridge.
+
+- Prefer a component or feature prefix such as `[AgentPage]`, `[ChatInput]`, or `[Settings]`.
+- Do not call `logger:rendererLog` directly; use `createLogger`.
+- Renderer `debug()` and `verbose()` are development-only and do nothing in production builds. Use `info`, `warn`, or `error` for important diagnostics that must remain visible in production consoles.
+- Avoid temporary `console.log` debugging. If a log is worth keeping, make it structured and low-volume; if it is not worth keeping, remove it before committing.
+
+### Level selection
+
+| Level | Use for | Avoid for |
+|-------|---------|-----------|
+| `ERROR` | Operation failures, unhandled exceptions, data corruption, failed persistence, failed external calls after retries | Expected user cancellations or recoverable validation failures |
+| `WARN` | Recoverable degradation, fallback paths, retry exhaustion that still returns partial success, unexpected but handled states | Normal startup, successful fallback probing, periodic "healthy" status |
+| `INFO` | Low-volume lifecycle events, user-visible state transitions, one-time configuration decisions, completed background actions | Per-item loops, polling ticks, stream chunks, heartbeat/no-op logs |
+| `DEBUG` | Local investigation details that are useful only during development | Production-critical diagnostics, high-frequency traces without a guard |
+
+### Performance and volume rules
+
+Application logs run in the Electron main-process environment and can affect UI responsiveness when overused. Before adding a log in an event handler, timer, stream, or loop, estimate daily volume: `(calls per event) x (events per minute) x (minutes per day)`. If a non-error log can exceed roughly 100 entries/day in normal usage, use a lower-volume design.
+
+Required patterns for high-frequency paths:
+
+1. Log only the first occurrence of an unknown event type, not every event.
+2. Prefer end-of-operation summaries over per-item logs.
+3. Use sampling only when a summary is insufficient.
+4. Gate temporary catch-all diagnostics behind a debug flag that is off by default, and add a dated removal TODO.
+5. Log scalar fields such as `type`, `id`, `count`, `durationMs`, and `payloadLength`; never stringify full event objects in hot paths.
+
+Periodic jobs should log when they take action, change state, or fail. Do not log "checked and everything is normal" on every interval.
 
 ## Query Script
 
@@ -121,7 +191,6 @@ Common source prefixes in the codebase (run `--sources` for the live list):
 - `main` — Main process lifecycle, startup
 - `chat` / `chat:*` — Chat engine, agent loop
 - `mcp` / `mcp:*` — MCP runtime, tool execution
-- `Analytics` — App Insights telemetry
 - `AppCacheManager` — Profile/config persistence
 - `scheduler` / `scheduler:*` — Scheduled jobs
-- `R:Renderer` — Renderer process logs forwarded via IPC
+- `R:*` — Renderer process logs forwarded via IPC, such as `R:Renderer` or `R:AgentPage`

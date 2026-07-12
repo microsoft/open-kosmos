@@ -29,18 +29,11 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     defaultValue: true,
   },
 
-  // ============== Remote Channel ==============
+  // ============== Voice Input ==============
   {
-    name: 'openkosmosFeatureRemoteChannel',
-    description: 'Remote channel access (enabled by default in all environments)',
-    defaultValue: true,
-  },
-
-  // ============== Browser Control ==============
-  {
-    name: 'browserControl',
-    description: 'Browser Control / Chrome Extension integration (dev environment only, Windows and macOS)',
-    defaultValue: (ctx) => ctx.isDev && (ctx.platform === 'win32' || ctx.platform === 'darwin'),
+    name: 'openkosmosFeatureVoiceInput',
+    description: 'Voice Input (Speech-to-Text) feature (dev environment only)',
+    defaultValue: (ctx) => ctx.isDev,
   },
 
   // ============== Git Integration ==============
@@ -57,17 +50,13 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     defaultValue: () => true,
   },
 
-  // ============== Sub-Agent ==============
+  // ============== Sync ==============
   {
-    name: 'openkosmosFeatureSubAgent',
-    description: 'Named Sub-Agent system — AGENT.md management, settings UI, agent editor tab, delegation prompt',
-    defaultValue: false,
+    name: 'openkosmosUseSync',
+    description: 'Sync feature for syncing profile data to GitHub repository',
+    defaultValue: (ctx) => ctx.isDev, // Enable by default in dev environment for testing
   },
-  {
-    name: 'openkosmosFeatureSubAgentAutoWake',
-    description: 'Auto-wake parent session when background sub-agent results are ready',
-    defaultValue: (ctx) => ctx.isDev,
-  },
+
 
   // ============== Path Portability ==============
   {
@@ -76,38 +65,17 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
     defaultValue: (ctx) => ctx.isDev,
   },
 
-  // ============== Coding Agent ==============
-  {
-    name: 'openkosmosFeatureCodingAgent',
-    description: 'Foreground coding agent via Claude Code CLI (dev environment only)',
-    defaultValue: (ctx) => ctx.isDev,
-  },
-
-  // ============== Doctor ==============
-  {
-    name: 'openkosmosFeatureDoctor',
-    description: 'Doctor (in-app self-diagnosis) Report Bug entry in UserMenu (dev environment only)',
-    defaultValue: (ctx) => ctx.isDev,
-  },
-
   // ============== Buddy Companion ==============
   {
     name: 'openkosmosFeatureBuddy',
     description: 'Enable the Buddy companion widget',
-    defaultValue: (ctx) => ctx.isDev,
+    defaultValue:  (ctx) => ctx.isDev, // Enable by default in dev environment for testing
   },
 
   // ============== External Agent ==============
   {
     name: 'openkosmosFeatureExternalAgent',
-    description: 'External Agent connection via WebSocket (enabled by default)',
-    defaultValue: true,
-  },
-
-  // ============== Plugins ==============
-  {
-    name: 'openkosmosFeaturePlugins',
-    description: 'Plugin management feature (dev environment only)',
+    description: 'External Agent connection via WebSocket (dev environment only)',
     defaultValue: (ctx) => ctx.isDev,
   },
 
@@ -115,7 +83,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagConfig[] = [
   {
     name: 'openkosmosFeatureToolSearch',
     description: 'Deferred tool loading: MCP tools are not sent to the LLM by default; a tool_search meta-tool enables on-demand discovery',
-    defaultValue: (ctx) => ctx.isDev,
+    defaultValue: true,
   },
 ];
 

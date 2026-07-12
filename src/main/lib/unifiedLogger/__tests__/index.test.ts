@@ -12,6 +12,9 @@ import {
   createDebugLogger,
   isGlobalLoggerInitialized,
   getUnifiedLogger,
+  getRefactoredLogger,
+  DEFAULT_CONFIG,
+  DEFAULT_REFACTORED_CONFIG,
 } from '../index';
 import { getCurrentLogFileName } from '../FileOperations';
 
@@ -104,6 +107,16 @@ describe('index.ts - createLogger variants and global logger', () => {
   it('getUnifiedLogger returns global logger', () => {
     const logger = getUnifiedLogger({ LOGGER_DIRECTORY: tempDir });
     expect(logger).toBeDefined();
+  });
+
+  it('getRefactoredLogger returns global logger', () => {
+    const logger = getRefactoredLogger({ LOGGER_DIRECTORY: tempDir });
+    expect(logger).toBeDefined();
+  });
+
+  it('DEFAULT_CONFIG and DEFAULT_REFACTORED_CONFIG are exported', () => {
+    expect(DEFAULT_CONFIG).toBeDefined();
+    expect(DEFAULT_REFACTORED_CONFIG).toBeDefined();
   });
 
   it('logger.log works', () => {

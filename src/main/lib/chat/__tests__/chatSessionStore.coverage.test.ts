@@ -22,6 +22,7 @@ const mockMainWindow = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', async () => ({
+  app: { getPath: vi.fn(() => '/mock/userData') },
   BrowserWindow: {
     getAllWindows: vi.fn(() => [mockMainWindow]),
   },
@@ -33,15 +34,11 @@ const mockChatSessionManager = vi.hoisted(() => ({
   persistNewChatSession: vi.fn().mockResolvedValue(true),
   persistUpdatedChatSession: vi.fn().mockResolvedValue(true),
   deleteChatSession: vi.fn().mockResolvedValue(true),
-  getChatSessions: vi.fn().mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 }),
+  getAllChatSessions: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../userDataADO/chatSessionManager', () => ({
   chatSessionManager: mockChatSessionManager,
-}));
-
-vi.mock('../../remoteChannel/agentBridge/attachmentPipeline', () => ({
-  cleanupSessionAttachmentDir: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../userDataADO/pathUtils', () => ({
@@ -94,7 +91,7 @@ beforeEach(() => {
   mockChatSessionManager.persistNewChatSession.mockResolvedValue(true);
   mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
   mockChatSessionManager.deleteChatSession.mockResolvedValue(true);
-  mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+  mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 });
 
 // ── setMainWindow ─────────────────────────────────────────────────────────────
@@ -115,7 +112,7 @@ describe('getWindow via notification — mainWindow active', () => {
     const store = createFreshStore();
     store.setMainWindow(mockMainWindow as any);
     mockMainWindow.isDestroyed.mockReturnValue(false);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     // Create a session to trigger notifySessionCreated which calls getWindow
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
@@ -132,7 +129,7 @@ describe('getWindow via notification — mainWindow active', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       { isDestroyed: () => false, webContents: mockWebContents } as any,
     ]);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
     // Should still notify via the fallback window
@@ -143,7 +140,7 @@ describe('getWindow via notification — mainWindow active', () => {
     const store = createFreshStore();
     store.setMainWindow(null);
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
     // No notification sent since no window
@@ -220,7 +217,7 @@ describe('patchFile', () => {
     vi.clearAllMocks();
     mockWebContents.send.mockReset();
     mockChatSessionManager.persistUpdatedChatSession.mockResolvedValue(true);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [makeMetadata()], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([makeMetadata()]);
 
     const result = await store.patchFile('alice', 'chat-1', 'session-2026-01', {
       title: 'New Title',
@@ -264,7 +261,7 @@ describe('getChatSessionsProjection — overlay mismatch', () => {
     // Cache a session for alias 'alice'
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
     // But query for alias 'bob' (mismatch)
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
     const projection = await store.getChatSessionsProjection('bob', 'chat-1');
     // The overlay (alice's session) should be skipped
     const ids = projection.sessions.map((s: any) => s.chatSession_id);
@@ -284,7 +281,7 @@ describe('buildUnreadSummary — scheduled session without valid timestamp', () 
       schedulerStartedAt: undefined,
       last_updated: 'also-invalid',
     });
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [invalidScheduled], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([invalidScheduled]);
 
     const summary = await store.getUnreadSummary('alice', 'chat-1');
     // NaN timestamp => eventTime is null => not counted as scheduled unread
@@ -300,7 +297,7 @@ describe('markAllSessionsAsRead — skip read sessions', () => {
   it('skips sessions already marked as read', async () => {
     const store = createFreshStore();
     const readSession = makeMetadata({ readStatus: 'read' });
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [readSession], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([readSession]);
 
     const count = await store.markAllSessionsAsRead('alice', 'chat-1');
     expect(count).toBe(0);
@@ -314,7 +311,7 @@ describe('notifyAutoSelect', () => {
   it('sends autoSelect IPC when creating non-scheduled session with autoSelect', async () => {
     const store = createFreshStore();
     store.setMainWindow(mockMainWindow as any);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile(), {
       autoSelect: true,
@@ -328,7 +325,7 @@ describe('notifyAutoSelect', () => {
   it('does NOT send autoSelect for scheduled sessions', async () => {
     const store = createFreshStore();
     store.setMainWindow(mockMainWindow as any);
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     await store.createSession(
       'alice',
@@ -373,7 +370,7 @@ describe('notifySessionDeleted', () => {
     store.setMainWindow(mockMainWindow as any);
     await store.createSession('alice', 'chat-1', makeMetadata(), makeFile());
     mockWebContents.send.mockClear();
-    mockChatSessionManager.getChatSessions.mockResolvedValue({ sessions: [], loadedMonths: [], hasMore: false, nextMonthIndex: 0 });
+    mockChatSessionManager.getAllChatSessions.mockResolvedValue([]);
 
     const deleted = await store.deleteSession('alice', 'chat-1', 'session-2026-01');
     expect(deleted).toBe(true);

@@ -5,6 +5,7 @@ To enhance the availability and stability of OpenKosmos services (including MCP 
 
 This plan is inspired by Cherry Studio's implementation, introducing Bun as a lightweight alternative to Node.js/npx, and uv as a Python environment management tool.
 Since this environment is used not only for MCP services but also for general command execution (Execute Command), it is named Runtime Environment.
+
 ## 2. Core Strategy
 
 The system adopts a **"use system environment by default, intelligent fallback, optional forced built-in environment"** strategy.
@@ -35,10 +36,12 @@ The app settings include a "Runtime Environment" configuration item with the fol
 
 ### 3.1 Directory Structure
 Built-in binaries will be stored in the `bin` subdirectory under the application's user data directory (`userData`).
+OpenKosmos stores these files under the packaged application's user data path.
+
 *   **Path rule**: `path.join(app.getPath('userData'), 'bin')`
 *   **Windows**: `%AppData%\OpenKosmos\bin\`
-*   **macOS**: `~/Library/Application Support/OpenKosmos/bin/`
-*   **Linux**: `~/.config/OpenKosmos/bin/`
+*   **macOS**: `~/Library/Application Support/{AppName}/bin/`
+*   **Linux**: `~/.config/{AppName}/bin/`
 
 Directory structure example (using OpenKosmos as example):
 ```

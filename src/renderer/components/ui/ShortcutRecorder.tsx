@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Keyboard, X, Check } from 'lucide-react';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface ShortcutRecorderProps {
   value: string;
@@ -27,11 +28,12 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
   onChange,
   onSave,
   onCancel,
-  placeholder = "Press keys to record shortcut...",
+  placeholder,
   className = "",
   disabled = false,
   requireModifier = false
 }) => {
+  const { t } = useI18n();
   const [isRecording, setIsRecording] = useState(false);
   const [currentKeys, setCurrentKeys] = useState<string[]>([]);
   const [recordedShortcut, setRecordedShortcut] = useState(value);
@@ -191,7 +193,7 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
     if (accelerator) {
       const hasModifier = nativeEvent.ctrlKey || nativeEvent.metaKey || nativeEvent.altKey || nativeEvent.shiftKey;
       if (requireModifier && !hasModifier) {
-        setValidationError('Shortcut must include a modifier key (Ctrl/Cmd, Alt, or Shift)');
+        setValidationError(t('shortcut.modifierRequired'));
         return;
       }
       setValidationError(null);
@@ -247,8 +249,8 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
             flex-1 px-3 py-2 rounded-lg border transition-all duration-200 focus:outline-hidden
             ${
               isRecording
-                ? 'bg-[#272320]/5 border-[#272320] ring-2 ring-[#272320]/20'
-                : 'bg-white border-gray-200 hover:border-gray-300 focus:border-[#272320]'
+                ? 'bg-warm-900/5 border-warm-900 ring-2 ring-warm-900/20'
+                : 'bg-white border-neutral-200 hover:border-neutral-300 focus:border-warm-900'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           `}
@@ -262,7 +264,7 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
           }}
         >
           <div className="flex items-center gap-2 min-h-[24px]">
-            <Keyboard className="w-4 h-4 text-gray-400" />
+            <Keyboard className="w-4 h-4 text-neutral-400" />
 
             {isRecording ? (
               <div className="flex items-center gap-1">
@@ -270,18 +272,18 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
                   <>
                     {currentKeys.map((key, index) => (
                       <span key={index} className="flex items-center gap-1">
-                        <kbd className="px-2 py-1 text-xs bg-[#272320] rounded border border-[#272320] text-white">
+                        <kbd className="px-2 py-1 text-xs bg-warm-900 rounded border border-warm-900 text-white">
                           {key}
                         </kbd>
                         {index < currentKeys.length - 1 && (
-                          <span className="text-gray-400">+</span>
+                          <span className="text-neutral-400">+</span>
                         )}
                       </span>
                     ))}
                   </>
                 ) : (
-                  <span className="text-[#272320] text-sm animate-pulse">
-                    Press key combination...
+                  <span className="text-warm-900 text-sm animate-pulse">
+                    {t('shortcut.pressCombination')}
                   </span>
                 )}
               </div>
@@ -291,17 +293,17 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
                   <div className="flex items-center gap-1">
                     {recordedShortcut.split('+').map((key, index, array) => (
                       <span key={index} className="flex items-center gap-1">
-                        <kbd className="px-2 py-1 text-xs bg-[#272320] rounded border border-[#272320] text-white">
+                        <kbd className="px-2 py-1 text-xs bg-warm-900 rounded border border-warm-900 text-white">
                           {key}
                         </kbd>
                         {index < array.length - 1 && (
-                          <span className="text-gray-400">+</span>
+                          <span className="text-neutral-400">+</span>
                         )}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <span className="text-gray-400 text-sm">{placeholder}</span>
+                  <span className="text-neutral-400 text-sm">{placeholder ?? t('shortcut.placeholder')}</span>
                 )}
 
                 {recordedShortcut && !isRecording && (
@@ -310,8 +312,8 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
                       e.stopPropagation();
                       clearShortcut();
                     }}
-                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                    title="Clear shortcut"
+                    className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                    title={t('shortcut.clear')}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -328,11 +330,11 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
               <button
                 onClick={handleSave}
                 disabled={disabled || !recordedShortcut}
-                className="px-3 py-2 bg-[#272320] hover:bg-[#3d3935] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1"
-                title="Save shortcut"
+                className="px-3 py-2 bg-warm-900 hover:bg-warm-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1"
+                title={t('shortcut.save')}
               >
                 <Check className="w-4 h-4" />
-                Save
+                {t('common.save')}
               </button>
             )}
 
@@ -340,11 +342,11 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
               <button
                 onClick={handleCancel}
                 disabled={disabled}
-                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1"
-                title="Cancel"
+                className="px-3 py-2 bg-neutral-600 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1"
+                title={t('common.cancel')}
               >
                 <X className="w-4 h-4" />
-                Cancel
+                {t('common.cancel')}
               </button>
             )}
           </div>
@@ -353,17 +355,16 @@ const ShortcutRecorder: React.FC<ShortcutRecorderProps> = ({
 
       {/* Recording Status */}
       {isRecording && (
-        <div className="mt-2 text-xs text-[#272320]">
+        <div className="mt-2 text-xs text-warm-900">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-[#272320] rounded-full animate-pulse"></div>
-            Recording shortcut... Press any key combination or click elsewhere
-            to stop.
+            <div className="w-2 h-2 bg-warm-900 rounded-full animate-pulse"></div>
+            {t('shortcut.recordingHint')}
           </div>
         </div>
       )}
 
       {validationError && !isRecording && (
-        <div className="mt-2 text-xs text-red-500">
+        <div className="mt-2 text-xs text-danger-500">
           {validationError}
         </div>
       )}

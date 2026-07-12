@@ -30,9 +30,10 @@ vi.mock('../../../userData/userDataProvider', () => ({
       chats: [
         {
           chat_id: 'chat-1',
+          workspace: '/chat/workspace',
           agent: {
-            workspace: '/workspace/path',
-            knowledge: { knowledgeBase: '/workspace/path/knowledge' },
+            workspace: '/legacy/agent/workspace',
+            knowledge: { knowledgeBase: '/agent/knowledge' },
           },
         },
       ],
@@ -74,7 +75,11 @@ vi.mock('../../../../../shared/utils/idFormats', () => ({
 
 // ── mock FileExplorerSection to keep rendering simple ─────────────────────
 vi.mock('../FileExplorerSection', () => ({
-  default: ({ title }: { title: string }) => <div data-testid={`fes-${title.replace(/\s+/g, '-')}`}>{title}</div>,
+  default: ({ title, currentPath }: { title: string; currentPath: string }) => (
+    <div data-testid={`fes-${title.replace(/\s+/g, '-')}`} data-current-path={currentPath}>
+      {title}
+    </div>
+  ),
 }));
 
 vi.mock('../PasteToWorkspaceProvider', () => ({
@@ -92,7 +97,9 @@ describe('WorkspaceExplorerSidepane', () => {
   it('renders both FileExplorerSection sections when visible', async () => {
     await act(async () => { render(<WorkspaceExplorerSidepane />); });
     expect(screen.getByTestId('fes-Agent-Knowledge-Files')).toBeInTheDocument();
-    expect(screen.getByTestId('fes-Current-Chat-Session-Deliverables')).toBeInTheDocument();
+    expect(screen.getByTestId('fes-Current-Session-Deliverables')).toBeInTheDocument();
+    expect(screen.getByTestId('fes-Agent-Knowledge-Files')).toHaveAttribute('data-current-path', '/agent/knowledge');
+    expect(screen.getByTestId('fes-Current-Session-Deliverables')).toHaveAttribute('data-current-path', '/chat/workspace/202401/20240101-session');
   });
 
   it('returns null when not visible', async () => {

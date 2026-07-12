@@ -465,6 +465,7 @@ describe('MainAuthManager - clearAuthTokens', () => {
     expect(written.ghcAuth.gitHubTokens.access_token).toBe('');
     expect(written.ghcAuth.copilotTokens.token).toBe('');
   });
+
 });
 
 describe('MainAuthManager - getLocalActiveAuths', () => {

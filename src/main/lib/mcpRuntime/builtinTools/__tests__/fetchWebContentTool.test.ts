@@ -16,6 +16,19 @@ function textResponse(body: string, contentType = 'text/plain'): Response {
   return new Response(body, { status: 200, headers: { 'Content-Type': contentType } });
 }
 
+function streamedTextResponse(chunks: string[], contentType = 'text/plain'): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { 'Content-Type': contentType } });
+}
+
 const VALID_URL = 'https://example.com/page';
 const VALID_ARGS = { description: 'test', urls: [VALID_URL] };
 
@@ -62,16 +75,11 @@ describe('FetchWebContentTool.execute — validateArgs', () => {
       .rejects.toThrow('Invalid arguments');
   });
 
-  it('throws when timeoutSeconds is out of range', async () => {
+  it('ignores a stray timeoutSeconds argument (no longer agent-configurable)', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue(htmlResponse('<html></html>'));
-    await expect(FetchWebContentTool.execute({ description: 'x', urls: [VALID_URL], timeoutSeconds: 4 }))
-      .rejects.toThrow('Invalid arguments');
+    const result = await FetchWebContentTool.execute({ description: 'x', urls: [VALID_URL], timeoutSeconds: 4 } as any);
+    expect(result.success).toBe(true);
     vi.restoreAllMocks();
-  });
-
-  it('throws when timeoutSeconds is over 60', async () => {
-    await expect(FetchWebContentTool.execute({ description: 'x', urls: [VALID_URL], timeoutSeconds: 61 }))
-      .rejects.toThrow('Invalid arguments');
   });
 
   it('throws when maxContentSize is below minimum', async () => {
@@ -194,6 +202,19 @@ describe('FetchWebContentTool.execute — content type processing', () => {
     expect(result.results[0].content).toContain('plain text content');
   });
 
+  it('reports activity for each streamed body chunk to reset the no-response watchdog', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(streamedTextResponse(['part 1 ', 'part 2', ' part 3']));
+    const reportActivity = vi.fn();
+
+    const result = await FetchWebContentTool.execute(
+      VALID_ARGS,
+      { executionContext: { reportActivity } as never },
+    );
+
+    expect(result.results[0].content).toBe('part 1 part 2 part 3');
+    expect(reportActivity).toHaveBeenCalledTimes(3);
+  });
+
   it('processes markdown content without HTML parsing', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('# My Title\nSome content', { status: 200, headers: { 'Content-Type': 'text/markdown' } })
@@ -258,6 +279,65 @@ describe('FetchWebContentTool.execute — content type processing', () => {
       urls: ['https://example.com/data.json'],
     });
     expect(result.results[0].title).toBe('config');
+  });
+
+  it('strips script/style/nav/header/footer/aside elements before extracting text', async () => {
+    const html =
+      '<html><head><title>Stripped</title></head><body>' +
+      '<script>var a = 1;</script><style>.x{color:red}</style>' +
+      '<nav>navigation</nav><header>top</header><footer>bottom</footer>' +
+      '<aside>side</aside><noscript>nojs</noscript>' +
+      '<p>Real visible body text</p></body></html>';
+    vi.spyOn(global, 'fetch').mockResolvedValue(htmlResponse(html));
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].title).toBe('Stripped');
+    expect(result.results[0].content).toContain('Real visible body text');
+    expect(result.results[0].content).not.toContain('navigation');
+    expect(result.results[0].content).not.toContain('color:red');
+  });
+
+  it('falls back to an empty title when the title element is whitespace only', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      htmlResponse('<html><head><title>   </title></head><body><p>content here</p></body></html>')
+    );
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].title).toBe('');
+  });
+
+  it('prefers a main content region with more than 200 characters of text', async () => {
+    const longText = 'L'.repeat(250);
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      htmlResponse(`<html><body><div>short</div><main>${longText}</main></body></html>`)
+    );
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].content).toContain(longText);
+  });
+
+  it('handles an empty body with no extractable text', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      htmlResponse('<html><body></body></html>')
+    );
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].content).toBe('');
+  });
+
+  it('uses an empty markdown title when there is no heading line', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('just text, no heading', { status: 200, headers: { 'Content-Type': 'text/markdown' } })
+    );
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].title).toBe('');
+    expect(result.results[0].content).toContain('just text');
+  });
+
+  it('uses an empty JSON title when neither name nor title is present', async () => {
+    const json = JSON.stringify({ version: '1.0.0', value: 42 });
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(json, { status: 200, headers: { 'Content-Type': 'application/json' } })
+    );
+    const result = await FetchWebContentTool.execute(VALID_ARGS);
+    expect(result.results[0].title).toBe('');
+    expect(result.results[0].content).toContain('version');
   });
 });
 

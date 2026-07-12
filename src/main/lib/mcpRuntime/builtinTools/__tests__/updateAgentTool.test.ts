@@ -1,4 +1,5 @@
 const mockUpdateChatAgent = vi.fn();
+const mockUpdateChatConfig = vi.fn();
 const mockGetAllChatConfigs = vi.fn();
 
 vi.mock('../../../userDataADO/profileCacheManager', async () => ({
@@ -6,12 +7,8 @@ vi.mock('../../../userDataADO/profileCacheManager', async () => ({
     currentUserAlias: 'tester',
     getAllChatConfigs: (...args: unknown[]) => mockGetAllChatConfigs(...args),
     updateChatAgent: (...args: unknown[]) => mockUpdateChatAgent(...args),
+    updateChatConfig: (...args: unknown[]) => mockUpdateChatConfig(...args),
   },
-}));
-
-vi.mock('../../../startupUpdate/startupUpdateService', async () => ({
-  mergeAgentMcpServers: (local: any[], remote: any[]) => [...local, ...remote.filter(r => !local.find((l: any) => l.name === r.name))],
-  mergeAgentSkills: (local: string[], remote: string[]) => Array.from(new Set([...local, ...remote])),
 }));
 
 import { UpdateAgentTool } from '../updateAgentTool';
@@ -23,17 +20,14 @@ function makeAgent(overrides: any = {}) {
     version: '1.0.0',
     role: 'demo role',
     model: 'gpt-4',
-    system_prompt: 'demo prompt',
+    system_prompt: { 'Base.md': 'demo prompt', 'AGENTS.md': 'project context' },
     knowledge: { knowledgeBase: '/kb' },
     mcp_servers: [],
     skills: [],
+    hooks: [],
     emoji: '🤖',
     avatar: '',
     workspace: '/ws',
-    context_enhancement: {
-      search_memory: { enabled: true, semantic_similarity_threshold: 0.8, semantic_top_n: 5 },
-      generate_memory: { enabled: false },
-    },
     ...overrides,
   };
 }
@@ -46,6 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent()));
   mockUpdateChatAgent.mockResolvedValue(true);
+  mockUpdateChatConfig.mockResolvedValue(true);
 });
 
 describe('UpdateAgentTool knowledge settings', () => {
@@ -87,17 +82,23 @@ describe('UpdateAgentTool.validateConfigForUpdate', () => {
     expect(result.error).toContain('Cannot change agent name');
   });
 
-  it('returns invalid when source is invalid', () => {
+  it('accepts removed source metadata without special validation', () => {
     const result = UpdateAgentTool.validateConfigForUpdate({ name: 'demo-agent', source: 'UNKNOWN' }, existingAgent);
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
   });
 
   it('returns valid for correct config', () => {
     expect(UpdateAgentTool.validateConfigForUpdate({ name: 'demo-agent' }, existingAgent).valid).toBe(true);
   });
 
-  it('returns valid for IN-LIBRARY source', () => {
+  it('accepts legacy source metadata without special validation', () => {
     expect(UpdateAgentTool.validateConfigForUpdate({ name: 'demo-agent', source: 'IN-LIBRARY' }, existingAgent).valid).toBe(true);
+  });
+
+  it('returns invalid when workspace is provided', () => {
+    const result = UpdateAgentTool.validateConfigForUpdate({ name: 'demo-agent', workspace: '/tmp/ws' }, existingAgent);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('workspace is chat-owned');
   });
 });
 
@@ -124,6 +125,18 @@ describe('UpdateAgentTool.execute – input validation', () => {
     const result = await UpdateAgentTool.execute({ agent_config: { name: '   ' } });
     expect(result.success).toBe(false);
     expect(result.error).toBe('INVALID_INPUT');
+  });
+
+  it('rejects workspace instead of accepting a no-op chat workspace update', async () => {
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', workspace: '/tmp/ws' } as any,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('INVALID_INPUT');
+    expect(result.message).toContain('workspace is chat-owned');
+    expect(mockUpdateChatAgent).not.toHaveBeenCalled();
+    expect(mockUpdateChatConfig).not.toHaveBeenCalled();
   });
 });
 
@@ -162,70 +175,43 @@ describe('UpdateAgentTool.execute – ON-DEVICE source rules', () => {
     expect(result.new_source).toBe('ON-DEVICE');
   });
 
+  describe('UpdateAgentTool.execute – multi-agent chats', () => {
+    it('updates a secondary agent through the plural store-aware chat update path', async () => {
+      const primary = makeAgent({ id: 'agent_primary', name: 'primary-agent', model: 'old-primary' });
+      const secondary = makeAgent({ id: 'agent_secondary', name: 'secondary-agent', model: 'old-secondary' });
+      mockGetAllChatConfigs.mockReturnValue([{ chat_id: 'chat-multi', agents: [primary, secondary] }]);
+
+      const result = await UpdateAgentTool.execute({
+        agent_config: { name: 'secondary-agent', model: 'new-secondary' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateChatAgent).not.toHaveBeenCalled();
+      expect(mockUpdateChatConfig).toHaveBeenCalledWith(
+        'tester',
+        'chat-multi',
+        expect.objectContaining({
+          agent: primary,
+          agents: [
+            primary,
+            expect.objectContaining({ id: 'agent_secondary', name: 'secondary-agent', model: 'new-secondary' }),
+          ],
+        }),
+      );
+    });
+  });
+
   it('auto-increments version when new source is ON-DEVICE (2.1.1)', async () => {
     const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'ON-DEVICE' } });
     expect(result.success).toBe(true);
     expect(result.new_version).toBe('1.0.1');
   });
 
-  it('requires version when changing to IN-LIBRARY (2.1.2)', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('VERSION_REQUIRED');
-  });
-
-  it('requires new version > old version when changing to IN-LIBRARY', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '0.9.0' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('VERSION_NOT_GREATER');
-  });
-
-  it('succeeds when changing to IN-LIBRARY with greater version', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '2.0.0' } });
-    expect(result.success).toBe(true);
-    expect(result.new_source).toBe('IN-LIBRARY');
-    expect(result.new_version).toBe('2.0.0');
-  });
 });
 
-describe('UpdateAgentTool.execute – IN-LIBRARY source rules', () => {
-  beforeEach(() => {
-    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ source: 'IN-LIBRARY', version: '1.5.0' })));
-  });
-
-  it('prevents ON-DEVICE override of IN-LIBRARY (2.2.1)', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'ON-DEVICE' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('SOURCE_OVERRIDE_NOT_ALLOWED');
-  });
-
-  it('requires source and version when no source provided (2.2.3)', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('SOURCE_AND_VERSION_REQUIRED');
-  });
-
-  it('requires version when IN-LIBRARY updates IN-LIBRARY (2.2.2)', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('VERSION_REQUIRED');
-  });
-
-  it('requires new version > old version for IN-LIBRARY update', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '1.4.0' } });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('VERSION_NOT_GREATER');
-  });
-
-  it('succeeds when IN-LIBRARY updates with greater version', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '2.0.0' } });
-    expect(result.success).toBe(true);
-    expect(result.new_version).toBe('2.0.0');
-  });
-});
 
 describe('UpdateAgentTool.execute – optional field handling', () => {
-  it('uses new mcp_servers (ON-DEVICE: full replacement)', async () => {
+  it('merges new mcp_servers by default for ON-DEVICE agents', async () => {
     const result = await UpdateAgentTool.execute({
       agent_config: {
         name: 'demo-agent',
@@ -238,7 +224,26 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     expect(call.mcp_servers[0].name).toBe('new-server');
   });
 
-  it('merges mcp_servers for IN-LIBRARY', async () => {
+  it('replaces mcp_servers for ON-DEVICE agents when replace mode is explicit', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
+      mcp_servers: [{ name: 'existing-server', tools: ['old-tool'] }],
+    })));
+
+    const result = await UpdateAgentTool.execute({
+      agent_config: {
+        name: 'demo-agent',
+        mcp_servers: [{ name: 'new-server', tools: ['new-tool'] }],
+        mcp_servers_mode: 'replace',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].mcp_servers).toEqual([
+      { name: 'new-server', tools: ['new-tool'] },
+    ]);
+  });
+
+  it('uses normal MCP merge behavior with legacy source metadata', async () => {
     mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
       source: 'IN-LIBRARY', version: '1.0.0',
       mcp_servers: [{ name: 'existing', tools: [] }],
@@ -253,11 +258,12 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     });
     expect(result.success).toBe(true);
     const call = mockUpdateChatAgent.mock.calls[0][2];
+    expect(call.source).toBe('ON-DEVICE');
     expect(call.mcp_servers.some((s: any) => s.name === 'existing')).toBe(true);
     expect(call.mcp_servers.some((s: any) => s.name === 'new-server')).toBe(true);
   });
 
-  it('uses new skills (ON-DEVICE: full replacement)', async () => {
+  it('merges new skills by default for ON-DEVICE agents', async () => {
     const result = await UpdateAgentTool.execute({
       agent_config: { name: 'demo-agent', skills: ['skill-a'] },
     });
@@ -265,7 +271,22 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     expect(mockUpdateChatAgent.mock.calls[0][2].skills).toEqual(['skill-a']);
   });
 
-  it('merges skills for IN-LIBRARY', async () => {
+  it('replaces skills for ON-DEVICE agents when replace mode is explicit', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ skills: ['existing-skill'] })));
+
+    const result = await UpdateAgentTool.execute({
+      agent_config: {
+        name: 'demo-agent',
+        skills: ['new-skill'],
+        skills_mode: 'replace',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].skills).toEqual(['new-skill']);
+  });
+
+  it('uses normal skill merge behavior with legacy source metadata', async () => {
     mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
       source: 'IN-LIBRARY', version: '1.0.0',
       skills: ['existing-skill'],
@@ -279,33 +300,6 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     expect(skills).toContain('new-skill');
   });
 
-  it('updates context_enhancement when provided', async () => {
-    const result = await UpdateAgentTool.execute({
-      agent_config: {
-        name: 'demo-agent',
-        context_enhancement: {
-          search_memory: { enabled: false },
-          generate_memory: { enabled: true },
-        },
-      },
-    });
-    expect(result.success).toBe(true);
-    const ce = mockUpdateChatAgent.mock.calls[0][2].context_enhancement;
-    expect(ce.search_memory.enabled).toBe(false);
-    expect(ce.generate_memory.enabled).toBe(true);
-  });
-
-  it('uses existing context_enhancement when agent has none', async () => {
-    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ context_enhancement: undefined })));
-    const result = await UpdateAgentTool.execute({
-      agent_config: {
-        name: 'demo-agent',
-        context_enhancement: { search_memory: { enabled: true } },
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
   it('updates zero_states when provided', async () => {
     const zeroStates = { greeting: 'Hello', quick_starts: [] };
     const result = await UpdateAgentTool.execute({
@@ -315,19 +309,47 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     expect(mockUpdateChatAgent.mock.calls[0][2].zero_states).toEqual(zeroStates);
   });
 
-  it('sets remoteVersion for IN-LIBRARY', async () => {
-    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ source: 'IN-LIBRARY', version: '1.0.0' })));
+  it('preserves quick_starts when only zero_states.greeting is provided', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
+      zero_states: {
+        greeting: 'Old greeting',
+        quick_starts: [{ id: 'card-1', title: 'Card', description: 'Desc', prompt: 'Prompt' }],
+      },
+    })));
+
     const result = await UpdateAgentTool.execute({
-      agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '2.0.0', remoteVersion: 'v2-cdn' },
+      agent_config: { name: 'demo-agent', zero_states: { greeting: 'New greeting' } },
     });
+
     expect(result.success).toBe(true);
-    expect(mockUpdateChatAgent.mock.calls[0][2].remoteVersion).toBe('v2-cdn');
+    expect(mockUpdateChatAgent.mock.calls[0][2].zero_states).toEqual({
+      greeting: 'New greeting',
+      quick_starts: [{ id: 'card-1', title: 'Card', description: 'Desc', prompt: 'Prompt' }],
+    });
   });
 
-  it('clears remoteVersion for ON-DEVICE', async () => {
-    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent' } });
+  it('updates Base.md from legacy string without dropping AGENTS.md', async () => {
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', system_prompt: 'new base' },
+    });
+
     expect(result.success).toBe(true);
-    expect(mockUpdateChatAgent.mock.calls[0][2].remoteVersion).toBe('');
+    expect(mockUpdateChatAgent.mock.calls[0][2].system_prompt).toEqual({
+      'Base.md': 'new base',
+      'AGENTS.md': 'project context',
+    });
+  });
+
+  it('updates AGENTS.md without dropping Base.md', async () => {
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', project_context_prompt: 'new context' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].system_prompt).toEqual({
+      'Base.md': 'demo prompt',
+      'AGENTS.md': 'new context',
+    });
   });
 
   it('uses knowledge.knowledgeBase when provided', async () => {
@@ -346,14 +368,28 @@ describe('UpdateAgentTool.execute – optional field handling', () => {
     expect(mockUpdateChatAgent.mock.calls[0][2].knowledge.knowledgeBase).toBe('/top-level-kb');
   });
 
-  it('prefers IN-LIBRARY model from existing agent', async () => {
-    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ source: 'IN-LIBRARY', version: '1.0.0', model: 'local-model' })));
+  it('uses provided avatar and model for an agent with legacy source metadata', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
+      source: 'IN-LIBRARY',
+      version: '1.0.0',
+      model: undefined,
+    })));
+
     const result = await UpdateAgentTool.execute({
-      agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '2.0.0', model: 'remote-model' },
+      agent_config: {
+        name: 'demo-agent',
+        source: 'IN-LIBRARY',
+        version: '2.0.0',
+        avatar: 'https://example.com/avatar.png',
+        model: 'remote-model',
+      },
     });
+
     expect(result.success).toBe(true);
-    // For IN-LIBRARY: existing model takes precedence
-    expect(mockUpdateChatAgent.mock.calls[0][2].model).toBe('local-model');
+    expect(mockUpdateChatAgent.mock.calls[0][2]).toEqual(expect.objectContaining({
+      avatar: 'https://example.com/avatar.png',
+      model: 'remote-model',
+    }));
   });
 });
 
@@ -386,13 +422,112 @@ describe('incrementPatchVersion – invalid format (coverage line 141)', () => {
   });
 });
 
-describe('compareVersions – equal versions (coverage line 175)', () => {
-  it('equal version strings trigger VERSION_NOT_GREATER', async () => {
-    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ source: 'ON-DEVICE', version: '1.0.0' })));
+describe('UpdateAgentTool.execute – additional branch coverage', () => {
+  it('normalizeKnowledgeInput with undefined input uses existingAgent.knowledgeBase as fallback', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ knowledge: undefined, knowledgeBase: '/agent-kb' })));
     const result = await UpdateAgentTool.execute({
-      agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '1.0.0' },
+      agent_config: { name: 'demo-agent' },
     });
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].knowledge.knowledgeBase).toBe('/agent-kb');
+  });
+
+  it('normalises mcp_servers tools to [] when tools is not an array', async () => {
+    const result = await UpdateAgentTool.execute({
+      agent_config: {
+        name: 'demo-agent',
+        mcp_servers: [{ name: 'srv', tools: 'bad' as any }],
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].mcp_servers[0].tools).toEqual([]);
+  });
+
+  it('handles non-Error thrown value (EXECUTION_ERROR)', async () => {
+    mockGetAllChatConfigs.mockImplementation(() => { throw 'string error'; });
+    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent' } });
     expect(result.success).toBe(false);
-    expect(result.error).toBe('VERSION_NOT_GREATER');
+    expect(result.error).toBe('EXECUTION_ERROR');
+    expect(result.message).toContain('string error');
+  });
+
+  it('does not override mcp_servers when config.mcp_servers is undefined', async () => {
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent' },
+    });
+    expect(result.success).toBe(true);
+    const call = mockUpdateChatAgent.mock.calls[0][2];
+    expect(call.mcp_servers).toEqual([]);
+  });
+
+  it('does not override skills when config.skills is undefined', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ skills: ['orig'] })));
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent' },
+    });
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].skills).toEqual(['orig']);
+  });
+
+  it('increments patch for version with non-numeric parts', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ version: 'a.b.c' })));
+    const result = await UpdateAgentTool.execute({ agent_config: { name: 'demo-agent' } });
+    expect(result.success).toBe(true);
+    expect(result.new_version).toBe('0.0.1');
+  });
+
+  it('keeps existing skills for legacy source metadata when incoming skills are empty', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
+      source: 'IN-LIBRARY', version: '1.0.0',
+      skills: ['existing'],
+    })));
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', source: 'IN-LIBRARY', version: '2.0.0', skills: [] },
+    });
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].skills).toContain('existing');
+  });
+
+  it('merges hooks by default for ON-DEVICE agents', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ hooks: ['existing-hook'] })));
+
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', hooks: ['new-hook'] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].hooks).toEqual(['existing-hook', 'new-hook']);
+  });
+
+  it('replaces hooks for ON-DEVICE agents when replace mode is explicit', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({ hooks: ['existing-hook'] })));
+
+    const result = await UpdateAgentTool.execute({
+      agent_config: { name: 'demo-agent', hooks: ['new-hook'], hooks_mode: 'replace' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].hooks).toEqual(['new-hook']);
+  });
+
+  it('uses empty fallback lists when existing mcp_servers and incoming skills are nullish', async () => {
+    mockGetAllChatConfigs.mockReturnValue(makeChats(makeAgent({
+      mcp_servers: undefined,
+      skills: undefined,
+    })));
+
+    const result = await UpdateAgentTool.execute({
+      agent_config: {
+        name: 'demo-agent',
+        mcp_servers: [{ name: 'new-server' }],
+        skills: null as any,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateChatAgent.mock.calls[0][2].mcp_servers).toEqual([
+      { name: 'new-server', tools: [] },
+    ]);
+    expect(mockUpdateChatAgent.mock.calls[0][2].skills).toEqual([]);
   });
 });

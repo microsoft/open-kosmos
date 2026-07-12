@@ -139,6 +139,12 @@ describe('BuddyInfoPanel', () => {
     expect(nameEl).toBeTruthy();
     expect(nameEl?.textContent).toBe('Test Duck');
   });
+
+  it('renders compact level when an active buddy is provided', () => {
+    const { container } = render(<BuddyInfoPanel companion={mockCompanion} activeBuddy={mockBuddyEntry} />);
+    const nameEl = container.querySelector('.buddy-info-name');
+    expect(nameEl?.textContent).toContain('Lv.');
+  });
 });
 
 describe('BuddyXPBar', () => {
@@ -221,5 +227,15 @@ describe('BuddyMainPanel', () => {
       />
     );
     expect(container.textContent).toContain('12,345');
+  });
+
+  it('shows coming soon placeholder', () => {
+    const { getByText } = render(
+      <BuddyMainPanel
+        onHatchNew={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(getByText(/Coming Soon/)).toBeTruthy();
   });
 });

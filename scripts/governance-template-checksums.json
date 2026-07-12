@@ -1,0 +1,19 @@
+{
+  "normalization": "CRLF to LF; strip trailing spaces and tabs from every line; retain exactly one final newline",
+  "canonicalUpstream": {
+    "docs/open-source-release-templates/LICENSE": "4431f3d58587618414187c833224cb95481965b6855f520a87c6921f42130e78",
+    "docs/open-source-release-templates/upstream/NOTICE": "a801f4107f82e3e889b9eeaa4665e7273eea08b17bb479360af944e57cfd9e79",
+    "docs/open-source-release-templates/SECURITY.md": "4cc9236d2b3a6f7fd3718d7596396ade0b5146bf921f660852216d26e35f8022",
+    "docs/open-source-release-templates/upstream/SUPPORT.md": "d2dc6c986379493ff56d5f4a6fddec3e7326c30382b7e1459938e1fe40cc4d29",
+    "docs/open-source-release-templates/CODE_OF_CONDUCT.md": "9d45a586fce701502d173a7c10c71c8bd4f23e23d5a4a06e9d00eb57a9c11205"
+  },
+  "activeTemplates": {
+    "docs/open-source-release-templates/LICENSE": "4431f3d58587618414187c833224cb95481965b6855f520a87c6921f42130e78",
+    "docs/open-source-release-templates/NOTICE": "26e49cf83d03a61ab37a468a4ee905d2a327ce270783202c189ac31db0acaa0f",
+    "docs/open-source-release-templates/SECURITY.md": "4cc9236d2b3a6f7fd3718d7596396ade0b5146bf921f660852216d26e35f8022",
+    "docs/open-source-release-templates/SUPPORT.md": "85ba60b0b0b5598acc3bd58e243f2f27fcc427ebcd8a4b4b05a59f837d6c97b3",
+    "docs/open-source-release-templates/CODE_OF_CONDUCT.md": "9d45a586fce701502d173a7c10c71c8bd4f23e23d5a4a06e9d00eb57a9c11205",
+    "docs/open-source-release-templates/CONTRIBUTING.md": "55a7000a74e0fb69982349da73e09e1b2820fe230234a8ac4c2a14a6c6f7360f",
+    "docs/open-source-release-templates/ISSUE_TEMPLATE.md": "77940eb5ac7b9522762394522f5fbcf7ded8885fe5159ba0c92576b988aeb7f5"
+  }
+}

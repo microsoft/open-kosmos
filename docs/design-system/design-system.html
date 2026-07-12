@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenKosmos Design System — Reference</title>
+<!--
+  Self-contained visual reference for the OpenKosmos design system.
+  It DOGFOODS the real tokens: the system font stack, the #1a1a1a ink, the
+  warm-50 paper background, the five-tier border ladder, the --radius-* scale,
+  and the black / red / white button palette (sky is reserved for non-button
+  accents). Every swatch shows the real value pulled from
+  src/renderer/styles/globals.css. No external assets, no build step — open it
+  in any browser. The companion prose/AI reference is README.md in this folder;
+  the governance source of truth is ai.prompt/design-system.md.
+-->
+<style>
+  :root {
+    /* --- Primitives mirrored from globals.css @theme (subset used by this page) --- */
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-primary-500: #0ea5e9;
+    --color-primary-600: #0284c7;
+    --color-primary-700: #0369a1;
+    --color-warm-50: #fffbf8;
+    --color-warm-100: #f8f4f1;
+    --color-warm-200: #e2ddd9;
+    --color-warm-800: #322d29;
+    --color-warm-900: #272320;
+    --color-neutral-100: #f5f5f5;
+    --color-neutral-200: #e5e5e5;
+    --color-neutral-300: #d4d4d4;
+    --color-neutral-400: #a3a3a3;
+    --color-neutral-500: #737373;
+    --color-neutral-600: #525252;
+    --color-neutral-700: #404040;
+    --color-danger-600: oklch(57.7% 0.245 27.325);
+    --color-danger-700: oklch(50.5% 0.213 27.518);
+    --color-success-600: oklch(62.7% 0.194 149.214);
+    --color-warning-600: oklch(66.6% 0.179 58.318);
+
+    /* --- Semantic tier mirrored from globals.css :root --- */
+    --color-text-default: #1a1a1a;
+    --color-text-muted: var(--color-neutral-600);
+    --color-text-subtle: var(--color-neutral-400);
+    --color-accent: #0ea5e9;
+    --color-accent-strong: #0284c7;
+    --color-accent-stronger: #0369a1;
+    --color-accent-ring: rgba(14, 165, 233, 0.1);
+    --color-border-subtle: rgba(203, 213, 225, 0.3);
+    --color-border-panel: rgba(0, 0, 0, 0.075);
+    --color-border-strong: rgba(0, 0, 0, 0.12);
+    --color-border-strongest: rgba(0, 0, 0, 0.2);
+    --color-border-form: rgba(203, 213, 225, 0.8);
+
+    /* --- Radius scale (SSOT @theme) --- */
+    --radius-sm: 2px;
+    --radius: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 24px;
+    --radius-full: 9999px;
+
+    /* --- Type --- */
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    --font-mono: 'Cascadia Code', 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+
+    /* --- Elevation ladder (from the panel / glass-card / modal shadows) --- */
+    --elevation-panel: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --elevation-card: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --elevation-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-variation-settings: 'opsz' 32;
+    color: var(--color-text-default);
+    background: var(--color-warm-50);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--color-accent-strong); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+  :where(p, li) code, code.inline {
+    background: var(--color-warm-100);
+    border: 1px solid var(--color-border-panel);
+    border-radius: var(--radius-sm);
+    padding: 0.05em 0.35em;
+  }
+
+  .layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Sidebar nav */
+  .nav {
+    position: sticky; top: 0; align-self: start;
+    height: 100vh; overflow-y: auto;
+    padding: 32px 20px;
+    background: rgba(255, 255, 255, 0.6);
+    border-right: 1px solid var(--color-border-panel);
+    backdrop-filter: blur(6px);
+  }
+  @media (max-width: 900px) {
+    .nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--color-border-panel); }
+  }
+  .nav .brand { font-weight: 700; letter-spacing: -0.02em; font-size: 15px; }
+  .nav .brand span { color: var(--color-accent-strong); }
+  .nav .tag { color: var(--color-text-muted); font-size: 12.5px; margin: 4px 0 24px; }
+  .nav ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  .nav li { margin: 2px 0; }
+  .nav a {
+    display: flex; gap: 10px; align-items: baseline;
+    color: var(--color-text-default); font-size: 13.5px;
+    padding: 7px 10px; border-radius: var(--radius-md);
+  }
+  .nav a:hover { background: var(--color-warm-100); text-decoration: none; }
+  .nav a .n { color: var(--color-text-subtle); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 16px; }
+
+  main { padding: 56px clamp(20px, 5vw, 72px) 120px; max-width: 1100px; }
+  section { scroll-margin-top: 24px; padding-top: 40px; }
+  section + section { border-top: 1px solid var(--color-border-panel); margin-top: 40px; }
+
+  h1 { font-size: clamp(30px, 4.4vw, 42px); letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 12px; text-wrap: balance; }
+  h2 { font-size: clamp(21px, 2.6vw, 27px); letter-spacing: -0.025em; margin: 0 0 6px; text-wrap: balance; }
+  h3 { font-size: 16px; letter-spacing: -0.01em; margin: 28px 0 10px; }
+  .lede { font-size: 17px; color: var(--color-text-muted); max-width: 68ch; }
+  .sec-kicker { font-size: 12.5px; color: var(--color-accent-strong); font-weight: 600; }
+  p { max-width: 72ch; }
+  .muted { color: var(--color-text-muted); }
+
+  .panel {
+    background: var(--color-white);
+    border: 1px solid var(--color-border-panel);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--elevation-panel);
+    padding: 22px;
+    margin: 16px 0;
+  }
+  .grid { display: grid; gap: 14px; }
+  .grid.cols { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  /* Swatches */
+  .ramp { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+  .sw { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--color-border-panel); background: var(--color-white); }
+  .sw .chip { height: 56px; }
+  .sw .meta { padding: 7px 9px; font-size: 11px; line-height: 1.35; }
+  .sw .meta .name { font-weight: 600; }
+  .sw .meta .val { color: var(--color-text-muted); font-family: var(--font-mono); font-size: 10px; word-break: break-all; }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .token-line { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--color-border-panel); }
+  .token-line:last-child { border-bottom: none; }
+  .token-line .dot { width: 26px; height: 26px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-strong); flex: none; }
+  .token-line .tk { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+  .token-line .desc { color: var(--color-text-muted); font-size: 12.5px; margin-left: auto; text-align: right; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 12px 0; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--color-border-panel); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); font-weight: 600; }
+  td code { white-space: nowrap; }
+
+  /* Buttons (the real recipe) */
+  .btn { padding: 8px 16px; border-radius: var(--radius-lg); font-weight: 600; font-size: 12px; font-family: inherit; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; border: none; }
+  .btn-primary { background: var(--color-warm-900); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .btn-primary:hover { background: var(--color-warm-800); transform: translateY(-1px); }
+  .btn-secondary { background: rgba(255,255,255,0.95); color: var(--color-neutral-700); border: 1px solid var(--color-border-form); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .btn-secondary:hover { border-color: var(--color-warm-900); color: var(--color-warm-900); }
+  .btn-danger { background: var(--color-danger-600); color: #fff; box-shadow: 0 2px 8px rgba(220,38,38,0.3); }
+  .btn-danger:hover { background: var(--color-danger-700); transform: translateY(-1px); }
+  .btn-ghost { background: transparent; color: var(--color-neutral-700); }
+  .btn-ghost:hover { background: var(--color-neutral-100); }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: var(--radius-full); }
+  .badge.default { background: var(--color-neutral-100); color: var(--color-neutral-700); border: 1px solid var(--color-border-strong); }
+  .badge.accent { background: var(--color-accent-ring); color: var(--color-accent-stronger); }
+  .badge.success { background: color-mix(in srgb, var(--color-success-600) 14%, transparent); color: var(--color-success-600); }
+  .badge.danger { background: color-mix(in srgb, var(--color-danger-600) 12%, transparent); color: var(--color-danger-700); }
+
+  .radius-demo { display: flex; flex-wrap: wrap; gap: 14px; }
+  .radius-demo .r { width: 84px; }
+  .radius-demo .box { height: 60px; background: var(--color-warm-100); border: 1px solid var(--color-border-strong); }
+  .radius-demo .lbl { font-size: 11px; margin-top: 6px; }
+  .radius-demo .lbl b { display: block; font-family: var(--font-mono); }
+
+  .elev-demo { display: flex; flex-wrap: wrap; gap: 22px; }
+  .elev-demo .e { width: 150px; height: 76px; border-radius: var(--radius-lg); background: var(--color-white); border: 1px solid var(--color-border-panel); display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--color-text-muted); }
+
+  .callout { border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); padding: 14px 16px; margin: 14px 0; background: var(--color-warm-100); }
+  .callout.do { background: color-mix(in srgb, var(--color-success-600) 8%, var(--color-white)); }
+  .callout.dont { background: color-mix(in srgb, var(--color-danger-600) 7%, var(--color-white)); }
+  .callout h4 { margin: 0 0 6px; font-size: 13px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-full); }
+  .pill.green { background: color-mix(in srgb, var(--color-success-600) 16%, transparent); color: var(--color-success-600); }
+  .pill.red { background: color-mix(in srgb, var(--color-danger-600) 14%, transparent); color: var(--color-danger-700); }
+
+  .steps { counter-reset: step; padding: 0; list-style: none; margin: 14px 0; }
+  .steps > li { position: relative; padding: 0 0 18px 44px; }
+  .steps > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: -2px; width: 28px; height: 28px; border-radius: var(--radius-full); background: var(--color-warm-900); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .steps > li:not(:last-child)::after { content: ""; position: absolute; left: 13.5px; top: 30px; bottom: 2px; width: 1px; background: var(--color-border-strong); }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .metric { border: 1px solid var(--color-border-panel); border-radius: var(--radius-lg); padding: 14px; background: var(--color-white); }
+  .metric .k { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+  .metric .v { font-size: 22px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .metric .d { font-size: 12px; color: var(--color-text-muted); }
+
+  footer { padding: 36px clamp(20px, 5vw, 72px); color: var(--color-text-muted); font-size: 12.5px; border-top: 1px solid var(--color-border-panel); max-width: 1100px; }
+  hr.soft { border: none; border-top: 1px solid var(--color-border-panel); margin: 22px 0; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="nav">
+    <div class="brand">OpenKosmos <span>Design System</span></div>
+    <div class="tag">Single source of truth · token-first · ratchet-governed</div>
+    <ol>
+      <li><a href="#architecture"><span class="n">00</span> Architecture</a></li>
+      <li><a href="#color"><span class="n">01</span> Color system</a></li>
+      <li><a href="#components"><span class="n">02</span> Component system</a></li>
+      <li><a href="#visual"><span class="n">03</span> Visual language</a></li>
+      <li><a href="#governance"><span class="n">04</span> Governance engine</a></li>
+      <li><a href="#using"><span class="n">05</span> Using &amp; verifying</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header>
+      <h1>OpenKosmos Design System</h1>
+      <p class="lede">The visual and component language shared by every brand of the OpenKosmos&nbsp;/&nbsp;PM&nbsp;Studio desktop app. This page is the design system rendered <em>in</em> the design system — every color, radius, shadow, font and button below is the real token, pulled from <code class="inline">src/renderer/styles/globals.css</code>.</p>
+      <div class="swatch-row" style="margin-top:18px">
+        <span class="badge accent">token-first</span>
+        <span class="badge default">hand-rolled primitives</span>
+        <span class="badge success">ratchet-governed</span>
+        <span class="badge default">one DS · all brands</span>
+      </div>
+    </header>
+
+    <!-- 00 ARCHITECTURE -->
+    <section id="architecture">
+      <div class="sec-kicker">00 · Architecture</div>
+      <h2>What the design system actually is</h2>
+      <p>It is <strong>not Tailwind</strong> and <strong>not a single component library</strong>. It is three layers plus a governance engine that keeps them honest:</p>
+
+      <div class="panel">
+        <table>
+          <thead><tr><th>Layer</th><th>Lives in</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><strong>1 · Design tokens</strong><br><span class="muted">source of truth</span></td><td><code>globals.css</code> <code>@theme</code> + <code>:root</code></td><td>Every color, radius and font value. Nothing downstream invents its own.</td></tr>
+            <tr><td><strong>2 · UI primitives</strong></td><td><code>src/renderer/components/ui/</code></td><td>Hand-rolled, accessible building blocks (Dialog, Badge, Card…). They consume tokens, never raw values.</td></tr>
+            <tr><td><strong>3 · Feature components</strong></td><td><code>src/renderer/components/**</code></td><td>The app. Composes primitives + token-backed utility classes.</td></tr>
+            <tr><td><strong>Governance engine</strong></td><td><code>scripts/check-design-tokens.js</code> + CI + lint + hooks</td><td>A ratchet gate that lets drift only decrease, never grow.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Two — and only two — homes for a raw color</h3>
+      <p>Every hex/oklch value in the renderer lives in exactly one of these. Everything else references it with <code>var(--color-*)</code> or a Tailwind palette utility.</p>
+      <div class="grid cols">
+        <div class="panel" style="margin:0">
+          <strong>A · The SSOT</strong>
+          <p class="muted" style="margin:6px 0 0; font-size:13px"><code>globals.css</code> — the <code>@theme</code> block (primitives that feed both the <code>.tsx</code> utilities <em>and</em> the <code>.css</code> <code>var()</code> layer from one declaration) plus the <code>:root</code> semantic tier.</p>
+        </div>
+        <div class="panel" style="margin:0">
+          <strong>B · The syntax registry</strong>
+          <p class="muted" style="margin:6px 0 0; font-size:13px"><code>code-styles.css</code> — the independent <code>--syntax-*</code> registry for code/markdown rendering, deliberately decoupled from the brand palette so highlighting never drifts on a rebrand.</p>
+        </div>
+      </div>
+      <p class="muted" style="font-size:13px">Three small, policy-forced carve-outs (the screenshot window, the fatal-error fallback, a content-excluded file) are the only places a raw hex is allowed in <code>.tsx</code> — and they are bounded by their own ratchet so they can never grow.</p>
+    </section>
+
+    <!-- 01 COLOR -->
+    <section id="color">
+      <div class="sec-kicker">01 · Color</div>
+      <h2>Color system</h2>
+      <p>Two tiers: <strong>primitives</strong> (the raw ramps, defined once in <code>@theme</code>) and the <strong>semantic tier</strong> (intent names in <code>:root</code> that point at primitives). Feature code should prefer the semantic tier; reach for a primitive only when no intent token fits.</p>
+
+      <h3>Primitive ramps</h3>
+      <div class="panel">
+        <p style="margin:0 0 10px"><strong>Primary — sky</strong> <span class="muted">· the interactive accent (focus rings, links, active nav, selection). Not a button color.</span></p>
+        <div class="ramp">
+          <div class="sw"><div class="chip" style="background:#f0f9ff"></div><div class="meta"><div class="name">50</div><div class="val">#f0f9ff</div></div></div>
+          <div class="sw"><div class="chip" style="background:#7dd3fc"></div><div class="meta"><div class="name">300</div><div class="val">#7dd3fc</div></div></div>
+          <div class="sw"><div class="chip" style="background:#0ea5e9"></div><div class="meta"><div class="name">500</div><div class="val">#0ea5e9</div></div></div>
+          <div class="sw"><div class="chip" style="background:#0284c7"></div><div class="meta"><div class="name">600</div><div class="val">#0284c7</div></div></div>
+          <div class="sw"><div class="chip" style="background:#0369a1"></div><div class="meta"><div class="name">700</div><div class="val">#0369a1</div></div></div>
+          <div class="sw"><div class="chip" style="background:#0c4a6e"></div><div class="meta"><div class="name">900</div><div class="val">#0c4a6e</div></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p style="margin:0 0 10px"><strong>Warm</strong> <span class="muted">· brand warm-neutral ramp. <code>warm-900</code> is the button black; <code>warm-50</code> is the app paper background.</span></p>
+        <div class="ramp">
+          <div class="sw"><div class="chip" style="background:#fffbf8"></div><div class="meta"><div class="name">50</div><div class="val">#fffbf8</div></div></div>
+          <div class="sw"><div class="chip" style="background:#f8f4f1"></div><div class="meta"><div class="name">100</div><div class="val">#f8f4f1</div></div></div>
+          <div class="sw"><div class="chip" style="background:#e2ddd9"></div><div class="meta"><div class="name">200</div><div class="val">#e2ddd9</div></div></div>
+          <div class="sw"><div class="chip" style="background:#979593"></div><div class="meta"><div class="name">400</div><div class="val">#979593</div></div></div>
+          <div class="sw"><div class="chip" style="background:#322d29"></div><div class="meta"><div class="name">800</div><div class="val">#322d29</div></div></div>
+          <div class="sw"><div class="chip" style="background:#272320"></div><div class="meta"><div class="name">900</div><div class="val">#272320</div></div></div>
+          <div class="sw"><div class="chip" style="background:#ffe6d3"></div><div class="meta"><div class="name">accent</div><div class="val">#ffe6d3</div></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p style="margin:0 0 10px"><strong>Neutral</strong> <span class="muted">· single cool-gray system (Option A — every gray maps here).</span></p>
+        <div class="ramp">
+          <div class="sw"><div class="chip" style="background:#fafafa"></div><div class="meta"><div class="name">50</div><div class="val">#fafafa</div></div></div>
+          <div class="sw"><div class="chip" style="background:#f5f5f5"></div><div class="meta"><div class="name">100</div><div class="val">#f5f5f5</div></div></div>
+          <div class="sw"><div class="chip" style="background:#d4d4d4"></div><div class="meta"><div class="name">300</div><div class="val">#d4d4d4</div></div></div>
+          <div class="sw"><div class="chip" style="background:#a3a3a3"></div><div class="meta"><div class="name">400</div><div class="val">#a3a3a3</div></div></div>
+          <div class="sw"><div class="chip" style="background:#737373"></div><div class="meta"><div class="name">500</div><div class="val">#737373</div></div></div>
+          <div class="sw"><div class="chip" style="background:#404040"></div><div class="meta"><div class="name">700</div><div class="val">#404040</div></div></div>
+          <div class="sw"><div class="chip" style="background:#171717"></div><div class="meta"><div class="name">900</div><div class="val">#171717</div></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p style="margin:0 0 10px"><strong>Status</strong> <span class="muted">· exact Tailwind v4 OKLCH ramps — danger = red, success = green, warning = amber. Routed through the semantic <code>danger / success / warning</code> aliases.</span></p>
+        <div class="ramp">
+          <div class="sw"><div class="chip" style="background:oklch(63.7% 0.237 25.331)"></div><div class="meta"><div class="name">danger-500</div><div class="val">red</div></div></div>
+          <div class="sw"><div class="chip" style="background:oklch(57.7% 0.245 27.325)"></div><div class="meta"><div class="name">danger-600</div><div class="val">red</div></div></div>
+          <div class="sw"><div class="chip" style="background:oklch(72.3% 0.219 149.579)"></div><div class="meta"><div class="name">success-500</div><div class="val">green</div></div></div>
+          <div class="sw"><div class="chip" style="background:oklch(62.7% 0.194 149.214)"></div><div class="meta"><div class="name">success-600</div><div class="val">green</div></div></div>
+          <div class="sw"><div class="chip" style="background:oklch(76.9% 0.188 70.08)"></div><div class="meta"><div class="name">warning-500</div><div class="val">amber</div></div></div>
+          <div class="sw"><div class="chip" style="background:oklch(66.6% 0.179 58.318)"></div><div class="meta"><div class="name">warning-600</div><div class="val">amber</div></div></div>
+        </div>
+      </div>
+
+      <h3>Semantic tier (intent names)</h3>
+      <div class="panel">
+        <div class="token-line"><span class="dot" style="background:#1a1a1a"></span><span class="tk">--color-text-default</span><span class="desc">#1a1a1a — body &amp; control text</span></div>
+        <div class="token-line"><span class="dot" style="background:#525252"></span><span class="tk">--color-text-muted</span><span class="desc">neutral-600 — labels, secondary copy</span></div>
+        <div class="token-line"><span class="dot" style="background:#a3a3a3"></span><span class="tk">--color-text-subtle</span><span class="desc">neutral-400 — placeholder, hint</span></div>
+        <div class="token-line"><span class="dot" style="background:#0ea5e9"></span><span class="tk">--color-accent</span><span class="desc">sky-500 — interactive accent</span></div>
+        <div class="token-line"><span class="dot" style="background:#0284c7"></span><span class="tk">--color-accent-strong</span><span class="desc">sky-600 — hover / links</span></div>
+        <div class="token-line"><span class="dot" style="background:#0369a1"></span><span class="tk">--color-accent-stronger</span><span class="desc">sky-700 — active</span></div>
+        <div class="token-line"><span class="dot" style="background:rgba(14,165,233,0.1)"></span><span class="tk">--color-accent-ring</span><span class="desc">sky @ 10% — the canonical focus ring</span></div>
+        <div class="token-line"><span class="dot" style="background:#6366f1"></span><span class="tk">--color-accent-secondary</span><span class="desc">indigo — schedule / paste / context chrome</span></div>
+      </div>
+
+      <h3>Border ladder</h3>
+      <p>Five tiers replace the old ad-hoc rgba border zoo. Three black tiers for elevation depth, two slate tiers for forms.</p>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Token</th><th>Value</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>--color-border-subtle</code></td><td><code>rgba(203,213,225,.3)</code></td><td>faint dividers, tracks</td></tr>
+            <tr><td><code>--color-border-panel</code></td><td><code>rgba(0,0,0,.075)</code></td><td>panels &amp; cards (the default)</td></tr>
+            <tr><td><code>--color-border-strong</code></td><td><code>rgba(0,0,0,.12)</code></td><td>emphasis hairlines</td></tr>
+            <tr><td><code>--color-border-strongest</code></td><td><code>rgba(0,0,0,.2)</code></td><td>hover, blockquote</td></tr>
+            <tr><td><code>--color-border-form</code></td><td><code>rgba(203,213,225,.8)</code></td><td>inputs, secondary buttons</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 02 COMPONENTS -->
+    <section id="components">
+      <div class="sec-kicker">02 · Components</div>
+      <h2>Component system</h2>
+
+      <h3>Buttons — black / red / white</h3>
+      <p>One button family (<code>.btn-*</code>), one box model (8&times;16 padding, <code>radius-lg</code>, weight 600, 12px, 32px min-height, centered flex). The palette is deliberately <strong>black, red, white</strong>; sky is <em>not</em> a button color.</p>
+      <div class="panel">
+        <div class="swatch-row" style="align-items:center">
+          <button class="btn btn-primary">Primary action</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-danger">Delete</button>
+          <button class="btn btn-ghost">Ghost</button>
+        </div>
+        <table style="margin-top:16px">
+          <thead><tr><th>Class</th><th>Background</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>.btn-primary</code></td><td><code>warm-900</code> (black)</td><td>the one primary / submit action</td></tr>
+            <tr><td><code>.btn-secondary</code></td><td>white + form border</td><td>secondary / cancel</td></tr>
+            <tr><td><code>.btn-danger</code></td><td><code>danger-600</code> (red)</td><td>destructive</td></tr>
+            <tr><td><code>.btn-ghost</code></td><td>transparent</td><td>low-emphasis tertiary</td></tr>
+            <tr><td><code>.btn-icon</code> / <code>.btn-close</code></td><td>white / transparent</td><td>icon-only affordances</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0">The legacy <code>.btn-dark</code> and the old cva <code>Button</code> primitive were both consolidated into this family. Buttons are CSS classes, not a React variant component.</p>
+      </div>
+
+      <h3>Badges</h3>
+      <div class="panel">
+        <div class="swatch-row">
+          <span class="badge default">default</span>
+          <span class="badge accent">accent</span>
+          <span class="badge success">success</span>
+          <span class="badge danger">danger</span>
+        </div>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0"><code>Badge</code> is the one primitive still built with <code>class-variance-authority</code>; its variants map to status / accent tokens.</p>
+      </div>
+
+      <h3>Primitive library</h3>
+      <p>~19 hand-rolled primitives in <code>components/ui/</code>. Hand-rolled is a deliberate choice (Radix was removed) — each owns its own accessibility (focus, escape, stacking).</p>
+      <div class="grid cols">
+        <div class="panel" style="margin:0"><strong>Dialog</strong><p class="muted" style="font-size:12.5px;margin:6px 0 0">The single modal standard. Owns Escape, stacking, focus, close-context. All legacy <code>.modal-*</code> shells were retired onto it.</p></div>
+        <div class="panel" style="margin:0"><strong>Card</strong><p class="muted" style="font-size:12.5px;margin:6px 0 0">The elevated-panel recipe: white, <code>border-panel</code>, <code>radius-lg</code>, panel shadow.</p></div>
+        <div class="panel" style="margin:0"><strong>Badge</strong><p class="muted" style="font-size:12.5px;margin:6px 0 0">cva variant API; the reference pattern for any future variant primitive.</p></div>
+        <div class="panel" style="margin:0"><strong>DropdownMenu</strong><p class="muted" style="font-size:12.5px;margin:6px 0 0">The single menu implementation (<code>DropdownMenu.css</code>).</p></div>
+      </div>
+    </section>
+
+    <!-- 03 VISUAL -->
+    <section id="visual">
+      <div class="sec-kicker">03 · Visual language</div>
+      <h2>Visual language</h2>
+      <p>Derived from the two reference surfaces — the <strong>Agent page</strong> and the <strong>Settings page</strong> — and adopted as the project-wide visual system (the pre-auth Startup / Sign-in / Data-loading screens were conformed to it).</p>
+
+      <h3>Type</h3>
+      <div class="panel">
+        <div style="font-size:26px; letter-spacing:-0.02em">The quick brown fox &mdash; system sans</div>
+        <div class="muted mono" style="margin-top:6px">--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif</div>
+        <hr class="soft">
+        <div class="mono" style="font-size:15px">const tokens = oklch(0.7 0.2 250); // mono</div>
+        <div class="muted mono" style="margin-top:6px">--font-mono: 'Cascadia Code', 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace</div>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0">Body uses <code>font-variation-settings: 'opsz' 32</code>. No web fonts ship — the OS UI font keeps the app native and instant.</p>
+      </div>
+
+      <h3>Corner radius — the <code>--radius-*</code> scale</h3>
+      <div class="panel">
+        <div class="radius-demo">
+          <div class="r"><div class="box" style="border-radius:var(--radius-sm)"></div><div class="lbl">sm <b>2px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius)"></div><div class="lbl">DEFAULT <b>4px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-md)"></div><div class="lbl">md <b>6px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-lg)"></div><div class="lbl">lg <b>8px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-xl)"></div><div class="lbl">xl <b>12px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-2xl)"></div><div class="lbl">2xl <b>16px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-3xl)"></div><div class="lbl">3xl <b>24px</b></div></div>
+          <div class="r"><div class="box" style="border-radius:var(--radius-full)"></div><div class="lbl">full <b>9999px</b></div></div>
+        </div>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0">Off-scale one-offs live in <code>:root</code>: <code>--radius-scrollbar</code> 3px, <code>--radius-bubble</code> 20px (message bubbles / glass cards), <code>--radius-card-xl</code> 36px (onboarding card). <code>lg</code> (8px) is the workhorse — panels, buttons, inputs.</p>
+      </div>
+
+      <h3>Elevation</h3>
+      <div class="panel">
+        <div class="elev-demo">
+          <div class="e" style="box-shadow:var(--elevation-panel)">panel · .06</div>
+          <div class="e" style="box-shadow:var(--elevation-card)">glass card · .08</div>
+          <div class="e" style="box-shadow:var(--elevation-modal)">modal · .12</div>
+        </div>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0">Soft, low-spread black shadows. Depth grows with blur, not darkness.</p>
+      </div>
+
+      <h3>The shared skeleton</h3>
+      <p>What makes Agent and Settings feel like one app:</p>
+      <ul>
+        <li><strong>Elevated-panel recipe</strong> — <code>radius-lg</code> + 1px <code>border-panel</code> + panel shadow. The Settings content container <em>is</em> the Agent sidepane.</li>
+        <li><strong>Unified header</strong> — 64px tall, white, <code>border-panel</code> bottom, 17px / 650 title. Every sub-page header reuses it.</li>
+        <li><strong>Left navigation</strong> — warm-50, the same class on both pages.</li>
+        <li><strong>Hover / active</strong> — <code>rgba(0,0,0,.05)</code> wash, one menu implementation, shared <code>form-*</code> / tool-card / list-search recipes.</li>
+      </ul>
+    </section>
+
+    <!-- 04 GOVERNANCE -->
+    <section id="governance">
+      <div class="sec-kicker">04 · Governance</div>
+      <h2>Governance engine</h2>
+      <p>The system stays consistent because a machine enforces it. <code>scripts/check-design-tokens.js</code> walks the whole renderer tree and counts ten drift metrics against a frozen baseline. <strong>Counts may only ratchet down</strong> — a PR that raises any metric fails.</p>
+
+      <div class="metric-grid">
+        <div class="metric"><div class="k">hardcodedHexLiterals</div><div class="v">0</div><div class="d">raw hex in <code>.ts/.tsx</code> (hard-zero)</div></div>
+        <div class="metric"><div class="k">sanctionedTsxHexLiterals</div><div class="v">92</div><div class="d">bounded carve-outs (can't grow)</div></div>
+        <div class="metric"><div class="k">cssHexLiterals</div><div class="v">0</div><div class="d">raw hex in component <code>.css</code></div></div>
+        <div class="metric"><div class="k">rendererCssFiles</div><div class="v">67</div><div class="d">legacy <code>.css</code> file count</div></div>
+        <div class="metric"><div class="k">uiDirectoryCssFiles</div><div class="v">0</div><div class="d"><code>.css</code> under <code>components/ui/</code></div></div>
+        <div class="metric"><div class="k">rawStatusPaletteClasses</div><div class="v">0</div><div class="d">raw red/green/amber/yellow classes</div></div>
+        <div class="metric"><div class="k">rawBrandColorClasses</div><div class="v">0</div><div class="d">raw blue/sky classes</div></div>
+        <div class="metric"><div class="k">rawBrandRgbColors</div><div class="v">0</div><div class="d">raw blue/sky <code>rgb()</code>/<code>rgba()</code></div></div>
+        <div class="metric"><div class="k">cssBorderRadiusLiterals</div><div class="v">0</div><div class="d">raw px/rem <code>border-radius</code></div></div>
+        <div class="metric"><div class="k">undefinedCssVariableRefs</div><div class="v">0</div><div class="d">unresolved fallback-free <code>var(--token)</code></div></div>
+      </div>
+
+      <p style="margin-top:18px">Baseline string today: <code>0 / 67 / 0 / 0 / 0 / 0 / 0 / 92 / 0 / 0</code> (frozen in <code>scripts/design-system-baseline.json</code>). Adding a genuinely new token does <strong>not</strong> raise a drift baseline; token definitions live in the sanctioned <code>globals.css</code> SSOT region. Baselines only change when a drift metric drops, and they may only ratchet down.</p>
+
+      <h3>Three enforcement points</h3>
+      <div class="grid cols">
+        <div class="panel" style="margin:0"><strong>CI gate</strong> <span class="pill green">always on</span><p class="muted" style="font-size:12.5px; margin:6px 0 0"><code>.github/workflows/pr-design-system.yml</code> runs the gate on every PR, appends the report to the job summary, posts a sticky comment for same-repo PRs only, and fails the check on any increase. Fork PRs skip the sticky comment because their tokens may not have PR-comment write permission. Once the base branch has a baseline, it also compares the PR baseline against that base-branch baseline so a PR cannot raise its own ceiling.</p></div>
+        <div class="panel" style="margin:0"><strong>Pre-push hook</strong> <span class="pill green">local · opt-in</span><p class="muted" style="font-size:12.5px; margin:6px 0 0">Wire <code>check:design</code> as a native <code>.git/hooks/pre-push</code> hook to catch drift before it leaves your machine. Local-only (hook files can't be committed); each dev opts in.</p></div>
+        <div class="panel" style="margin:0"><strong>ESLint rule</strong> <span class="pill green">editor</span><p class="muted" style="font-size:12.5px; margin:6px 0 0">A <code>no-restricted-syntax</code> rule red-flags a raw hex literal in renderer source the moment you type it.</p></div>
+      </div>
+    </section>
+
+    <!-- 05 USING & VERIFYING -->
+    <section id="using">
+      <div class="sec-kicker">05 · Day-to-day</div>
+      <h2>Using &amp; verifying the system</h2>
+
+      <h3>How to build UI with it</h3>
+      <p>Token-first. Pick the highest row that fits before you ever consider a literal value.</p>
+      <div class="panel">
+        <table>
+          <thead><tr><th>You need…</th><th>Reach for</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td>a color in <code>.tsx</code></td><td>Tailwind palette utility</td><td><code>text-primary-600</code>, <code>bg-warm-900</code>, <code>text-danger-600</code></td></tr>
+            <tr><td>a color in <code>.css</code></td><td><code>var(--color-*)</code></td><td><code>color: var(--color-text-default)</code></td></tr>
+            <tr><td>a corner radius</td><td><code>rounded-*</code> / <code>var(--radius-*)</code></td><td><code>rounded-lg</code>, <code>border-radius: var(--radius-lg)</code></td></tr>
+            <tr><td>a button</td><td><code>.btn-*</code> class</td><td><code>&lt;button class="btn-primary"&gt;</code></td></tr>
+            <tr><td>a modal</td><td>the <code>Dialog</code> primitive</td><td><code>&lt;Dialog&gt;…&lt;/Dialog&gt;</code></td></tr>
+            <tr><td>a variant API</td><td><code>cva</code> (see <code>Badge</code>)</td><td><code>badgeVariants({ variant })</code></td></tr>
+            <tr><td>a brand-new value</td><td>add ONE token in <code>globals.css</code></td><td>then reference it everywhere; do not raise a drift baseline</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid cols">
+        <div class="callout do"><h4>Do</h4><ul style="margin:0; padding-left:18px; font-size:13px"><li>change a color in <em>one</em> place (the token), let it cascade</li><li>use the semantic tier before a primitive</li><li>compose existing primitives</li></ul></div>
+        <div class="callout dont"><h4>Don't</h4><ul style="margin:0; padding-left:18px; font-size:13px"><li>write a raw <code>#hex</code> in renderer source</li><li>hand-roll a button or modal shell</li><li>add a baseline/allowlist entry to silence the gate</li></ul></div>
+      </div>
+
+      <h3>How a PR is verified</h3>
+      <p>Three layers of defense — machine first, human second, docs as the contract.</p>
+      <ol class="steps">
+        <li><strong>Machine gate (automatic).</strong> CI runs <code>check:design</code> over the whole tree, fails on any metric increase, and once the base branch has a baseline rejects PR baseline increases relative to it; the optional local pre-push hook catches local metric increases earlier; the ESLint rule catches raw hex in the editor. Run it yourself with <code>npm&nbsp;run&nbsp;check:design</code>.</li>
+        <li><strong>Human review (the gate's blind spots).</strong> The gate counts drift vectors; a reviewer still checks semantic misuse (success-green for a destructive action), hand-rolled buttons/modals, spacing rhythm, contrast (body text ≥ 4.5:1), and accessibility.</li>
+        <li><strong>Docs as contract.</strong> <code>ai.prompt/design-system.md</code> and <code>components/ui/ai.prompt.md</code> describe intent; when a change adds a token or shifts a rule, the same PR updates them. Re-freeze the baseline only when a measured drift count drops.</li>
+      </ol>
+
+      <div class="callout">
+        <h4>The one-line check</h4>
+        <p style="margin:0; font-size:13px"><code>npm run check:design</code> → expect <code>Design system check passed</code> with the baseline <code>0 / 68 / 0 / 0 / 0 / 0 / 0 / 93 / 0</code>. If it fails, it tells you exactly which metric grew and in which file.</p>
+      </div>
+    </section>
+  </main>
+</div>
+<footer>
+  OpenKosmos Design System · generated reference, dogfooding the live tokens from
+  <code>src/renderer/styles/globals.css</code>. Governance source of truth:
+  <code>ai.prompt/design-system.md</code> · primitive library: <code>src/renderer/components/ui/ai.prompt.md</code>.
+  One design system for OpenKosmos.
+</footer>
+</body>
+</html>

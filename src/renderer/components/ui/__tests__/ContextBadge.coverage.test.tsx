@@ -235,6 +235,19 @@ describe('ContextBadge – model limits fallback', () => {
     });
   });
 
+  it('uses default 128000 when model limits are absent', async () => {
+    mockGetModelById.mockReturnValue({
+      capabilities: {
+        limits: {},
+      },
+    });
+    mockGetCurrentContextTokenUsage.mockResolvedValue({ tokenCount: 1000 });
+    render(<ContextBadge />);
+    await waitFor(() => {
+      expect(screen.getByText(/128k/)).toBeTruthy();
+    });
+  });
+
   it('shows 0/0 when currentModel is null', async () => {
     mockCurrentModel.value = null;
     mockGetCurrentContextTokenUsage.mockResolvedValue({ tokenCount: 0 });
@@ -289,6 +302,70 @@ describe('ContextBadge – context change listener', () => {
     });
     unmount();
     expect(mockRemoveContextChangeListener).toHaveBeenCalled();
+  });
+
+  it('ignores context change events after unmount', async () => {
+    let capturedListener: ((stats: any) => void) | null = null;
+    mockAddContextChangeListener.mockImplementation((fn: any) => {
+      capturedListener = fn;
+    });
+    mockGetCurrentContextTokenUsage.mockResolvedValue({ tokenCount: 1000 });
+
+    const { unmount } = render(<ContextBadge />);
+    await waitFor(() => {
+      expect(screen.getByText(/context: 1k\//)).toBeTruthy();
+    });
+
+    unmount();
+
+    await act(async () => {
+      capturedListener?.({ tokenCount: 50000, totalMessages: 10, contextMessages: 8, compressionRatio: 0.8 });
+    });
+
+    expect(mockRemoveContextChangeListener).toHaveBeenCalled();
+  });
+});
+
+// ── fallback timeout ───────────────────────────────────────────────────────────
+
+describe('ContextBadge – fallback timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('resets loading state when no token data arrives before the fallback timeout', () => {
+    vi.useFakeTimers();
+    mockGetCurrentContextTokenUsage.mockReturnValue(new Promise(() => {}));
+
+    render(<ContextBadge />);
+    expect(screen.getByText('context: loading...')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(screen.getByText('context: 0/128k')).toBeTruthy();
+  });
+
+  it('does not reset token state when a context notification arrives before the fallback timeout', async () => {
+    vi.useFakeTimers();
+    let capturedListener: ((stats: any) => void) | null = null;
+    mockAddContextChangeListener.mockImplementation((fn: any) => {
+      capturedListener = fn;
+    });
+    mockGetCurrentContextTokenUsage.mockReturnValue(new Promise(() => {}));
+
+    render(<ContextBadge />);
+
+    await act(async () => {
+      capturedListener?.({ tokenCount: 2000, totalMessages: 10, contextMessages: 8, compressionRatio: 0.8 });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(screen.getByText('context: 2k/128k')).toBeTruthy();
   });
 });
 

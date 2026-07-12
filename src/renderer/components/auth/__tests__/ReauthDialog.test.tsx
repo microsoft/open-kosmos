@@ -8,20 +8,30 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // Minimal Dialog shim — renders children when open=true
 vi.mock('../../ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
-    open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({
+    open,
+    children,
+    onOpenChange,
+  }: {
+    open: boolean;
+    children: React.ReactNode;
+    onOpenChange?: (open: boolean) => void;
+  }) =>
+    open
+      ? (
+        <div
+          data-testid="dialog"
+          onClick={() => onOpenChange?.(false)}
+          onDoubleClick={() => onOpenChange?.(true)}
+        >
+          {children}
+        </div>
+      )
+      : null,
   DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
   DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-}));
-
-vi.mock('../../ui/button', () => ({
-  Button: ({ onClick, children, disabled }: any) => (
-    <button onClick={onClick} disabled={disabled} data-testid="reauth-button">
-      {children}
-    </button>
-  ),
 }));
 
 // ── Import ─────────────────────────────────────────────────────────────────
@@ -48,9 +58,23 @@ describe('ReauthDialog', () => {
     expect(screen.getByText('Re-authentication Required')).toBeTruthy();
   });
 
+  it('prevents dismissal from Dialog onOpenChange(false)', () => {
+    render(<ReauthDialog isOpen={true} onGitHubCopilotLogin={onGitHubCopilotLogin} />);
+    fireEvent.click(screen.getByTestId('dialog'));
+    expect(screen.getByTestId('dialog')).toBeTruthy();
+    expect(onGitHubCopilotLogin).not.toHaveBeenCalled();
+  });
+
+  it('ignores Dialog onOpenChange(true)', () => {
+    render(<ReauthDialog isOpen={true} onGitHubCopilotLogin={onGitHubCopilotLogin} />);
+    fireEvent.doubleClick(screen.getByTestId('dialog'));
+    expect(screen.getByTestId('dialog')).toBeTruthy();
+    expect(onGitHubCopilotLogin).not.toHaveBeenCalled();
+  });
+
   it('calls onGitHubCopilotLogin when button is clicked', () => {
     render(<ReauthDialog isOpen={true} onGitHubCopilotLogin={onGitHubCopilotLogin} />);
-    fireEvent.click(screen.getByTestId('reauth-button'));
+    fireEvent.click(screen.getByRole('button', { name: /Sign in via GitHub Copilot/ }));
     expect(onGitHubCopilotLogin).toHaveBeenCalledOnce();
   });
 

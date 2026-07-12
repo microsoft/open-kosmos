@@ -1,15 +1,15 @@
 /**
  * Coverage2 tests for src/preload/main.ts
  * Targets the remaining uncovered API sections:
- *   - skillLibrary, builtinTools, skills
- *   - subAgent, subAgentLibrary
+ *   - builtinTools, skills
+ *   - sub-agent APIs
  *   - chatSessionOps
  *   - models.onModelsUpdated
  *   - additional agentChat event subscriptions
  *   - workspace event subscriptions
  *   - window event subscriptions
  *   - nativeModule event subscriptions (additional)
- *   - tts event subscriptions (additional)
+ *   - whisper streaming APIs
  */
 
 // ---------------------------------------------------------------------------
@@ -28,19 +28,16 @@ const mocks2 = vi.hoisted(() => {
 
   const mockInvokeScreenshot = vi.fn();
   const mockInvokeScheduler = vi.fn();
-  const mockInvokeBrowserControl = vi.fn();
-  const mockInvokeRemoteChannel = vi.fn();
+  const mockCreateMemexPreloadApi = vi.fn().mockReturnValue({ invoke: vi.fn(), on: vi.fn(), off: vi.fn() });
   const mockInvokeExternalAgent = vi.fn();
   const mockInvokeBuddy = vi.fn();
-  const mockInvokePlugin = vi.fn();
-  const mockInvokeDoctor = vi.fn();
 
   return {
     mockInvoke, mockOn, mockOff, mockSend, mockRemoveListener, mockRemoveAllListeners,
     mockExposeInMainWorld, mockGetPathForFile,
-    mockInvokeScreenshot, mockInvokeScheduler, mockInvokeBrowserControl,
-    mockInvokeRemoteChannel, mockInvokeExternalAgent,
-    mockInvokeBuddy, mockInvokePlugin, mockInvokeDoctor,
+    mockInvokeScreenshot, mockInvokeScheduler,
+    mockCreateMemexPreloadApi, mockInvokeExternalAgent,
+    mockInvokeBuddy,
   };
 });
 
@@ -59,12 +56,9 @@ vi.mock('electron', () => ({
 
 vi.mock('../screenshot/invoke', () => ({ default: mocks2.mockInvokeScreenshot }));
 vi.mock('../scheduler/invoke', () => ({ default: mocks2.mockInvokeScheduler }));
-vi.mock('../browserControl/invoke', () => ({ default: mocks2.mockInvokeBrowserControl }));
-vi.mock('../remoteChannel/invoke', () => ({ default: mocks2.mockInvokeRemoteChannel }));
+vi.mock('../memex/api', () => ({ createMemexPreloadApi: mocks2.mockCreateMemexPreloadApi }));
 vi.mock('../externalAgent/invoke', () => ({ default: mocks2.mockInvokeExternalAgent }));
 vi.mock('../buddy/invoke', () => ({ default: mocks2.mockInvokeBuddy }));
-vi.mock('../plugin/invoke', () => ({ default: mocks2.mockInvokePlugin }));
-vi.mock('../doctor/invoke', () => ({ default: mocks2.mockInvokeDoctor }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,59 +87,6 @@ beforeEach(async () => {
   mocks2.mockOn.mockClear();
   mocks2.mockRemoveListener.mockClear();
   mocks2.mockSend.mockClear();
-});
-
-// ─── skillLibrary ─────────────────────────────────────────────────────────────
-describe('electronAPI.skillLibrary', () => {
-  it('getLibraryData', () => {
-    api.skillLibrary.getLibraryData();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:getLibraryData');
-  });
-
-  it('validateSkill', () => {
-    api.skillLibrary.validateSkill('mySkill');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:validateSkill', 'mySkill');
-  });
-
-  it('addSkill without options', () => {
-    api.skillLibrary.addSkill('mySkill');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:addSkill', 'mySkill', undefined);
-  });
-
-  it('addSkill with options', () => {
-    api.skillLibrary.addSkill('mySkill', { overwrite: true, chatId: 'c1' });
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:addSkill', 'mySkill', { overwrite: true, chatId: 'c1' });
-  });
-
-  it('updateSkill', () => {
-    api.skillLibrary.updateSkill('mySkill');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:updateSkill', 'mySkill');
-  });
-
-  it('addSkillFromDevice', () => {
-    api.skillLibrary.addSkillFromDevice('/path/to/file', { chatId: 'c1' });
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:addSkillFromDevice', '/path/to/file', { chatId: 'c1' });
-  });
-
-  it('installSkillFromFilePath', () => {
-    api.skillLibrary.installSkillFromFilePath('/path/to/skill.zip', {});
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:installSkillFromFilePath', '/path/to/skill.zip', {});
-  });
-
-  it('updateSkillFromDevice', () => {
-    api.skillLibrary.updateSkillFromDevice('mySkill');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:updateSkillFromDevice', 'mySkill');
-  });
-
-  it('applySkillToAgents', () => {
-    api.skillLibrary.applySkillToAgents('mySkill', [{ chatId: 'c1', agentName: 'agent1' }]);
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:applySkillToAgents', 'mySkill', [{ chatId: 'c1', agentName: 'agent1' }]);
-  });
-
-  it('showOverwriteConfirmDialog', () => {
-    api.skillLibrary.showOverwriteConfirmDialog('mySkill');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('skillLibrary:showOverwriteConfirmDialog', 'mySkill');
-  });
 });
 
 // ─── builtinTools ─────────────────────────────────────────────────────────────
@@ -201,46 +142,6 @@ describe('electronAPI.skills', () => {
 
 // ─── subAgent ─────────────────────────────────────────────────────────────────
 describe('electronAPI.subAgent', () => {
-  it('getAll', () => {
-    api.subAgent.getAll();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:getAll');
-  });
-
-  it('add', () => {
-    api.subAgent.add({ name: 'bot' });
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:add', { name: 'bot' });
-  });
-
-  it('update', () => {
-    api.subAgent.update('bot', { description: 'updated' });
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:update', 'bot', { description: 'updated' });
-  });
-
-  it('delete', () => {
-    api.subAgent.delete('bot');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:delete', 'bot');
-  });
-
-  it('importFromFile', () => {
-    api.subAgent.importFromFile('/path/to/bot.json');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:importFromFile', '/path/to/bot.json');
-  });
-
-  it('exportAsClaudeCode', () => {
-    api.subAgent.exportAsClaudeCode('bot');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:exportAsClaudeCode', 'bot');
-  });
-
-  it('openInExplorer', () => {
-    api.subAgent.openInExplorer('bot');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:openInExplorer', 'bot');
-  });
-
-  it('syncFromDisk', () => {
-    api.subAgent.syncFromDisk();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('subAgent:syncFromDisk');
-  });
-
   it('onStateUpdate subscribes and unsubscribes', () => {
     const cb = vi.fn();
     const unsub = api.subAgent.onStateUpdate(cb);
@@ -609,66 +510,81 @@ describe('electronAPI.workspace – event subscriptions', () => {
   });
 });
 
-
-
-// ─── update – additional paths ────────────────────────────────────────────────
-describe('electronAPI.update – additional', () => {
-  it('onUpdateEvent subscribes and unsubscribes', () => {
+// ─── nativeModule – event subscriptions (additional) ─────────────────────────
+describe('electronAPI.nativeModule – additional events', () => {
+  it('onDownloadStarted subscribes and forwards event', () => {
     const cb = vi.fn();
-    const unsub = api.update.onUpdateEvent('available', cb);
-    simulateEvent('update:available', { version: '2.0.0' });
-    expect(cb).toHaveBeenCalledWith({ version: '2.0.0' });
+    const unsub = api.nativeModule.onDownloadStarted(cb);
+    simulateEvent('native-module:downloadStarted', { packageName: 'pkg', url: 'http://a.com' });
+    expect(cb).toHaveBeenCalledWith({ packageName: 'pkg', url: 'http://a.com' });
     unsub();
-    expect(mocks2.mockRemoveListener).toHaveBeenCalledWith('update:available', expect.any(Function));
   });
 
-  it('quitAndInstall with filePath', async () => {
-    api.update.quitAndInstall('/path/to/update.dmg');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('update:quitAndInstall', '/path/to/update.dmg');
-  });
-
-  it('skipVersion', () => {
-    api.update.skipVersion('1.9.0');
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('update:skipVersion', '1.9.0');
-  });
-
-  it('getPreferences', () => {
-    api.update.getPreferences();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('update:getPreferences');
-  });
-
-  it('updatePreferences', () => {
-    api.update.updatePreferences({ autoUpdate: true });
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('update:updatePreferences', { autoUpdate: true });
-  });
-});
-
-// ─── startupUpdate ────────────────────────────────────────────────────────────
-describe('electronAPI.startupUpdate', () => {
-  it('checkAndInstallUpdates', () => {
-    api.startupUpdate.checkAndInstallUpdates();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('startup:checkAndInstallUpdates');
-  });
-
-  it('onProgress subscribes and forwards event', () => {
+  it('onDownloadProgress subscribes and forwards event', () => {
     const cb = vi.fn();
-    const unsub = api.startupUpdate.onProgress(cb);
-    simulateEvent('startup:updateProgress', { percent: 75 });
-    expect(cb).toHaveBeenCalledWith({ percent: 75 });
+    const unsub = api.nativeModule.onDownloadProgress(cb);
+    simulateEvent('native-module:downloadProgress', { packageName: 'pkg', percent: 50 });
+    expect(cb).toHaveBeenCalledWith({ packageName: 'pkg', percent: 50 });
     unsub();
   });
 });
 
-// ─── mcpLibrary ───────────────────────────────────────────────────────────────
-describe('electronAPI.mcpLibrary', () => {
-  it('getLibraryData', () => {
-    api.mcpLibrary.getLibraryData();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('mcpLibrary:getLibraryData');
+// ─── whisper – streaming APIs ─────────────────────────────────────────────────
+describe('electronAPI.whisper – streaming', () => {
+  it('startStreaming', () => {
+    api.whisper.startStreaming('tiny', { language: 'en' });
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:startStreaming', { modelSize: 'tiny', options: { language: 'en' } });
   });
 
-  it('fetchAndUpdate', () => {
-    api.mcpLibrary.fetchAndUpdate();
-    expect(mocks2.mockInvoke).toHaveBeenCalledWith('mcpLibrary:fetchAndUpdate');
+  it('processChunk', () => {
+    const pcm = new Float32Array([0.1, 0.2]);
+    api.whisper.processChunk('sess-1', pcm);
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:processChunk', {
+      sessionId: 'sess-1',
+      pcmData: Array.from(pcm),
+    });
+  });
+
+  it('stopStreaming', () => {
+    api.whisper.stopStreaming('sess-1');
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:stopStreaming', 'sess-1');
+  });
+
+  it('cancelStreaming', () => {
+    api.whisper.cancelStreaming('sess-1');
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:cancelStreaming', 'sess-1');
+  });
+
+  it('isStreamingActive', () => {
+    api.whisper.isStreamingActive('sess-1');
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:isStreamingActive', 'sess-1');
+  });
+
+  it('onStreamingUpdate subscribes and forwards event', () => {
+    const cb = vi.fn();
+    const unsub = api.whisper.onStreamingUpdate(cb);
+    simulateEvent('whisper:streamingUpdate', { sessionId: 's1', type: 'final', text: 'hello' });
+    expect(cb).toHaveBeenCalledWith({ sessionId: 's1', type: 'final', text: 'hello' });
+    unsub();
+  });
+
+  it('transcribe converts Float32Array to array', () => {
+    const pcm = new Float32Array([0.1, 0.2, 0.3]);
+    api.whisper.transcribe(pcm, 'base', { language: 'en' });
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('whisper:transcribe', expect.objectContaining({
+      modelSize: 'base',
+      options: { language: 'en' },
+    }));
+    const callArg = mocks2.mockInvoke.mock.calls.find((c: any[]) => c[0] === 'whisper:transcribe')?.[1];
+    expect(callArg?.pcmData).toHaveLength(3);
+  });
+
+  it('onDownloadCancelled subscribes and forwards event', () => {
+    const cb = vi.fn();
+    const unsub = api.whisper.onDownloadCancelled(cb);
+    simulateEvent('whisper:downloadCancelled', { size: 'tiny' });
+    expect(cb).toHaveBeenCalledWith({ size: 'tiny' });
+    unsub();
   });
 });
 
@@ -771,6 +687,20 @@ describe('electronAPI.runtime – additional', () => {
     expect(mocks2.mockInvoke).toHaveBeenCalledWith('runtime:clean-uv-cache');
   });
 
+  it('listPythonPackages', () => {
+    api.runtime.listPythonPackages();
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('runtime:list-python-packages');
+  });
+
+  it('addPythonPackages', () => {
+    api.runtime.addPythonPackages(['mcp']);
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('runtime:add-python-packages', ['mcp']);
+  });
+
+  it('uninstallPythonPackage', () => {
+    api.runtime.uninstallPythonPackage('mcp');
+    expect(mocks2.mockInvoke).toHaveBeenCalledWith('runtime:uninstall-python-package', 'mcp');
+  });
 
 });
 
@@ -799,7 +729,6 @@ describe('electronAPI.logger', () => {
     expect(mocks2.mockSend).toHaveBeenCalledWith('logger:rendererLog', { level: 'info', message: 'test' });
   });
 });
-
 
 // ─── chroma ───────────────────────────────────────────────────────────────────
 describe('electronAPI.chroma', () => {
@@ -836,7 +765,6 @@ describe('electronAPI.featureFlags', () => {
     expect(mocks2.mockInvoke).toHaveBeenCalledWith('featureFlags:isEnabled', 'myFlag');
   });
 });
-
 
 // ─── profile – additional ─────────────────────────────────────────────────────
 describe('electronAPI.profile – additional', () => {

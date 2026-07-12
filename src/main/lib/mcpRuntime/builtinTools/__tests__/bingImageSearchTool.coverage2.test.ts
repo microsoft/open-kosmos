@@ -467,13 +467,6 @@ describe('BingImageSearchTool private — parseBingImageSearchResults branches',
 // ── getDefinition ─────────────────────────────────────────────────────────────
 
 describe('BingImageSearchTool.getDefinition — additional checks', () => {
-  it('has correct timeout range', () => {
-    const def = BingImageSearchTool.getDefinition();
-    const timeout = def.inputSchema.properties.timeout as any;
-    expect(timeout.minimum).toBe(1000);
-    expect(timeout.maximum).toBe(300000);
-  });
-
   it('has correct maxResults maximum (20)', () => {
     const def = BingImageSearchTool.getDefinition();
     const mr = def.inputSchema.properties.maxResults as any;

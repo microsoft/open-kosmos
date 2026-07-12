@@ -186,12 +186,21 @@ describe('AgentList - basic agent list render', () => {
     expect(screen.getAllByText('Alpha Agent').length).toBeGreaterThan(0);
   });
 
-  it('calls onSelectChat when agent is clicked', () => {
+  it('does not start a new chat when the agent row is clicked (toggles expansion instead)', () => {
     const onSelectChat = vi.fn();
     const chats = [makeChat({ chat_id: 'c1', agent: { name: 'Alpha Agent' } })];
     render(<AgentList chats={chats} onSelectChat={onSelectChat} />);
 
     fireEvent.click(screen.getByTestId('nav-Alpha Agent'));
+    expect(onSelectChat).not.toHaveBeenCalled();
+  });
+
+  it('starts a new chat when the new-chat button is clicked', () => {
+    const onSelectChat = vi.fn();
+    const chats = [makeChat({ chat_id: 'c1', agent: { name: 'Alpha Agent' } })];
+    render(<AgentList chats={chats} onSelectChat={onSelectChat} />);
+
+    fireEvent.click(screen.getByLabelText('Start new conversation'));
     expect(onSelectChat).toHaveBeenCalledWith('c1');
   });
 });

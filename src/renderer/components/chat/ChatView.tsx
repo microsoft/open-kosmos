@@ -16,6 +16,7 @@ import { profileDataManager } from '../../lib/userData';
 import { startNewChatFor } from '../../lib/chat/startNewChatFor';
 import { createLogger } from '../../lib/utilities/logger';
 import { ScheduleSidepaneAtom } from './chat-side.atom';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[ChatView]');
 
 const ChatView: React.FC = memo(() => {
@@ -23,6 +24,7 @@ const ChatView: React.FC = memo(() => {
   const { chatId: routeChatId, sessionId: routeSessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
 
   const navigationState = (location.state as {
     selectedText?: string;
@@ -132,10 +134,7 @@ const ChatView: React.FC = memo(() => {
           );
           lastProcessedRouteRef.current = currentRouteKey;
 
-          const result = await startNewChatFor(
-            routeChatId,
-            undefined,
-          );
+          const result = await startNewChatFor(routeChatId);
           if (result.success && result.chatSessionId) {
             logger.debug(
               '[ChatView] ✅ New chat started, redirecting to session:',
@@ -261,15 +260,6 @@ const ChatView: React.FC = memo(() => {
   // Get the current Agent's Zero States configuration
   const zeroStates = currentAgent?.zero_states;
 
-  // Determine whether the current session is a remote session (read-only mode)
-  const isRemoteSession = useMemo(() => {
-    if (!currentChat?.chatSessions || !chatSessionId) return false;
-    const session = currentChat.chatSessions.find(
-      (s) => s.chatSession_id === chatSessionId
-    );
-    return session?.source?.type === 'remote';
-  }, [currentChat?.chatSessions, chatSessionId]);
-
   // MCP Tools handler - must be defined after chatId
   const handleOpenMcpTools = useCallback(() => {
     if (chatId) {
@@ -290,7 +280,7 @@ const ChatView: React.FC = memo(() => {
   const handleForkChatSession = useCallback(
     async (sessionId: string) => {
       if (!chatId) {
-        showError('No current agent chat available');
+        showError(t('chat.session.noCurrentAgentChat'));
         return;
       }
 
@@ -301,7 +291,7 @@ const ChatView: React.FC = memo(() => {
         // 2. Copy ChatSession data (files and indexes) via chatSessionManager
         // 3. Switch to the new ChatSession (auto-creates AgentChat instance and notifies frontend)
         if (!window.electronAPI?.agentChat?.forkChatSession) {
-          showError('Fork API not available');
+          showError(t('chat.session.forkApiUnavailable'));
           return;
         }
 
@@ -311,7 +301,7 @@ const ChatView: React.FC = memo(() => {
         );
 
         if (!result.success) {
-          showError(`Failed to fork session: ${result.error}`);
+          showError(t('chat.session.forkFailed', { error: result.error || t('common.unknownError') }));
           return;
         }
 
@@ -321,16 +311,16 @@ const ChatView: React.FC = memo(() => {
           newChatSessionId: result.chatSessionId,
         });
 
-        showSuccess('Session forked successfully, switched to new session');
+        showSuccess(t('chat.session.forkSuccess'));
       } catch (error) {
         showError(
-          `Failed to fork session: ${
-            error instanceof Error ? error.message : 'Unknown error'
-          }`,
+          t('chat.session.forkFailed', {
+            error: error instanceof Error ? error.message : t('common.unknownError'),
+          }),
         );
       }
     },
-    [chatId, showSuccess, showError],
+    [chatId, showSuccess, showError, t],
   );
 
   // Handle session selection
@@ -338,7 +328,7 @@ const ChatView: React.FC = memo(() => {
     async (sessionId: string) => {
       try {
         if (!chatId) {
-          showError('Cannot switch chat session: current chat does not exist');
+          showError(t('chat.session.switchMissingChat'));
           return;
         }
 
@@ -357,10 +347,10 @@ const ChatView: React.FC = memo(() => {
 
         navigate(`/agent/chat/${chatId}/${sessionId}`);
       } catch (error) {
-        showError('Failed to switch chat session');
+        showError(t('chat.session.switchFailed'));
       }
     },
-    [showError, chatId, chatSessionId, navigate],
+    [showError, chatId, chatSessionId, navigate, t],
   );
 
   // Listen for chatSession:fork events
@@ -398,9 +388,7 @@ const ChatView: React.FC = memo(() => {
             chatId={chatId}
             chatStatus={chatStatus}
             zeroStates={zeroStates}
-            agentName={currentAgent?.name}
             onSelectScheduledSession={handleSessionSelect}
-            isReadOnly={isRemoteSession}
           />
         </div>
       </div>

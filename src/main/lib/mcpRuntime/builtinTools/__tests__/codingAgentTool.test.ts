@@ -1,518 +1,613 @@
 /**
- * CodingAgentTool unit tests
+ * CodingAgentTool unit tests (adapter-driven, final-only design).
  *
- * Covers: argument validation, CLI discovery, stream-json parsing,
- * spawn orchestration (timeout, truncation, exit codes), partial result
- * streaming, and tool definition schema.
+ * Covers: CLI resolution (arg override / profile / default / error), argument validation,
+ * availability detection + install-hint error, spawn orchestration (final extraction, truncation,
+ * timeout, abort, heartbeat, stderr capture, errors), and the tool definition schema.
  */
 
 import { EventEmitter } from 'events';
 
-// ─── Mocks ───────────────────────────────────────────────────────────
-
-const { mockExecSync, mockSpawn, mockEventSender } = vi.hoisted(() => ({
-  mockExecSync: vi.fn(),
+const { mockExecFile, mockSpawn, mockReadFileSync, mockEventSender, mockGetCurrentUserAlias, mockGetCodingAgentSettings } = vi.hoisted(() => ({
+  mockExecFile: vi.fn(),
   mockSpawn: vi.fn(),
+  mockReadFileSync: vi.fn(),
   mockEventSender: { send: vi.fn() },
+  mockGetCurrentUserAlias: vi.fn(),
+  mockGetCodingAgentSettings: vi.fn(),
 }));
 
 vi.mock('../../../unifiedLogger', async () => ({
-  getUnifiedLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  getUnifiedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
 }));
 
 vi.mock('child_process', async () => ({
-  execSync: (...args: any[]) => mockExecSync(...args),
+  execFile: (...args: any[]) => mockExecFile(...args),
   spawn: (...args: any[]) => mockSpawn(...args),
 }));
 
 vi.mock('fs', async () => ({
   existsSync: vi.fn().mockReturnValue(true),
+  readFileSync: (...args: any[]) => mockReadFileSync(...args),
 }));
 
-vi.mock('../builtinToolsManager', async () => ({
-  BuiltinToolsManager: {
-    getExecutionContext: vi.fn().mockReturnValue({
-      eventSender: mockEventSender,
-      currentToolCallId: 'tc_test_123',
-      chatId: 'chat_1',
-      chatSessionId: 'session_1',
-    }),
+vi.mock('../../../userDataADO', async () => ({
+  profileCacheManager: {
+    getCurrentUserAlias: (...args: any[]) => mockGetCurrentUserAlias(...args),
+    getCodingAgentSettings: (...args: any[]) => mockGetCodingAgentSettings(...args),
   },
 }));
 
 import { CodingAgentTool } from '../codingAgentTool';
+import { TOOL_IDLE_TIMEOUT_MS } from '../../toolTimeoutPolicy';
 import * as fs from 'fs';
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-/** Create a mock child process with controllable stdout/stderr/stdin */
 function createMockChild() {
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
   const stdin = { end: vi.fn() };
-  const child = Object.assign(new EventEmitter(), {
-    stdout,
-    stderr,
-    stdin,
-    pid: 12345,
-    kill: vi.fn(),
-  });
-  return child;
-}
-
-/** Build a stream-json line for a text_delta event */
-function textDeltaLine(text: string): string {
-  return JSON.stringify({
-    type: 'stream_event',
-    event: {
-      type: 'content_block_delta',
-      delta: { type: 'text_delta', text },
-    },
-  });
-}
-
-/** Build a stream-json line for a result event */
-function resultLine(resultText: string): string {
-  return JSON.stringify({ type: 'result', result: resultText });
+  return Object.assign(new EventEmitter(), { stdout, stderr, stdin, pid: 4321, kill: vi.fn() });
 }
 
 const validArgs = { task: 'fix the bug', cwd: '/tmp/project' };
+const originalPlatform = process.platform;
 
-// ─── Tests ───────────────────────────────────────────────────────────
+function setPlatform(value: NodeJS.Platform) {
+  Object.defineProperty(process, 'platform', { value, configurable: true });
+}
+
+function mockPathLookup(stdout: string) {
+  mockExecFile.mockImplementation((_command, _args, _options, callback) => {
+    callback(null, stdout, '');
+  });
+}
+
+function mockPathLookupError(error: Error = new Error('not found')) {
+  mockExecFile.mockImplementation((_command, _args, _options, callback) => {
+    callback(error, '', '');
+  });
+}
+
+function defaultContext(): any {
+  return { eventSender: mockEventSender, currentToolCallId: 'tc1', chatId: 'c1', chatSessionId: 's1', userAlias: 'alice' };
+}
 
 describe('CodingAgentTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // Pin a non-win32 default so generic spawn tests are deterministic regardless of the host OS;
+    // win32-specific tests opt in via setPlatform('win32'). afterEach restores the real platform.
+    setPlatform('linux');
     (fs.existsSync as Mock).mockReturnValue(true);
-    mockExecSync.mockReturnValue('/usr/local/bin/claude\n');
+    mockReadFileSync.mockReturnValue('@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
+    mockPathLookup('/usr/local/bin/claude\n');
+    mockGetCurrentUserAlias.mockReturnValue('alice');
+    mockGetCodingAgentSettings.mockReturnValue({ cli: 'claude' });
   });
 
   afterEach(() => {
+    setPlatform(originalPlatform);
     vi.useRealTimers();
   });
 
-  // ── extractStreamText (private, tested via execute output) ──
+  // ── resolveCliId ──────────────────────────────────────────────────────────
 
-  describe('extractStreamText', () => {
-    // Access private static method for direct unit testing
-    const extract = (json: string) => (CodingAgentTool as any).extractStreamText(json);
+  describe('resolveCliId', () => {
+    const resolve = (executionContext?: any) => (CodingAgentTool as any).resolveCliId(executionContext);
 
-    it('extracts text from content_block_delta', () => {
-      const result = extract(textDeltaLine('hello'));
-      expect(result).toEqual({ text: 'hello', isResult: false, resultText: null });
+    it('reads the profile setting from the active alias', () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      expect(resolve()).toBe('codex');
     });
 
-    it('extracts result text from result event', () => {
-      const result = extract(resultLine('final output'));
-      expect(result).toEqual({ text: null, isResult: true, resultText: 'final output' });
+    it('reads the profile setting via getCurrentUserAlias when no execution context', () => {
+      mockGetCurrentUserAlias.mockReturnValue('alice');
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'copilot' });
+      expect(resolve()).toBe('copilot');
     });
 
-    it('returns nulls for unrecognized event types', () => {
-      const result = extract(JSON.stringify({ type: 'system', data: 'init' }));
-      expect(result).toEqual({ text: null, isResult: false, resultText: null });
+    it('uses the captured execution context alias instead of the mutable active profile alias', () => {
+      mockGetCurrentUserAlias.mockReturnValue('bob');
+      mockGetCodingAgentSettings.mockImplementation((alias: string) => ({ cli: alias === 'alice' ? 'gemini' : 'codex' }));
+      expect(resolve(defaultContext())).toBe('gemini');
+      expect(mockGetCodingAgentSettings).toHaveBeenCalledWith('alice');
     });
 
-    it('returns nulls for invalid JSON', () => {
-      const result = extract('not json {{{');
-      expect(result).toEqual({ text: null, isResult: false, resultText: null });
+    it('does not allow a model-supplied cli field to override the profile setting', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      const result = await CodingAgentTool.execute({ ...validArgs, cli: 'gemini' } as any);
+      expect(result.cli).toBe('codex');
     });
 
-    it('returns nulls for content_block_delta with non-text_delta type', () => {
-      const json = JSON.stringify({
-        type: 'stream_event',
-        event: {
-          type: 'content_block_delta',
-          delta: { type: 'input_json_delta', partial_json: '{}' },
-        },
-      });
-      expect(extract(json)).toEqual({ text: null, isResult: false, resultText: null });
+    it('returns the default when no alias can be resolved', () => {
+      mockGetCurrentUserAlias.mockReturnValue(null);
+      expect(resolve()).toBe('claude');
     });
 
-    it('returns nulls for result event with non-string result', () => {
-      const json = JSON.stringify({ type: 'result', result: 42 });
-      expect(extract(json)).toEqual({ text: null, isResult: false, resultText: null });
-    });
-  });
-
-  // ── buildClaudeArgs ──
-
-  describe('buildClaudeArgs', () => {
-    const buildArgs = (task: string) => (CodingAgentTool as any).buildClaudeArgs(task);
-
-    it('includes required CLI flags', () => {
-      const args = buildArgs('implement feature');
-      expect(args).toContain('-p');
-      expect(args).toContain('--output-format');
-      expect(args).toContain('stream-json');
-      expect(args).toContain('--verbose');
-      expect(args).toContain('--dangerously-skip-permissions');
-      expect(args).toContain('implement feature');
+    it('returns the default when the profile setting is invalid', () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'nope' });
+      expect(resolve()).toBe('claude');
     });
 
-    it('puts the task as the last argument', () => {
-      const args = buildArgs('my task');
-      expect(args[args.length - 1]).toBe('my task');
+    it('returns the default when reading the profile throws', () => {
+      mockGetCodingAgentSettings.mockImplementation(() => { throw new Error('boom'); });
+      expect(resolve()).toBe('claude');
     });
   });
 
-  // ── findCliPath ──
-
-  describe('findCliPath', () => {
-    const findCliPath = () => (CodingAgentTool as any).findCliPath();
-
-    it('returns trimmed path when CLI is found', () => {
-      mockExecSync.mockReturnValue('  /usr/local/bin/claude  \n');
-      expect(findCliPath()).toBe('/usr/local/bin/claude');
-    });
-
-    it('returns first line when multiple paths returned', () => {
-      mockExecSync.mockReturnValue('/usr/local/bin/claude\n/usr/bin/claude\n');
-      expect(findCliPath()).toBe('/usr/local/bin/claude');
-    });
-
-    it('returns null when CLI is not found', () => {
-      mockExecSync.mockImplementation(() => { throw new Error('not found'); });
-      expect(findCliPath()).toBeNull();
-    });
-
-    it('uses "where" on win32 and "which" otherwise', () => {
-      const originalPlatform = process.platform;
-
-      // Test the command string used — platform is read-only so we check the execSync call
-      mockExecSync.mockReturnValue('/usr/local/bin/claude\n');
-      findCliPath();
-
-      const cmd = mockExecSync.mock.calls[0][0] as string;
-      if (process.platform === 'win32') {
-        expect(cmd).toBe('where claude');
-      } else {
-        expect(cmd).toBe('which claude');
-      }
-    });
-  });
-
-  // ── execute — validation ──
+  // ── execute — validation ────────────────────────────────────────────────────
 
   describe('execute - validation', () => {
     it('returns error when task is empty', async () => {
       const result = await CodingAgentTool.execute({ task: '', cwd: '/tmp' });
       expect(result.exitCode).toBe(1);
       expect(result.output).toContain('task must be a non-empty string');
+      expect(result.cli).toBe('claude');
     });
 
     it('returns error when task is whitespace-only', async () => {
       const result = await CodingAgentTool.execute({ task: '   ', cwd: '/tmp' });
-      expect(result.exitCode).toBe(1);
       expect(result.output).toContain('task must be a non-empty string');
     });
 
     it('returns error when cwd is empty', async () => {
       const result = await CodingAgentTool.execute({ task: 'do something', cwd: '' });
-      expect(result.exitCode).toBe(1);
       expect(result.output).toContain('cwd must be provided');
     });
 
     it('returns error when cwd does not exist', async () => {
       (fs.existsSync as Mock).mockReturnValue(false);
-      const result = await CodingAgentTool.execute({ task: 'do something', cwd: '/nonexistent' });
-      expect(result.exitCode).toBe(1);
+      const result = await CodingAgentTool.execute({ task: 'do something', cwd: '/nope' });
       expect(result.output).toContain('cwd directory does not exist');
     });
 
-    it('returns error when CLI is not found', async () => {
-      mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    it('returns an install-hint error when the CLI is not found', async () => {
+      mockPathLookupError();
       const result = await CodingAgentTool.execute(validArgs);
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain('Claude Code CLI not found');
+      expect(result.output).toContain('Claude Code not found');
+      expect(result.output).toContain('npm install -g @anthropic-ai/claude-code');
+    });
+
+    it('surfaces the selected CLI install hint (codex)', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      mockPathLookupError();
+      const result = await CodingAgentTool.execute(validArgs);
+      expect(result.output).toContain('Codex CLI not found');
+      expect(result.output).toContain('npm install -g @openai/codex');
+      expect(result.cli).toBe('codex');
     });
   });
 
-  // ── execute — spawn and streaming ──
+  // ── execute — spawn / final extraction ──────────────────────────────────────
 
-  describe('execute - spawn and streaming', () => {
-    let mockChild: ReturnType<typeof createMockChild>;
-
+  describe('execute - spawn and final extraction', () => {
+    let child: ReturnType<typeof createMockChild>;
     beforeEach(() => {
-      mockChild = createMockChild();
-      mockSpawn.mockReturnValue(mockChild);
+      child = createMockChild();
+      mockSpawn.mockReturnValue(child);
     });
 
-    it('spawns claude with correct arguments and cwd', async () => {
+    it('spawns the resolved CLI with adapter args and returns the parsed final (claude JSON)', async () => {
       const promise = CodingAgentTool.execute(validArgs);
-
-      // Let spawn happen
       await vi.advanceTimersByTimeAsync(0);
 
-      // Emit output and close
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('hello') + '\n'));
-      mockChild.emit('close', 0);
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'result', result: 'all done' })));
+      child.emit('close', 0);
 
       const result = await promise;
       expect(mockSpawn).toHaveBeenCalledWith(
         '/usr/local/bin/claude',
-        expect.arrayContaining(['-p', '--output-format', 'stream-json', 'fix the bug']),
-        expect.objectContaining({ cwd: expect.any(String), stdio: ['pipe', 'pipe', 'pipe'] })
+        expect.arrayContaining(['-p', '--output-format', 'json', '--dangerously-skip-permissions', 'fix the bug']),
+        expect.objectContaining({
+          cwd: expect.any(String),
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: false,
+        }),
       );
+      expect(result.output).toBe('all done');
       expect(result.exitCode).toBe(0);
+      expect(result.cli).toBe('claude');
     });
 
-    it('accumulates text_delta events into output', async () => {
+    it('unwraps Windows npm .cmd shims and spawns node without a shell', async () => {
+      setPlatform('win32');
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      mockPathLookup('C:\\bin\\codex.cmd\r\n');
+      (fs.existsSync as Mock).mockImplementation((target: string) => !String(target).toLowerCase().endsWith('\\node.exe'));
+      mockReadFileSync.mockReturnValue('@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%~dp0node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
       const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
 
-      mockChild.stdout.emit('data', Buffer.from(
-        textDeltaLine('hello ') + '\n' + textDeltaLine('world') + '\n'
-      ));
-      mockChild.emit('close', 0);
-
-      const result = await promise;
-      expect(result.output).toBe('hello world');
-    });
-
-    it('prefers result event text over accumulated deltas', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(
-        textDeltaLine('partial') + '\n' + resultLine('complete final output') + '\n'
-      ));
-      mockChild.emit('close', 0);
-
-      const result = await promise;
-      expect(result.output).toBe('complete final output');
-    });
-
-    it('handles split lines across multiple data chunks', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      const fullLine = textDeltaLine('split text');
-      const half1 = fullLine.slice(0, 20);
-      const half2 = fullLine.slice(20) + '\n';
-
-      mockChild.stdout.emit('data', Buffer.from(half1));
-      mockChild.stdout.emit('data', Buffer.from(half2));
-      mockChild.emit('close', 0);
-
-      const result = await promise;
-      expect(result.output).toBe('split text');
-    });
-
-    it('emits partial results via eventSender for streaming UI', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('streaming') + '\n'));
-      mockChild.emit('close', 0);
+      child.stdout.emit('data', Buffer.from('done'));
+      child.emit('close', 0);
 
       await promise;
-      expect(mockEventSender.send).toHaveBeenCalledWith(
-        'agentChat:streamingChunk',
-        expect.objectContaining({
-          type: 'tool_result',
-          toolResult: expect.objectContaining({
-            tool_name: 'coding_agent',
-            isPartial: true,
-          }),
-        })
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'node',
+        expect.arrayContaining(['C:\\bin\\node_modules\\@openai\\codex\\bin\\codex.js', 'exec', '--sandbox', 'workspace-write', '--skip-git-repo-check', 'fix the bug']),
+        expect.objectContaining({ shell: false }),
       );
+    });
+
+    it('passes Windows shell metacharacters as data when using npm .cmd shims', async () => {
+      setPlatform('win32');
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      mockPathLookup('C:\\bin\\codex.cmd\r\n');
+      (fs.existsSync as Mock).mockImplementation((target: string) => !String(target).toLowerCase().endsWith('\\node.exe'));
+      mockReadFileSync.mockReturnValue('@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%~dp0node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
+      const task = 'fix&whoami|more<in>out %PATH%';
+      const promise = CodingAgentTool.execute({ ...validArgs, task });
+      await vi.advanceTimersByTimeAsync(0);
+
+      child.emit('close', 0);
+      await promise;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'node',
+        expect.arrayContaining([task]),
+        expect.objectContaining({ shell: false }),
+      );
+    });
+
+    it('unwraps Windows npm .cmd shims that target executable bins', async () => {
+      setPlatform('win32');
+      mockPathLookup('C:\\bin\\claude.cmd\r\n');
+      mockReadFileSync.mockReturnValue('@ECHO off\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n');
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ result: 'done' })));
+      child.emit('close', 0);
+
+      await promise;
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'C:\\bin\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe',
+        expect.arrayContaining(['-p', '--output-format', 'json', '--dangerously-skip-permissions', 'fix the bug']),
+        expect.objectContaining({ shell: false }),
+      );
+    });
+
+    it.each([
+      {
+        cli: 'gemini',
+        shim: '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@google\\gemini-cli\\bundle\\gemini.js" %*\r\n',
+        expectedCommand: 'node',
+        expectedArgs: ['C:\\bin\\node_modules\\@google\\gemini-cli\\bundle\\gemini.js', '-p', 'fix the bug', '--output-format', 'json', '--yolo'],
+      },
+      {
+        cli: 'copilot',
+        shim: '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@github\\copilot\\npm-loader.js" %*\r\n',
+        expectedCommand: 'node',
+        expectedArgs: ['C:\\bin\\node_modules\\@github\\copilot\\npm-loader.js', '-p', 'fix the bug', '-s', '--allow-all', '--no-ask-user'],
+      },
+    ])('unwraps the real Windows npm .cmd shim shape for $cli', async ({ cli, shim, expectedCommand, expectedArgs }) => {
+      setPlatform('win32');
+      mockGetCodingAgentSettings.mockReturnValue({ cli });
+      mockPathLookup(`C:\\bin\\${cli}.cmd\r\n`);
+      (fs.existsSync as Mock).mockImplementation((target: string) => !String(target).toLowerCase().endsWith('\\node.exe'));
+      mockReadFileSync.mockReturnValue(shim);
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+
+      child.stdout.emit('data', Buffer.from('done'));
+      child.emit('close', 0);
+
+      await promise;
+      expect(mockSpawn).toHaveBeenCalledWith(
+        expectedCommand,
+        expect.arrayContaining(expectedArgs),
+        expect.objectContaining({ shell: false }),
+      );
+    });
+
+    it('rejects unsupported Windows command shims instead of falling back to cmd.exe', async () => {
+      setPlatform('win32');
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      mockPathLookup('C:\\bin\\codex.cmd\r\n');
+      mockReadFileSync.mockReturnValue('@ECHO off\r\necho custom shim %*\r\n');
+
+      const result = await CodingAgentTool.execute(validArgs);
+
+      expect(result.output).toContain('Unsupported Windows CLI shim');
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('does not use a shell for Windows executable paths', async () => {
+      setPlatform('win32');
+      mockPathLookup('C:\\bin\\claude.exe\r\n');
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+
+      child.emit('close', 0);
+      await promise;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'C:\\bin\\claude.exe',
+        expect.any(Array),
+        expect.objectContaining({ shell: false }),
+      );
+    });
+
+    it('returns trimmed stdout for text-mode CLIs (codex)', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+
+      child.stdout.emit('data', Buffer.from('  plain final message  '));
+      child.emit('close', 0);
+
+      const result = await promise;
+      expect(result.output).toBe('plain final message');
+      expect(result.cli).toBe('codex');
     });
 
     it('closes stdin immediately after spawn', async () => {
       const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
-      mockChild.emit('close', 0);
+      child.emit('close', 0);
       await promise;
-
-      expect(mockChild.stdin.end).toHaveBeenCalled();
+      expect(child.stdin.end).toHaveBeenCalled();
     });
 
-    it('returns non-zero exit code from child process', async () => {
+    it('returns a non-zero exit code from the child', async () => {
       const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('error output') + '\n'));
-      mockChild.emit('close', 1);
-
-      const result = await promise;
-      expect(result.exitCode).toBe(1);
-      expect(result.output).toBe('error output');
-    });
-
-    it('handles spawn error gracefully', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.emit('error', new Error('spawn ENOENT'));
-
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ result: 'partial' })));
+      child.emit('close', 1);
       const result = await promise;
       expect(result.exitCode).toBe(1);
     });
 
-    it('processes remaining lineBuf data on close', async () => {
+    it('handles a spawn error and captures the message as stderr', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
       const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
-
-      // Send data without trailing newline — sits in lineBuf until close
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('buffered')));
-      mockChild.emit('close', 0);
-
+      child.emit('error', new Error('spawn ENOENT'));
       const result = await promise;
-      expect(result.output).toBe('buffered');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toBe('spawn ENOENT');
+    });
+
+    it('keeps existing stderr when a spawn error occurs after stderr output', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      child.stderr.emit('data', Buffer.from('already captured'));
+      child.emit('error', new Error('later error'));
+      const result = await promise;
+      expect(result.output).toBe('already captured');
+    });
+
+    it('emits an elapsed-time heartbeat partial while running', async () => {
+      const promise = CodingAgentTool.execute(validArgs, { executionContext: defaultContext() });
+      await vi.advanceTimersByTimeAsync(0);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(mockEventSender.send).toHaveBeenCalledWith(
+        'agentChat:streamingChunk',
+        expect.objectContaining({
+          type: 'tool_result',
+          toolResult: expect.objectContaining({ tool_name: 'coding_agent', isPartial: true }),
+        }),
+      );
+
+      child.emit('close', 0);
+      await promise;
+    });
+
+    it('emits an initial partial carrying the resolved CLI before the first heartbeat', async () => {
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'copilot' });
+      const promise = CodingAgentTool.execute(validArgs, { executionContext: defaultContext() });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The initial frame fires immediately; the heartbeat interval (5000ms) has not elapsed yet,
+      // so the view can show the real CLI name from the first frame instead of the default.
+      expect(mockEventSender.send).toHaveBeenCalledTimes(1);
+      expect(mockEventSender.send).toHaveBeenCalledWith(
+        'agentChat:streamingChunk',
+        expect.objectContaining({
+          type: 'tool_result',
+          toolResult: expect.objectContaining({
+            isPartial: true,
+            content: expect.stringContaining('"cli": "copilot"'),
+          }),
+        }),
+      );
+
+      child.emit('close', 0);
+      await promise;
+    });
+
+    it('emits partial chunks to the captured execution context', async () => {
+      const capturedEventSender = { send: vi.fn() };
+      const capturedContext = {
+        ...defaultContext(),
+        eventSender: capturedEventSender,
+        currentToolCallId: 'captured-call',
+        chatId: 'captured-chat',
+        chatSessionId: 'captured-session',
+      };
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'copilot' });
+      const promise = CodingAgentTool.execute(validArgs, { executionContext: capturedContext });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockEventSender.send).not.toHaveBeenCalled();
+      expect(capturedEventSender.send).toHaveBeenCalledWith(
+        'agentChat:streamingChunk',
+        expect.objectContaining({
+          messageId: 'captured-call',
+          chatId: 'captured-chat',
+          chatSessionId: 'captured-session',
+        }),
+      );
+
+      child.emit('close', 0);
+      await promise;
+    });
+
+    it('does not emit a heartbeat when there is no execution context', async () => {
+      mockGetCurrentUserAlias.mockReturnValue('alice');
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(mockEventSender.send).not.toHaveBeenCalled();
+      child.emit('close', 0);
+      await promise;
     });
   });
 
-  // ── execute — timeout ──
+  // ── execute — truncation ────────────────────────────────────────────────────
 
-  describe('execute - timeout', () => {
-    let mockChild: ReturnType<typeof createMockChild>;
-
+  describe('execute - truncation', () => {
+    let child: ReturnType<typeof createMockChild>;
     beforeEach(() => {
-      mockChild = createMockChild();
-      mockSpawn.mockReturnValue(mockChild);
+      child = createMockChild();
+      mockSpawn.mockReturnValue(child);
+      mockGetCodingAgentSettings.mockReturnValue({ cli: 'codex' });
     });
 
-    it('kills process and returns timedOut on timeout', async () => {
-      const promise = CodingAgentTool.execute({ ...validArgs, timeoutSeconds: 10 });
-      await vi.advanceTimersByTimeAsync(0);
-
-      // Advance past the 10s timeout
-      vi.advanceTimersByTime(10_001);
-
-      // The kill triggers close
-      mockChild.emit('close', null);
-
-      const result = await promise;
-      expect(result.timedOut).toBe(true);
-      expect(mockChild.kill).toHaveBeenCalledWith('SIGKILL');
-    });
-
-    it('uses default timeout when not specified', async () => {
+    it('truncates a final output larger than MAX_OUTPUT_CHARS', async () => {
       const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
+      child.stdout.emit('data', Buffer.from('y'.repeat(60000)));
+      child.emit('close', 0);
+      const result = await promise;
+      expect(result.output.length).toBe(50000);
+      expect(result.truncated).toBe(true);
+    });
 
-      // Default is 300s — should NOT time out at 299s
-      vi.advanceTimersByTime(299_000);
-      expect(mockChild.kill).not.toHaveBeenCalled();
+    it('flags truncation when stdout exceeds the capture cap', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      // Exceed MAX_STDOUT_CAPTURE (2,000,000) to hit the capture-truncation branch.
+      child.stdout.emit('data', Buffer.from('z'.repeat(2_000_050)));
+      child.emit('close', 0);
+      const result = await promise;
+      expect(result.truncated).toBe(true);
+    });
 
-      // Close normally
-      mockChild.emit('close', 0);
+    it('does not flag truncation for small output', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      child.stdout.emit('data', Buffer.from('short'));
+      child.emit('close', 0);
+      const result = await promise;
+      expect(result.truncated).toBeUndefined();
+    });
+
+    it('caps stderr capture to the tail when it grows large', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      child.stderr.emit('data', Buffer.from('e'.repeat(20_050)));
+      child.stdout.emit('data', Buffer.from('ok'));
+      child.emit('close', 0);
+      const result = await promise;
+      expect(result.output).toBe('ok');
+    });
+  });
+
+  // ── execute — no-response (idle) timeout ─────────────────────────────────────
+
+  describe('execute - no-response (idle) timeout', () => {
+    let child: ReturnType<typeof createMockChild>;
+    beforeEach(() => {
+      child = createMockChild();
+      mockSpawn.mockReturnValue(child);
+    });
+
+    it('kills the process and flags timedOut after the no-response budget with no output', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 1);
+      child.emit('close', null);
+      const result = await promise;
+      expect(result.timedOut).toBe(true);
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    });
+
+    it('re-arms the budget when the CLI streams stdout, allowing total runtime to exceed it', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 10_000);
+      // Activity re-arms the no-response budget; without touch() it would have fired one budget from start.
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'result', result: 'done' })));
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 10_000); // ~2x budget elapsed, < one budget since last output -> alive
+      expect(child.kill).not.toHaveBeenCalled();
+      child.emit('close', 0);
+      const result = await promise;
+      expect(result.timedOut).toBe(false);
+      expect(result.output).toContain('done');
+    });
+
+    it('re-arms the budget on stderr activity', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 10_000);
+      child.stderr.emit('data', Buffer.from('warning: still working'));
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 10_000); // < one budget since the stderr chunk -> still alive
+      expect(child.kill).not.toHaveBeenCalled();
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'result', result: 'ok' })));
+      child.emit('close', 0);
       const result = await promise;
       expect(result.timedOut).toBe(false);
     });
 
-    it('caps timeout at MAX_TIMEOUT_S (600s)', async () => {
-      const promise = CodingAgentTool.execute({ ...validArgs, timeoutSeconds: 9999 });
+    it('terminates when no output arrives for the full budget after the last chunk', async () => {
+      const promise = CodingAgentTool.execute(validArgs);
       await vi.advanceTimersByTimeAsync(0);
-
-      // Should not time out before 600s
-      vi.advanceTimersByTime(599_000);
-      expect(mockChild.kill).not.toHaveBeenCalled();
-
-      // Should time out at 600s
-      vi.advanceTimersByTime(2_000);
-      mockChild.emit('close', null);
-
+      await vi.advanceTimersByTimeAsync(200_000);
+      child.stderr.emit('data', Buffer.from('thinking')); // re-arm
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS + 1); // full budget of silence after the chunk
+      child.emit('close', null);
       const result = await promise;
       expect(result.timedOut).toBe(true);
-    });
-
-    it('normalizes invalid timeout to default', async () => {
-      const promise = CodingAgentTool.execute({ ...validArgs, timeoutSeconds: -5 });
-      await vi.advanceTimersByTimeAsync(0);
-
-      // Should use default 300s — not time out immediately
-      vi.advanceTimersByTime(100_000);
-      expect(mockChild.kill).not.toHaveBeenCalled();
-
-      mockChild.emit('close', 0);
-      await promise;
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
     });
   });
 
-  // ── execute — truncation ──
+  // ── execute — cancellation ──────────────────────────────────────────────────
 
-  describe('execute - output truncation', () => {
-    let mockChild: ReturnType<typeof createMockChild>;
-
+  describe('execute - cancellation', () => {
+    let child: ReturnType<typeof createMockChild>;
     beforeEach(() => {
-      mockChild = createMockChild();
-      mockSpawn.mockReturnValue(mockChild);
+      child = createMockChild();
+      mockSpawn.mockReturnValue(child);
     });
 
-    it('truncates output exceeding MAX_OUTPUT_CHARS and sets truncated flag', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
+    it('aborts immediately when the signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const promise = CodingAgentTool.execute(validArgs, { signal: controller.signal });
       await vi.advanceTimersByTimeAsync(0);
-
-      // Send output that exceeds 50000 chars
-      const bigText = 'x'.repeat(60000);
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine(bigText) + '\n'));
-      mockChild.emit('close', 0);
-
       const result = await promise;
-      expect(result.output.length).toBeLessThanOrEqual(50000);
-      expect(result.truncated).toBe(true);
+      expect(result.output).toBe('Coding agent execution was cancelled.');
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
     });
 
-    it('does not set truncated when output is within limit', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
+    it('aborts mid-run when the signal fires', async () => {
+      const controller = new AbortController();
+      const promise = CodingAgentTool.execute(validArgs, { signal: controller.signal });
       await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('short output') + '\n'));
-      mockChild.emit('close', 0);
-
+      controller.abort();
       const result = await promise;
-      expect(result.truncated).toBeUndefined();
+      expect(result.output).toBe('Coding agent execution was cancelled.');
+      expect(child.kill).toHaveBeenCalled();
+    });
+
+    it('swallows kill errors during abort', async () => {
+      child.kill = vi.fn(() => { throw new Error('already dead'); });
+      const controller = new AbortController();
+      const promise = CodingAgentTool.execute(validArgs, { signal: controller.signal });
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      const result = await promise;
+      expect(result.output).toBe('Coding agent execution was cancelled.');
     });
   });
 
-  // ── execute — result shape ──
-
-  describe('execute - result shape', () => {
-    let mockChild: ReturnType<typeof createMockChild>;
-
-    beforeEach(() => {
-      mockChild = createMockChild();
-      mockSpawn.mockReturnValue(mockChild);
-    });
-
-    it('returns all expected fields in result', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('output') + '\n'));
-      mockChild.emit('close', 0);
-
-      const result = await promise;
-      expect(result).toEqual(expect.objectContaining({
-        task: 'fix the bug',
-        output: 'output',
-        exitCode: 0,
-        timedOut: false,
-        cwd: expect.any(String),
-        durationMs: expect.any(Number),
-      }));
-    });
-
-    it('trims output whitespace', async () => {
-      const promise = CodingAgentTool.execute(validArgs);
-      await vi.advanceTimersByTimeAsync(0);
-
-      mockChild.stdout.emit('data', Buffer.from(textDeltaLine('  padded  ') + '\n'));
-      mockChild.emit('close', 0);
-
-      const result = await promise;
-      expect(result.output).toBe('padded');
-    });
-  });
-
-  // ── getDefinition ──
+  // ── getDefinition ───────────────────────────────────────────────────────────
 
   describe('getDefinition', () => {
     const def = CodingAgentTool.getDefinition();
@@ -521,26 +616,23 @@ describe('CodingAgentTool', () => {
       expect(def.name).toBe('coding_agent');
     });
 
-    it('has a description mentioning Claude Code', () => {
+    it('mentions all supported CLIs in the description', () => {
       expect(def.description).toContain('Claude Code');
+      expect(def.description).toMatch(/codex/i);
+      expect(def.description).toMatch(/gemini/i);
+      expect(def.description).toMatch(/copilot/i);
     });
 
-    it('description does NOT mention Codex', () => {
-      expect(def.description).not.toMatch(/codex/i);
-    });
-
-    it('has required properties: task and cwd', () => {
+    it('requires task and cwd', () => {
       expect(def.inputSchema.required).toEqual(['task', 'cwd']);
     });
 
-    it('schema has exactly task, cwd, and timeoutSeconds properties', () => {
+    it('exposes only task and cwd (cli and timeout stay internal)', () => {
       const props = Object.keys(def.inputSchema.properties);
-      expect(props).toEqual(expect.arrayContaining(['task', 'cwd', 'timeoutSeconds']));
-      expect(props).toHaveLength(3);
-    });
-
-    it('does NOT have an agent property in schema', () => {
-      expect(def.inputSchema.properties).not.toHaveProperty('agent');
+      expect(props).toEqual(expect.arrayContaining(['task', 'cwd']));
+      expect(props).toHaveLength(2);
+      expect(def.inputSchema.properties).not.toHaveProperty('cli');
+      expect(def.inputSchema.properties).not.toHaveProperty('timeoutSeconds');
     });
   });
 });

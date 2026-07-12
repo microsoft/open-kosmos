@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../auth/AuthProvider';
 import AppLayout from '../layout/AppLayout';
 import { profileDataManager } from '../../lib/userData';
-import { FreOverlay, InstallUpdateOnStartupView } from '../fre';
+import { FreOverlay } from '../fre';
 // Read data from AgentChatSessionCacheManager
 import {
   useMessagesWithStream,
@@ -16,12 +16,6 @@ import { startNewChatFor } from '../../lib/chat/startNewChatFor';
 import { createLogger } from '../../lib/utilities/logger';
 const logger = createLogger('[AgentPage]');
 
-/**
- * Module-level in-memory state: whether to show InstallUpdateOnStartupView
- * Defaults to true; set to false after FRE ends or the first InstallUpdateOnStartupView ends
- * Module-level variables persist within the Electron window lifecycle and are not reset across component mount/unmount
- */
-let needsShowInstallUpdateOnStartupView = true;
 let hasAutoSelectedPrimaryAgentOnStartup = false;
 
 const DevMonitor = memo(() => {
@@ -64,57 +58,11 @@ export const AgentPage: React.FC = () => {
   // FRE (First Run Experience) state
   const [showFreOverlay, setShowFreOverlay] = useState<boolean>(false);
 
-  // Startup Update state
-  const [showStartupUpdate, setShowStartupUpdate] = useState<boolean>(false);
-  const [isWindows, setIsWindows] = useState(false);
-
-
-  // Detect platform
-  useEffect(() => {
-    const checkPlatform = async () => {
-      if (window.electronAPI && window.electronAPI.platform === 'win32') {
-        setIsWindows(true);
-      } else {
-        try {
-          const info = await window.electronAPI.getPlatformInfo();
-          if (info.platform === 'win32') {
-            setIsWindows(true);
-          }
-        } catch (e) {
-          // Ignore - assume not Windows
-        }
-      }
-    };
-    checkPlatform();
-  }, []);
-
   // FRE detection: check on page load whether FRE Overlay needs to be shown
-  // If FREDone=true, show Startup Update check (first time only)
-  // FRE and InstallUpdateOnStartupView are mutually exclusive paths:
-  //   - FRE path: FreSettingUpView (first install, includes built-in assets installation)
-  //   - NON-FRE path: InstallUpdateOnStartupView (subsequent launches, check for updates)
   useEffect(() => {
-    // Record initial FRE state: if FRE is needed initially, skip InstallUpdateOnStartupView after FRE completes
-    const initialNeedsFre = profileDataManager.needsFRE();
-
     const checkFreStatus = () => {
       const needsFre = profileDataManager.needsFRE();
-      logger.debug('[AgentPage] 🎯 FRE check:', { needsFre, initialNeedsFre });
       setShowFreOverlay(needsFre);
-
-      // When FREDone=true: check if Startup Update should be shown (only when needsShowInstallUpdateOnStartupView=true)
-      // Key: if transitioning to !needsFre after FRE flow (initialNeedsFre=true),
-      // skip InstallUpdateOnStartupView because FRE already installed built-in assets
-      if (!needsFre && needsShowInstallUpdateOnStartupView) {
-        if (initialNeedsFre) {
-          // FRE just completed → skip InstallUpdateOnStartupView
-          logger.debug('[AgentPage] 🎯 FRE just completed, skipping InstallUpdateOnStartupView');
-          needsShowInstallUpdateOnStartupView = false;
-        } else {
-          // Non-FRE path → show Startup Update view
-          setShowStartupUpdate(true);
-        }
-      }
     };
 
     // Initial check
@@ -141,17 +89,17 @@ export const AgentPage: React.FC = () => {
         return;
       }
 
-      const primaryAgentName = profile.primaryAgent || 'Kobi';
+      const primaryChatId = profile.primaryChat;
       const chats = profileDataManager.getChatConfigs();
-      logger.debug('[AgentPage] Primary agent name:', primaryAgentName, 'Chats count:', chats.length);
+      logger.debug('[AgentPage] Primary chat id:', primaryChatId, 'Chats count:', chats.length);
 
       if (chats.length === 0) {
         logger.warn('[AgentPage] No chats found in profile');
         return;
       }
 
-      // Find the chatId corresponding to the primary agent in chats
-      const primaryChat = chats.find((chat) => chat.agent?.name === primaryAgentName);
+      // Find the primary chat by its stable chat_id
+      const primaryChat = chats.find((chat) => chat.chat_id === primaryChatId);
 
       let targetChatId: string | undefined;
 
@@ -173,10 +121,7 @@ export const AgentPage: React.FC = () => {
       }
 
       // Call startNewChatFor to start a new chat session
-      const result = await startNewChatFor(
-        targetChatId,
-        undefined,
-      );
+      const result = await startNewChatFor(targetChatId);
       if (result.success && result.chatSessionId) {
         logger.debug('[AgentPage] ✅ Primary agent selected successfully:', {
           chatId: targetChatId,
@@ -192,39 +137,10 @@ export const AgentPage: React.FC = () => {
     }
   }, [navigate]);
 
-  // Startup Update complete callback
-  const handleStartupUpdateComplete = useCallback(async () => {
-    logger.debug('[AgentPage] 🎯 Startup update complete, selecting primary agent...');
-    needsShowInstallUpdateOnStartupView = false;
-    setShowStartupUpdate(false);
-
-    if (!hasAutoSelectedPrimaryAgentOnStartup) {
-      hasAutoSelectedPrimaryAgentOnStartup = true;
-      await selectPrimaryAgentOnStartup();
-    }
-  }, [selectPrimaryAgentOnStartup]);
-
-  const handleStartupUpdateSkip = useCallback(async () => {
-    logger.debug('[AgentPage] 🎯 Startup update skipped, selecting primary agent...');
-    needsShowInstallUpdateOnStartupView = false;
-    setShowStartupUpdate(false);
-
-    if (!hasAutoSelectedPrimaryAgentOnStartup) {
-      hasAutoSelectedPrimaryAgentOnStartup = true;
-      await selectPrimaryAgentOnStartup();
-    }
-  }, [selectPrimaryAgentOnStartup]);
-
-  // Normal startup path: when FREDone=true and no StartupUpdate, auto-navigate to primary agent
-  // Independent effect runs only on mount to avoid re-triggering on every profile update
-  // needsShowInstallUpdateOnStartupView=false means StartupUpdate has been handled (or skipped),
-  // meaning handleStartupUpdateComplete/Skip has already called selectPrimaryAgentOnStartup.
-  // Only needs to be called again if AgentPage remounts and module-level startup selection hasn't run yet.
   useEffect(() => {
-    if (!needsShowInstallUpdateOnStartupView && !profileDataManager.needsFRE()) {
+    if (!profileDataManager.needsFRE()) {
       if (!hasAutoSelectedPrimaryAgentOnStartup) {
         hasAutoSelectedPrimaryAgentOnStartup = true;
-        logger.debug('[AgentPage] 🚀 Remount startup path, selecting primary agent...');
         void selectPrimaryAgentOnStartup();
       }
     }
@@ -278,10 +194,7 @@ export const AgentPage: React.FC = () => {
       '[AgentPage] 🚀 No chatSessionId, calling startNewChatFor to initialize',
     );
 
-    const result = await startNewChatFor(
-      currentChatId,
-      undefined,
-    );
+    const result = await startNewChatFor(currentChatId);
 
     if (result.success && result.chatSessionId) {
       logger.debug(
@@ -309,15 +222,6 @@ export const AgentPage: React.FC = () => {
     <>
       {/* FRE Overlay */}
       {showFreOverlay && <FreOverlay onSkip={handleFreSkip} />}
-
-      {/* Startup Update Overlay - shown after FRE is done */}
-      {!showFreOverlay && showStartupUpdate && (
-        <InstallUpdateOnStartupView
-          onComplete={handleStartupUpdateComplete}
-          onSkip={handleStartupUpdateSkip}
-          isWindows={isWindows}
-        />
-      )}
 
       <AppLayout />
       {process.env.NODE_ENV === 'development' && <DevMonitor />}

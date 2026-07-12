@@ -13,6 +13,9 @@ const {
   mockProfileDataManagerCleanup,
   mockAgentChatSessionCacheManagerCleanup,
   mockMcpClientCacheManagerCleanup,
+  mockAgentClientCacheManagerCleanup,
+  mockSkillClientCacheManagerCleanup,
+  mockHookClientCacheManagerCleanup,
   mockIsAuthDataValid,
   mockExtractUser,
   mockExtractCopilotToken,
@@ -24,6 +27,9 @@ const {
   mockProfileDataManagerCleanup: vi.fn(),
   mockAgentChatSessionCacheManagerCleanup: vi.fn(),
   mockMcpClientCacheManagerCleanup: vi.fn(),
+  mockAgentClientCacheManagerCleanup: vi.fn(),
+  mockSkillClientCacheManagerCleanup: vi.fn(),
+  mockHookClientCacheManagerCleanup: vi.fn(),
   mockIsAuthDataValid: vi.fn(),
   mockExtractUser: vi.fn(),
   mockExtractCopilotToken: vi.fn(),
@@ -57,6 +63,18 @@ vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
 
 vi.mock('../../../lib/mcp/mcpClientCacheManager', () => ({
   mcpClientCacheManager: { cleanup: mockMcpClientCacheManagerCleanup },
+}));
+
+vi.mock('../../../lib/agent/agentClientCacheManager', () => ({
+  agentClientCacheManager: { cleanup: mockAgentClientCacheManagerCleanup },
+}));
+
+vi.mock('../../../lib/skill/skillClientCacheManager', () => ({
+  skillClientCacheManager: { cleanup: mockSkillClientCacheManagerCleanup },
+}));
+
+vi.mock('../../../lib/hook/hookClientCacheManager', () => ({
+  hookClientCacheManager: { cleanup: mockHookClientCacheManagerCleanup },
 }));
 
 vi.mock('../../../lib/auth/authDataAdapter', () => ({
@@ -292,6 +310,9 @@ describe('AuthProvider', () => {
     expect(mockProfileDataManagerCleanup).toHaveBeenCalled();
     expect(mockAgentChatSessionCacheManagerCleanup).toHaveBeenCalled();
     expect(mockMcpClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockAgentClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
   });
 
   it('re-initializes auth when ghc:authSuccess fires', async () => {
@@ -374,6 +395,141 @@ describe('AuthProvider', () => {
     expect(mockProfileDataManagerCleanup).toHaveBeenCalled();
     expect(mockAgentChatSessionCacheManagerCleanup).toHaveBeenCalled();
     expect(mockMcpClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockAgentClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
+  });
+
+  it('still signs out when the agent cache cleanup throws (signOut path)', async () => {
+    mockGetCurrentAuthAsync.mockResolvedValue(fakeAuthData);
+    mockIsAuthDataValid.mockReturnValue(true);
+    mockExtractUser.mockReturnValue(fakeAuthData.ghcAuth.user);
+    mockSignOut.mockResolvedValue(undefined);
+    mockAgentClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('agent cleanup boom');
+    });
+
+    function SignOutConsumer() {
+      const ctx = useAuthContext();
+      return <button data-testid="signout" onClick={ctx.signOut}>Sign out</button>;
+    }
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SignOutConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      screen.getByTestId('signout').click();
+    });
+
+    // The throw is swallowed by the try/catch, so the main-process sign-out still runs.
+    expect(mockAgentClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('still signs out when skill and hook cache cleanup throw (signOut path)', async () => {
+    mockGetCurrentAuthAsync.mockResolvedValue(fakeAuthData);
+    mockIsAuthDataValid.mockReturnValue(true);
+    mockExtractUser.mockReturnValue(fakeAuthData.ghcAuth.user);
+    mockSignOut.mockResolvedValue(undefined);
+    mockSkillClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('skill cleanup boom');
+    });
+    mockHookClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('hook cleanup boom');
+    });
+
+    function SignOutConsumer() {
+      const ctx = useAuthContext();
+      return <button data-testid="signout" onClick={ctx.signOut}>Sign out</button>;
+    }
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SignOutConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      screen.getByTestId('signout').click();
+    });
+
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('still clears auth when the agent cache cleanup throws (auth:signOut event path)', async () => {
+    mockGetCurrentAuthAsync.mockResolvedValue(fakeAuthData);
+    mockIsAuthDataValid.mockReturnValue(true);
+    mockExtractUser.mockReturnValue(fakeAuthData.ghcAuth.user);
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Consumer />
+        </AuthProvider>,
+      );
+    });
+
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
+
+    mockIsAuthDataValid.mockReturnValue(false);
+    mockExtractUser.mockReturnValue(null);
+    mockAgentClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('agent cleanup boom');
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('auth:signOut'));
+    });
+
+    // The throw is swallowed; auth is still cleared.
+    expect(mockAgentClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
+  });
+
+  it('still clears auth when skill and hook cache cleanup throw (auth:signOut event path)', async () => {
+    mockGetCurrentAuthAsync.mockResolvedValue(fakeAuthData);
+    mockIsAuthDataValid.mockReturnValue(true);
+    mockExtractUser.mockReturnValue(fakeAuthData.ghcAuth.user);
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Consumer />
+        </AuthProvider>,
+      );
+    });
+
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
+
+    mockIsAuthDataValid.mockReturnValue(false);
+    mockExtractUser.mockReturnValue(null);
+    mockSkillClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('skill cleanup boom');
+    });
+    mockHookClientCacheManagerCleanup.mockImplementationOnce(() => {
+      throw new Error('hook cleanup boom');
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('auth:signOut'));
+    });
+
+    expect(mockSkillClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(mockHookClientCacheManagerCleanup).toHaveBeenCalled();
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
   });
 
   it('unsubscribes from onAuthChanged on unmount', async () => {

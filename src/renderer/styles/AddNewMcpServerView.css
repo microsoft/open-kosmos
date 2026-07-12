@@ -11,12 +11,16 @@
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: #FFFFFF;
+  background: var(--color-white);
+}
+
+.mcp-settings-editor-content {
+  max-width: 56rem;
 }
 
 /* Server config section */
 .server-config-section {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .server-config-header {
@@ -28,12 +32,12 @@
 
 /* Server type section */
 .server-type-section {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 /* Server name section */
 .server-name-section {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 /* Action buttons */
@@ -41,19 +45,19 @@
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin-top: 0;
+  padding: 10px 4px 0;
+  border-top: none;
 }
 
 /* Form labels */
 .form-label {
   display: block;
   font-style: normal;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
   margin-bottom: 8px;
 }
 
@@ -62,59 +66,63 @@
   width: 100%;
   min-height: 400px;
   max-height: 800px;
-  padding: 16px;
+  box-sizing: border-box;
+  padding: 12px;
   font-size: 13px;
   line-height: 1.5;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  background: #FFFFFF;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  color: var(--color-warm-900);
   resize: vertical;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .add-server-content .json-editor:focus {
-  border-color: #007AFF;
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  border-color: var(--color-warm-900);
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
 }
 
 .add-server-content .json-editor.error {
-  border-color: #FF3B30;
+  border-color: var(--color-danger-500);
   background-color: rgba(255, 59, 48, 0.05);
 }
 
 /* Server name input specific to page view */
 .add-server-content .server-name-input {
   width: 100%;
-  padding: 12px 16px;
+  box-sizing: border-box;
+  padding: 8px 12px;
   font-size: 14px;
   line-height: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  background: #FFFFFF;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  color: var(--color-warm-900);
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .add-server-content .server-name-input:focus {
-  border-color: #007AFF;
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  border-color: var(--color-warm-900);
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
 }
 
 .add-server-content .server-name-input:disabled {
-  background-color: #F2F2F7;
-  color: #8E8E93;
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-400);
   cursor: not-allowed;
 }
 
 .add-server-content .server-name-input.error {
-  border-color: #FF3B30;
+  border-color: var(--color-danger-500);
   background-color: rgba(255, 59, 48, 0.05);
 }
 
 /* Validation error messages */
 .validation-error {
-  color: #FF3B30;
+  color: var(--color-danger-500);
   font-size: 12px;
   line-height: 16px;
   margin-top: 4px;
@@ -123,23 +131,25 @@
 
 /* Verify status messages */
 .verify-error {
-  color: #FF3B30;
+  color: var(--color-danger-700);
   font-size: 12px;
   line-height: 16px;
   margin-top: 8px;
-  padding: 8px 12px;
-  background-color: rgba(255, 59, 48, 0.1);
-  border-radius: 6px;
+  padding: 10px 12px;
+  background-color: var(--color-danger-50);
+  border: 1px solid var(--color-danger-200);
+  border-radius: var(--radius-lg);
 }
 
 .verify-success {
-  color: #34C759;
+  color: var(--color-success-800);
   font-size: 12px;
   line-height: 16px;
   margin-top: 8px;
-  padding: 8px 12px;
-  background-color: rgba(52, 199, 89, 0.1);
-  border-radius: 6px;
+  padding: 10px 12px;
+  background-color: var(--color-success-100);
+  border: 1px solid var(--color-success-200);
+  border-radius: var(--radius-lg);
 }
 
 /* Button styles for page view */
@@ -147,14 +157,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 20px;
-  font-weight: 600;
-  font-size: 14px;
+  height: 32px;
+  padding: 0 16px;
+  font-weight: 500;
+  font-size: 13px;
   line-height: 20px;
-  color: #FFFFFF;
-  background: #272320;
+  color: var(--color-white);
+  background: var(--color-warm-900);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
@@ -172,8 +183,8 @@
 }
 
 .add-server-content .btn-primary:disabled {
-  background: #C7C7CC;
-  color: #8E8E93;
+  background: var(--color-neutral-300);
+  color: var(--color-neutral-400);
   cursor: not-allowed;
 }
 
@@ -181,14 +192,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 20px;
-  font-weight: 600;
-  font-size: 14px;
+  height: 32px;
+  padding: 0 16px;
+  font-weight: 500;
+  font-size: 13px;
   line-height: 20px;
-  color: #272320;
-  background: #FFFFFF;
-  border: 1px solid #272320;
-  border-radius: 8px;
+  color: var(--color-warm-900);
+  background: var(--color-white);
+  border: 1px solid var(--color-warm-900);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
@@ -206,8 +218,8 @@
 }
 
 .add-server-content .btn-secondary:disabled {
-  color: #C7C7CC;
-  border-color: #C7C7CC;
+  color: var(--color-neutral-300);
+  border-color: var(--color-neutral-300);
   cursor: not-allowed;
 }
 
@@ -222,25 +234,25 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 12px 16px;
+  padding: 8px 12px;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  color: var(--color-warm-900);
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .add-server-content .model-button:hover:not(:disabled) {
-  border-color: #007AFF;
+  border-color: var(--color-warm-900);
 }
 
 .add-server-content .model-button:disabled {
-  background-color: #F2F2F7;
-  color: #8E8E93;
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-400);
   cursor: not-allowed;
 }
 
@@ -277,9 +289,9 @@
   z-index: 1000;
   margin-top: 4px;
   padding: 0;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   /* Set explicit height to show all 3 options + header */
   height: auto;
@@ -292,10 +304,10 @@
   font-weight: 600;
   font-size: 12px;
   line-height: 16px;
-  color: #8E8E93;
+  color: var(--color-neutral-400);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border-strong);
   margin-bottom: 0;
 }
 
@@ -312,7 +324,7 @@
   padding: 12px 16px;
   font-size: 14px;
   line-height: 20px;
-  color: #272320;
+  color: var(--color-warm-900);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -323,16 +335,16 @@
 }
 
 .add-server-content .model-option:hover:not(:disabled) {
-  background: rgba(0, 122, 255, 0.05);
+  background: var(--color-neutral-50);
 }
 
 .add-server-content .model-option.selected {
-  background: rgba(0, 122, 255, 0.1);
-  color: #007AFF;
+  background: var(--color-neutral-100);
+  color: var(--color-warm-900);
 }
 
 .add-server-content .model-option:disabled {
-  color: #C7C7CC;
+  color: var(--color-neutral-300);
   cursor: not-allowed;
 }
 
@@ -347,7 +359,7 @@
 .add-server-content .check-icon {
   width: 16px;
   height: 16px;
-  color: #007AFF;
+  color: var(--color-warm-900);
   flex-shrink: 0;
 }
 
@@ -366,4 +378,103 @@
     width: 100%;
     justify-content: center;
   }
+}
+
+[data-theme="dark"] .add-server-content,
+[data-theme="dark"] .vscode-importer-content {
+  background: var(--color-surface-default);
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .add-server-content .json-editor,
+[data-theme="dark"] .add-server-content .server-name-input,
+[data-theme="dark"] .add-server-content .model-button,
+[data-theme="dark"] .vscode-importer-content .detection-path,
+[data-theme="dark"] .vscode-importer-content .server-list,
+[data-theme="dark"] .vscode-importer-content .server-item {
+  background: var(--form-control-bg);
+  border-color: var(--form-control-border);
+  color: var(--form-control-fg);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .add-server-content .json-editor:focus,
+[data-theme="dark"] .add-server-content .server-name-input:focus,
+[data-theme="dark"] .add-server-content .model-button:hover:not(:disabled),
+[data-theme="dark"] .add-server-content .model-button:focus {
+  background: var(--form-control-bg-focus);
+  border-color: var(--form-control-focus-border);
+  color: var(--form-control-fg);
+}
+
+[data-theme="dark"] .add-server-content .server-name-input:disabled {
+  background: var(--form-control-bg-disabled);
+  color: var(--form-control-fg-disabled);
+}
+
+[data-theme="dark"] .add-server-content .model-dropdown {
+  background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-glass-panel);
+}
+
+[data-theme="dark"] .add-server-content .dropdown-header {
+  color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
+}
+
+[data-theme="dark"] .add-server-content .model-option {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .add-server-content .model-option:hover:not(:disabled),
+[data-theme="dark"] .add-server-content .model-option.selected,
+[data-theme="dark"] .vscode-importer-content .server-item:hover,
+[data-theme="dark"] .vscode-importer-content .server-item.selected {
+  background: var(--color-surface-active);
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .add-server-content .btn-primary,
+[data-theme="dark"] .vscode-importer-content .btn-primary {
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+}
+
+[data-theme="dark"] .add-server-content .btn-primary:hover:not(:disabled),
+[data-theme="dark"] .vscode-importer-content .btn-primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg);
+  border-color: var(--button-primary-hover-bg);
+}
+
+[data-theme="dark"] .add-server-content .btn-primary:disabled,
+[data-theme="dark"] .vscode-importer-content .btn-primary:disabled {
+  background: var(--button-disabled-bg);
+  border-color: var(--button-disabled-bg);
+  color: var(--button-disabled-fg);
+}
+
+[data-theme="dark"] .add-server-content .btn-secondary,
+[data-theme="dark"] .vscode-importer-content .btn-secondary {
+  background: var(--button-secondary-bg);
+  border-color: var(--button-secondary-border);
+  color: var(--button-secondary-fg);
+}
+
+[data-theme="dark"] .add-server-content .btn-secondary:hover:not(:disabled),
+[data-theme="dark"] .vscode-importer-content .btn-secondary:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+  border-color: var(--button-secondary-hover-border);
+  color: var(--button-secondary-hover-fg);
+}
+
+[data-theme="dark"] .vscode-importer-content h3,
+[data-theme="dark"] .vscode-importer-content strong {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .vscode-importer-content .server-transport,
+[data-theme="dark"] .vscode-importer-content .detection-path {
+  color: var(--color-text-muted);
 }

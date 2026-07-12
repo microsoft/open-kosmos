@@ -15,8 +15,8 @@
 
   height: 64px;
 
-  background: #FFFFFF;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.075);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--color-border-panel);
 }
 
 /* Header left title area */
@@ -35,6 +35,10 @@
   flex-grow: 0;
 }
 
+.unified-header .header-title > svg {
+  color: var(--header-title-fg);
+}
+
 /* Header icon */
 .unified-header .header-icon {
   /* Auto layout */
@@ -50,6 +54,7 @@
   /* Inside auto layout */
   flex: none;
   flex-grow: 0;
+  color: var(--header-title-fg);
 }
 
 /* Header title text */
@@ -63,7 +68,7 @@
   line-height: 26px;
   /* identical to box height, or 153% */
 
-  color: #000000;
+  color: var(--header-title-fg);
   font-variation-settings: 'opsz' 10.5;
 
   /* Inside auto layout */
@@ -112,14 +117,14 @@
 
   /* Background and border */
   background: rgba(224, 158, 102, 0.3);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 
   /* Text styles */
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
   line-height: 16px;
-  color: #6B3900;
+  color: var(--color-warning-900);
   font-variation-settings: 'opsz' 10.5;
 
   /* Layout */
@@ -148,7 +153,7 @@
   height: 40px;
   min-height: 40px;
 
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
 
   /* Inside auto layout */
   flex: none;
@@ -159,15 +164,15 @@
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #000000;
+  color: var(--button-header-action-fg);
 }
 
 .unified-header .btn-action:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--button-header-action-hover-bg);
 }
 
 .unified-header .btn-action.active {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--button-header-action-hover-bg);
 }
 
 /* Disabled state styles */
@@ -185,6 +190,15 @@
 .unified-header .btn-action svg {
   width: 24px;
   height: 24px;
+  color: currentColor;
+}
+
+[data-theme="dark"] .unified-header [fill="var(--color-warm-900)"] {
+  fill: currentColor;
+}
+
+[data-theme="dark"] .unified-header [stroke="var(--color-warm-900)"] {
+  stroke: currentColor;
 }
 
 .unified-header .schedule-toggle-button {
@@ -202,11 +216,11 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  background: #f59e0b;
+  border: 2px solid var(--header-badge-ring-bg);
+  background: var(--color-warning-500);
   pointer-events: none;
   animation: subagent-badge-spin 1.2s linear infinite;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--header-badge-shadow);
 }
 
 @keyframes subagent-badge-spin {
@@ -222,9 +236,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  background: #d92d20;
-  color: #ffffff;
+  border-radius: var(--radius-full);
+  background: var(--color-danger-600);
+  color: var(--color-white);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -236,13 +250,13 @@
   position: absolute;
   top: 4px;
   right: 2px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  border: 2px solid var(--header-badge-ring-bg);
+  box-shadow: var(--header-badge-shadow);
 }
 
 /* ===========================
    Update Agent Button Styles
-   Consistent with UserSection's restart-update-button
+   Shared local resource update treatment
    =========================== */
 
 .unified-header .update-agent-button {
@@ -254,37 +268,37 @@
   padding: 0px 8px;
   gap: 8px;
   height: 36px;
-  background: #FFE6D3;
+  background: var(--color-warm-accent);
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .unified-header .update-agent-button:hover {
-  background: #ffd9bf;
+  background: var(--color-orange-100);
 }
 
 .unified-header .update-agent-button:active {
-  background: #ffccab;
+  background: var(--color-orange-200);
 }
 
 .unified-header .update-agent-button:focus-visible {
-  outline: 2px solid #FFE6D3;
+  outline: 2px solid var(--color-warm-accent);
   outline-offset: 2px;
 }
 
 .unified-header .update-agent-icon {
   width: 16px;
   height: 16px;
-  color: #333;
+  color: var(--color-warm-700);
   flex-shrink: 0;
 }
 
 .unified-header .update-agent-text {
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--color-warm-700);
   white-space: nowrap;
 }
 
@@ -301,10 +315,10 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  border-radius: 4px;
+  color: var(--color-violet-500);
+  background: color-mix(in srgb, var(--color-violet-500) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-violet-500) 20%, transparent);
+  border-radius: var(--radius);
   padding: 2px 6px;
   cursor: pointer;
   white-space: nowrap;
@@ -315,8 +329,8 @@
 
 .dev-info-badge:hover,
 .dev-info-badge--active {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.4);
+  background: color-mix(in srgb, var(--color-violet-500) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-violet-500) 40%, transparent);
 }
 
 .dev-info-popover {
@@ -324,10 +338,10 @@
   top: calc(100% + 6px);
   left: 0;
   z-index: 1000;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  background: var(--dev-info-popover-bg);
+  border: 1px solid var(--dev-info-popover-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--dev-info-popover-shadow);
   min-width: 240px;
   overflow: hidden;
 }
@@ -343,17 +357,17 @@
 }
 
 .dev-info-row:hover {
-  background: #f9fafb;
+  background: var(--dev-info-row-hover-bg);
 }
 
 .dev-info-row + .dev-info-row {
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--dev-info-row-border);
 }
 
 .dev-info-label {
   font-size: 11px;
   font-weight: 500;
-  color: #9ca3af;
+  color: var(--dev-info-label-fg);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -364,12 +378,12 @@
   gap: 6px;
   font-size: 11px;
   font-family: monospace;
-  color: #374151;
+  color: var(--color-neutral-700);
   word-break: break-all;
   text-align: right;
 }
 
 .dev-info-value svg {
   flex-shrink: 0;
-  color: #9ca3af;
+  color: var(--color-neutral-400);
 }

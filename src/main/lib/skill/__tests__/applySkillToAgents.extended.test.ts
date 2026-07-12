@@ -1,5 +1,7 @@
 import { applySkillToAgents } from '../applySkillToAgents';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
+import { chatSkillSnapshotStore } from '../../userDataADO/chatSkillSnapshotStore';
 
 const mockRecordSkillAppliedToAgent = vi.fn();
 
@@ -10,9 +12,22 @@ vi.mock('../../userDataADO', async () => ({
   },
 }));
 
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordSkillAppliedToAgent: (...args: unknown[]) => mockRecordSkillAppliedToAgent(...args),
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/chatSkillSnapshotStore', () => ({
+  chatSkillSnapshotStore: {
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    clearForAlias: vi.fn(),
+    clearAll: vi.fn(),
+    invalidateAffectedChats: vi.fn(),
   },
 }));
 
@@ -20,6 +35,13 @@ describe('applySkillToAgents — extended coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRecordSkillAppliedToAgent.mockResolvedValue(undefined);
+    (skillsConfigManager.getSkill as Mock).mockReturnValue({
+      name: 'pdf',
+      description: 'PDF skill',
+      version: '1.0.0',
+      remoteVersion: '',
+      source: 'ON-DEVICE',
+    });
   });
 
   it('returns INVALID_INPUT when skillName is empty', async () => {
@@ -36,18 +58,18 @@ describe('applySkillToAgents — extended coverage', () => {
     expect(result.error).toBe('PROFILE_NOT_FOUND');
   });
 
-  it('returns PROFILE_NOT_FOUND when profile has no skills array', async () => {
+  it('does not require a skills array on the cached profile', async () => {
     (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ chats: [] });
     const result = await applySkillToAgents('tester', { skillName: 'pdf' });
     expect(result.success).toBe(false);
-    expect(result.error).toBe('PROFILE_NOT_FOUND');
+    expect(result.error).toBe('NO_TARGETS');
   });
 
   it('returns SKILL_NOT_INSTALLED when skill not in profile', async () => {
     (profileCacheManager.getCachedProfile as Mock).mockReturnValue({
-      skills: [{ name: 'other-skill' }],
       chats: [],
     });
+    (skillsConfigManager.getSkill as Mock).mockReturnValue(undefined);
     const result = await applySkillToAgents('tester', { skillName: 'pdf' });
     expect(result.success).toBe(false);
     expect(result.error).toBe('SKILL_NOT_INSTALLED');
@@ -192,6 +214,7 @@ describe('applySkillToAgents — extended coverage', () => {
     });
     expect(result.appliedCount).toBe(1);
     expect(result.appliedTargets[0].chatId).toBe('chat-1');
+    expect(chatSkillSnapshotStore.clear).toHaveBeenCalledWith('tester', 'chat-1');
   });
 
   it('resolves targets by applyToAll', async () => {

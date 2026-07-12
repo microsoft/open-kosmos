@@ -43,12 +43,8 @@ function createService() {
     setSaveChain: (next) => { saveChain = next; },
     addMessageToChatHistory: vi.fn(),
     addMessageToContext: vi.fn().mockResolvedValue(undefined),
-    shouldTrackChatSessionActivatedForUserMessage: () => false,
-    getChatSessionEntryTypeForUserMessage: () => 'continued',
-    trackChatSessionActivated: vi.fn(),
     exitNewChatSessionState: vi.fn(),
     calculateAndNotifyContext: vi.fn().mockResolvedValue(undefined),
-    startChat: vi.fn().mockResolvedValue(undefined),
     getDisplayMessages: () => [],
     getSkipPersistence: () => false,
   };
@@ -121,12 +117,8 @@ function makeSimpleDeps(overrides: Partial<AgentChatSessionServiceDeps> = {}): {
     setSaveChain: (next) => { saveChain.value = next; },
     addMessageToChatHistory: vi.fn((msg) => { currentChatSession.chat_history.push(msg); }),
     addMessageToContext: vi.fn().mockResolvedValue(undefined),
-    shouldTrackChatSessionActivatedForUserMessage: () => false,
-    getChatSessionEntryTypeForUserMessage: () => 'continued',
-    trackChatSessionActivated: vi.fn(),
     exitNewChatSessionState: vi.fn(),
     calculateAndNotifyContext: vi.fn().mockResolvedValue(undefined),
-    startChat: vi.fn().mockResolvedValue(undefined),
     getDisplayMessages: () => [],
     getSkipPersistence: () => false,
     ...overrides,
@@ -204,6 +196,16 @@ describe('AgentChatSessionService.saveChatSession', () => {
     expect(result.error).toMatch(/disk full/);
   });
 
+  it('returns unknown error when saveSession rejects with a non-Error value', async () => {
+    (chatSessionStore.saveSession as Mock).mockRejectedValue('disk full');
+    const { deps } = makeSimpleDeps();
+    const service = new AgentChatSessionService(deps);
+
+    const result = await service.saveChatSession();
+
+    expect(result).toEqual({ success: false, error: 'Unknown error' });
+  });
+
   it('generates a time-based placeholder title when firstUserMessage is set and title is "New Chat"', async () => {
     (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
     // Prevent async title generation from overwriting the placeholder
@@ -218,6 +220,83 @@ describe('AgentChatSessionService.saveChatSession', () => {
 
     expect(currentChatSession.title).toMatch(/^Chat \d{2}:\d{2}$/);
     expect(deps.setFirstUserMessage).toHaveBeenCalledWith(null);
+  });
+
+  it('skips async title generation if the cached first user message was cleared meanwhile', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const userMsg = { id: 'u1', role: 'user', timestamp: Date.now(), content: [{ type: 'text', text: 'hello' }] } as any;
+    const getFirstUserMessage = vi.fn()
+      .mockReturnValueOnce(userMsg)
+      .mockReturnValueOnce(null);
+    const { deps } = makeSimpleDeps({ getFirstUserMessage });
+    const service = new AgentChatSessionService(deps);
+    const titleSpy = vi.spyOn(service, 'generateChatSessionTitle');
+
+    const result = await service.saveChatSession();
+
+    expect(result.success).toBe(true);
+    expect(titleSpy).not.toHaveBeenCalled();
+    titleSpy.mockRestore();
+  });
+
+  it('continues saving when the previous save chain rejected', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const { deps } = makeSimpleDeps({
+      getSaveChain: () => Promise.reject(new Error('previous save failed')),
+    });
+    const service = new AgentChatSessionService(deps);
+
+    const result = await service.saveChatSession();
+
+    expect(result.success).toBe(true);
+    expect(chatSessionStore.saveSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores a safe save-chain promise when a dependency throws during save setup', async () => {
+    const { deps, saveChain } = makeSimpleDeps({
+      getCurrentChatSession: () => {
+        throw new Error('session unavailable');
+      },
+    });
+    const service = new AgentChatSessionService(deps);
+
+    await expect(service.saveChatSession()).rejects.toThrow('session unavailable');
+    await expect(saveChain.value).resolves.toEqual({ success: false });
+  });
+
+  it('logs async title generation failures without failing the primary save', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const userMsg = { id: 'u1', role: 'user', timestamp: Date.now(), content: [{ type: 'text', text: 'hello' }] } as any;
+    const { deps } = makeSimpleDeps({ getFirstUserMessage: () => userMsg });
+    const service = new AgentChatSessionService(deps);
+    const titleSpy = vi.spyOn(service, 'generateChatSessionTitle').mockRejectedValueOnce(new Error('title failed'));
+
+    const result = await service.saveChatSession();
+    await Promise.resolve();
+
+    expect(result.success).toBe(true);
+    expect(titleSpy).toHaveBeenCalledWith(userMsg);
+    titleSpy.mockRestore();
+  });
+
+  it('logs failures from the follow-up save after async title generation', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const userMsg = { id: 'u1', role: 'user', timestamp: Date.now(), content: [{ type: 'text', text: 'hello' }] } as any;
+    const { deps } = makeSimpleDeps({ getFirstUserMessage: () => userMsg });
+    const service = new AgentChatSessionService(deps);
+    const originalSave = service.saveChatSession.bind(service);
+    const saveSpy = vi.spyOn(service, 'saveChatSession');
+    const titleSpy = vi.spyOn(service, 'generateChatSessionTitle').mockResolvedValueOnce(undefined);
+    saveSpy.mockImplementationOnce(originalSave).mockRejectedValueOnce(new Error('follow-up save failed'));
+
+    const result = await service.saveChatSession();
+    await Promise.resolve();
+
+    expect(result.success).toBe(true);
+    expect(titleSpy).toHaveBeenCalledWith(userMsg);
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+    titleSpy.mockRestore();
+    saveSpy.mockRestore();
   });
 });
 
@@ -432,6 +511,56 @@ describe('AgentChatSessionService.addMessageToSession', () => {
     await expect(service.addMessageToSession(msg)).rejects.toThrow('MessageToSave only allow');
   });
 
+  it('logs async save failures without failing addMessageToSession', async () => {
+    const { deps } = makeSimpleDeps();
+    const service = new AgentChatSessionService(deps);
+    vi.spyOn(service, 'saveChatSession').mockRejectedValueOnce(new Error('save failed'));
+    const msg = { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'hi' }] } as any;
+
+    await expect(service.addMessageToSession(msg)).resolves.toBeUndefined();
+    await Promise.resolve();
+
+    expect(deps.setMessagesToSave).toHaveBeenLastCalledWith([]);
+  });
+
+  it('does not run first-message side effects when the async save reports failure', async () => {
+    const { deps } = makeSimpleDeps();
+    const service = new AgentChatSessionService(deps);
+    vi.spyOn(service, 'saveChatSession').mockResolvedValueOnce({ success: false });
+    const msg = { id: 'u1', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'hi' }] } as any;
+
+    await service.addMessageToSession(msg);
+    await Promise.resolve();
+
+    expect(deps.exitNewChatSessionState).not.toHaveBeenCalled();
+  });
+
+  it('accepts a non-orphaned tool message', async () => {
+    (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        timestamp: 1,
+        content: [{ type: 'text', text: '' }],
+        tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+      },
+    ];
+    const service = new AgentChatSessionService(deps);
+    const msg = {
+      id: 't1',
+      role: 'tool',
+      tool_call_id: 'tc1',
+      timestamp: 1,
+      content: [{ type: 'text', text: 'result' }],
+    } as any;
+
+    await service.addMessageToSession(msg);
+
+    expect(deps.addMessageToChatHistory).toHaveBeenCalledWith(msg);
+  });
+
   it('does not save immediately for assistant messages with tool_calls', async () => {
     (chatSessionStore.saveSession as Mock).mockResolvedValue(true);
     let messages: any[] = [];
@@ -499,5 +628,39 @@ describe('AgentChatSessionService.replaceFilePathInSession', () => {
     expect(result.success).toBe(true);
     expect(result.replacedCount).toBe(1);
     expect(currentChatSession.chat_history[0].tool_calls[0].function.arguments).toContain('/new/file.txt');
+  });
+
+  it('returns failure when saving replaced paths fails', async () => {
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [
+      {
+        id: 'u1', role: 'user', timestamp: 1,
+        content: [{ type: 'text', text: 'See /old/path/file.txt' }],
+      },
+    ];
+    currentChatSession.context_history = [];
+    const service = new AgentChatSessionService(deps);
+    vi.spyOn(service, 'saveChatSession').mockRejectedValueOnce(new Error('save failed'));
+
+    const result = await service.replaceFilePathInSession('/old/path/file.txt', '/new/path/file.txt');
+
+    expect(result).toEqual({ success: false, replacedCount: 1, error: 'save failed' });
+  });
+
+  it('returns a stringified error when saving replaced paths rejects with a non-Error value', async () => {
+    const { deps, currentChatSession } = makeSimpleDeps();
+    currentChatSession.chat_history = [
+      {
+        id: 'u1', role: 'user', timestamp: 1,
+        content: [{ type: 'text', text: 'See /old/path/file.txt' }],
+      },
+    ];
+    currentChatSession.context_history = [];
+    const service = new AgentChatSessionService(deps);
+    vi.spyOn(service, 'saveChatSession').mockRejectedValueOnce('save failed');
+
+    const result = await service.replaceFilePathInSession('/old/path/file.txt', '/new/path/file.txt');
+
+    expect(result).toEqual({ success: false, replacedCount: 1, error: 'save failed' });
   });
 });

@@ -216,7 +216,7 @@ npm run build
 - **Type**: Node.js native extension (C++)
 - **Compilation requirements**: Visual Studio Build Tools, Windows SDK, Python
 - **Architecture support**: x64, ARM64
-- **Purpose**: Vector storage in conjunction with sqlite-vec
+- **Purpose**: Local SQLite persistence for app and profile data
 
 ### Build Toolchain
 - **Visual Studio 2022**: C++ compiler

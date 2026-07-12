@@ -157,6 +157,7 @@ vi.mock('../../../lib/workspace/workspaceSearchService', async () => ({
   searchWorkspaceFiles: vi.fn(),
 }));
 
+
 vi.mock('../../../lib/chat/startNewChatFor', async () => ({
   startNewChatFor: vi.fn(),
 }));

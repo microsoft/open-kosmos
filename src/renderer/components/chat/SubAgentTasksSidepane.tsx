@@ -4,6 +4,7 @@ import '../../styles/Sidepane.css';
 import { SubAgentTasksSidepaneAtom } from './chat-side.atom';
 import { useCurrentChatSessionId } from '../../lib/chat/agentChatSessionCacheManager';
 import SubAgentTaskDetailView from './SubAgentTaskDetailView';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface TaskSummary {
   taskId: string;
@@ -52,7 +53,7 @@ const ExecutingIcon: React.FC = () => (
     <circle cx="10" cy="10" r="9" stroke="black" strokeOpacity="0.15" strokeWidth="2" />
     <path
       d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19"
-      stroke="#272320"
+      stroke="var(--color-warm-900)"
       strokeWidth="2"
       strokeLinecap="round"
     />
@@ -70,7 +71,7 @@ const CompletedIcon: React.FC = () => (
   >
     <path
       d="M0 10C0 4.47715 4.47715 0 10 0C15.5228 0 20 4.47715 20 10C20 15.5228 15.5228 20 10 20C4.47715 20 0 15.5228 0 10Z"
-      fill="#272320"
+      fill="var(--color-warm-900)"
     />
     <mask
       id="subagent-completed-icon-mask"
@@ -83,11 +84,11 @@ const CompletedIcon: React.FC = () => (
     >
       <path
         d="M13.765 7.20474C14.0661 7.48915 14.0797 7.96383 13.7953 8.26497L9.54526 12.765C9.40613 12.9123 9.21332 12.997 9.01071 12.9999C8.8081 13.0028 8.61295 12.9236 8.46967 12.7803L6.21967 10.5303C5.92678 10.2374 5.92678 9.76257 6.21967 9.46967C6.51256 9.17678 6.98744 9.17678 7.28033 9.46967L8.98463 11.174L12.7047 7.23503C12.9891 6.9339 13.4638 6.92033 13.765 7.20474Z"
-        fill="#242424"
+        fill="var(--color-neutral-800)"
       />
     </mask>
     <g mask="url(#subagent-completed-icon-mask)">
-      <rect width="12" height="12" transform="translate(4 4)" fill="#E2DDD9" />
+      <rect width="12" height="12" transform="translate(4 4)" fill="var(--color-warm-200)" />
     </g>
   </svg>
 );
@@ -101,14 +102,14 @@ const FailedIcon: React.FC = () => (
     xmlns="http://www.w3.org/2000/svg"
     style={{ display: 'block' }}
   >
-    <circle cx="10" cy="10" r="9" fill="#FEF2F2" stroke="#DC2626" strokeWidth="2" />
+    <circle cx="10" cy="10" r="9" fill="var(--color-danger-50)" stroke="var(--color-danger-600)" strokeWidth="2" />
     <path
       d="M10 5.75V10.25"
-      stroke="#B91C1C"
+      stroke="var(--color-danger-700)"
       strokeWidth="1.75"
       strokeLinecap="round"
     />
-    <circle cx="10" cy="13.5" r="1" fill="#B91C1C" />
+    <circle cx="10" cy="13.5" r="1" fill="var(--color-danger-700)" />
   </svg>
 );
 
@@ -121,16 +122,16 @@ const CancelledIcon: React.FC = () => (
     xmlns="http://www.w3.org/2000/svg"
     style={{ display: 'block' }}
   >
-    <circle cx="10" cy="10" r="9" fill="#F3F4F6" stroke="#6B7280" strokeWidth="2" />
+    <circle cx="10" cy="10" r="9" fill="var(--color-neutral-100)" stroke="var(--color-neutral-500)" strokeWidth="2" />
     <path
       d="M7 7L13 13"
-      stroke="#4B5563"
+      stroke="var(--color-neutral-600)"
       strokeWidth="1.75"
       strokeLinecap="round"
     />
     <path
       d="M13 7L7 13"
-      stroke="#4B5563"
+      stroke="var(--color-neutral-600)"
       strokeWidth="1.75"
       strokeLinecap="round"
     />
@@ -148,17 +149,40 @@ const TaskCard: React.FC<{ task: TaskSummary; onClick: () => void }> = ({ task, 
   const isFailed = task.status === 'failed';
   const isCancelled = task.status === 'cancelled';
   const isRunning = task.status === 'running';
+  const { t } = useI18n();
+  const turnCountText = task.turnCount === 1
+    ? t('sidepane.subAgents.turnSingular', { count: task.turnCount })
+    : t('sidepane.subAgents.turnPlural', { count: task.turnCount });
+  const statusText = isRunning
+    ? t('sidepane.subAgents.runningSummary', {
+      duration: formatDuration(task.startTime),
+      turns: turnCountText,
+    })
+    : isFailed
+      ? t('sidepane.subAgents.failedSummary', {
+        duration: formatDuration(task.startTime, task.endTime),
+      })
+      : isCancelled
+        ? t('sidepane.subAgents.cancelledSummary', {
+          duration: formatDuration(task.startTime, task.endTime),
+          turns: turnCountText,
+        })
+        : t('sidepane.subAgents.completedSummary', {
+          time: formatTime(task.startTime),
+          duration: formatDuration(task.startTime, task.endTime),
+          turns: turnCountText,
+        });
 
   return (
     <button
       onClick={onClick}
-      className="chat-session-item"
+      className="chat-session-item sidepane-list-card sub-agent-task-card"
       style={{
         width: '100%',
         border: 'none',
         borderRadius: '12px',
         padding: '12px',
-        background: '#FFFFFF',
+        background: 'var(--color-white)',
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
@@ -168,7 +192,7 @@ const TaskCard: React.FC<{ task: TaskSummary; onClick: () => void }> = ({ task, 
         textAlign: 'left',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#FFFFFF'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-white)'; }}
     >
       <div
         style={{
@@ -196,7 +220,7 @@ const TaskCard: React.FC<{ task: TaskSummary; onClick: () => void }> = ({ task, 
             flex: 1,
             fontSize: '14px',
             fontWeight: 500,
-            color: isFailed ? '#B91C1C' : isCancelled ? '#6B7280' : '#374151',
+            color: isFailed ? 'var(--color-danger-700)' : isCancelled ? 'var(--color-neutral-500)' : 'var(--color-neutral-700)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -208,17 +232,11 @@ const TaskCard: React.FC<{ task: TaskSummary; onClick: () => void }> = ({ task, 
       <span
         style={{
           fontSize: '12px',
-          color: isFailed ? '#B91C1C' : '#6B7280',
+          color: isFailed ? 'var(--color-danger-700)' : 'var(--color-neutral-500)',
           paddingLeft: '28px',
         }}
       >
-        {isRunning
-          ? `Running · ${formatDuration(task.startTime)} · ${task.turnCount} turns`
-          : isFailed
-            ? `Failed · ${formatDuration(task.startTime, task.endTime)}`
-            : isCancelled
-              ? `Cancelled · ${formatDuration(task.startTime, task.endTime)} · ${task.turnCount} turns`
-              : `${formatTime(task.startTime)} · ${formatDuration(task.startTime, task.endTime)} · ${task.turnCount} turns`}
+        {statusText}
       </span>
     </button>
   );
@@ -226,6 +244,7 @@ const TaskCard: React.FC<{ task: TaskSummary; onClick: () => void }> = ({ task, 
 
 const SubAgentTasksSidepane: React.FC = () => {
   const [state, actions] = SubAgentTasksSidepaneAtom.use();
+  const { t } = useI18n();
   const currentSessionId = useCurrentChatSessionId();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -309,12 +328,12 @@ const SubAgentTasksSidepane: React.FC = () => {
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 12,
-                color: 'var(--text-secondary, #888)',
+                color: 'var(--text-secondary, var(--color-warm-400))',
                 padding: '2px 4px',
               }}
             >
               <ArrowLeft size={14} />
-              Back
+              {t('common.back')}
             </button>
             {selectedTask && (
               <div className="sidepane-section-header-title" style={{ flex: 1, marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -325,8 +344,8 @@ const SubAgentTasksSidepane: React.FC = () => {
               <button
                 className="sidepane-close-btn"
                 onClick={actions.hide}
-                title="Close"
-                aria-label="Close"
+                title={t('common.close')}
+                aria-label={t('common.close')}
                 type="button"
               >
                 <X size={12} />
@@ -345,15 +364,15 @@ const SubAgentTasksSidepane: React.FC = () => {
       <div className="file-explorer-section">
         <div className="sidepane-section-header" style={{ cursor: 'default' }}>
           <div className="sidepane-section-header-title">
-            <Bot size={16} color="#374151" />
-            <span className="sidepane-section-title-text">Current Session Sub-Agent Tasks</span>
+            <Bot size={16} color="var(--color-neutral-700)" />
+            <span className="sidepane-section-title-text">{t('sidepane.subAgents.title')}</span>
           </div>
           <div className="sidepane-section-header-actions">
             <button
               className="sidepane-close-btn"
               onClick={actions.hide}
-              title="Close sub-agent tasks"
-              aria-label="Close sub-agent tasks"
+              title={t('sidepane.subAgents.close')}
+              aria-label={t('sidepane.subAgents.close')}
               type="button"
             >
               <X size={12} />
@@ -362,13 +381,13 @@ const SubAgentTasksSidepane: React.FC = () => {
         </div>
         <div className="sidepane-body">
           {loading && tasks.length === 0 && (
-            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-secondary, #888)', textAlign: 'center' }}>
-              Loading...
+            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-secondary, var(--color-warm-400))', textAlign: 'center' }}>
+              {t('sidepane.subAgents.loading')}
             </div>
           )}
           {!loading && tasks.length === 0 && (
-            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-secondary, #888)', textAlign: 'center' }}>
-              No sub-agent tasks in this session
+            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-secondary, var(--color-warm-400))', textAlign: 'center' }}>
+              {t('sidepane.subAgents.empty')}
             </div>
           )}
           {tasks.map(task => (

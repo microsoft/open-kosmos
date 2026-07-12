@@ -93,6 +93,8 @@ export interface InteractiveResponse {
     approved: boolean;
   }>;
   selectedValues?: string[];
+  selectedPresetValues?: string[];
+  customValues?: string[];
   formValues?: Record<string, unknown>;
 }
 

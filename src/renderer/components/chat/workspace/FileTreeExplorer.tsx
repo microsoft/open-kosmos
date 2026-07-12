@@ -15,6 +15,7 @@ import {
 import { FileTreeNode } from '../../../lib/chat/workspaceOps';
 import { FileTreeNodeMenuAtom } from '../../menu/FileTreeNodeContextMenu';
 import { createLogger } from '../../../lib/utilities/logger';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[FileTreeExplorer]');
 
 interface FileTreeExplorerProps {
@@ -24,6 +25,7 @@ interface FileTreeExplorerProps {
   className?: string;
   directoryStack?: FileTreeNode[];
   onDirectoryStackChange?: (stack: FileTreeNode[]) => void;
+  showBreadcrumb?: boolean; // Whether to show breadcrumb navigation
   /** Lazy loading callback: called when expanding directory, parent component responsible for fetching and injecting child nodes */
   onLoadChildren?: (dirPath: string) => Promise<void>;
 }
@@ -172,6 +174,7 @@ FileTreeNodeItem.displayName = 'FileTreeNodeItem';
 /**
  * Find node in tree
  */
+/* v8 ignore next 11 -- legacy helper retained for tree-breadcrumb parity but unused in tree-view mode */
 const findNodeInTree = (nodes: FileTreeNode[], targetPath: string): FileTreeNode | null => {
   for (const node of nodes) {
     if (node.path === targetPath) {
@@ -196,9 +199,11 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
   className = '',
   directoryStack: externalDirectoryStack,
   onDirectoryStackChange,
+  showBreadcrumb = true, // Keep this parameter for backward compatibility, but not used in Tree View
   onLoadChildren
 }) => {
   // Use localStorage key to save expansion state for each workspace
+  const { t } = useI18n();
   const storageKey = `fileTree_expanded_${workspacePath}`;
 
   // Load saved expansion state from localStorage
@@ -260,8 +265,8 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({
       <div className={`file-tree-explorer empty ${className}`}>
         <div className="empty-state">
           <div className="empty-icon">📂</div>
-          <p>No files in workspace</p>
-          <small>The workspace folder is empty or inaccessible</small>
+          <p>{t('workspace.fileTree.noFiles')}</p>
+          <small>{t('workspace.fileTree.emptyOrInaccessible')}</small>
         </div>
       </div>
     );

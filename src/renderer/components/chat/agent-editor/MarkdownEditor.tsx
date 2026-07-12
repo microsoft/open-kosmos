@@ -29,7 +29,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   onChange,
   showPreview,
   onTogglePreview,
-  readOnly = false
+  readOnly = false,
+  emptyTips = SYSTEM_PROMPT_TIPS,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -127,7 +128,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           <>
             {!value && !readOnly && (
               <div className="edit-textarea-tips" aria-hidden="true">
-                {SYSTEM_PROMPT_TIPS.map((line, index) => (
+                {emptyTips.map((line, index) => (
                   <span
                     key={`${index}-${line}`}
                     className={line ? 'edit-textarea-tips-line' : 'edit-textarea-tips-spacer'}
@@ -143,7 +144,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
               value={value}
               onChange={(e) => !readOnly && onChange(e.target.value)}
               readOnly={readOnly}
-              style={readOnly ? { cursor: 'not-allowed', backgroundColor: '#f5f5f5' } : undefined}
+              style={readOnly ? { cursor: 'not-allowed', backgroundColor: 'var(--color-neutral-100)' } : undefined}
             />
           </>
         )}

@@ -7,6 +7,12 @@ vi.mock('../scheduleStore', async () => ({
 }));
 
 vi.mock('../../unifiedLogger', async () => ({
+  createConsoleLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
   createLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -85,7 +91,7 @@ describe('runCronWatchdog edge cases', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
       lastRunAt: '2026-04-07T03:02:00.000Z', // already ran after the missed occurrence
@@ -165,7 +171,7 @@ describe('runCronWatchdog edge cases', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -207,7 +213,7 @@ describe('runCronWatchdog edge cases', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: false,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -248,7 +254,7 @@ describe('runCronWatchdog edge cases', () => {
       scheduleType: 'cron' as const,
       cronExpression: '* * * * *',
       enabled: true,
-      agentId: 'agent-1',
+      chat_id: 'agent-1',
       message: 'hello',
       status: 'pending' as const,
     };
@@ -285,6 +291,184 @@ describe('runCronWatchdog edge cases', () => {
     });
 
     expect(executeJob).toHaveBeenCalledTimes(1);
+  });
+
+  const everyMinuteJob = {
+    id: 'job-retry',
+    name: 'retry job',
+    description: '',
+    scheduleType: 'cron' as const,
+    cronExpression: '* * * * *',
+    enabled: true,
+    chat_id: 'agent-1',
+    message: 'hello',
+    status: 'pending' as const,
+  };
+
+  const seedRuntimeMeta = (jobId: string, lastCheckedAt: string) =>
+    new Map<string, CronWatchdogTaskRuntimeMeta>([
+      [
+        jobId,
+        {
+          jobId,
+          registeredAt: '2026-04-07T02:00:00.000Z',
+          cronExpression: '* * * * *',
+          lastCronWatchdogCheckedAt: lastCheckedAt,
+        },
+      ],
+    ]);
+
+  it('rolls the checkpoint back so a guard-skipped catch-up is retried next heartbeat', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    const runtimeMeta = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T03:00:00.000Z');
+    const executeJob = vi.fn(async () => ({ error: 'skipped-overlap' }));
+
+    await runCronWatchdog({
+      alias: 'alice',
+      heartbeatIntervalMs: 60_000,
+      cronJobIds: [everyMinuteJob.id],
+      getRuntimeMeta: (id) => runtimeMeta.get(id),
+      setRuntimeMeta: (id, meta) => runtimeMeta.set(id, meta),
+      executeJob,
+      nowMs: Date.parse('2026-04-07T03:03:00.000Z'),
+    });
+
+    expect(executeJob).toHaveBeenCalledTimes(1);
+    // Missed occurrence is 03:01:00 (prev tick before the 03:02:00 window end);
+    // the checkpoint is held to just before it so the next heartbeat re-detects
+    // and retries the same occurrence.
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCheckedAt).toBe('2026-04-07T03:00:59.999Z');
+  });
+
+  it('retries the exact guard-skipped occurrence across multiple heartbeats', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    const runtimeMeta = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T03:00:00.000Z');
+    const executeJob = vi.fn(async () => ({ error: 'skipped-concurrency-limit' }));
+    const options = {
+      alias: 'alice',
+      heartbeatIntervalMs: 60_000,
+      cronJobIds: [everyMinuteJob.id],
+      getRuntimeMeta: (id: string) => runtimeMeta.get(id),
+      setRuntimeMeta: (id: string, meta: CronWatchdogTaskRuntimeMeta) => runtimeMeta.set(id, meta),
+      executeJob,
+    };
+
+    await runCronWatchdog({
+      ...options,
+      nowMs: Date.parse('2026-04-07T03:03:00.000Z'),
+    });
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCatchUpAt).toBe('2026-04-07T03:01:00.000Z');
+
+    await runCronWatchdog({
+      ...options,
+      nowMs: Date.parse('2026-04-07T03:04:00.000Z'),
+    });
+
+    expect(executeJob).toHaveBeenCalledTimes(2);
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCatchUpAt).toBe('2026-04-07T03:01:00.000Z');
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCheckedAt).toBe('2026-04-07T03:00:59.999Z');
+  });
+
+  it('advances the checkpoint normally when the catch-up succeeds', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    const runtimeMeta = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T03:00:00.000Z');
+    const executeJob = vi.fn(async () => ({})); // success: no error
+
+    await runCronWatchdog({
+      alias: 'alice',
+      heartbeatIntervalMs: 60_000,
+      cronJobIds: [everyMinuteJob.id],
+      getRuntimeMeta: (id) => runtimeMeta.get(id),
+      setRuntimeMeta: (id, meta) => runtimeMeta.set(id, meta),
+      executeJob,
+      nowMs: Date.parse('2026-04-07T03:03:00.000Z'),
+    });
+
+    expect(executeJob).toHaveBeenCalledTimes(1);
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCheckedAt).toBe('2026-04-07T03:02:00.000Z');
+  });
+
+  it('advances the checkpoint when the catch-up fails because a required MCP server is disconnected', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    const runtimeMeta = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T03:00:00.000Z');
+    const executeJob = vi.fn(async () => ({ error: 'Required MCP server disconnected: teams' }));
+
+    await runCronWatchdog({
+      alias: 'alice',
+      heartbeatIntervalMs: 60_000,
+      cronJobIds: [everyMinuteJob.id],
+      getRuntimeMeta: (id) => runtimeMeta.get(id),
+      setRuntimeMeta: (id, meta) => runtimeMeta.set(id, meta),
+      executeJob,
+      nowMs: Date.parse('2026-04-07T03:03:00.000Z'),
+    });
+
+    expect(executeJob).toHaveBeenCalledTimes(1);
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCheckedAt).toBe('2026-04-07T03:02:00.000Z');
+  });
+
+  it('does not retry a guard-skipped catch-up once the occurrence is outside the catch-up window', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    // A 7h heartbeat window forces the missed every-minute occurrence to land 7h
+    // before "now" — beyond the 6h catch-up window — without depending on the
+    // local timezone the way an hour-specific cron would.
+    const runtimeMeta = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T04:00:00.000Z');
+    const executeJob = vi.fn(async () => ({ error: 'skipped-overlap' }));
+
+    await runCronWatchdog({
+      alias: 'alice',
+      heartbeatIntervalMs: 7 * 60 * 60 * 1000,
+      cronJobIds: [everyMinuteJob.id],
+      getRuntimeMeta: (id) => runtimeMeta.get(id),
+      setRuntimeMeta: (id, meta) => runtimeMeta.set(id, meta),
+      executeJob,
+      nowMs: Date.parse('2026-04-07T12:00:00.000Z'),
+    });
+
+    expect(executeJob).toHaveBeenCalledTimes(1);
+    // Checkpoint advances to eligibleUntil (now - heartbeat); the stale occurrence is given up.
+    expect(runtimeMeta.get(everyMinuteJob.id)?.lastCronWatchdogCheckedAt).toBe('2026-04-07T05:00:00.000Z');
+  });
+
+  it('still resolves when runtimeMeta disappears before the retry rollback', async () => {
+    const { scheduleStore } = await import('../scheduleStore');
+    vi.mocked(scheduleStore.getJob).mockResolvedValue(everyMinuteJob);
+
+    const seeded = seedRuntimeMeta(everyMinuteJob.id, '2026-04-07T03:00:00.000Z');
+    const setRuntimeMeta = vi.fn();
+    let callCount = 0;
+    const getRuntimeMeta = (id: string) => {
+      callCount++;
+      // First two reads return meta; the third (retry rollback) returns undefined.
+      return callCount <= 2 ? seeded.get(id) : undefined;
+    };
+    const executeJob = vi.fn(async () => ({ error: 'skipped-overlap' }));
+
+    await expect(
+      runCronWatchdog({
+        alias: 'alice',
+        heartbeatIntervalMs: 60_000,
+        cronJobIds: [everyMinuteJob.id],
+        getRuntimeMeta,
+        setRuntimeMeta,
+        executeJob,
+        nowMs: Date.parse('2026-04-07T03:03:00.000Z'),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(executeJob).toHaveBeenCalledTimes(1);
+    // No third setRuntimeMeta (rollback) because retryMeta was undefined.
+    expect(setRuntimeMeta).toHaveBeenCalledTimes(2);
   });
 
   it('logs a non-Error exception from watchdog job handler', async () => {

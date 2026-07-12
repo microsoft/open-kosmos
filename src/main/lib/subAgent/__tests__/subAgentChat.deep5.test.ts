@@ -87,9 +87,12 @@ const { mockMcpExecuteTool, mockGetToolsForSubAgent } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../mcpRuntime/mcpClientManager', () => ({
+  BUILTIN_SERVER_NAME: 'builtin-tools',
+  SUB_AGENT_BLOCKED_TOOLS: new Set(['sub_agent', 'computer_use', 'send_to_subagent']),
   mcpClientManager: {
     getToolsForSubAgent: mockGetToolsForSubAgent,
     executeTool: mockMcpExecuteTool,
+    isBuiltinTool: vi.fn(() => true),
   },
 }));
 
@@ -584,7 +587,7 @@ describe('buildWorkspaceAndSkillsInfo', () => {
   });
 
   it('includes inherited skills in prompt', () => {
-    const config = makeSubAgentConfig({ skills: [] });
+    const config = makeSubAgentConfig();
     const subAgent = makeSubAgent({
       config,
       resolvedSkills: [{ name: 'my-skill', installed: true, inherited: true }],

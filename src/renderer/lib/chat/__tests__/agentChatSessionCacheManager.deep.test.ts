@@ -3,7 +3,7 @@
  *
  * Targets branches not covered by the existing test files:
  * - replaceFilePathInMessages: office, others, image, text types; no-op paths
- * - handleChatSessionCacheCreated: renderChatHistory fallback, browserControl image filtering,
+ * - handleChatSessionCacheCreated: renderChatHistory fallback, injected-image filtering,
  *   say-hi preservation with no system message
  * - handleContentChunk: message has no text block (appends new text block)
  * - handleToolCallChunk: existing message is not assistant (early return)
@@ -722,23 +722,4 @@ describe('AgentChatSessionCacheManager.deep', () => {
     unsub();
   });
 
-  // ── addUserMessage: user_img_ id prefix is NOT filtered when browserControl off ──
-
-  it('addUserMessage does not filter user_img_ messages when browserControl feature is disabled', async () => {
-    // Default: isFeatureEnabled returns false (not initialized), so user_img_ messages pass through
-    const { agentChatSessionCacheManager: m } = await import('../agentChatSessionCacheManager');
-
-    m.createChatSessionCache('s-imgno', 'c1', { messages: [] });
-    m.setCurrentChatSessionId('c1', 's-imgno');
-
-    m.addUserMessage('s-imgno', {
-      id: 'user_img_001',
-      role: 'user',
-      content: [{ type: 'image', image_url: { url: 'data:image/png;base64,abc' } }],
-      timestamp: 1,
-    } as any);
-
-    // When browserControl is off, the message should be added
-    expect(m.getChatSessionCache('s-imgno')?.messages).toHaveLength(1);
-  });
 });

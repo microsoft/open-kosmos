@@ -15,6 +15,8 @@ import { createConsoleLogger } from '../unifiedLogger';
 
 // 🚀 Lazy load: BuiltinToolsManager type is used for type declarations only
 import { BuiltinToolsManager } from './builtinTools/builtinToolsManager';
+import { profileCacheManager } from '../userDataADO/profileCacheManager';
+import { getChatWorkspace } from '../userDataADO/agentAccessor';
 
 // Fixed name for the built-in server
 export const BUILTIN_SERVER_NAME = 'builtin-tools';
@@ -121,9 +123,14 @@ export class BuiltinMcpClient {
         throw new Error(`Builtin tool execution aborted: ${toolName}`);
       }
 
-      // Capture chatSessionId BEFORE any await — after an async boundary,
+      // Capture execution context BEFORE any await — after an async boundary,
       // currentExecutionContext may have been overwritten by a concurrent session.
-      const chatSessionId = BuiltinToolsManager.getExecutionContext()?.chatSessionId;
+      const executionContext = BuiltinToolsManager.getExecutionContext();
+      const chatSessionId = executionContext?.chatSessionId;
+      const chatConfig = executionContext
+        ? profileCacheManager.getChatConfig(executionContext.userAlias, executionContext.chatId)
+        : undefined;
+      const workspaceRoot = getChatWorkspace(chatConfig);
 
       const toolsManager = await this.getToolsManager();
 
@@ -133,7 +140,7 @@ export class BuiltinMcpClient {
       }
 
       // Execute the tool
-      const result = await toolsManager.executeTool(toolName, toolArgs, signal, chatSessionId);
+      const result = await toolsManager.executeTool(toolName, toolArgs, signal, chatSessionId, executionContext, workspaceRoot);
 
       if (result.success) {
         return result.data || '';

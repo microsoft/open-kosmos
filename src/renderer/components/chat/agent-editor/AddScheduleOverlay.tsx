@@ -14,8 +14,9 @@ import {
   describeCronExpression,
   parseDailyMultiTimesCronExpression,
 } from '../../../lib/scheduler/cronDescriptions'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
-export interface AddScheduleOverlayAgentOption {
+export interface AddScheduleOverlayChatOption {
   id: string
   name: string
 }
@@ -23,9 +24,9 @@ export interface AddScheduleOverlayAgentOption {
 interface AddScheduleOverlayProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  defaultAgentId?: string
-  lockAgent?: boolean
-  agents: AddScheduleOverlayAgentOption[]
+  defaultChatId?: string
+  lockChat?: boolean
+  chatOptions: AddScheduleOverlayChatOption[]
   editingJob?: SchedulerJob | null
   onCreated?: (job: SchedulerJob) => void
   onUpdated?: (job: SchedulerJob) => void
@@ -107,14 +108,14 @@ const buildCronExpression = (
   }
 }
 
-const recurringPresetLabel: Record<RecurringPreset, string> = {
-  daily: 'Daily',
-  daily_multi_times: 'Daily Multi-Time',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  every_n_days: 'Every N Days',
-  every_n_weeks: 'Every N Weeks',
-  every_n_months: 'Every N Months',
+const recurringPresetLabelKey: Record<RecurringPreset, 'agent.scheduleOverlay.preset.daily' | 'agent.scheduleOverlay.preset.dailyMultiTime' | 'agent.scheduleOverlay.preset.weekly' | 'agent.scheduleOverlay.preset.monthly' | 'agent.scheduleOverlay.preset.everyNDays' | 'agent.scheduleOverlay.preset.everyNWeeks' | 'agent.scheduleOverlay.preset.everyNMonths'> = {
+  daily: 'agent.scheduleOverlay.preset.daily',
+  daily_multi_times: 'agent.scheduleOverlay.preset.dailyMultiTime',
+  weekly: 'agent.scheduleOverlay.preset.weekly',
+  monthly: 'agent.scheduleOverlay.preset.monthly',
+  every_n_days: 'agent.scheduleOverlay.preset.everyNDays',
+  every_n_weeks: 'agent.scheduleOverlay.preset.everyNWeeks',
+  every_n_months: 'agent.scheduleOverlay.preset.everyNMonths',
 }
 
 type ParsedRecurringState = {
@@ -218,27 +219,27 @@ const parseCronExpression = (cronExpression?: string): ParsedRecurringState => {
 }
 
 const weekDayOptions = [
-  { label: 'Sunday', value: 0 },
-  { label: 'Monday', value: 1 },
-  { label: 'Tuesday', value: 2 },
-  { label: 'Wednesday', value: 3 },
-  { label: 'Thursday', value: 4 },
-  { label: 'Friday', value: 5 },
-  { label: 'Saturday', value: 6 },
-]
+  { labelKey: 'agent.scheduleOverlay.weekday.sunday', value: 0 },
+  { labelKey: 'agent.scheduleOverlay.weekday.monday', value: 1 },
+  { labelKey: 'agent.scheduleOverlay.weekday.tuesday', value: 2 },
+  { labelKey: 'agent.scheduleOverlay.weekday.wednesday', value: 3 },
+  { labelKey: 'agent.scheduleOverlay.weekday.thursday', value: 4 },
+  { labelKey: 'agent.scheduleOverlay.weekday.friday', value: 5 },
+  { labelKey: 'agent.scheduleOverlay.weekday.saturday', value: 6 },
+] as const
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
-  color: '#374151',
+  color: 'var(--color-neutral-700)',
   marginBottom: '8px',
 }
 
 const radioCardStyle = (active: boolean): React.CSSProperties => ({
   flex: 1,
   minWidth: 0,
-  border: `1px solid ${active ? '#272320' : '#D1D5DB'}`,
-  background: active ? '#F9FAFB' : '#FFFFFF',
+  border: `1px solid ${active ? 'var(--color-warm-900)' : 'var(--color-neutral-300)'}`,
+  background: active ? 'var(--color-neutral-50)' : 'var(--color-white)',
   borderRadius: '10px',
   padding: '12px 14px',
   cursor: 'pointer',
@@ -251,12 +252,12 @@ const radioCardStyle = (active: boolean): React.CSSProperties => ({
 const fieldStyle: React.CSSProperties = {
   width: '100%',
   padding: '10px 12px',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--color-neutral-300)',
   borderRadius: '8px',
   fontSize: '14px',
   lineHeight: '20px',
-  color: '#111827',
-  background: '#FFFFFF',
+  color: 'var(--color-neutral-900)',
+  background: 'var(--color-white)',
   boxSizing: 'border-box',
 }
 
@@ -268,9 +269,9 @@ const textareaStyle: React.CSSProperties = {
 }
 
 const disabledFieldStyle: React.CSSProperties = {
-  background: '#F3F4F6',
-  color: '#6B7280',
-  borderColor: '#E5E7EB',
+  background: 'var(--color-neutral-100)',
+  color: 'var(--color-neutral-500)',
+  borderColor: 'var(--color-neutral-200)',
   cursor: 'not-allowed',
   opacity: 1,
 }
@@ -287,9 +288,9 @@ const timeChipStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '8px',
   borderRadius: '999px',
-  border: '1px solid #D1D5DB',
-  background: '#F9FAFB',
-  color: '#111827',
+  border: '1px solid var(--color-neutral-300)',
+  background: 'var(--color-neutral-50)',
+  color: 'var(--color-neutral-900)',
   padding: '8px 10px',
   fontSize: '13px',
   fontWeight: 500,
@@ -298,7 +299,7 @@ const timeChipStyle: React.CSSProperties = {
 const chipRemoveButtonStyle: React.CSSProperties = {
   border: 'none',
   background: 'transparent',
-  color: '#6B7280',
+  color: 'var(--color-neutral-500)',
   cursor: 'pointer',
   padding: 0,
   lineHeight: 1,
@@ -316,9 +317,9 @@ const addTimeButtonStyle: React.CSSProperties = {
 const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
   open,
   onOpenChange,
-  defaultAgentId,
-  lockAgent = false,
-  agents,
+  defaultChatId,
+  lockChat = false,
+  chatOptions,
   editingJob,
   onCreated,
   onUpdated,
@@ -327,7 +328,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [message, setMessage] = useState('')
-  const [agentId, setAgentId] = useState(defaultAgentId || '')
+  const [chatId, setChatId] = useState(defaultChatId || '')
   const [mode, setMode] = useState<OverlayScheduleMode>('once')
 
   const [runAt, setRunAt] = useState(defaultRunAt())
@@ -339,12 +340,11 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
   const [everyNValue, setEveryNValue] = useState(2)
   const [weeklyDay, setWeeklyDay] = useState(1)
   const [monthlyDay, setMonthlyDay] = useState(1)
-  const [notifyOnCompletion, setNotifyOnCompletion] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAgentDropdown, setShowAgentDropdown] = useState(false)
   const agentDropdownRef = React.useRef<HTMLDivElement>(null)
-
+  const { t } = useI18n()
 
   useEffect(() => {
     if (!open) return
@@ -355,7 +355,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
       setName(editingJob.name || '')
       setDescription(editingJob.description || '')
       setMessage(editingJob.message || '')
-      setAgentId(editingJob.agentId || defaultAgentId || agents[0]?.id || '')
+      setChatId(editingJob.chat_id || defaultChatId || chatOptions[0]?.id || '')
       setMode(editingJob.scheduleType === 'cron' ? 'recurring' : 'once')
       setRunAt(buildLocalDateTimeInputFromIso(editingJob.runAt))
       setRecurringPreset(parsedCron.preset)
@@ -365,12 +365,11 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
       setEveryNValue(parsedCron.everyNValue)
       setWeeklyDay(parsedCron.weeklyDay)
       setMonthlyDay(parsedCron.monthlyDay)
-      setNotifyOnCompletion(editingJob.notifyOnCompletion !== false)
     } else {
       setName(initialValues?.name || '')
       setDescription(initialValues?.description || '')
       setMessage(initialValues?.message || '')
-      setAgentId(defaultAgentId || agents[0]?.id || '')
+      setChatId(defaultChatId || chatOptions[0]?.id || '')
       setMode(initialValues?.mode || 'once')
       setRunAt(defaultRunAt())
       setRecurringPreset((initialValues?.recurringPreset as RecurringPreset) || 'daily')
@@ -380,16 +379,13 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
       setEveryNValue(2)
       setWeeklyDay(1)
       setMonthlyDay(1)
-      setNotifyOnCompletion(true)
     }
 
     setSubmitting(false)
     setError(null)
     setShowAgentDropdown(false)
     setMultiDailyDraftMessage(null)
-  }, [open, editingJob, defaultAgentId, agents, initialValues])
-
-
+  }, [open, editingJob, defaultChatId, chatOptions, initialValues])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -430,24 +426,24 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
 
   const handleAddMultiDailyTime = useCallback(() => {
     if (!multiDailyTimeDraft) {
-      setMultiDailyDraftMessage('Pick a time before adding it.')
+      setMultiDailyDraftMessage(t('agent.scheduleOverlay.pickTimeFirst'))
       return
     }
 
     if (!MULTI_DAILY_TIME_REGEX.test(multiDailyTimeDraft)) {
-      setMultiDailyDraftMessage('Select a valid time in HH:mm format.')
+      setMultiDailyDraftMessage(t('agent.scheduleOverlay.invalidTime'))
       return
     }
 
     if (multiDailyTimes.includes(multiDailyTimeDraft)) {
-      setMultiDailyDraftMessage(`${multiDailyTimeDraft} is already in the list.`)
+      setMultiDailyDraftMessage(t('agent.scheduleOverlay.timeAlreadyAdded', { time: multiDailyTimeDraft }))
       return
     }
 
     setMultiDailyTimes((previous) => normalizeMultiDailyTimes([...previous, multiDailyTimeDraft]))
     setMultiDailyTimeDraft('')
     setMultiDailyDraftMessage(null)
-  }, [multiDailyTimeDraft, multiDailyTimes])
+  }, [multiDailyTimeDraft, multiDailyTimes, t])
 
   const handleRemoveMultiDailyTime = useCallback((timeToRemove: string) => {
     setMultiDailyTimes((previous) => previous.filter((time) => time !== timeToRemove))
@@ -459,7 +455,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
   }, [])
 
   const canSubmit = useMemo(() => {
-    if (!name.trim() || !description.trim() || !message.trim() || !agentId) {
+    if (!name.trim() || !description.trim() || !message.trim() || !chatId) {
       return false
     }
 
@@ -468,18 +464,18 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
     }
 
     return !!cronExpression && !recurringValidationMessage
-  }, [name, description, message, agentId, mode, runAt, cronExpression, recurringValidationMessage])
+  }, [name, description, message, chatId, mode, runAt, cronExpression, recurringValidationMessage])
 
   const isEditMode = !!editingJob
-  const isAgentSelectionLocked = lockAgent
-  const dialogTitle = isEditMode ? 'Edit Schedule' : 'Add New Schedule'
+  const isChatSelectionLocked = lockChat
+  const dialogTitle = isEditMode ? t('agent.scheduleOverlay.editTitle') : t('agent.scheduleOverlay.addTitle')
   const dialogDescription = isEditMode
-    ? 'Update this one-time or recurring schedule configuration.'
-    : 'Create a one-time or recurring schedule for an agent. The current agent is selected by default.'
-  const submitButtonTitle = isEditMode ? 'Update schedule' : 'Create schedule'
+    ? t('agent.scheduleOverlay.editDescription')
+    : t('agent.scheduleOverlay.addDescription')
+  const submitButtonTitle = isEditMode ? t('agent.scheduleOverlay.updateTitle') : t('agent.scheduleOverlay.createTitle')
   const submitButtonLabel = submitting
-    ? (isEditMode ? 'Updating...' : 'Creating...')
-    : (isEditMode ? 'Update Schedule' : 'Add New Schedule')
+    ? (isEditMode ? t('agent.scheduleOverlay.updating') : t('agent.scheduleOverlay.creating'))
+    : (isEditMode ? t('agent.scheduleOverlay.update') : t('agent.scheduleOverlay.add'))
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || submitting) return
@@ -496,15 +492,14 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
       const nextRunAt = mode === 'once' ? toIsoString(runAt) : undefined
 
       if (editingJob) {
-        const updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'scheduleType' | 'cronExpression' | 'runAt' | 'description' | 'agentId' | 'notifyOnCompletion'>> = {
+        const updates: Partial<Pick<SchedulerJob, 'name' | 'message' | 'scheduleType' | 'cronExpression' | 'runAt' | 'description' | 'chat_id'>> = {
           name: trimmedName,
           description: trimmedDescription,
           message: trimmedMessage,
           scheduleType,
           cronExpression: nextCronExpression,
           runAt: nextRunAt,
-          agentId,
-          notifyOnCompletion,
+          chat_id: chatId,
         }
 
         const response = await schedulerApi.updateJob(editingJob.id, updates)
@@ -515,7 +510,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
           }
           window.dispatchEvent(new CustomEvent('schedule:updated', {
             detail: {
-              agentId: updatedJob.agentId,
+              chatId: updatedJob.chat_id,
               job: updatedJob,
             },
           }))
@@ -524,7 +519,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
           return
         }
 
-        setError(response?.error || 'Failed to update schedule')
+        setError(response?.error || t('agent.scheduleOverlay.failedUpdate'))
         return
       }
 
@@ -535,17 +530,16 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
         cronExpression: nextCronExpression,
         runAt: nextRunAt,
         enabled: true,
-        agentId,
+        chat_id: chatId,
         message: trimmedMessage,
         status: 'pending' as const,
-        notifyOnCompletion,
       }
 
       const response = await schedulerApi.createJob(job)
       if (response?.success) {
         window.dispatchEvent(new CustomEvent('schedule:created', {
           detail: {
-            agentId,
+            chatId,
           },
         }))
         onCreated?.({
@@ -558,13 +552,13 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
         return
       }
 
-      setError(response?.error || 'Failed to create schedule')
+      setError(response?.error || t('agent.scheduleOverlay.failedCreate'))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSubmitting(false)
     }
-  }, [agentId, canSubmit, cronExpression, description, editingJob, message, mode, name, notifyOnCompletion, onCreated, onOpenChange, onUpdated, runAt, submitting])
+  }, [chatId, canSubmit, cronExpression, description, editingJob, message, mode, name, onCreated, onOpenChange, onUpdated, runAt, submitting, t])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} className="z-10000">
@@ -582,9 +576,9 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
             <div style={{
               padding: '10px 12px',
               borderRadius: '8px',
-              background: '#FEF2F2',
-              border: '1px solid #FECACA',
-              color: '#B91C1C',
+              background: 'var(--color-danger-50)',
+              border: '1px solid var(--color-danger-200)',
+              color: 'var(--color-danger-700)',
               fontSize: '13px',
             }}>
               {error}
@@ -592,34 +586,34 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
           )}
 
           <div>
-            <div style={sectionTitleStyle}>Schedule Type</div>
+            <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.scheduleType')}</div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button type="button" style={radioCardStyle(mode === 'once')} onClick={() => setMode('once')}>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>One-Time Schedule</span>
-                <span style={{ fontSize: '12px', color: '#6B7280', textAlign: 'left' }}>Run once at a specific date and time.</span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-neutral-900)' }}>{t('agent.scheduleOverlay.oneTime')}</span>
+                <span style={{ fontSize: '12px', color: 'var(--color-neutral-500)', textAlign: 'left' }}>{t('agent.scheduleOverlay.oneTimeDescription')}</span>
               </button>
               <button type="button" style={radioCardStyle(mode === 'recurring')} onClick={() => setMode('recurring')}>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>Recurring Schedule</span>
-                <span style={{ fontSize: '12px', color: '#6B7280', textAlign: 'left' }}>Repeat daily, weekly, monthly, or every N intervals.</span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-neutral-900)' }}>{t('agent.scheduleOverlay.recurring')}</span>
+                <span style={{ fontSize: '12px', color: 'var(--color-neutral-500)', textAlign: 'left' }}>{t('agent.scheduleOverlay.recurringDescription')}</span>
               </button>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
-              <div style={sectionTitleStyle}>Schedule Name</div>
-              <input style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="Daily standup summary" />
+              <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.name')}</div>
+              <input style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('agent.scheduleOverlay.namePlaceholder')} />
             </div>
             <div>
-              <div style={sectionTitleStyle}>Agent</div>
+              <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.agent')}</div>
               <div className="model-selector" ref={agentDropdownRef}>
                 <button
                   type="button"
                   className="model-button"
-                  onClick={() => !isAgentSelectionLocked && setShowAgentDropdown(!showAgentDropdown)}
-                  disabled={isAgentSelectionLocked}
-                  title="Select Agent"
-                  style={isAgentSelectionLocked
+                  onClick={() => !isChatSelectionLocked && setShowAgentDropdown(!showAgentDropdown)}
+                  disabled={isChatSelectionLocked}
+                  title={t('agent.scheduleOverlay.selectAgent')}
+                  style={isChatSelectionLocked
                     ? {
                         ...fieldStyle,
                         ...disabledFieldStyle,
@@ -643,7 +637,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                       }}
                 >
                   <span className="model-name">
-                    {agents.find((agent) => agent.id === agentId)?.name || 'Select Agent'}
+                    {chatOptions.find((agent) => agent.id === chatId)?.name || t('agent.scheduleOverlay.selectAgent')}
                   </span>
                   <svg
                     className={`dropdown-arrow ${showAgentDropdown ? 'rotated' : ''}`}
@@ -660,23 +654,23 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                   </svg>
                 </button>
 
-                {showAgentDropdown && !isAgentSelectionLocked && (
+                {showAgentDropdown && !isChatSelectionLocked && (
                   <div className="model-dropdown">
                     <div className="model-list">
-                      {agents.map((agent) => (
+                      {chatOptions.map((agent) => (
                         <button
                           key={agent.id}
                           type="button"
-                          className={`model-option ${agentId === agent.id ? 'selected' : ''}`}
+                          className={`model-option ${chatId === agent.id ? 'selected' : ''}`}
                           onClick={() => {
-                            setAgentId(agent.id)
+                            setChatId(agent.id)
                             setShowAgentDropdown(false)
                           }}
                         >
                           <div className="model-info chat-input-vertical">
                             <span className="model-option-name">{agent.name}</span>
                           </div>
-                          {agentId === agent.id && (
+                          {chatId === agent.id && (
                             <svg className="check-icon" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
@@ -687,68 +681,41 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                   </div>
                 )}
               </div>
-              {isAgentSelectionLocked && (
+              {isChatSelectionLocked && (
                 <div style={{
                   marginTop: '6px',
                   fontSize: '12px',
-                  color: '#6B7280',
+                  color: 'var(--color-neutral-500)',
                 }}>
                   {isEditMode
-                    ? 'Agent is locked because this schedule is being edited from the current agent tab.'
-                    : 'Agent is locked because this schedule is being created from the current agent tab.'}
+                    ? t('agent.scheduleOverlay.agentLockedEditing')
+                    : t('agent.scheduleOverlay.agentLockedCreating')}
                 </div>
               )}
             </div>
           </div>
 
           <div>
-            <div style={sectionTitleStyle}>Description</div>
-            <input style={fieldStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Summarize the latest project status every morning" />
+            <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.description')}</div>
+            <input style={fieldStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('agent.scheduleOverlay.descriptionPlaceholder')} />
           </div>
 
           <div>
-            <div style={sectionTitleStyle}>Prompt Message</div>
-            <textarea style={textareaStyle} value={message} onChange={handleMessageChange} placeholder="Write the exact prompt that the agent should receive when this schedule runs." />
-          </div>
-
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '12px 14px',
-            borderRadius: '10px',
-            border: '1px solid #E5E7EB',
-            background: '#FFFFFF',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
-                Notify on completion
-              </span>
-              <span style={{ fontSize: '12px', color: '#6B7280' }}>
-                Send a notification when this task finishes
-              </span>
-            </div>
-            <label className="toolbar-toggle-wrapper">
-              <input
-                type="checkbox"
-                checked={notifyOnCompletion}
-                onChange={(e) => setNotifyOnCompletion(e.target.checked)}
-              />
-              <div className="toolbar-toggle-track"></div>
-            </label>
+            <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.promptMessage')}</div>
+            <textarea style={textareaStyle} value={message} onChange={handleMessageChange} placeholder={t('agent.scheduleOverlay.promptPlaceholder')} />
           </div>
 
           {mode === 'once' ? (
             <div>
-              <div style={sectionTitleStyle}>Run At</div>
+              <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.runAt')}</div>
               <input type="datetime-local" style={fieldStyle} value={runAt} onChange={(e) => setRunAt(e.target.value)} />
             </div>
           ) : (
             <>
               <div>
-                <div style={sectionTitleStyle}>Recurring Pattern</div>
+                <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.recurringPattern')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
-                  {(Object.keys(recurringPresetLabel) as RecurringPreset[]).map((preset) => (
+                  {(Object.keys(recurringPresetLabelKey) as RecurringPreset[]).map((preset) => (
                     <button
                       key={preset}
                       type="button"
@@ -761,7 +728,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                         setMultiDailyDraftMessage(null)
                       }}
                     >
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#111827' }}>{recurringPresetLabel[preset]}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-neutral-900)' }}>{t(recurringPresetLabelKey[preset])}</span>
                     </button>
                   ))}
                 </div>
@@ -770,7 +737,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 {recurringPreset === 'daily_multi_times' ? (
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={sectionTitleStyle}>Times of Day</div>
+                    <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.timesOfDay')}</div>
                     {multiDailyTimes.length > 0 ? (
                       <div style={chipListStyle}>
                         {multiDailyTimes.map((time) => (
@@ -780,8 +747,8 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                               type="button"
                               style={chipRemoveButtonStyle}
                               onClick={() => handleRemoveMultiDailyTime(time)}
-                              title={`Remove ${time}`}
-                              aria-label={`Remove ${time}`}
+                              title={t('agent.scheduleOverlay.removeTime', { time })}
+                              aria-label={t('agent.scheduleOverlay.removeTime', { time })}
                             >
                               ×
                             </button>
@@ -789,8 +756,8 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                         ))}
                       </div>
                     ) : (
-                      <div style={{ marginBottom: '10px', fontSize: '12px', color: '#6B7280' }}>
-                        No times added yet.
+                      <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--color-neutral-500)' }}>
+                        {t('agent.scheduleOverlay.noTimes')}
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -809,26 +776,26 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
                         onClick={handleAddMultiDailyTime}
                         disabled={!multiDailyTimeDraft}
                       >
-                        Add Time
+                        {t('agent.scheduleOverlay.addTime')}
                       </button>
                     </div>
-                    <div style={{ marginTop: '6px', fontSize: '12px', color: (multiDailyDraftMessage || recurringValidationMessage) ? '#B91C1C' : '#6B7280' }}>
-                      {multiDailyDraftMessage || recurringValidationMessage || 'Add or remove time chips. A single schedule currently requires all times to share the same minute.'}
+                    <div style={{ marginTop: '6px', fontSize: '12px', color: (multiDailyDraftMessage || recurringValidationMessage) ? 'var(--color-danger-700)' : 'var(--color-neutral-500)' }}>
+                      {multiDailyDraftMessage || recurringValidationMessage || t('agent.scheduleOverlay.timeHint')}
                     </div>
                   </div>
                 ) : (
                   <div>
-                    <div style={sectionTitleStyle}>Time</div>
+                    <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.time')}</div>
                     <input type="time" style={fieldStyle} value={recurringTime} onChange={(e) => setRecurringTime(e.target.value)} />
                   </div>
                 )}
 
                 {(recurringPreset === 'weekly' || recurringPreset === 'every_n_weeks') && (
                   <div>
-                    <div style={sectionTitleStyle}>Day of Week</div>
+                    <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.dayOfWeek')}</div>
                     <select style={fieldStyle} value={weeklyDay} onChange={(e) => setWeeklyDay(Number(e.target.value))}>
                       {weekDayOptions.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
+                        <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                       ))}
                     </select>
                   </div>
@@ -836,14 +803,14 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
 
                 {(recurringPreset === 'monthly' || recurringPreset === 'every_n_months') && (
                   <div>
-                    <div style={sectionTitleStyle}>Day of Month</div>
+                    <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.dayOfMonth')}</div>
                     <input type="number" min={1} max={28} style={fieldStyle} value={monthlyDay} onChange={(e) => setMonthlyDay(Number(e.target.value) || 1)} />
                   </div>
                 )}
 
                 {(recurringPreset === 'every_n_days' || recurringPreset === 'every_n_weeks' || recurringPreset === 'every_n_months') && (
                   <div>
-                    <div style={sectionTitleStyle}>Repeat Every</div>
+                    <div style={sectionTitleStyle}>{t('agent.scheduleOverlay.repeatEvery')}</div>
                     <input type="number" min={1} style={fieldStyle} value={everyNValue} onChange={(e) => setEveryNValue(Number(e.target.value) || 1)} />
                   </div>
                 )}
@@ -852,14 +819,14 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
               <div style={{
                 padding: '10px 12px',
                 borderRadius: '8px',
-                background: '#F9FAFB',
-                border: '1px solid #E5E7EB',
+                background: 'var(--color-neutral-50)',
+                border: '1px solid var(--color-neutral-200)',
                 fontSize: '13px',
-                color: '#4B5563',
+                color: 'var(--color-neutral-600)',
               }}>
-                <div>Cron preview: <code>{cronExpression || 'Invalid recurring schedule'}</code></div>
+                <div>{t('agent.scheduleOverlay.cronPreview')} <code>{cronExpression || t('agent.scheduleOverlay.invalidRecurring')}</code></div>
                 {cronExpression && (
-                  <div style={{ marginTop: '4px' }}>Summary: {describeCronExpression(cronExpression)}</div>
+                  <div style={{ marginTop: '4px' }}>{t('agent.scheduleOverlay.summary')} {describeCronExpression(cronExpression)}</div>
                 )}
               </div>
             </>
@@ -873,7 +840,7 @@ const AddScheduleOverlay: React.FC<AddScheduleOverlayProps> = ({
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="manage-servers-btn"

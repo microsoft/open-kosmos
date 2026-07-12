@@ -5,7 +5,7 @@
 /**
  * SettingsPage coverage tests
  *
- * Covers the branches not reached by SettingsPage-subAgent.test.tsx:
+ * Covers SettingsPage branches for:
  * - Mac titlebar region
  * - handleBack with / without returnPath in state / sessionStorage
  * - skill:delete event + confirm/cancel delete skill dialog
@@ -44,7 +44,6 @@ vi.mock('react-router-dom', async () => ({
           hasMcpAddMenuToggle: typeof ctx.onMcpAddMenuToggle === 'function',
           hasSkillsAddMenuToggle: typeof ctx.onSkillsAddMenuToggle === 'function',
           hasSkillMenuToggle: typeof ctx.onSkillMenuToggle === 'function',
-          hasSubAgentsAddMenuToggle: typeof ctx.onSubAgentsAddMenuToggle === 'function',
         })}
       />
     );
@@ -81,26 +80,9 @@ vi.mock('../../menu', () => ({
   SkillDropdownMenu: ({ skillName, onClose }: any) => (
     <div data-testid="skill-menu" data-skill={skillName}><button onClick={onClose}>Close</button></div>
   ),
-  SubAgentsAddMenuDropdown: ({ onClose }: any) => (
-    <div data-testid="sub-agents-add-menu"><button onClick={onClose}>Close</button></div>
-  ),
 }));
 
 vi.mock('../../skills/ApplySkillToAgentsDialog', () => ({ default: () => null }));
-
-vi.mock('../../subAgents/SubAgentDropdownMenu', () => ({
-  default: ({ subAgentName, onClose }: any) => (
-    <div data-testid="sub-agent-dropdown" data-name={subAgentName}>
-      <button onClick={onClose}>Close</button>
-    </div>
-  ),
-}));
-
-vi.mock('../../subAgents/ApplySubAgentToAgentsDialog', () => ({
-  default: ({ open, subAgentName }: any) => (
-    <div data-testid="apply-sub-agent-dialog" data-open={String(open)} data-name={subAgentName} />
-  ),
-}));
 
 const mockShowSuccess = vi.fn();
 const mockShowError = vi.fn();
@@ -108,8 +90,8 @@ const mockShowError = vi.fn();
 vi.mock('../../userData/userDataProvider', () => ({
   useProfileData: () => ({
     chats: [
-      { chatId: 'c1', agent: { name: 'Agent A', skills: ['my-skill'], sub_agents: ['my-sub'] } },
-      { chatId: 'c2', agent: { name: 'Agent B', skills: [], sub_agents: [] } },
+      { chatId: 'c1', agent: { name: 'Agent A', skills: ['my-skill'] } },
+      { chatId: 'c2', agent: { name: 'Agent B', skills: [] } },
     ],
   }),
   useChats: () => ({ chats: [] }),
@@ -151,8 +133,6 @@ vi.mock('../../../lib/utilities/dropdownPosition', () => ({
     mcpAddMenu: {},
     skillsAddMenu: {},
     skillMenu: {},
-    subAgentsAddMenu: {},
-    subAgentMenu: {},
   },
   getAnchoredDropdownPosition: vi.fn(() => ({ top: 10, left: 10 })),
 }));
@@ -178,9 +158,6 @@ function setupElectronAPI(overrides: any = {}) {
     },
     skills: {
       deleteSkill: vi.fn().mockResolvedValue({ success: true }),
-    },
-    subAgent: {
-      delete: vi.fn().mockResolvedValue({ success: true }),
     },
     ...overrides,
   };
@@ -223,7 +200,7 @@ describe('SettingsPage coverage', () => {
     });
 
     it('does NOT render mac titlebar region on non-darwin platform', () => {
-      (window as any).electronAPI = { platform: 'win32', profile: {}, skills: {}, subAgent: {} };
+      (window as any).electronAPI = { platform: 'win32', profile: {}, skills: {} };
       render(<SettingsPage />);
       const mac = document.querySelector('.mac-titlebar-region');
       expect(mac).toBeNull();
@@ -387,8 +364,7 @@ describe('SettingsPage coverage', () => {
     async function openMcpDeleteDialog() {
       // Need to open the MCP server dropdown first via the rendered McpServerDropdownMenu
       // We trigger via the context passed to Outlet's onMcpServerDelete
-      // The easiest way: fire a subAgent:delete-like event — but for MCP we use
-      // handleMcpServerDelete which is exposed via the outlet context.
+      // The MCP delete handler is exposed via the outlet context.
       // Instead, directly call via the rendered component by rendering with open MCP menu.
       render(<SettingsPage />);
 
@@ -449,7 +425,6 @@ describe('SettingsPage coverage', () => {
         };
       });
 
-      // Just verify delete dialog logic: dispatch 'subAgent:delete' won't work for MCP
       // We test this via the keyboard path instead — no direct way without re-registering Outlet.
       // Use the skill:delete dialog that we already have and verify MCP has similar behavior.
       expect(true).toBe(true); // Covered via integration below
@@ -500,14 +475,6 @@ describe('SettingsPage coverage', () => {
               data-testid="trigger-mcp-add"
               onClick={() => capturedCtx?.onMcpAddMenuToggle?.(document.createElement('button'))}
             />
-            <button
-              data-testid="trigger-sub-agents-add"
-              onClick={() => capturedCtx?.onSubAgentsAddMenuToggle?.(document.createElement('button'))}
-            />
-            <button
-              data-testid="trigger-sub-agent-menu"
-              onClick={() => capturedCtx?.onSubAgentMenuToggle?.('sub1', document.createElement('button'))}
-            />
           </div>
         );
       };
@@ -533,8 +500,7 @@ describe('SettingsPage coverage', () => {
       // The Outlet mock captures context; we simulate by triggering through Outlet context
       // Since vi.doMock doesn't re-run the import, context is still the original mock.
       // We verify through the MCP server menu rendered when we open it via subtest.
-      // This is tested via SettingsPage-subAgent.test.tsx for now.
-      // Mark as passing since coverage path is exercised in next tests.
+      // Mark as passing since coverage path is exercised in later tests.
       expect(true).toBe(true);
     });
   });
@@ -584,20 +550,6 @@ describe('SettingsPage coverage', () => {
                 ctx.onSkillMenuToggle('skill1', btn);
               }}
             />
-            <button
-              data-testid="open-sub-agents-add"
-              onClick={() => {
-                const btn = document.createElement('button');
-                ctx.onSubAgentsAddMenuToggle(btn);
-              }}
-            />
-            <button
-              data-testid="open-sub-agent-menu"
-              onClick={() => {
-                const btn = document.createElement('button');
-                ctx.onSubAgentMenuToggle('sub1', btn);
-              }}
-            />
           </div>
         );
       }
@@ -614,7 +566,6 @@ describe('SettingsPage coverage', () => {
     it('MCP connect success path calls electronAPI and shows no error', async () => {
       // We call handleMcpServerConnect by dispatching the custom context event trick.
       // Since we can't call context directly, we use a different approach:
-      // We verify through the sub-agent:delete dialog test already written above.
       // For MCP, manually set up the window spy and render.
       const connectSpy = vi.fn().mockResolvedValue({ success: true });
       (window as any).electronAPI.profile.connectMcpServer = connectSpy;
@@ -676,97 +627,6 @@ describe('SettingsPage coverage', () => {
     });
   });
 
-  // ──────────────────────── Sub-agent delete dialog actions ───────────────
-
-  describe('sub-agent delete dialog', () => {
-    it('closes sub-agent dialog when No button is clicked', async () => {
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      await waitFor(() => screen.getByText('No'));
-      fireEvent.click(screen.getByText('No'));
-      await waitFor(() => expect(screen.queryByTestId('dialog')).toBeNull());
-    });
-
-    it('calls subAgent delete API and shows success toast', async () => {
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      // There may be two "Delete" buttons if skill dialog was opened — use getAllByText
-      await waitFor(() => screen.getAllByText('Delete'));
-      await act(async () => {
-        const deleteBtns = screen.getAllByText('Delete');
-        fireEvent.click(deleteBtns[0]);
-      });
-      await waitFor(() => {
-        expect((window as any).electronAPI.subAgent.delete).toHaveBeenCalledWith('my-sub');
-        expect(mockShowSuccess).toHaveBeenCalled();
-      });
-    });
-
-    it('shows error when sub-agent delete API returns failure', async () => {
-      (window as any).electronAPI.subAgent.delete = vi.fn().mockResolvedValue({ success: false, error: 'Not found' });
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      await waitFor(() => screen.getAllByText('Delete'));
-      await act(async () => {
-        fireEvent.click(screen.getAllByText('Delete')[0]);
-      });
-      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Not found')));
-    });
-
-    it('shows error when sub-agent delete API throws', async () => {
-      (window as any).electronAPI.subAgent.delete = vi.fn().mockRejectedValue(new Error('Crash'));
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      await waitFor(() => screen.getAllByText('Delete'));
-      await act(async () => {
-        fireEvent.click(screen.getAllByText('Delete')[0]);
-      });
-      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Crash')));
-    });
-
-    it('shows error when sub-agent API not available', async () => {
-      (window as any).electronAPI.subAgent = undefined;
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      await waitFor(() => screen.getAllByText('Delete'));
-      await act(async () => {
-        fireEvent.click(screen.getAllByText('Delete')[0]);
-      });
-      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('not available')));
-    });
-
-    it('shows list of agents when sub-agent is used by agents', async () => {
-      render(<SettingsPage />);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('subAgent:delete', { detail: { subAgentName: 'my-sub' } }),
-        );
-      });
-      await waitFor(() => screen.getByText(/Agent A/));
-      expect(screen.getByText(/Agent A/)).toBeTruthy();
-    });
-  });
-
   // ──────────────────────── Context props coverage ────────────────────────
 
   describe('settingsContext exposes all required handlers', () => {
@@ -778,7 +638,6 @@ describe('SettingsPage coverage', () => {
       expect(ctx.hasMcpAddMenuToggle).toBe(true);
       expect(ctx.hasSkillsAddMenuToggle).toBe(true);
       expect(ctx.hasSkillMenuToggle).toBe(true);
-      expect(ctx.hasSubAgentsAddMenuToggle).toBe(true);
     });
   });
 });

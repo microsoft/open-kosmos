@@ -19,7 +19,7 @@
  *  - performNotification: sends profile with loaded chatSessions (line 628-645)
  *  - performNotification: chatSession load failure logs warn (line 646-653)
  *  - initializeBackgroundServices: error paths for ghc, mcp, plugin, agentChat (lines 808-875)
- *  - initializeBackgroundServices: remoteChannel enabled/getter paths (lines 877-911)
+ *  - initializeBackgroundServices failure paths
  *  - clearCache with specific alias: no cache (line 1073)
  *  - clearCache without alias: empty cache (line 1095)
  *  - getMcpServerRuntimeState: mcpClientManager null (line 1173-1175)
@@ -46,12 +46,6 @@ vi.mock('electron', async () => ({
 vi.mock('fs');
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
-
-vi.mock('../../cache/quickStartImageCacheManager', async () => ({
-  quickStartImageCacheManager: {
-    getInstance: vi.fn(() => ({ cacheQuickStartImages: vi.fn() })),
-  },
-}));
 
 vi.mock('../pathUtils', async () => ({
   getDefaultWorkspacePath: vi.fn(() => '/mock/workspace'),
@@ -109,11 +103,6 @@ vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
   },
 }));
 
-const mockPluginInitialize = vi.hoisted(() => vi.fn().mockResolvedValue({ errors: [] }));
-vi.mock('../../plugin/pluginManager', async () => ({
-  pluginManager: { initialize: mockPluginInitialize },
-}));
-
 const mockAgentChatInitialize = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('../../chat/agentChatManager', async () => ({
   agentChatManager: { initialize: mockAgentChatInitialize },
@@ -124,17 +113,11 @@ vi.mock('../../featureFlags/featureFlagManager', async () => ({
   featureFlagManager: { isEnabled: mockFeatureFlagIsEnabled },
 }));
 
-vi.mock('../../remoteChannel/credentialStore', async () => ({
-  credentialStore: { hasCredential: vi.fn().mockResolvedValue(false) },
-}));
 
 vi.mock('../../startup/lazy', async () => ({
   getExternalAgentService: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: { getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })) },
-}));
 
 // profileSanitizer and profileMigration - use actual implementations for most,
 // but allow overrides in specific tests
@@ -497,7 +480,9 @@ describe('ProfileCacheManager.performNotification', () => {
     (mgr as any).mainWindow = null;
 
     await (mgr as any).performNotification('alice');
-    const sentData = mockWebContents.send.mock.calls[0][1];
+    const sentData = mockWebContents.send.mock.calls.find(
+      (c: any[]) => c[0] === 'profile:cacheUpdated',
+    )[1];
     expect(sentData.profile.chats[0].chatSessions).toHaveLength(1);
   });
 
@@ -515,9 +500,12 @@ describe('ProfileCacheManager.performNotification', () => {
     await (mgr as any).performNotification('alice');
     // Should still send even if session load fails
     expect(mockWebContents.send).toHaveBeenCalled();
-    const sentData = mockWebContents.send.mock.calls[0][1];
+    const sentData = mockWebContents.send.mock.calls.find(
+      (c: any[]) => c[0] === 'profile:cacheUpdated',
+    )[1];
     expect(sentData.profile.chats[0].chatSessions).toEqual([]);
   });
+
 });
 
 // ── initializeBackgroundServices — error paths ────────────────────────────────
@@ -549,20 +537,6 @@ describe('ProfileCacheManager.initializeBackgroundServices', () => {
     // Should not throw
   });
 
-  it('logs error when pluginManager.initialize fails', async () => {
-    mockPluginInitialize.mockRejectedValue(new Error('plugin error'));
-    (mgr as any).initializeBackgroundServices('alice');
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
-  });
-
-  it('logs plugin warnings when errors array is non-empty', async () => {
-    mockPluginInitialize.mockResolvedValue({ errors: [new Error('plugin warning')] });
-    (mgr as any).initializeBackgroundServices('alice');
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
-  });
-
   it('logs error when agentChatManager.initialize fails', async () => {
     mockAgentChatInitialize.mockRejectedValue(new Error('agent error'));
     (mgr as any).initializeBackgroundServices('alice');
@@ -570,23 +544,6 @@ describe('ProfileCacheManager.initializeBackgroundServices', () => {
     await new Promise(resolve => setImmediate(resolve));
   });
 
-  it('remote channel: getter not injected, skips gracefully', async () => {
-    mockFeatureFlagIsEnabled.mockReturnValue(true);
-    (mgr as any).getRemoteChannelManager = null;
-    (mgr as any).initializeBackgroundServices('alice');
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
-  });
-
-  it('remote channel: feature disabled, returns early', async () => {
-    mockFeatureFlagIsEnabled.mockReturnValue(false);
-    const getter = vi.fn();
-    (mgr as any).getRemoteChannelManager = getter;
-    (mgr as any).initializeBackgroundServices('alice');
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
-    expect(getter).not.toHaveBeenCalled();
-  });
 });
 
 // ── clearCache edge cases ─────────────────────────────────────────────────────
@@ -675,7 +632,30 @@ describe('ProfileCacheManager.executeToolCall', () => {
   });
 });
 
-// ── setMainWindow and setRemoteChannelManagerGetter ───────────────────────────
+// ── deprecated MCP methods ────────────────────────────────────────────────────
+
+describe('ProfileCacheManager deprecated MCP methods', () => {
+  let mgr: ProfileCacheManager;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mgr = freshManager();
+  });
+
+  it('updateMcpServerStatus logs debug without throwing', () => {
+    expect(() => mgr.updateMcpServerStatus('alice', 'server1', 'connected' as any)).not.toThrow();
+  });
+
+  it('updateMcpServerTools logs debug without throwing', () => {
+    expect(() => mgr.updateMcpServerTools('alice', 'server1', [])).not.toThrow();
+  });
+
+  it('updateMcpServerError logs debug without throwing', () => {
+    expect(() => mgr.updateMcpServerError('alice', 'server1', new Error('err'))).not.toThrow();
+  });
+});
+
+// ── setMainWindow ─────────────────────────────────────────────────────────────
 
 describe('ProfileCacheManager setters', () => {
   let mgr: ProfileCacheManager;
@@ -691,11 +671,6 @@ describe('ProfileCacheManager setters', () => {
     expect((mgr as any).mainWindow).toBe(mockWindow);
   });
 
-  it('setRemoteChannelManagerGetter stores getter', () => {
-    const getter = vi.fn().mockResolvedValue({});
-    mgr.setRemoteChannelManagerGetter(getter);
-    expect((mgr as any).getRemoteChannelManager).toBe(getter);
-  });
 });
 
 // ── forceNotifyProfileDataManager ────────────────────────────────────────────

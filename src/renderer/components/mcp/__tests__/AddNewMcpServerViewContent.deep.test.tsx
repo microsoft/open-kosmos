@@ -797,4 +797,29 @@ describe('AddNewMcpServerViewContent — deep coverage', () => {
     expect(screen.getByDisplayValue('original-name')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('llm-suggested-name')).toBeNull();
   });
+
+  // ─── edit mode: SSE server with headers loaded ───────────────────────────
+
+  it('loads SSE server with headers in edit mode', () => {
+    vi.mocked(useMCPServers).mockReturnValue({
+      servers: [],
+      addServer: mockAddServer,
+      updateServer: mockUpdateServer,
+      refreshRuntimeInfo: mockRefreshRuntimeInfo,
+      getServerByName: vi.fn().mockReturnValue({
+        name: 'webiq-srv',
+        transport: 'sse',
+        url: 'https://mcp.example.com/api',
+        env: {},
+        headers: { 'x-apikey': 'test-key-123' },
+        version: '1.0.0',
+        source: 'ON-DEVICE',
+        remoteVersion: '',
+      }),
+    } as any);
+    render(<AddNewMcpServerViewContent editServerName="webiq-srv" />);
+    const textarea = document.querySelector('.json-editor') as HTMLTextAreaElement;
+    expect(textarea.value).toContain('x-apikey');
+    expect(textarea.value).toContain('test-key-123');
+  });
 });

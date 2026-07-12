@@ -9,13 +9,10 @@
  * - tool toggle: partial selection → deselect all tools → remove server
  * - server toggle: conflicting tools → partial selection of non-conflicting
  * - server toggle: kobi + builtin-tools blocked
- * - server toggle: plugin server blocked
  * - handleManageServers: stores previous path and navigates
  * - getConflictTooltip branch
  * - isToolConflicted: conflicted tool
  * - getCurrentState: connected with tools, error fallthrough, default
- * - compareVersions: equal versions return 0
- * - shouldShowUpdateButton: missing version (empty) shows update
  * - totalSelectedTools: partial selection counting
  */
 import React from 'react';
@@ -109,7 +106,7 @@ function makeAgentData(overrides: Record<string, any> = {}): AgentConfig {
 function makeProps(overrides: Partial<TabComponentProps> = {}): TabComponentProps {
   return {
     mode: 'edit',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: makeAgentData(),
     onSave: vi.fn(),
     onDataChange: vi.fn(),
@@ -385,35 +382,6 @@ describe('AgentMcpServersTab.coverage3 - handleManageServers', () => {
   });
 });
 
-describe('AgentMcpServersTab.coverage3 - shouldShowUpdateButton', () => {
-  it('shows update button when version is empty but remoteVersion is set', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ source: 'IN-LIBRARY', version: '', remoteVersion: '1.0.0' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('does not show update button when remoteVersion is empty', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.queryByText('Update')).toBeNull();
-  });
-
-  it('does not show update button when version equals remoteVersion', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '1.0.0' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.queryByText('Update')).toBeNull();
-  });
-});
-
 describe('AgentMcpServersTab.coverage3 - totalSelectedTools partial count', () => {
   it('counts only selected tools in partial selection', () => {
     mockUseMCPServers.mockReturnValue({
@@ -471,24 +439,6 @@ describe('AgentMcpServersTab.coverage3 - cachedData preference', () => {
     // server should be selected (via cachedData)
     const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
-  });
-});
-
-describe('AgentMcpServersTab.coverage3 - plugin server toggle blocked', () => {
-  it('does not change selection when toggling plugin server', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ name: 'plugin--abc--tool', status: 'connected' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-
-    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-    const initialChecked = checkbox.checked;
-    // Try to toggle (should be blocked)
-    fireEvent.change(checkbox, { target: { checked: !initialChecked } });
-
-    // Checkbox should remain disabled, no state change
-    expect(checkbox.disabled).toBe(true);
   });
 });
 

@@ -78,7 +78,7 @@
 
 /* Inline cursor styles while typing */
 .streaming-v2-message.typing .message-content.with-inline-cursor > *:last-child::after {
-  background-color: #007bff;
+  background-color: var(--color-accent-strong);
   box-shadow: 0 0 2px rgba(0, 123, 255, 0.5);
   opacity: 1;
 }
@@ -131,7 +131,7 @@
 
 .streaming-v2-message.typing .streaming-cursor {
   /* More prominent cursor while typing */
-  background-color: #007bff;
+  background-color: var(--color-accent-strong);
   box-shadow: 0 0 2px rgba(0, 123, 255, 0.5);
 }
 
@@ -154,11 +154,11 @@
 .streaming-metrics {
   transition: all 0.2s ease-in-out;
   backdrop-filter: blur(4px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-strong);
 }
 
 .streaming-metrics:hover {
-  background-color: #ebebeb !important;
+  background-color: var(--color-neutral-200) !important;
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }

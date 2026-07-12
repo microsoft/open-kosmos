@@ -99,12 +99,12 @@ describe('AgentList starred sessions', () => {
           alias: 'test-user',
           'starred-chat-sessions': [
             {
-              chatId: 'chat-planning-agent',
+              chatId: 'chat-kobi',
               chatSessionId: 'session-starred-1',
-              title: 'Builtin PM Session',
+              title: 'Builtin Session',
               lastUpdated: '2026-03-20T12:00:00.000Z',
               readStatus: 'read',
-              agentName: 'Research Agent',
+              agentName: 'Kobi',
               agentEmoji: '🦄',
               agentAvatar: '',
               agentSource: 'IN-LIBRARY',
@@ -117,15 +117,15 @@ describe('AgentList starred sessions', () => {
     });
   });
 
-  it('renders a starred session for a built-in Research Agent', async () => {
+  it('renders a starred session for a built-in agent', async () => {
     render(
       <AgentList
         chats={[
           {
-            chat_id: 'chat-planning-agent',
+            chat_id: 'chat-kobi',
             chat_type: 'single_agent',
             agent: {
-              name: 'Research Agent',
+              name: 'Kobi',
               role: 'assistant',
               emoji: '🦄',
               avatar: '',
@@ -146,7 +146,7 @@ describe('AgentList starred sessions', () => {
     });
 
     expect(screen.getByText('Starred')).toBeInTheDocument();
-    expect(screen.getByText('Builtin PM Session')).toBeInTheDocument();
+    expect(screen.getByText('Builtin Session')).toBeInTheDocument();
   });
 
   it('injects and scrolls the selected session into view when it is not in the loaded paginated list', async () => {

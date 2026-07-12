@@ -10,7 +10,7 @@ import { BuiltinToolDefinition } from './types';
 import { CreateScheduleToolArgs, CreateScheduleToolResult } from '@shared/types/toolCallArgs';
 import { generateScheduleJobId } from '../../scheduler/id';
 import { schedulerManager } from "../../scheduler/SchedulerManager";
-import { agentChatManager } from "../../chat/agentChatManager";
+import type { ToolExecutionContext } from '../../subAgent/types';
 
 export class CreateScheduleTool {
 
@@ -19,21 +19,18 @@ export class CreateScheduleTool {
    */
   static async execute(
     args: CreateScheduleToolArgs,
+    options?: { executionContext?: ToolExecutionContext | null },
   ): Promise<CreateScheduleToolResult> {
     try {
 
-      let agentId = args.agent_id;
-      if (!agentId) {
-        try {
-          const currentInstance = agentChatManager.getCurrentInstance();
-          agentId = currentInstance?.getChatId();
-        } catch {
-          // ignore
-        }
+      let chatId = args.chat_id;
+      if (!chatId) {
+        const context = options?.executionContext;
+        chatId = context?.chatId;
       }
 
-      if (!agentId) {
-        return { success: false, message: 'agent_id is required. Could not determine the target agent.' };
+      if (!chatId) {
+        return { success: false, message: 'chat_id is required. Could not determine the target chat.' };
       }
 
       const hasCronExpression = typeof args.cron_expression === 'string' && args.cron_expression.trim().length > 0;
@@ -57,7 +54,7 @@ export class CreateScheduleTool {
         cronExpression: hasCronExpression ? args.cron_expression?.trim() : undefined,
         runAt: hasRunAt ? args.run_at?.trim() : undefined,
         enabled: true,
-        agentId,
+        chat_id: chatId,
         message: args.message,
         status: 'pending',
       });
@@ -106,7 +103,7 @@ export class CreateScheduleTool {
           },
           cron_expression: {
             type: 'string',
-            description: 'Recurring cron expression. Supports both 5-field (`minute hour day-of-month month day-of-week`) and 6-field (`second minute hour day-of-month month day-of-week`) syntax. Examples: "0 6 * * *" (daily 6AM), "0 4,8,14,18 * * *" (daily at 04:00, 08:00, 14:00, 18:00), "0 0 4,8,14,18 * * *" (same schedule in 6-field syntax), "*/30 * * * *" (every 30 min), "0 9 * * 1-5" (weekdays 9AM). Do not provide this when using run_at.',
+            description: 'Recurring cron expression (interpreted in the user\'s local timezone). Supports both 5-field (`minute hour day-of-month month day-of-week`) and 6-field (`second minute hour day-of-month month day-of-week`) syntax. Examples: "0 6 * * *" (daily 6AM), "0 4,8,14,18 * * *" (daily at 04:00, 08:00, 14:00, 18:00), "0 0 4,8,14,18 * * *" (same schedule in 6-field syntax), "*/30 * * * *" (every 30 min), "0 9 * * 1-5" (weekdays 9AM). Do not provide this when using run_at.',
           },
           run_at: {
             type: 'string',
@@ -116,9 +113,9 @@ export class CreateScheduleTool {
             type: 'string',
             description: 'The prompt that the agent will receive when the schedule fires. This is the ONLY instruction the agent gets — it runs in a new, empty chat session with no prior conversation context. Write a detailed, self-contained prompt that specifies the task, expected deliverable, relevant context, and output requirements.',
           },
-          agent_id: {
+          chat_id: {
             type: 'string',
-            description: 'The chat_id of the target agent. If not provided, defaults to the current agent.',
+            description: 'The chat_id of the target chat. If not provided, defaults to the current chat.',
           },
         },
         required: ['description', 'name', 'message'],

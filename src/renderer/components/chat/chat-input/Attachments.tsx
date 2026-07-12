@@ -10,6 +10,7 @@ import {
 import FileTypeIcon from '../../ui/FileTypeIcon';
 import { createLogger } from '@/lib/utilities/logger';
 import { atom } from '@/atom';
+import { useI18n } from '@/lib/i18n/useI18n';
 
 const logger = createLogger('[ChatAttachment]');
 
@@ -231,7 +232,8 @@ export type AttachmentsStateAtom = ReturnType<typeof createAttachmentsAtom>;
 function renderAttachment(
   manager: { getPreviewUrl: (fileName: string) => string | undefined; removeContent: (index: number) => void },
   part: AttachmentPart,
-  originalIndex: number
+  originalIndex: number,
+  labels: { removeAttachment: string; removeFile: string; removeOfficeFile: string },
 ) {
   if (part.type === 'image') {
     const imagePart = part as ImageContentPart;
@@ -289,7 +291,7 @@ function renderAttachment(
             e.stopPropagation();
             manager.removeContent(originalIndex);
           }}
-          title="Remove attachment"
+          title={labels.removeAttachment}
         >
           <svg fill="currentColor" viewBox="0 0 20 20">
             <path
@@ -346,7 +348,7 @@ function renderAttachment(
             e.stopPropagation();
             manager.removeContent(originalIndex);
           }}
-          title="Remove file"
+          title={labels.removeFile}
         >
           <svg fill="currentColor" viewBox="0 0 20 20">
             <path
@@ -403,7 +405,7 @@ function renderAttachment(
             e.stopPropagation();
             manager.removeContent(originalIndex);
           }}
-          title="Remove Office file"
+          title={labels.removeOfficeFile}
         >
           <svg fill="currentColor" viewBox="0 0 20 20">
             <path
@@ -460,7 +462,7 @@ function renderAttachment(
             e.stopPropagation();
             manager.removeContent(originalIndex);
           }}
-          title="Remove file"
+          title={labels.removeFile}
         >
           <svg fill="currentColor" viewBox="0 0 20 20">
             <path
@@ -480,10 +482,16 @@ function renderAttachment(
 
 function List({ attachmentsStateAtom }: { attachmentsStateAtom: AttachmentsStateAtom }) {
   const [list, manager] = attachmentsStateAtom.use();
+  const { t } = useI18n();
+  const labels = {
+    removeAttachment: t('chat.attachments.removeAttachment'),
+    removeFile: t('chat.attachments.removeFile'),
+    removeOfficeFile: t('chat.attachments.removeOfficeFile'),
+  };
 
   const nodes: React.ReactNode[] = [];
   list.forEach((part, index) => {
-    const node = renderAttachment(manager, part, index);
+    const node = renderAttachment(manager, part, index, labels);
     if (node) nodes.push(node);
   });
   if (nodes.length === 0) return null;
@@ -497,13 +505,14 @@ export const AttachmentList = memo(List);
 
 function Status({ attachmentsStateAtom }: { attachmentsStateAtom: AttachmentsStateAtom }) {
   const list = attachmentsStateAtom.useData();
+  const { t } = useI18n();
   const contentStats = ContentAnalyzer.analyzeContent(list);
   if (contentStats.totalSize === 0) return null;
   return (
     <div className="content-stats">
-      📊 Images: {contentStats.imageCount} | Files: {contentStats.fileCount}{' '}
-      | Others: {contentStats.othersCount || 0} | Size:{' '}
-      {formatFileSize(contentStats.totalSize)} | Est. Tokens:{' '}
+      📊 {t('chat.attachments.images')}: {contentStats.imageCount} | {t('chat.attachments.files')}: {contentStats.fileCount}{' '}
+      | {t('chat.attachments.others')}: {contentStats.othersCount || 0} | {t('chat.attachments.size')}:{' '}
+      {formatFileSize(contentStats.totalSize)} | {t('chat.attachments.estimatedTokens')}:{' '}
       {contentStats.estimatedTokens}
     </div>
   );

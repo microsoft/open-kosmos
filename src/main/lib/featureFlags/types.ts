@@ -9,19 +9,16 @@
  */
 export type FeatureFlagName =
   | 'openkosmosFeatureScreenshot'         // Screenshot capture feature
-  | 'browserControl'                  // Browser Control / Chrome Extension feature
+  | 'openkosmosFeatureVoiceInput'         // Voice Input (Speech-to-Text) feature
   | 'openkosmosUseGit'                    // Git integration feature
   | 'openkosmosFeatureScheduler'          // Cron-based scheduled task system
-  | 'openkosmosFeatureSubAgent'           // Sub-Agent system
-  | 'openkosmosFeatureSubAgentAutoWake'   // Auto-wake parent on background result ready
-  | 'openkosmosFeatureRemoteChannel'      // Remote Channel / Remote Control feature
+  | 'openkosmosUseSync'                   // Sync feature for profile data
+
   | 'openkosmosPathPortability'           // Cross-OS path conversion for profile sync
   | 'openkosmosFeatureBuddy'              // Buddy companion widget
-  | 'openkosmosFeatureCodingAgent'       // Foreground coding agent (Claude Code CLI)
   | 'openkosmosFeatureExternalAgent'    // External Agent via WebSocket
-  | 'openkosmosFeatureDoctor'            // Doctor (in-app self-diagnosis) entry in UserMenu
   | 'openkosmosFeatureToolSearch'        // Deferred tool loading for large tool sets
-  | 'openkosmosFeaturePlugins'           // Plugin management feature
+  // Add more feature flags here...
   ;
 
 /**

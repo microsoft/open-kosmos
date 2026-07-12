@@ -1,7 +1,6 @@
 import { Message, MessageHelper } from '@shared/types/chatTypes';
 import type { AgentConfig } from './agentChat';
 import { ChatStatus, type ContextStats, type ContextTokenUsage } from './agentChatTypes';
-import { featureFlagManager } from '../featureFlags';
 import { createLogger } from '../unifiedLogger';
 import type { ChatSessionFile } from '../userDataADO/chatSessionFileOps';
 import type { GhcModelCapabilities } from '@shared/types/ghcChatTypes';
@@ -27,6 +26,11 @@ const logger = createLogger();
 // VS Code Copilot alignment constants
 const BASE_TOKENS_PER_MESSAGE = 3;
 const BASE_TOKENS_PER_COMPLETION = 3;
+const COMPACTION_HOOK_CALLBACK_TIMEOUT_MS = 5_000;
+
+export interface CompactionHookCallbackOptions {
+  signal: AbortSignal;
+}
 
 // Model correction factors (Pillar 3) — preset values used before the first API call
 const MODEL_CORRECTION_FACTORS: Record<string, number> = {
@@ -89,6 +93,17 @@ export interface AgentChatContextServiceDeps {
   getLatestContextStats(): ContextStats | null;
   setLatestContextStats(stats: ContextStats | null): void;
   setContextTokenUsage(usage: ContextTokenUsage | null): void;
+  /**
+   * Optional Phase 3 observational hook fired right before a compaction is
+   * applied. `trigger` is `manual` for forced compaction, `auto` otherwise.
+   * Must never throw; failures are swallowed so compaction always proceeds.
+   */
+  onBeforeCompaction?(trigger: 'auto' | 'manual', options: CompactionHookCallbackOptions): Promise<void> | void;
+  /**
+   * Optional Phase 3 observational hook fired right after a compaction succeeds.
+   * `trigger` mirrors `onBeforeCompaction`. Must never throw.
+   */
+  onAfterCompaction?(trigger: 'auto' | 'manual', options: CompactionHookCallbackOptions): Promise<void> | void;
 }
 
 export class AgentChatContextService {
@@ -124,7 +139,7 @@ export class AgentChatContextService {
   }
 
   async extractFactsFromConversation(): Promise<void> {
-    // Memory system removed — no-op
+    // Memory feature removed: fact extraction is no longer performed.
   }
 
   async addMessageToContext(message: Message): Promise<void> {
@@ -133,20 +148,10 @@ export class AgentChatContextService {
       return;
     }
 
-    let enhancedMessage = message;
-    if (message.role === 'user') {
-      enhancedMessage = await this.enhanceUserMessageContext(message);
-    }
-
-    currentChatSession.context_history.push(enhancedMessage);
+    currentChatSession.context_history.push(message);
     this.deps.setLastUpdated(new Date().toISOString());
 
     this.calculateAndNotifyContext();
-  }
-
-  async enhanceUserMessageContext(message: Message): Promise<Message> {
-    // Memory system removed — return message unchanged
-    return message;
   }
 
   async checkAndCompress(options?: { emitStatus?: boolean; force?: boolean }): Promise<{ applied: boolean }> {
@@ -172,9 +177,12 @@ export class AgentChatContextService {
           );
 
       if (needsCompression) {
+        const trigger: 'auto' | 'manual' = force ? 'manual' : 'auto';
         if (emitStatus) {
           this.deps.setChatStatus(ChatStatus.COMPRESSING_CONTEXT);
         }
+
+        await this.invokeCompactionCallback(this.deps.onBeforeCompaction, trigger);
 
         const compressionResult = await compressContextHistoryWithFullMode(
           currentContextHistory,
@@ -206,6 +214,25 @@ export class AgentChatContextService {
           if (emitStatus) {
             this.deps.setChatStatus(ChatStatus.COMPRESSED_CONTEXT);
           }
+
+          // Refresh lastLocalEstimate after compression so the next
+          // anchorTokenEstimate() compares post-compression local estimate
+          // against post-compression API prompt_tokens (apples-to-apples).
+          // Without this, the stale pre-compression lastLocalEstimate causes
+          // correctionRatio to collapse to near-zero, disabling future compression.
+          // Non-fatal: compression already succeeded; a refresh failure must not
+          // invalidate the applied compaction or prevent status emission.
+          try {
+            await this.calculateThreeComponentTokens();
+          } catch (refreshError) {
+            logger.warn('[AgentChat] Post-compression token estimate refresh failed (non-fatal)', 'CheckAndCompress', {
+              error: refreshError instanceof Error ? refreshError.message : String(refreshError),
+              agentName: this.deps.getAgentName(),
+            });
+          }
+
+          await this.invokeCompactionCallback(this.deps.onAfterCompaction, trigger);
+
           return { applied: true };
         }
       }
@@ -216,6 +243,44 @@ export class AgentChatContextService {
         agentName: this.deps.getAgentName(),
       });
       return { applied: false };
+    }
+  }
+
+  /**
+   * Invoke an optional compaction lifecycle callback, swallowing any error so a
+   * misbehaving observational hook can never break the compaction path.
+   */
+  private async invokeCompactionCallback(
+    callback: ((trigger: 'auto' | 'manual', options: CompactionHookCallbackOptions) => Promise<void> | void) | undefined,
+    trigger: 'auto' | 'manual',
+  ): Promise<void> {
+    if (!callback) return;
+    try {
+      const controller = new AbortController();
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve().then(() => callback(trigger, { signal: controller.signal })),
+          new Promise((_resolve, reject) => {
+            timeoutHandle = setTimeout(
+              () => {
+                controller.abort();
+                reject(new Error(`Compaction hook callback timed out after ${COMPACTION_HOOK_CALLBACK_TIMEOUT_MS}ms`));
+              },
+              COMPACTION_HOOK_CALLBACK_TIMEOUT_MS,
+            );
+          }),
+        ]);
+      } finally {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+      }
+    } catch (error) {
+      logger.warn('[AgentChat] Compaction hook callback failed (non-fatal)', 'CheckAndCompress', {
+        error: error instanceof Error ? error.message : String(error),
+        agentName: this.deps.getAgentName(),
+      });
     }
   }
 
@@ -271,14 +336,19 @@ export class AgentChatContextService {
         // Token cost = inline tool schemas + deferred index text
         if (filteredTools.length > 0) {
           toolsTokens = tokenCounter.countToolsTokens(
-            filteredTools.map(t => ({ ...t, description: t.description ?? '' }))).totalTokens;
+            filteredTools.map(t => ({ name: t.name, description: t.description ?? '', parameters: t.inputSchema as any }))).totalTokens;
         }
         if (deferredTools.length > 0) {
           const indexText = formatDeferredToolsIndex(deferredTools);
           toolsTokens += tokenCounter.countTextTokens(indexText);
         }
       } else {
-        const toolsResult = tokenCounter.countToolsTokens(currentTools);
+        // Even when tool search is disabled, filterToolsForRequest enforces MAX_INLINE_TOOLS cap.
+        // Count only the tools that will actually be sent in the API request.
+        const { filteredTools } = filterToolsForRequest(
+          currentTools, currentContextHistory, { enabled: false });
+        const toolsResult = tokenCounter.countToolsTokens(
+          filteredTools.map(t => ({ name: t.name, description: t.description ?? '', parameters: t.inputSchema as any })));
         toolsTokens = toolsResult.totalTokens;
       }
     }

@@ -7,6 +7,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { safeCloseElectronApp } from './electronCleanup';
 
 /**
  * E2E test fixture type definitions
@@ -31,15 +32,29 @@ function createTestUserDataDir(): string {
   return dirPath;
 }
 
-/**
- * Clean up the test userData directory.
- */
-function cleanupTestUserDataDir(dirPath: string): void {
-  try {
-    fs.rmSync(dirPath, { recursive: true, force: true });
-  } catch (e) {
-    console.warn(`[E2E Cleanup] Failed to cleanup test userData: ${dirPath}`, e);
+async function cleanupTestUserDataDir(dirPath: string): Promise<void> {
+  const attempts = process.platform === 'win32' ? 10 : 2;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === attempts) {
+        console.warn(
+          `[E2E Cleanup] Failed to cleanup test userData after ${attempts} attempts: ${dirPath}`,
+          error,
+        );
+        return;
+      }
+
+      await delay(process.platform === 'win32' ? 500 : 250);
+    }
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -68,7 +83,7 @@ export const test = base.extend<ElectronFixtures>({
   testUserDataDir: async ({}, use) => {
     const dir = createTestUserDataDir();
     await use(dir);
-    cleanupTestUserDataDir(dir);
+    await cleanupTestUserDataDir(dir);
   },
 
   // Fixture: Electron application instance
@@ -87,9 +102,9 @@ export const test = base.extend<ElectronFixtures>({
         ...process.env,
         NODE_ENV: 'test',
         // Specify the full userData path directly, bypassing webpack DefinePlugin compile-time substitution.
-        // bootstrap.ts reads this value at runtime via process['env']['OpenKosmos_TEST_USER_DATA_PATH'],
+        // bootstrap.ts reads this value at runtime via process['env']['OPENKOSMOS_TEST_USER_DATA_PATH'],
         // which takes priority over the USER_DATA_NAME injected by DefinePlugin.
-        OpenKosmos_TEST_USER_DATA_PATH: testUserDataDir,
+        OPENKOSMOS_TEST_USER_DATA_PATH: testUserDataDir,
       },
       // Electron launch timeout
       timeout: 30_000,
@@ -97,24 +112,7 @@ export const test = base.extend<ElectronFixtures>({
 
     await use(app);
 
-    // Graceful close with force-kill fallback.
-    // We must call app.close() so Playwright cleans up its internal CDP
-    // WebSocket / listeners (otherwise the worker event loop never drains).
-    // A background kill-timer ensures app.close() never hangs indefinitely.
-    const proc = app.process();
-    const killTimer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch { /* already dead */ }
-    }, 5_000);
-    try {
-      await app.close();
-    } catch {
-      // app.close() may throw if the process was force-killed — fine.
-    } finally {
-      clearTimeout(killTimer);
-    }
-    if (proc.exitCode === null) {
-      try { proc.kill('SIGKILL'); } catch { /* already dead */ }
-    }
+    await safeCloseElectronApp(app, '[E2E Cleanup]');
   },
 
   // Fixture: main window Page object (waits for app ready)

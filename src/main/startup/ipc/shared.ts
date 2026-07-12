@@ -2,19 +2,14 @@ import { BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
-import type { UpdateManager } from '../../lib/autoUpdate/updateManager';
-
 export interface Context {
   _schedulerInitPromise?: Promise<void>;
   _buddyInitPromise?: Promise<void>;
   currentUserAlias: string | null;
   readonly mainWindow: BrowserWindow | null;
   readonly debugWindow: BrowserWindow | null;
-  readonly updateManager: Promise<UpdateManager>;
   readonly isDev: boolean;
-  readonly isAnalyticsReady: boolean;
   readonly isAgentChatReady: boolean;
-  readonly selectedText: string;
 
   readonly onBeforeQuit: (event: Electron.Event) => Promise<void>
   readonly registerGlobalShortcuts: () => Promise<void>;
@@ -23,10 +18,13 @@ export interface Context {
   readonly stepWindowZoomLevel: (level: number) => void;
   readonly resetWindowZoomLevel: () => Promise<number>;
   readonly getMenuTemplate: () => Electron.MenuItemConstructorOptions[];
-  readonly handleWebSearch: (chatId: string) => Promise<{ success: boolean; error?: string }>;
   readonly unregisterGlobalShortcuts: () => void;
   readonly createDebugWindow: () => Promise<void>;
-  readonly checkAssetsLibrariesAsync: () => Promise<void>;
+  readonly cleanupSelectionHook: () => void;
+  readonly handleWebSearch: (chatId: string) => Promise<unknown> | unknown;
+  readonly selectedText: string;
+  readonly getToolBarAutoHide: () => boolean;
+  readonly hideToolBar: () => void;
 }
 
 

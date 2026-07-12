@@ -4,6 +4,7 @@ import { WorkspaceMenuActions } from '../chat/workspace/WorkspaceExplorerSidepan
 import { adjustAnchoredDropdownToViewport, ANCHORED_DROPDOWN_SIZE_PRESETS, AnchoredDropdownPosition, getAnchoredDropdownPosition } from '@/lib/utilities/dropdownPosition';
 import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const zeroMenuState: {
   isOpen: boolean;
@@ -41,6 +42,7 @@ interface InnerProps {
 const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
   const { close: onClose } = WorkspaceMenuAtom.useChange();
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
 
   useClickOut(workspaceMenuRef, onClose);
 
@@ -58,11 +60,11 @@ const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
   // Determine menu text based on platform
   const getOpenInExplorerText = () => {
     if (isWindows) {
-      return 'Open in File Explorer';
+      return t('workspace.menu.openInFileExplorer');
     } else if (isMac) {
-      return 'Open in Finder';
+      return t('workspace.menu.openInFinder');
     } else {
-      return 'Open in File Manager';
+      return t('workspace.menu.openInFileManager');
     }
   };
 
@@ -111,7 +113,7 @@ const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><File size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Add Files</span>
+          <span className="dropdown-menu-item-text">{t('workspace.explorer.addFiles')}</span>
         </button>
       )}
       {actions.canAddFolder && (
@@ -121,7 +123,7 @@ const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><FolderPlus size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Add Folder</span>
+          <span className="dropdown-menu-item-text">{t('workspace.explorer.addFolder')}</span>
         </button>
       )}
       {actions.canPasteToWorkspace && (
@@ -131,7 +133,7 @@ const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Clipboard size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Paste Text</span>
+          <span className="dropdown-menu-item-text">{t('workspace.explorer.pasteText')}</span>
         </button>
       )}
       {/* Divider - only show if there are items above and below */}
@@ -164,7 +166,7 @@ const WorkspaceMenuDropdown: React.FC<InnerProps> = ({ position, actions }) => {
           role="menuitem"
         >
           <span className="dropdown-menu-item-icon"><Copy size={16} strokeWidth={1.5} /></span>
-          <span className="dropdown-menu-item-text">Copy Path</span>
+          <span className="dropdown-menu-item-text">{t('common.copyPath')}</span>
         </button>
       )}
 

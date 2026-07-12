@@ -190,7 +190,7 @@ describe('FileExplorerSection', () => {
     await screen.findByText('metrics-review');
     await waitFor(() => expect(mockGetDirectoryChildren).toHaveBeenCalledWith(
       '/knowledge-b/metrics-review',
-      { ignorePatterns: expect.any(Array) }
+      expect.objectContaining({ ignorePatterns: expect.any(Array) })
     ));
     expect(screen.queryByText('alpha.md')).toBeNull();
   });

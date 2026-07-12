@@ -10,34 +10,54 @@
   max-height: 100%;
 }
 
-.mcp-server-list-container > :first-child {
+/* The list search box stays fixed at the top of the panel; only the cards area
+   below it scrolls, so the scrollbar never runs alongside the search box. */
+.mcp-server-list-container > .list-search-box {
+  flex-shrink: 0;
+}
+
+.server-cards {
   flex: 1;
   overflow-y: auto;
   padding: 0 0 3rem 0;
   min-height: 0;
-}
-
-.mcp-server-list-container > :first-child::-webkit-scrollbar {
-  width: 6px;
-}
-
-.mcp-server-list-container > :first-child::-webkit-scrollbar-track {
-  background: rgba(203, 213, 225, 0.3);
-  border-radius: 3px;
-}
-
-.mcp-server-list-container > :first-child::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.6);
-  border-radius: 3px;
-  transition: background 0.2s ease;
-}
-
-.mcp-server-list-container > :first-child::-webkit-scrollbar-thumb:hover {
-  background: rgba(203, 213, 225, 0.8);
-}
-
-.server-cards {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.server-cards::-webkit-scrollbar {
+  width: 6px;
+}
+
+/* Scrollbar auto-hides: the track and thumb are transparent by default (the
+   6px width is always reserved so revealing it causes no layout shift) and are
+   revealed when the list is hovered or actively scrolling (the `is-scrolling`
+   class is toggled by useAutoHideScrollbar while the user scrolls).
+   NOTE: globals.css declares `::-webkit-scrollbar-thumb` with a solid color and
+   `!important`, so every rule here must also use `!important` (with this higher
+   specificity) to win — otherwise the thumb stays permanently visible. */
+.server-cards::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+}
+
+.server-cards::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+  transition: background 0.2s ease !important;
+}
+
+.server-cards:hover::-webkit-scrollbar-track,
+.server-cards.is-scrolling::-webkit-scrollbar-track {
+  background: rgba(203, 213, 225, 0.3) !important;
+}
+
+.server-cards:hover::-webkit-scrollbar-thumb,
+.server-cards.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.6) !important;
+}
+
+.server-cards::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.8) !important;
 }

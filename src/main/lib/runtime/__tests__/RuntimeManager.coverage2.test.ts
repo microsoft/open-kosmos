@@ -281,7 +281,21 @@ describe('ensureVenvMatchesPinnedPython', () => {
 
     // Create venvDir with matching pyvenv.cfg
     fs.mkdirSync(venvDir, { recursive: true });
-    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), 'version_info = 3.12\n');
+    const homeDir = process.platform === 'win32'
+      ? path.join(venvDir, 'base-home')
+      : path.join(venvDir, 'base-home', 'bin');
+    fs.mkdirSync(homeDir, { recursive: true });
+    fs.writeFileSync(path.join(homeDir, process.platform === 'win32' ? 'python.exe' : 'python'), '');
+    fs.writeFileSync(path.join(venvDir, 'pyvenv.cfg'), `home = ${homeDir}\nversion_info = 3.12\n`);
+    // Healthy venv: base interpreter launcher must resolve, else treated as dangling.
+    const launcher = process.platform === 'win32'
+      ? path.join(venvDir, 'Scripts', 'python.exe')
+      : path.join(venvDir, 'bin', 'python');
+    fs.mkdirSync(path.dirname(launcher), { recursive: true });
+    fs.writeFileSync(launcher, '');
+    if (process.platform !== 'win32') {
+      fs.writeFileSync(path.join(path.dirname(launcher), 'python3'), '');
+    }
 
     await (manager as any).ensureVenvMatchesPinnedPython('3.12.9');
     expect(recreateSpy).not.toHaveBeenCalled();
@@ -487,6 +501,8 @@ describe('installBunDirectly and installUvDirectly via installRuntime', () => {
           fs.mkdirSync(subDir, { recursive: true });
           fs.writeFileSync(path.join(subDir, uvName), '#!/bin/sh\necho uv', { mode: 0o755 });
           fs.writeFileSync(path.join(subDir, 'uvx'), '#!/bin/sh\necho uvx', { mode: 0o755 });
+          // A non-uv/uvx file exercises the `filename === 'uv' || 'uvx'` false branch.
+          fs.writeFileSync(path.join(subDir, 'README.md'), 'noise', { mode: 0o644 });
         }
       });
       await (manager as any).installUvDirectly('0.6.17');
@@ -582,6 +598,8 @@ describe('parsePythonListOutput (private)', () => {
     const output = [
       'cpython-3.12.8-windows-x86_64-none     C:\\Users\\user\\AppData\\uv\\python\\cpython-3.12.8-windows-x86_64-none\\python.exe',
       'cpython-3.13.1-windows-x86_64-none     <download available>',
+      // A single-token line exercises the `parts.length >= 2` false branch.
+      'lonely-token',
       '',
     ].join('\n');
 

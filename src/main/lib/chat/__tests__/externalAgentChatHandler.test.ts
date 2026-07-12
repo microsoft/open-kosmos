@@ -79,6 +79,35 @@ describe('handleExternalAgentMessage (fire-and-forget)', () => {
     expect(ctx.addMessageToSession).toHaveBeenCalledWith(userMsg);
   });
 
+  it('can resend an already-persisted user message without duplicating it', async () => {
+    mockUseService.mockImplementation((cb: Function) => cb({ sendMessage: () => true }));
+
+    const ctx = createContext();
+    const userMsg = createUserMessage('retry');
+    const result = await handleExternalAgentMessage(ctx, userMsg, { persistUserMessage: false });
+
+    expect(result).toEqual([]);
+    expect(ctx.addMessageToSession).not.toHaveBeenCalled();
+    expect(ctx.emitStatus).toHaveBeenCalledWith('sending');
+  });
+
+  it('sends only text parts to the external agent service', async () => {
+    const sendMessage = vi.fn(() => true);
+    mockUseService.mockImplementation((cb: Function) => cb({ sendMessage }));
+
+    const ctx = createContext();
+    await handleExternalAgentMessage(ctx, {
+      ...createUserMessage('ignored'),
+      content: [
+        { type: 'text', text: 'hello ' },
+        { type: 'image', image_url: { url: 'data:image/png;base64,abc' } },
+        { type: 'text', text: 'world' },
+      ],
+    } as Message);
+
+    expect(sendMessage).toHaveBeenCalledWith('hello world', 'chat-1', 'session-1');
+  });
+
   it('emits content and complete chunks for error message', async () => {
     mockUseService.mockImplementation((cb: Function) => cb({ sendMessage: () => false }));
 

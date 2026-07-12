@@ -21,8 +21,25 @@ function parseTimestamp(raw: RawMessage): number {
 const UserParts = new Set(['text', 'image', 'file', 'office', 'others'] as const);
 const AssistantParts = new Set(['text', 'thinking'] as const);
 
+/**
+ * Normalize raw content to an array format.
+ * Handles legacy string format and corrupted data gracefully.
+ */
+function normalizeContent(rawContent: unknown): any[] {
+  if (Array.isArray(rawContent)) {
+    // Filter out null/undefined entries to prevent crashes when accessing .type
+    return rawContent.filter((entry): entry is Record<string, unknown> => entry != null && typeof entry === 'object');
+  }
+  if (typeof rawContent === 'string') {
+    // Legacy format: plain text string → convert to text content part
+    return [{ type: 'text', text: rawContent }];
+  }
+  // null, undefined, or other unexpected types → empty array
+  return [];
+}
+
 function parseUserMessage(raw: RawMessage): UserMessage {
-  const content: any[] = raw.content || [];
+  const content = normalizeContent(raw.content);
   return {
     id: parseId(raw),
     timestamp: parseTimestamp(raw),
@@ -32,7 +49,7 @@ function parseUserMessage(raw: RawMessage): UserMessage {
 }
 
 function parseAssistantMessage(raw: RawMessage): AssistantMessage {
-  const content: any[] = raw.content || [];
+  const content = normalizeContent(raw.content);
   return {
     id: parseId(raw),
     timestamp: parseTimestamp(raw),
@@ -47,7 +64,7 @@ function parseAssistantMessage(raw: RawMessage): AssistantMessage {
 
 // Todo: make sure the `tool_call_id` must exist
 function parseToolMessage(raw: RawMessage): ToolMessage {
-  const content: any[] = raw.content || [];
+  const content = normalizeContent(raw.content);
   return {
     id: parseId(raw),
     timestamp: parseTimestamp(raw),
@@ -60,7 +77,7 @@ function parseToolMessage(raw: RawMessage): ToolMessage {
 }
 
 function parseSystemMessage(raw: RawMessage): SystemMessage {
-  const content: any[] = raw.content || [];
+  const content = normalizeContent(raw.content);
   return {
     id: parseId(raw),
     timestamp: parseTimestamp(raw),
@@ -82,6 +99,6 @@ export function deserializeMessage(raw: RawMessage): Message {
     case 'system':
       return parseSystemMessage(raw);
     default:
-      return parseUserMessage(raw);
+      return parseUserMessage(raw); // Default to user message for backward compatibility
   }
 }

@@ -6,10 +6,12 @@
  */
 
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
+import type { ToolExecutionContext } from '../../subAgent/types';
 import fetch from 'node-fetch';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { randomUUID } from 'crypto';
 import { getUnifiedLogger } from '../../unifiedLogger';
 
 const logger = getUnifiedLogger();
@@ -19,7 +21,6 @@ export interface DownloadAndSaveAsArgs {
   filename: string; // Filename to save as, including extension
   saveDirectory?: string; // Save directory, defaults to user Downloads folder
   maxSizeBytes?: number; // Maximum file size, default 100MB
-  timeout?: number; // Request timeout in ms, default 30 seconds
   overwrite?: boolean; // Whether to overwrite existing files, default false
   createDirectory?: boolean; // Whether to auto-create directory, default true
 }
@@ -142,13 +143,17 @@ function getMimeTypeExtension(mimeType: string): string {
   return mimeToExt[mimeType.toLowerCase()] || '';
 }
 
+function createDownloadTempPath(targetPath: string): string {
+  return path.join(path.dirname(targetPath), `.download-${process.pid}-${Date.now()}-${randomUUID()}.tmp`);
+}
+
 export class DownloadFileTool {
 
   /**
    * Execute the file download and save tool
    * Static method, supports direct LLM invocation
    */
-  static async execute(args: DownloadAndSaveAsArgs, options?: { signal?: AbortSignal }): Promise<DownloadAndSaveAsResult> {
+  static async execute(args: DownloadAndSaveAsArgs, options?: { signal?: AbortSignal; executionContext?: ToolExecutionContext | null }): Promise<DownloadAndSaveAsResult> {
 
     const startTime = Date.now();
 
@@ -163,10 +168,23 @@ export class DownloadFileTool {
       filename,
       saveDirectory = path.join(os.homedir(), 'Downloads'),
       maxSizeBytes = 100 * 1024 * 1024, // 100MB
-      timeout = 30000, // 30 seconds
       overwrite = false,
       createDirectory = true
     } = args;
+
+    // Fixed internal request timeout; not agent-configurable. A hung download is
+    // governed by the unified 10-min no-response budget, not a per-call cap.
+    const timeout = 30000; // 30 seconds
+
+    // Captured no-response watchdog hook. Each downloaded chunk resets the central
+    // idle budget so a slow-but-progressing transfer is not mistaken for "no response".
+    const reportActivity = options?.executionContext?.reportActivity;
+
+    // Tracked so a mid-stream error or abort can tear down the write stream and
+    // remove the half-written file. Leaving a corrupt partial behind would block a
+    // later retry with a spurious "File already exists" error.
+    let fileStream: fs.WriteStream | null = null;
+    let partialFilePath: string | null = null;
 
     try {
       // 2. Validate save directory
@@ -232,27 +250,38 @@ export class DownloadFileTool {
         throw new Error('Response body is empty');
       }
 
-      const fileStream = fs.createWriteStream(fullFilePath);
+      const tempFilePath = createDownloadTempPath(fullFilePath);
+      const stream = fs.createWriteStream(tempFilePath);
+      fileStream = stream;
+      partialFilePath = tempFilePath;
       let downloadedBytes = 0;
+      const writeComplete = new Promise<void>((resolve, reject) => {
+        stream.on('finish', () => resolve());
+        stream.on('error', reject);
+      });
 
       // Monitor download progress and enforce size limit
       for await (const chunk of response.body) {
+        reportActivity?.();
         downloadedBytes += chunk.length;
         if (downloadedBytes > maxSizeBytes) {
-          fileStream.close();
-          fs.unlinkSync(fullFilePath); // Delete partially downloaded file
           throw new Error(`File too large: Downloaded ${downloadedBytes} bytes exceeds limit of ${maxSizeBytes} bytes`);
         }
-        fileStream.write(chunk);
+        stream.write(chunk);
       }
 
-      fileStream.end();
+      stream.end();
 
       // 9. Wait for file write to complete
-      await new Promise<void>((resolve, reject) => {
-        fileStream.on('finish', () => resolve());
-        fileStream.on('error', reject);
-      });
+      await writeComplete;
+      fileStream = null;
+
+      if (!overwrite && fs.existsSync(fullFilePath)) {
+        throw new Error(`File already exists: ${fullFilePath}. Set overwrite=true to replace it.`);
+      }
+
+      fs.renameSync(tempFilePath, fullFilePath);
+      partialFilePath = null;
 
       const downloadTime = Date.now() - startTime;
 
@@ -268,6 +297,21 @@ export class DownloadFileTool {
 
     } catch (error) {
       const downloadTime = Date.now() - startTime;
+
+      // Tear down a partially written file so the corrupt leftover does not block a
+      // later retry. Only the file we created here is removed; pre-stream failures
+      // (e.g. an existing file with overwrite=false) leave partialFilePath null.
+      if (fileStream) {
+        fileStream.destroy();
+      }
+      if (partialFilePath) {
+        try {
+          fs.unlinkSync(partialFilePath);
+        } catch {
+          // Best-effort cleanup; the partial file may already be gone. Preserve the
+          // original download error reported below.
+        }
+      }
 
       let errorMsg: string;
       if (error instanceof Error && error.name === 'AbortError') {
@@ -320,13 +364,6 @@ export class DownloadFileTool {
             maximum: 1073741824, // 1GB
             default: 104857600
           },
-          timeout: {
-            type: 'number',
-            description: 'Download timeout in milliseconds (default: 30000 = 30 seconds)',
-            minimum: 1000,
-            maximum: 300000, // 5 minutes
-            default: 30000
-          },
           overwrite: {
             type: 'boolean',
             description: 'Whether to overwrite existing files (default: false)',
@@ -371,13 +408,6 @@ export class DownloadFileTool {
     if (args.maxSizeBytes !== undefined) {
       if (!Number.isInteger(args.maxSizeBytes) || args.maxSizeBytes < 1 || args.maxSizeBytes > 1073741824) {
         return { isValid: false, error: 'maxSizeBytes must be an integer between 1 and 1073741824 (1GB)' };
-      }
-    }
-
-    // Validate timeout
-    if (args.timeout !== undefined) {
-      if (!Number.isInteger(args.timeout) || args.timeout < 1000 || args.timeout > 300000) {
-        return { isValid: false, error: 'timeout must be an integer between 1000 and 300000 milliseconds' };
       }
     }
 

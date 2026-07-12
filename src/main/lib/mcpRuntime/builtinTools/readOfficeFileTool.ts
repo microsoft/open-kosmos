@@ -8,119 +8,17 @@
 import { FILE_ATTACHMENT_LIMITS } from '../../constants/fileConstants';
 import * as fs from 'node:fs/promises';
 import type { BuiltinToolDefinition } from './types';
+import type { TextExtractionResult } from './officeExtractionTypes';
+import {
+  extractSlideTextFromXml,
+  parseExcelSharedStrings,
+  parseExcelWorksheetRows,
+  resolveExcelSheetEntries,
+} from './OfficeXmlParsers';
 import { PdfReader } from 'pdfreader';
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
-
-// ---------------------------------------------------------------------------
-// Inline Office XML helpers
-// ---------------------------------------------------------------------------
-
-function extractSlideTextFromXml(xml: string): string[] {
-  const lines: string[] = [];
-  // Extract text runs from <a:t> elements, grouped by paragraph <a:p>
-  const paragraphRegex = /<a:p\b[^>]*>([\s\S]*?)<\/a:p>/g;
-  let paraMatch: RegExpExecArray | null;
-  while ((paraMatch = paragraphRegex.exec(xml)) !== null) {
-    const paraXml = paraMatch[1];
-    const textRegex = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g;
-    let textMatch: RegExpExecArray | null;
-    const parts: string[] = [];
-    while ((textMatch = textRegex.exec(paraXml)) !== null) {
-      parts.push(textMatch[1]);
-    }
-    const line = parts.join('').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
-    if (line.trim()) {
-      lines.push(line);
-    }
-  }
-  return lines;
-}
-
-async function parseExcelSharedStrings(zip: JSZip): Promise<string[]> {
-  const sharedStringsFile = zip.files['xl/sharedStrings.xml'];
-  if (!sharedStringsFile) return [];
-  const xml = await sharedStringsFile.async('string');
-  const strings: string[] = [];
-  const siRegex = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
-  let siMatch: RegExpExecArray | null;
-  while ((siMatch = siRegex.exec(xml)) !== null) {
-    const siXml = siMatch[1];
-    const parts: string[] = [];
-    const tRegex = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
-    let tMatch: RegExpExecArray | null;
-    while ((tMatch = tRegex.exec(siXml)) !== null) {
-      parts.push(tMatch[1]);
-    }
-    strings.push(parts.join('').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
-  }
-  return strings;
-}
-
-function parseExcelWorksheetRows(xml: string, sharedStrings: string[]): string[] {
-  const rows: string[] = [];
-  const rowRegex = /<row\b[^>]*>([\s\S]*?)<\/row>/g;
-  let rowMatch: RegExpExecArray | null;
-  while ((rowMatch = rowRegex.exec(xml)) !== null) {
-    const rowXml = rowMatch[1];
-    const cells: string[] = [];
-    const cellRegex = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
-    let cellMatch: RegExpExecArray | null;
-    while ((cellMatch = cellRegex.exec(rowXml)) !== null) {
-      const attrs = cellMatch[1];
-      const cellInner = cellMatch[2];
-      const typeMatch = attrs.match(/\bt="([^"]+)"/);
-      const vMatch = cellInner.match(/<v\b[^>]*>([\s\S]*?)<\/v>/);
-      const rawValue = vMatch ? vMatch[1] : '';
-      let value = rawValue;
-      if (typeMatch && typeMatch[1] === 's') {
-        const idx = parseInt(rawValue, 10);
-        value = Number.isFinite(idx) && idx >= 0 && idx < sharedStrings.length ? sharedStrings[idx] : rawValue;
-      }
-      cells.push(value);
-    }
-    if (cells.some(c => c.trim())) {
-      rows.push(cells.join('\t'));
-    }
-  }
-  return rows;
-}
-
-async function resolveExcelSheetEntries(zip: JSZip): Promise<Array<{ name: string; zipPath: string }>> {
-  const workbookFile = zip.files['xl/workbook.xml'];
-  const relsFile = zip.files['xl/_rels/workbook.xml.rels'];
-  if (!workbookFile || !relsFile) return [];
-  const [workbookXml, relsXml] = await Promise.all([workbookFile.async('string'), relsFile.async('string')]);
-
-  // Build rId -> zip path map
-  const relMap = new Map<string, string>();
-  const relRegex = /<Relationship\b([^>]*?)\/>/gi;
-  let relMatch: RegExpExecArray | null;
-  while ((relMatch = relRegex.exec(relsXml)) !== null) {
-    const attrs = relMatch[1];
-    const idM = attrs.match(/\bId="([^"]+)"/i);
-    const targetM = attrs.match(/\bTarget="([^"]+)"/i);
-    if (idM && targetM) {
-      const target = targetM[1].replace(/^\.\//, '');
-      relMap.set(idM[1], target.startsWith('xl/') ? target : `xl/${target}`);
-    }
-  }
-
-  const entries: Array<{ name: string; zipPath: string }> = [];
-  const sheetRegex = /<sheet\b([^>]*)\/>/gi;
-  let sheetMatch: RegExpExecArray | null;
-  while ((sheetMatch = sheetRegex.exec(workbookXml)) !== null) {
-    const attrs = sheetMatch[1];
-    const nameM = attrs.match(/\bname="([^"]+)"/i);
-    const ridM = attrs.match(/\br:id="([^"]+)"/i);
-    if (!nameM || !ridM) continue;
-    const zipPath = relMap.get(ridM[1]);
-    if (zipPath && zip.files[zipPath]) {
-      entries.push({ name: nameM[1], zipPath });
-    }
-  }
-  return entries;
-}
+import { NativeOfficeExtractor } from './NativeOfficeExtractor';
 
 export interface ReadOfficeFileToolArgs {
   // File path (required)
@@ -222,7 +120,7 @@ export class ReadOfficeFileTool {
   static getDefinition(): BuiltinToolDefinition {
     return {
       name: 'read_office_file',
-      description: 'Read the contents of office documents (currently PDF, Word, PowerPoint, and Excel). PDF/PPT/Excel support page and line-based pagination; Word supports line-based pagination only. Maximum 2000 lines per call.',
+      description: 'Read the contents of office documents (currently PDF, Word, PowerPoint, and Excel). PDF/PPT/Excel support page and line-based pagination; Word supports line-based pagination only. Maximum 2000 lines per call. For IRM-encrypted documents, automatically uses native Office app extraction via AppleScript (macOS) or COM automation (Windows) when the Office desktop app is installed.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -947,20 +845,77 @@ export class ReadOfficeFileTool {
   private static isCdfv2Encrypted(buffer: Buffer): boolean {
     if (buffer.length < 8) return false;
     // CDFV2/OLE2 magic bytes: D0 CF 11 E0
-    return buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0;
+    const isCdfv2 = buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0;
+    return isCdfv2;
   }
 
   /**
-   * Encrypted Office files are not supported without NativeOfficeExtractor.
+   * Attempt native Office extraction for encrypted files and convert to ReadOfficeFileToolResult
    */
   private static async extractEncryptedWithNativeOffice(
-    _filePath: string,
-    _args: ReadOfficeFileToolArgs & { path: string },
+    filePath: string,
+    args: ReadOfficeFileToolArgs & { path: string },
   ): Promise<ReadOfficeFileToolResult> {
-    throw new Error(
-      'This file appears to be IRM-encrypted or in legacy Office format. ' +
-      'Native Office extraction is not available in this build. ' +
-      'Please open the file in Microsoft Office and save it in an unencrypted format.',
+
+    if (!NativeOfficeExtractor.isPlatformSupported()) {
+      throw new Error(
+        'This file appears to be IRM-encrypted or in legacy Office format. ' +
+        `Native Office extraction is not supported on ${process.platform}. ` +
+        'Please open the file in Microsoft Office manually.',
+      );
+    }
+
+    const fileName = args.fileName || args.path.split('/').pop() || args.path.split('\\').pop() || args.path;
+    const requiredApp = NativeOfficeExtractor.getRequiredApp(fileName);
+    if (!requiredApp) {
+      throw new Error(
+        'This file appears to be IRM-encrypted, but the file type is not supported for native Office extraction.',
+      );
+    }
+
+    const officeCheck = await NativeOfficeExtractor.checkOfficeInstalled();
+    const isAppAvailable = officeCheck[requiredApp];
+    if (!isAppAvailable) {
+      const appNameMap: Record<string, string> = { word: 'Microsoft Word', powerpoint: 'Microsoft PowerPoint', excel: 'Microsoft Excel' };
+      const appName = appNameMap[requiredApp] || requiredApp;
+      throw new Error(
+        `This file appears to be IRM-encrypted. ${appName} is required for decryption but is not installed.`,
+      );
+    }
+
+    const extraction: TextExtractionResult = await NativeOfficeExtractor.extractFromFile(filePath, fileName);
+
+    // Apply the same line-level pagination as other extraction paths
+    const lines = extraction.content.split('\n');
+    const totalLines = lines.length;
+    const totalPages = extraction.totalPages || 1;
+
+    const startLine = args.startLine || 1;
+    const requestedEndLine = args.endLine || (args.lineCount ? startLine + args.lineCount - 1 : totalLines);
+    const maxEndLine = Math.min(
+      requestedEndLine,
+      startLine + FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES - 1,
+      totalLines,
     );
+
+    const selectedLines = lines.slice(startLine - 1, maxEndLine);
+    const resultContent = selectedLines.join('\n');
+
+    const truncated = (requestedEndLine > maxEndLine) ||
+                      (maxEndLine < totalLines && !args.endLine && !args.lineCount) ||
+                      (selectedLines.length >= FILE_ATTACHMENT_LIMITS.MAX_TEXT_LINES);
+
+    return {
+      content: resultContent,
+      fileName,
+      startLine,
+      endLine: maxEndLine,
+      totalLines,
+      size: resultContent.length,
+      truncated,
+      startPage: 1,
+      endPage: totalPages,
+      totalPages,
+    };
   }
 }

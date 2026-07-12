@@ -134,6 +134,17 @@ export function parseMcpConfig(
       if (extractedConfig.env && Object.keys(extractedConfig.env).length > 0) {
         config.env = extractedConfig.env;
       }
+      if (extractedConfig.headers && typeof extractedConfig.headers === 'object' && !Array.isArray(extractedConfig.headers) && Object.keys(extractedConfig.headers).length > 0) {
+        const h = extractedConfig.headers;
+        if (Object.values(h).every((v: unknown) => typeof v === 'string')) {
+          config.headers = h;
+        } else {
+          return {
+            success: false,
+            error: 'All header values must be strings'
+          };
+        }
+      }
     }
 
     // Generate server name (if not provided)
@@ -241,6 +252,17 @@ export function parseVSCodeConfigToInternal(
       if (firstServerConfig.env && Object.keys(firstServerConfig.env).length > 0) {
         config.env = firstServerConfig.env;
       }
+      if (firstServerConfig.headers && typeof firstServerConfig.headers === 'object' && !Array.isArray(firstServerConfig.headers) && Object.keys(firstServerConfig.headers).length > 0) {
+        const h = firstServerConfig.headers;
+        if (Object.values(h).every((v: unknown) => typeof v === 'string')) {
+          config.headers = h;
+        } else {
+          return {
+            success: false,
+            error: 'All header values must be strings'
+          };
+        }
+      }
     }
 
     return {
@@ -286,6 +308,10 @@ export function formatToStandardJson(parsedConfig: ParsedMcpConfig): string {
       url: config.url
     };
 
+    if (config.headers && Object.keys(config.headers).length > 0) {
+      httpConfig.headers = config.headers;
+    }
+
     if (config.env && Object.keys(config.env).length > 0) {
       httpConfig.env = config.env;
     }
@@ -309,6 +335,10 @@ export function formatToMcpServersWrapper(parsedConfig: ParsedMcpConfig): string
   } else {
     serverConfig.url = config.url;
     serverConfig.type = transportType;
+  }
+
+  if (config.headers && Object.keys(config.headers).length > 0) {
+    serverConfig.headers = config.headers;
   }
 
   if (config.env && Object.keys(config.env).length > 0) {
@@ -349,6 +379,11 @@ export function formatToVSCodeSettings(serverConfigs: OpenKosmosAppMCPServerConf
       } else if (config.transport === 'StreamableHttp') {
         vscodeConfig.type = 'http';
       }
+    }
+
+    // Add headers (if present, for HTTP transports)
+    if (config.headers && Object.keys(config.headers).length > 0) {
+      vscodeConfig.headers = config.headers;
     }
 
     // Add environment variables (if present)
@@ -393,6 +428,11 @@ export function formatToVSCodeMcpJson(serverConfigs: OpenKosmosAppMCPServerConfi
       } else if (config.transport === 'StreamableHttp') {
         vscodeConfig.type = 'http';
       }
+    }
+
+    // Add headers (if present, for HTTP transports)
+    if (config.headers && Object.keys(config.headers).length > 0) {
+      vscodeConfig.headers = config.headers;
     }
 
     // Add environment variables (if present)

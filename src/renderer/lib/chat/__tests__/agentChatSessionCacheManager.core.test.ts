@@ -45,9 +45,9 @@ describe('extractFilePathsFromText', () => {
     expect(extractFilePathsFromText('Hello, world!')).toEqual([]);
   });
 
-  it('does not match SharePoint-style URL fragments as Windows paths', async () => {
+  it('does not match URL fragments as Windows paths', async () => {
     const { extractFilePathsFromText } = await import('../agentChatSessionCacheManager');
-    const result = extractFilePathsFromText('https://contoso.sharepoint.com/:p:/r/Doc.aspx');
+    const result = extractFilePathsFromText('https://docs.example.com/:p:/r/Doc.aspx');
     expect(result).toEqual([]);
   });
 });
@@ -533,9 +533,12 @@ describe('AgentChatSessionCacheManager core methods', () => {
 
   it('cleanup clears all session caches and resets current session', async () => {
     const { agentChatSessionCacheManager: m } = await import('../agentChatSessionCacheManager');
+    const { chatSessionInputDraftManager } = await import('../chatSessionInputDraftManager');
     m.createChatSessionCache('s-clean1', 'c1', { messages: [] });
     m.createChatSessionCache('s-clean2', 'c2', { messages: [] });
     m.setCurrentChatSessionId('c1', 's-clean1');
+    chatSessionInputDraftManager.set('s-clean1', 'draft 1');
+    chatSessionInputDraftManager.set('s-clean2', 'draft 2');
 
     m.cleanup();
 
@@ -543,6 +546,8 @@ describe('AgentChatSessionCacheManager core methods', () => {
     expect(m.getChatSessionCache('s-clean2')).toBeNull();
     expect(m.getCurrentChatSessionId()).toBeNull();
     expect(m.getCurrentChatId()).toBeNull();
+    expect(chatSessionInputDraftManager.get('s-clean1')).toBe('');
+    expect(chatSessionInputDraftManager.get('s-clean2')).toBe('');
   });
 
   // ── hasChatSessionCache ───────────────────────────────────────────────────
@@ -585,13 +590,16 @@ describe('AgentChatSessionCacheManager core methods', () => {
 
   it('destroying a cache removes it and clears current session if it was active', async () => {
     const { agentChatSessionCacheManager: m } = await import('../agentChatSessionCacheManager');
+    const { chatSessionInputDraftManager } = await import('../chatSessionInputDraftManager');
     m.createChatSessionCache('s-destroy', 'c1', { messages: [] });
     m.setCurrentChatSessionId('c1', 's-destroy');
+    chatSessionInputDraftManager.set('s-destroy', 'draft to clear');
 
     (m as any).handleChatSessionCacheDestroyed('s-destroy');
 
     expect(m.getChatSessionCache('s-destroy')).toBeNull();
     expect(m.getCurrentChatSessionId()).toBeNull();
+    expect(chatSessionInputDraftManager.get('s-destroy')).toBe('');
   });
 
   // ── handleContextChange ───────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import UserInputModal from '../UserInputModal'
-import { UserInputField } from '../../../lib/utilities/processUserInputPlaceholder'
+import { UserInputField, convertUserInputValue } from '../../../lib/utilities/processUserInputPlaceholder'
 
 // ---- mocks ----
 
@@ -90,14 +90,21 @@ describe('UserInputModal - visibility', () => {
   it('calls onClose when clicking the overlay', () => {
     const onClose = vi.fn()
     render(<UserInputModal {...defaultProps} onClose={onClose} />)
-    fireEvent.click(document.querySelector('.modal-overlay')!)
+    fireEvent.click(document.querySelector('.dialog-overlay-animate')!)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('calls onClose when Escape is pressed', () => {
+    const onClose = vi.fn()
+    render(<UserInputModal {...defaultProps} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
 
   it('does not call onClose when clicking inside modal container', () => {
     const onClose = vi.fn()
     render(<UserInputModal {...defaultProps} onClose={onClose} />)
-    fireEvent.click(document.querySelector('.modal-container')!)
+    fireEvent.click(document.querySelector('.dialog-content-animate')!)
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -373,5 +380,97 @@ describe('UserInputModal - re-initialization', () => {
   it('does not reinitialize when isOpen becomes false', async () => {
     render(<UserInputModal {...defaultProps} isOpen={false} />)
     expect(screen.queryByText('Configure test-server')).toBeNull()
+  })
+})
+
+describe('UserInputModal - folder/file error handling & edge cases', () => {
+  beforeEach(() => setupElectronApi())
+
+  it('shows error on a required folder field and clears it after a folder is selected', async () => {
+    render(
+      <UserInputModal
+        {...defaultProps}
+        fields={[makeTextField({ key: 'DIR', control: 'folder', isRequired: true, label: 'Root Dir' })]}
+      />
+    )
+    // Trigger validation error (required + empty)
+    fireEvent.click(screen.getByRole('button', { name: /Confirm and Continue/i }))
+    await waitFor(() => expect(screen.getByText(/Root Dir is required/)).toBeInTheDocument())
+    expect(document.querySelector('.required-asterisk')).toBeInTheDocument()
+    // Selecting a folder clears the error
+    fireEvent.click(screen.getByTitle('Select folder'))
+    await waitFor(() => expect(screen.getByDisplayValue('/selected/folder')).toBeInTheDocument())
+    expect(screen.queryByText(/Root Dir is required/)).toBeNull()
+  })
+
+  it('shows error on a required file field and clears it after a file is selected', async () => {
+    render(
+      <UserInputModal
+        {...defaultProps}
+        fields={[makeTextField({ key: 'CFG', control: 'file', isRequired: true, label: 'Config File' })]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Confirm and Continue/i }))
+    await waitFor(() => expect(screen.getByText(/Config File is required/)).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Select file'))
+    await waitFor(() => expect(screen.getByDisplayValue('/selected/file.txt')).toBeInTheDocument())
+    expect(screen.queryByText(/Config File is required/)).toBeNull()
+  })
+
+  it('invokes the readOnly folder and file onChange handlers without throwing', () => {
+    const { rerender } = render(
+      <UserInputModal {...defaultProps} fields={[makeTextField({ key: 'DIR', control: 'folder', label: 'Root Dir' })]} />
+    )
+    fireEvent.change(screen.getByPlaceholderText('Select a folder...'), { target: { value: '/typed/path' } })
+    rerender(
+      <UserInputModal {...defaultProps} fields={[makeTextField({ key: 'CFG', control: 'file', label: 'Config File' })]} />
+    )
+    fireEvent.change(screen.getByPlaceholderText('Select a file...'), { target: { value: '/typed/file' } })
+  })
+
+  it('logs and recovers when selectFolder rejects', async () => {
+    ;(window.electronAPI as any).workspace.selectFolder = vi.fn().mockRejectedValue(new Error('boom'))
+    render(<UserInputModal {...defaultProps} fields={[makeTextField({ control: 'folder', label: 'Root Dir' })]} />)
+    fireEvent.click(screen.getByTitle('Select folder'))
+    await waitFor(() => expect(screen.getByPlaceholderText('Select a folder...')).toHaveValue(''))
+  })
+
+  it('logs and recovers when selectFile rejects', async () => {
+    ;(window.electronAPI as any).fs.selectFile = vi.fn().mockRejectedValue(new Error('boom'))
+    render(<UserInputModal {...defaultProps} fields={[makeTextField({ control: 'file', label: 'Config File' })]} />)
+    fireEvent.click(screen.getByTitle('Select file'))
+    await waitFor(() => expect(screen.getByPlaceholderText('Select a file...')).toHaveValue(''))
+  })
+
+  it('renders required asterisk and error on a BOOLEAN field', async () => {
+    render(
+      <UserInputModal
+        {...defaultProps}
+        fields={[makeTextField({ key: 'FLAG', type: 'BOOLEAN', control: 'text', isRequired: true, label: 'Enable' })]}
+      />
+    )
+    expect(document.querySelector('.required-asterisk')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Confirm and Continue/i }))
+    await waitFor(() => expect(screen.getByText(/Enable is required/)).toBeInTheDocument())
+    expect(document.querySelector('select.error')).toBeInTheDocument()
+  })
+
+  it('recovers when value conversion throws during submit', async () => {
+    const onSubmit = vi.fn()
+    vi.mocked(convertUserInputValue).mockImplementationOnce(() => {
+      throw new Error('conversion failed')
+    })
+    render(
+      <UserInputModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fields={[makeTextField({ key: 'VAL', label: 'Value', defaultValue: 'hello' })]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Confirm and Continue/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Confirm and Continue/i })).not.toBeDisabled()
+    })
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })

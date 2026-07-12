@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #FFFBF8 0%, #FFFFFF 50%, #F8F4F1 100%);
+  background: linear-gradient(135deg, var(--color-warm-50) 0%, var(--color-white) 50%, var(--color-warm-100) 100%);
   padding: 24px;
   position: relative;
   overflow: hidden;
@@ -28,7 +28,7 @@
 .signin-card {
   width: 100%;
   max-width: 448px;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
 }
 
 /* ===========================
@@ -53,8 +53,8 @@
   height: 48px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -63,7 +63,7 @@
 .signin-icon {
   width: 32px;
   height: 32px;
-  color: #0ea5e9;
+  color: var(--color-accent);
 }
 
 .signin-card-title {
@@ -74,7 +74,7 @@
 
 .signin-card-description {
   text-align: center;
-  color: #6b7280;
+  color: var(--color-neutral-500);
 }
 
 /* ===========================
@@ -84,8 +84,91 @@
 .signin-loading-icon {
   width: 32px;
   height: 32px;
-  color: #0ea5e9;
+  color: var(--color-accent);
   animation: spin 1s linear infinite;
+}
+
+[data-theme="dark"] .signin-page {
+  background: var(--color-bg-app-gradient);
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .signin-card {
+  background: var(--color-surface-card) !important;
+  border-color: var(--color-border-strong) !important;
+  color: var(--color-text-default) !important;
+  box-shadow: var(--shadow-glass-card);
+}
+
+[data-theme="dark"] .signin-icon-wrapper {
+  background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
+}
+
+[data-theme="dark"] .signin-card-title {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .signin-card-description {
+  color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .signin-page .bg-primary-50,
+[data-theme="dark"] .signin-page .bg-primary-100 {
+  background-color: var(--color-info-surface) !important;
+}
+
+[data-theme="dark"] .signin-page .bg-success-50,
+[data-theme="dark"] .signin-page .bg-success-100 {
+  background-color: var(--color-success-surface) !important;
+}
+
+[data-theme="dark"] .signin-page .bg-warning-50,
+[data-theme="dark"] .signin-page .bg-warning-100 {
+  background-color: var(--color-warning-surface) !important;
+}
+
+[data-theme="dark"] .signin-page .bg-danger-50,
+[data-theme="dark"] .signin-page .bg-danger-100 {
+  background-color: var(--color-danger-surface) !important;
+}
+
+[data-theme="dark"] .signin-page .border-primary-200,
+[data-theme="dark"] .signin-page .border-success-200,
+[data-theme="dark"] .signin-page .border-warning-200,
+[data-theme="dark"] .signin-page .border-danger-200 {
+  border-color: var(--color-border-strong) !important;
+}
+
+[data-theme="dark"] .signin-page .text-primary-600,
+[data-theme="dark"] .signin-page .text-primary-700,
+[data-theme="dark"] .signin-page .text-primary-800,
+[data-theme="dark"] .signin-page .text-primary-900 {
+  color: var(--color-primary-300) !important;
+}
+
+[data-theme="dark"] .signin-page .text-success-600,
+[data-theme="dark"] .signin-page .text-success-700,
+[data-theme="dark"] .signin-page .text-success-800 {
+  color: var(--color-success-text) !important;
+}
+
+[data-theme="dark"] .signin-page .text-warning-600,
+[data-theme="dark"] .signin-page .text-warning-700,
+[data-theme="dark"] .signin-page .text-warning-800 {
+  color: var(--color-warning-text) !important;
+}
+
+[data-theme="dark"] .signin-page .text-danger-600,
+[data-theme="dark"] .signin-page .text-danger-700,
+[data-theme="dark"] .signin-page .text-danger-800 {
+  color: var(--color-danger-text) !important;
+}
+
+[data-theme="dark"] .signin-page code {
+  background: var(--color-surface-elevated) !important;
+  border-color: var(--color-border-strong) !important;
+  color: var(--color-primary-300) !important;
 }
 
 /* ===========================

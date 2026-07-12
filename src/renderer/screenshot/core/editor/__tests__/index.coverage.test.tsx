@@ -17,9 +17,12 @@ const mockEditorHandlersUse = vi.hoisted(() => vi.fn());
 const mockGlobalKeyOn = vi.hoisted(() => vi.fn(() => vi.fn()));
 const mockIsPainterConfig = vi.hoisted(() => vi.fn(() => false));
 const mockStartDrawByMouse = vi.hoisted(() => vi.fn());
+const mockStartDrawByKeyboard = vi.hoisted(() => vi.fn());
 const mockUpdateCursorForKeyboard = vi.hoisted(() => vi.fn());
 const mockKeyboardPainterTurnOff = vi.hoisted(() => vi.fn());
 const mockMessage = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockCursorPencil = vi.hoisted(() => vi.fn(() => 'pencil-cursor'));
+const mockCursorMosaic = vi.hoisted(() => vi.fn(() => 'mosaic-cursor'));
 
 // All paths relative to THIS test file:
 // This file: src/renderer/screenshot/core/editor/__tests__/index.coverage.test.tsx
@@ -49,7 +52,7 @@ vi.mock('../../common/utils/global-key', () => ({
 vi.mock('../painter', () => ({
   isPainterConfig: mockIsPainterConfig,
   startDrawByMouse: mockStartDrawByMouse,
-  startDrawByKeyboard: vi.fn(),
+  startDrawByKeyboard: mockStartDrawByKeyboard,
   updateCursorForKeyboard: mockUpdateCursorForKeyboard,
 }));
 
@@ -70,8 +73,8 @@ vi.mock('../../components/message', () => ({
 
 vi.mock('../../common/cursor', () => ({
   default: {
-    pencil: vi.fn(() => 'pencil-cursor'),
-    mosaic: vi.fn(() => 'mosaic-cursor'),
+    pencil: mockCursorPencil,
+    mosaic: mockCursorMosaic,
   },
 }));
 
@@ -112,7 +115,9 @@ vi.mock('../shape/mosaic', () => ({
 }));
 
 vi.mock('../toolbar', () => ({
-  MainToolbar: () => <div data-testid="main-toolbar" />,
+  MainToolbar: ({ onCopy }: { onCopy: () => void }) => (
+    <button data-testid="main-toolbar" type="button" onClick={onCopy}>Copy</button>
+  ),
 }));
 
 vi.mock('../../magnifying', () => ({
@@ -358,6 +363,59 @@ describe('Editor', () => {
     mockIsPainterConfig.mockReturnValue(false);
   });
 
+  it('onFocus forwards keydown events to keyboard drawing', () => {
+    setupDefaults({ activeTool: { type: 'square', color: 'red', size: 4 } });
+    mockIsPainterConfig.mockReturnValue(true);
+    const trackKeydown = vi.fn((handler) => {
+      handler(new KeyboardEvent('keydown', { key: 'Enter' }));
+      return {
+        setLimit: vi.fn(() => ({ turnOn: vi.fn() })),
+      };
+    });
+    mockUpdateCursorForKeyboard.mockReturnValue({ trackKeydown });
+
+    const bg = { css: {}, blur: vi.fn() } as any;
+    const { container } = render(<Editor bg={bg} />);
+
+    fireEvent.focus(container.querySelectorAll('div')[1]);
+
+    expect(mockStartDrawByKeyboard).toHaveBeenCalled();
+    mockIsPainterConfig.mockReturnValue(false);
+  });
+
+  it('onCopy sends null when the editor is empty', async () => {
+    const { handlers, copy, shapesActions } = setupDefaults({ isEmpty: true });
+    const bg = { css: {}, blur: vi.fn() } as any;
+    const { getByTestId } = render(<Editor bg={bg} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId('main-toolbar'));
+    });
+
+    expect(copy).toHaveBeenCalled();
+    expect(shapesActions.isEmpty).toHaveBeenCalled();
+    expect(handlers.sendToMain).toHaveBeenCalledWith(null);
+    expect(mockMessage).toHaveBeenCalledWith({
+      text: 'Added to clipboard',
+      duration: 1000,
+      modal: true,
+    });
+    expect(handlers.resetAll).toHaveBeenCalled();
+    expect(handlers.quit).toHaveBeenCalled();
+  });
+
+  it('onCopy sends the copied blob when the editor has shapes', async () => {
+    const { handlers, copy } = setupDefaults({ isEmpty: false });
+    const bg = { css: {}, blur: vi.fn() } as any;
+    const { getByTestId } = render(<Editor bg={bg} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId('main-toolbar'));
+    });
+
+    expect(handlers.sendToMain).toHaveBeenCalledWith(await copy.mock.results[0].value);
+  });
+
   it('getCursor returns move when area.editing=move', () => {
     setupDefaults({ area: { rect: [10, 10, 800, 600], editing: 'move' } });
     const bg = { css: {}, blur: vi.fn() } as any;
@@ -392,6 +450,18 @@ describe('Editor', () => {
     mockIsPainterConfig.mockReturnValue(false);
   });
 
+  it('getCursor returns pencil and mosaic cursors for brush tools', () => {
+    setupDefaults({ activeTool: { type: 'pencil', color: 'red', size: 4 } });
+    let bg = { css: {}, blur: vi.fn() } as any;
+    render(<Editor bg={bg} />);
+    expect(mockCursorPencil).toHaveBeenCalledWith('red');
+
+    setupDefaults({ activeTool: { type: 'mosaic', color: 'red', size: 9 } });
+    bg = { css: {}, blur: vi.fn() } as any;
+    render(<Editor bg={bg} />);
+    expect(mockCursorMosaic).toHaveBeenCalledWith(9);
+  });
+
   it('getCursor returns crosshair for ellipse tool', () => {
     setupDefaults({ activeTool: { type: 'ellipse', color: 'red', size: 4 } });
     mockIsPainterConfig.mockReturnValue(true);
@@ -418,6 +488,20 @@ describe('Editor', () => {
     const bg = { css: {}, blur: vi.fn() } as any;
     const { container } = render(<Editor bg={bg} />);
     expect(container.querySelectorAll('div')[1].style.cursor).toBe('move');
+  });
+
+  it('getCursor returns move for unknown active tools', () => {
+    setupDefaults({ activeTool: { type: 'unknown', color: 'red', size: 4 } });
+    const bg = { css: {}, blur: vi.fn() } as any;
+    const { container } = render(<Editor bg={bg} />);
+    expect(container.querySelectorAll('div')[1].style.cursor).toBe('move');
+  });
+
+  it('getCursor returns empty when an active shape is being edited', () => {
+    setupDefaults({ activeShape: { editing: true }, activeTool: { type: 'square', color: 'red', size: 4 } });
+    const bg = { css: {}, blur: vi.fn() } as any;
+    const { container } = render(<Editor bg={bg} />);
+    expect(container.querySelectorAll('div')[1].style.cursor).toBe('');
   });
 
   it('getCursor returns empty string when no tool and isEmpty=false', () => {

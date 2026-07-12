@@ -111,6 +111,7 @@ export interface BufferTypeInfo {
 
 /**
  * Identify the actual content type of a buffer by inspecting magic bytes.
+ * Merges image detection with structural document detection.
  */
 export function identifyBufferType(buf: Buffer): BufferTypeInfo {
   if (buf.length < 4) {

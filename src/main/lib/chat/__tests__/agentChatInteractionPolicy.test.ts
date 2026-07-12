@@ -32,7 +32,7 @@ describe('agentChatInteractionPolicy', () => {
 
     it('passes through optional title', () => {
       const err = new NonInteractiveRuntimeInteractionError({
-        policy: 'plain-text-only',
+        policy: 'forbid',
         requestType: 'choice',
         title: 'Some Title',
         message: 'Cannot show UI',
@@ -96,19 +96,14 @@ describe('agentChatInteractionPolicy', () => {
       expect(msg).toContain('interactive user input');
     });
 
-    it('returns the remote-session message for plain-text-only', () => {
-      const msg = createBlockedInteractionMessage('plain-text-only');
-      expect(msg).toContain('interactive UI components');
-    });
-
-    it('returns the remote-session message for allow-ui', () => {
+    it('returns a generic blocked-input message for allow-ui', () => {
       const msg = createBlockedInteractionMessage('allow-ui');
-      expect(msg).toContain('interactive UI components');
+      expect(msg).toContain('interactive user input');
     });
 
-    it('forbid message differs from plain-text-only message', () => {
+    it('forbid message differs from allow-ui message', () => {
       const forbidMsg = createBlockedInteractionMessage('forbid');
-      const softMsg = createBlockedInteractionMessage('plain-text-only');
+      const softMsg = createBlockedInteractionMessage('allow-ui');
       expect(forbidMsg).not.toBe(softMsg);
     });
   });

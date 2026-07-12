@@ -201,6 +201,21 @@ describe('GhcAuthManager', () => {
       expect(user!.name).toBe('noname');
     });
 
+    it('normalizes missing optional GitHub profile fields to empty strings', async () => {
+      global.fetch = mockFetch({});
+
+      const user = await manager.getUserInfo('token');
+
+      expect(user).toEqual({
+        id: '',
+        login: '',
+        name: '',
+        email: '',
+        avatarUrl: '',
+        copilotPlan: 'individual',
+      });
+    });
+
     it('returns null on HTTP error', async () => {
       global.fetch = mockFetch({}, 403, 'Forbidden');
 
@@ -213,6 +228,11 @@ describe('GhcAuthManager', () => {
 
       const user = await manager.getUserInfo('token');
       expect(user).toBeNull();
+    });
+
+    it('returns null when fetch rejects with a non-Error value', async () => {
+      global.fetch = vi.fn().mockRejectedValue('offline');
+      expect(await manager.getUserInfo('token')).toBeNull();
     });
   });
 
@@ -312,6 +332,17 @@ describe('GhcAuthManager', () => {
       const result = await manager.pollForAccessToken('dc-code');
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/No access token/);
+    });
+
+    it('uses a stable fallback description for an unknown OAuth error', async () => {
+      global.fetch = mockFetch({ error: 'unsupported_grant' });
+
+      const result = await manager.pollForAccessToken('dc-code');
+
+      expect(result).toEqual({
+        success: false,
+        error: 'OAuth error: unsupported_grant - Unknown error',
+      });
     });
   });
 

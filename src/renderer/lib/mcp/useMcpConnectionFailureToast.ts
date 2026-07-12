@@ -11,6 +11,7 @@ import { useToast } from '../../components/ui/ToastProvider'
 import ErrorDetailsDialog from '../../components/ui/ErrorDetailsDialog'
 import { mcpClientCacheManager } from './mcpClientCacheManager'
 import { createLogger } from '../utilities/logger';
+import { useI18n } from '../i18n/useI18n'
 const logger = createLogger('[UseMcpConnectionFailureToast]');
 
 interface FailedConnection {
@@ -50,10 +51,10 @@ const splitMcpError = (error: string): { primary: string; stderr: string } => {
   }
 }
 
-const summarizeMcpError = (error: string): McpErrorSummary => {
+const summarizeMcpError = (error: string, fallbackSummary: string): McpErrorSummary => {
   const { primary, stderr } = splitMcpError(error)
   const normalizedPrimary = primary.replace(/^Failed to initialize MCP server:\s*/i, '').trim()
-  const summary = normalizedPrimary.split('\n').find(Boolean)?.trim() || 'Connection failed'
+  const summary = normalizedPrimary.split('\n').find(Boolean)?.trim() || fallbackSummary
 
   const detailLinesSource = stderr || normalizedPrimary
   const previewLines = detailLinesSource
@@ -76,6 +77,8 @@ const summarizeMcpError = (error: string): McpErrorSummary => {
  */
 export const useMcpConnectionFailureToast = () => {
   const { showToast, removeToast } = useToast()
+  const { t } = useI18n()
+  const tRef = useRef(t)
   const navigate = useNavigate()
   const failedConnectionsRef = useRef<Map<string, FailedConnection>>(new Map())
   const [errorDetailsState, setErrorDetailsState] = React.useState<ErrorDetailsState>({
@@ -83,6 +86,10 @@ export const useMcpConnectionFailureToast = () => {
     serverName: '',
     error: ''
   })
+
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
 
   /**
    * Clear the Toast and record for a given server
@@ -145,17 +152,18 @@ export const useMcpConnectionFailureToast = () => {
       return
     }
 
-    const summary = summarizeMcpError(error)
+    const translate = tRef.current
+    const summary = summarizeMcpError(error, translate('mcp.connectionFailure.fallbackSummary'))
 
     // Show a Toast with Reconnect and Manage Server buttons
     const toastMessage = React.createElement('div', { className: 'flex flex-col gap-1' },
-      React.createElement('span', { className: 'font-medium' }, `MCP Server "${serverName}" connection failed`),
+      React.createElement('span', { className: 'font-medium' }, translate('mcp.connectionFailure.title', { serverName })),
       React.createElement('span', { className: 'text-xs opacity-90 wrap-anywhere' }, summary.summary),
       summary.preview.length > 0
         ? React.createElement('div', { className: 'text-xs opacity-80 whitespace-pre-wrap wrap-anywhere' }, summary.preview.join('\n'))
         : null,
       summary.remainingLineCount > 0
-        ? React.createElement('span', { className: 'text-[11px] opacity-70' }, `+${summary.remainingLineCount} more lines`)
+        ? React.createElement('span', { className: 'text-[11px] opacity-70' }, translate('mcp.connectionFailure.moreLines', { count: summary.remainingLineCount }))
         : null
     )
 
@@ -171,17 +179,17 @@ export const useMcpConnectionFailureToast = () => {
         },
         actions: [
           {
-            label: 'Manage',
+            label: translate('mcp.connectionFailure.manage'),
             onClick: () => handleManageServer(serverName),
             variant: 'secondary'
           },
           {
-            label: 'Details',
+            label: translate('mcp.connectionFailure.details'),
             onClick: () => handleShowDetails(serverName, error),
             variant: 'secondary'
           },
           {
-            label: 'Reconnect',
+            label: translate('mcp.connectionFailure.reconnect'),
             onClick: () => handleReconnect(serverName),
             variant: 'primary'
           }
@@ -229,8 +237,8 @@ export const useMcpConnectionFailureToast = () => {
   }, [handleConnectionFailure, clearFailedConnection])
   return React.createElement(ErrorDetailsDialog, {
     open: errorDetailsState.open,
-    title: 'MCP connection error',
-    subtitle: errorDetailsState.serverName ? `Server: ${errorDetailsState.serverName}` : undefined,
+    title: t('mcp.connectionFailure.detailsTitle'),
+    subtitle: errorDetailsState.serverName ? t('mcp.connectionFailure.detailsSubtitle', { serverName: errorDetailsState.serverName }) : undefined,
     details: errorDetailsState.error,
     onOpenChange: (open: boolean) => setErrorDetailsState(prev => ({ ...prev, open }))
   })

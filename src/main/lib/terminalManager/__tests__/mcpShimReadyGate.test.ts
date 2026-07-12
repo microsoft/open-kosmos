@@ -57,7 +57,7 @@ import { TerminalConfig } from '../types';
 function createMcpConfig(): TerminalConfig {
   return {
     command: 'uvx',
-    args: ['test-mcp'],
+    args: ['sample-mcp'],
     cwd: 'C:\\Users\\test',
     type: 'mcp_transport',
     persistent: true,

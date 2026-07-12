@@ -18,6 +18,10 @@ import { MainAuthManager } from '../auth/authManager';
 import type { SubAgentChatOptions } from './types';
 import { createConsoleLogger } from '../unifiedLogger';
 import { repairToolCallArguments } from './subAgentToolCallRepair';
+import {
+  convertMessagesToResponseInput,
+  type ResponsesConvertibleMessage,
+} from '../chat/responsesInputConverter';
 
 // Lazy-init logger
 let logger: any;
@@ -203,9 +207,17 @@ export class SubAgentLLMClient {
     let requestBody: Record<string, unknown>;
 
     if (endpoint === '/responses') {
+      // The /responses endpoint rejects /chat/completions message shapes
+      // (assistant.tool_calls + role:'tool'). Convert the tool-call history into
+      // function_call / function_call_output items, mirroring the main AgentChat
+      // transport. Without this, a sub-agent that makes any tool call fails its
+      // next turn with 400 "Unknown parameter: 'input[N].tool_calls'".
+      const responseInput = convertMessagesToResponseInput(
+        formattedMessages as unknown as ResponsesConvertibleMessage[],
+      );
       requestBody = {
         model: modelId,
-        input: formattedMessages,
+        input: responseInput,
         stream: true,
         ...buildMaxTokensParam(modelId, MAX_OUTPUT_TOKENS),
         include: ['reasoning.encrypted_content'],

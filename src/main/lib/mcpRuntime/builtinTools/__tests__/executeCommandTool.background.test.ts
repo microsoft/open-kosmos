@@ -16,6 +16,23 @@ vi.mock('../../../unifiedLogger', async () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+  createConsoleLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
+// Mock RuntimeManager so executeCommandTool does not import the real runtime graph.
+vi.mock('../../../runtime/RuntimeManager', async () => ({
+  RuntimeManager: {
+    getInstance: vi.fn().mockReturnValue({
+      getRunTimeConfig: vi.fn().mockReturnValue({ mode: 'system' }),
+      waitForShimsReady: vi.fn().mockResolvedValue(undefined),
+      ensurePythonPipAvailable: vi.fn().mockResolvedValue(true),
+    }),
+  },
 }));
 
 // Mock backgroundProcessManager

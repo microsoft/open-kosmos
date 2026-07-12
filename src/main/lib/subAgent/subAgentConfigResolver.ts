@@ -7,19 +7,15 @@
  * File location: src/main/lib/subAgent/subAgentConfigResolver.ts
  */
 
-import type { SubAgent } from './types';
 import type {
   SubAgentConfig,
   AgentMcpServer,
 } from '../userDataADO/types/profile';
 import { profileCacheManager } from '../userDataADO/profileCacheManager';
-import * as path from 'path';
+import { getChatPrimaryAgent, getChatWorkspace } from '../userDataADO/agentAccessor';
 import { extractMonthFromChatSessionId } from '../userDataADO/pathUtils';
-import { app } from 'electron';
 import { getModelById } from '../llm/ghcModelsManager';
 import { INHERIT_MODEL_VALUE } from '@shared/constants/subAgent';
-import { mcpClientManager } from '../mcpRuntime/mcpClientManager';
-import { existsSync } from 'fs';
 import { createConsoleLogger } from '../unifiedLogger';
 
 // Lazy-init logger (same pattern as manager)
@@ -60,7 +56,14 @@ export function resolveSubAgentModel(
 }
 
 /**
- * Get parent Agent config (for inheritance resolution)
+ * Get parent Agent config (for inheritance resolution).
+ *
+ * Resolve via `getChatPrimaryAgent`, NOT the raw `parentChatConfig.agent`:
+ * post-separation `getAllChatConfigs` returns agent_ids-only cache chats (inline
+ * agents stripped), so reading `.agent` directly yields `undefined` and the caller
+ * fails with "Parent agent config not found" — sub-agents would silently stop
+ * inheriting the parent's MCP tools. The accessor resolves `agent_ids` through the
+ * store, matching the sibling `deriveDeliverablesPath` below.
  */
 export function getParentAgentConfig(
   parentChatId: string,
@@ -69,147 +72,10 @@ export function getParentAgentConfig(
   try {
     const allChats = profileCacheManager.getAllChatConfigs(userAlias);
     const parentChatConfig = allChats?.find((chat: any) => chat.chat_id === parentChatId);
-    return parentChatConfig?.agent ?? undefined;
+    return getChatPrimaryAgent(parentChatConfig) ?? undefined;
   } catch {
     return undefined;
   }
-}
-
-/**
- * Resolve inherited config — merge sub-agent persisted config + parent config into runtime resolution result.
- *
- * Merge rules:
- * - MCP Servers: array merge, sub-agent's same-name servers take priority (override parent)
- * - Skills: set union (deduplicated)
- * - Knowledge Base: value override (sub-agent non-empty takes priority, otherwise use parent)
- *
- * See tech doc §4.7
- */
-export function resolveInheritedConfig(
-  subAgentConfig: SubAgentConfig,
-  parentAgentConfig?: { mcpServers?: AgentMcpServer[]; mcp_servers?: AgentMcpServer[]; skills?: string[]; knowledgeBase?: string },
-): {
-  resolvedMcpServers: SubAgent['resolvedMcpServers'];
-  resolvedSkills: SubAgent['resolvedSkills'];
-  resolvedKnowledgeBase?: string;
-} {
-  // ── MCP Servers merge ──
-  const childServers = (subAgentConfig.mcpServers || [])
-    .filter((s): s is AgentMcpServer => typeof s !== 'string')
-    .map((s: AgentMcpServer) => ({
-    name: s.name,
-    connected: false,
-    tools: s.tools || [],
-    inherited: false,
-  }));
-
-  let resolvedMcpServers = [...childServers];
-
-  if (subAgentConfig.inherit_mcp_servers !== false && (parentAgentConfig?.mcpServers || parentAgentConfig?.mcp_servers)) {
-    const childNames = new Set(childServers.map((s: AgentMcpServer) => s.name));
-    const parentInherited = (parentAgentConfig.mcpServers || parentAgentConfig.mcp_servers || [])
-      .filter((ps: AgentMcpServer) => !childNames.has(ps.name))
-      .map((ps: AgentMcpServer) => ({
-        name: ps.name,
-        connected: false,
-        tools: ps.tools || [],
-        inherited: true,
-      }));
-    resolvedMcpServers = [...parentInherited, ...childServers];
-  }
-
-  // ── Skills merge ──
-  const childSkills = (subAgentConfig.skills || []).map(name => ({
-    name,
-    installed: false,
-    inherited: false,
-  }));
-
-  let resolvedSkills = [...childSkills];
-
-  if (subAgentConfig.inherit_skills !== false && parentAgentConfig?.skills) {
-    const childNames = new Set(childSkills.map(s => s.name));
-    const parentInherited = parentAgentConfig.skills
-      .filter(name => !childNames.has(name))
-      .map(name => ({
-        name,
-        installed: false,
-        inherited: true,
-      }));
-    resolvedSkills = [...parentInherited, ...childSkills];
-  }
-
-  // ── Knowledge Base merge ── (child takes priority; respects inherit flag)
-  let resolvedKnowledgeBase: string | undefined;
-  if (subAgentConfig.knowledgeBase) {
-    // Sub-agent has its own knowledge base → use its own
-    resolvedKnowledgeBase = subAgentConfig.knowledgeBase;
-  } else if (subAgentConfig.inherit_knowledge_base !== false && parentAgentConfig?.knowledgeBase) {
-    // Sub-agent has no knowledge base but inheritance is enabled → use parent's
-    resolvedKnowledgeBase = parentAgentConfig.knowledgeBase;
-  }
-
-  return { resolvedMcpServers, resolvedSkills, resolvedKnowledgeBase };
-}
-
-/**
- * Validate that resolved MCP servers and skills are actually available at runtime.
- * Returns a list of human-readable warnings for any unavailable resources.
- * These warnings are surfaced to the parent LLM via the tool result.
- */
-export function validateToolAvailability(
-  resolved: {
-    resolvedMcpServers: SubAgent['resolvedMcpServers'];
-    resolvedSkills: SubAgent['resolvedSkills'];
-  },
-  userAlias: string,
-): string[] {
-  const warnings: string[] = [];
-
-  // Check MCP servers: compare resolved names against actually connected servers
-  try {
-    const allRuntimeStates = mcpClientManager.getAllMcpServerRuntimeStates();
-    const connectedNames = new Set(
-      allRuntimeStates
-        .filter(s => s.status === 'connected')
-        .map(s => s.serverName)
-    );
-    for (const server of resolved.resolvedMcpServers) {
-      if (!connectedNames.has(server.name)) {
-        warnings.push(`MCP server "${server.name}" is not connected (its tools will be unavailable)`);
-      }
-    }
-  } catch (err) {
-    getLogger().warn?.(
-      `[SubAgentConfigResolver] Failed to check MCP server availability: ${err instanceof Error ? err.message : String(err)}`,
-      'validateToolAvailability'
-    );
-  }
-
-  // Check skills: verify skill directories exist on disk
-  try {
-    const appPath = app.getPath('userData');
-    for (const skill of resolved.resolvedSkills) {
-      const skillDir = path.join(appPath, 'profiles', userAlias, 'skills', skill.name);
-      if (!existsSync(skillDir)) {
-        warnings.push(`Skill "${skill.name}" is not installed`);
-      }
-    }
-  } catch (err) {
-    getLogger().warn?.(
-      `[SubAgentConfigResolver] Failed to check skill availability: ${err instanceof Error ? err.message : String(err)}`,
-      'validateToolAvailability'
-    );
-  }
-
-  if (warnings.length > 0) {
-    getLogger().warn?.(
-      `[SubAgentConfigResolver] Tool availability warnings: ${warnings.join('; ')}`,
-      'validateToolAvailability'
-    );
-  }
-
-  return warnings;
 }
 
 /**
@@ -229,7 +95,7 @@ export function deriveDeliverablesPath(
   try {
     const allChats = profileCacheManager.getAllChatConfigs(userAlias);
     const parentChatConfig = allChats?.find((chat: any) => chat.chat_id === parentChatId);
-    const workspacePath = parentChatConfig?.agent?.workspace;
+    const workspacePath = getChatWorkspace(parentChatConfig);
     if (!workspacePath || typeof workspacePath !== 'string' || !workspacePath.trim()) {
       return undefined;
     }

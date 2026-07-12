@@ -29,7 +29,7 @@ function makeJob(overrides: Partial<SchedulerJob> = {}): SchedulerJob {
     scheduleType: 'cron',
     cronExpression: '0 9 * * *',
     enabled: true,
-    agentId: 'chat_001',
+    chat_id: 'chat_001',
     message: 'run',
     status: 'pending',
     ...overrides,
@@ -109,6 +109,22 @@ describe('ScheduleSettingsManager', () => {
 
     it('throws on invalid month key', async () => {
       await expect(manager.readScheduleMonth('alice', 'BADKEY')).rejects.toThrow('Invalid schedule month key');
+    });
+
+    it('rewrites legacy agentId jobs to chat_id on disk', async () => {
+      const dir = await manager.ensureSchedulesDir('alice');
+      const file = path.join(dir, '202601.json');
+      const legacy = makeJob() as unknown as Record<string, unknown>;
+      delete legacy.chat_id;
+      legacy.agentId = 'chat-legacy-1';
+      fs.writeFileSync(file, JSON.stringify({ schedulerJobs: [legacy] }));
+
+      const result = await manager.readScheduleMonth('alice', '202601');
+      expect(result.schedulerJobs[0].chat_id).toBe('chat-legacy-1');
+
+      const onDisk = fs.readFileSync(file, 'utf-8');
+      expect(onDisk).not.toContain('agentId');
+      expect(onDisk).toContain('chat_id');
     });
   });
 
@@ -237,6 +253,100 @@ describe('ScheduleSettingsManager', () => {
       const result = await manager.getAllJobs('alice');
       expect(result).toHaveLength(2);
       expect(result[0].id > result[1].id).toBe(true);
+    });
+  });
+
+  describe('delete/find/getAll/list', () => {
+    it('deletes the only job and unlinks the month file', async () => {
+      const job = makeJob();
+      await manager.upsertScheduleJob('alice', job);
+      const dir = await manager.ensureSchedulesDir('alice');
+      expect(await manager.deleteScheduleJob('alice', '202601', job.id)).toBe(true);
+      expect(fs.existsSync(path.join(dir, '202601.json'))).toBe(false);
+    });
+
+    it('returns false deleting a missing job', async () => {
+      await manager.upsertScheduleJob('alice', makeJob());
+      expect(await manager.deleteScheduleJob('alice', '202601', 'nope')).toBe(false);
+    });
+
+    it('rewrites file when deleting one of several jobs', async () => {
+      await manager.upsertScheduleJob('alice', makeJob());
+      await manager.upsertScheduleJob('alice', makeJob({ id: 'sched_20260101130000_device_def67890' }));
+      expect(await manager.deleteScheduleJob('alice', '202601', 'sched_20260101130000_device_def67890')).toBe(true);
+      const after = await manager.readScheduleMonth('alice', '202601');
+      expect(after.schedulerJobs).toHaveLength(1);
+    });
+
+    it('finds a job location and returns null when absent', async () => {
+      const job = makeJob();
+      await manager.upsertScheduleJob('alice', job);
+      const loc = await manager.findJobLocation('alice', job.id);
+      expect(loc?.monthKey).toBe('202601');
+      expect(await manager.findJobLocation('alice', 'absent')).toBeNull();
+    });
+
+    it('aggregates all jobs across months', async () => {
+      await manager.upsertScheduleJob('alice', makeJob());
+      await manager.upsertScheduleJob('alice', makeJob({ id: 'sched_20260201120000_device_aaa11111', cronExpression: '0 9 * * *' }));
+      const all = await manager.getAllJobs('alice');
+      expect(all.length).toBe(2);
+    });
+
+    it('listScheduleMonths returns [] when dir is missing', async () => {
+      expect(await manager.listScheduleMonths('ghost')).toEqual([]);
+    });
+  });
+
+  describe('error paths', () => {
+    it('rethrows on malformed json', async () => {
+      const dir = await manager.ensureSchedulesDir('alice');
+      fs.writeFileSync(path.join(dir, '202601.json'), '{not json');
+      await expect(manager.readScheduleMonth('alice', '202601')).rejects.toBeTruthy();
+    });
+
+    it('cleans up temp file and rethrows when rename fails', async () => {
+      const spy = vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('rename fail'));
+      await expect(manager.upsertScheduleJob('alice', makeJob())).rejects.toThrow('rename fail');
+      spy.mockRestore();
+    });
+
+    it('rethrows when unlinking empty month file fails', async () => {
+      const job = makeJob();
+      await manager.upsertScheduleJob('alice', job);
+      const spy = vi.spyOn(fs.promises, 'unlink').mockRejectedValueOnce(new Error('unlink fail'));
+      await expect(manager.deleteScheduleJob('alice', '202601', job.id)).rejects.toThrow('unlink fail');
+      spy.mockRestore();
+    });
+  });
+
+  describe('non-Error rejection arms', () => {
+    it('handles string read errors', async () => {
+      const dir = await manager.ensureSchedulesDir('alice');
+      fs.writeFileSync(path.join(dir, '202601.json'), '{"schedulerJobs":[]}');
+      const spy = vi.spyOn(fs.promises, 'readFile').mockRejectedValueOnce('str-read');
+      await expect(manager.readScheduleMonth('alice', '202601')).rejects.toBe('str-read');
+      spy.mockRestore();
+    });
+
+    it('handles string readdir errors returning []', async () => {
+      const spy = vi.spyOn(fs.promises, 'readdir').mockRejectedValueOnce('str-dir');
+      expect(await manager.listScheduleMonths('alice')).toEqual([]);
+      spy.mockRestore();
+    });
+
+    it('handles string unlink errors when deleting last job', async () => {
+      const job = makeJob();
+      await manager.upsertScheduleJob('alice', job);
+      const spy = vi.spyOn(fs.promises, 'unlink').mockRejectedValueOnce('str-unlink');
+      await expect(manager.deleteScheduleJob('alice', '202601', job.id)).rejects.toBe('str-unlink');
+      spy.mockRestore();
+    });
+
+    it('rethrows when temp writeFile fails before rename', async () => {
+      const spy = vi.spyOn(fs.promises, 'writeFile').mockRejectedValueOnce(new Error('write fail'));
+      await expect(manager.upsertScheduleJob('alice', makeJob())).rejects.toThrow('write fail');
+      spy.mockRestore();
     });
   });
 });

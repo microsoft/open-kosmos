@@ -1,7 +1,8 @@
-const { mockExecuteTool, mockSetExecutionContext, mockClearExecutionContext } = vi.hoisted(() => ({
+const { mockExecuteTool, mockSetExecutionContext, mockClearExecutionContext, mockIsBuiltinTool } = vi.hoisted(() => ({
   mockExecuteTool: vi.fn().mockResolvedValue({ content: [] }),
   mockSetExecutionContext: vi.fn(),
   mockClearExecutionContext: vi.fn(),
+  mockIsBuiltinTool: vi.fn((_toolName?: string, _agentServers?: string[]) => false),
 }));
 
 vi.mock('../../unifiedLogger', async () => import('../../__mocks__/unifiedLogger'));
@@ -12,6 +13,7 @@ vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
     callTool: vi.fn().mockResolvedValue({ content: [] }),
     getRunningServers: vi.fn(() => []),
     executeTool: mockExecuteTool,
+    isBuiltinTool: mockIsBuiltinTool,
   },
 }));
 
@@ -28,6 +30,7 @@ vi.mock('../../mcpRuntime/builtinTools/builtinToolsManager', async () => ({
 
 import { AgentChatToolExecutor, type AgentChatToolExecutorDeps } from '../agentChatToolExecutor';
 import { CancellationError, CancellationTokenSource } from '../../cancellation';
+import { TOOL_IDLE_TIMEOUT_MS, ToolIdleTimeoutError } from '../../mcpRuntime/toolTimeoutPolicy';
 
 function createExecutor(overrides: Partial<AgentChatToolExecutorDeps> = {}) {
   let nonce = 0;
@@ -48,12 +51,14 @@ function createExecutor(overrides: Partial<AgentChatToolExecutorDeps> = {}) {
     getActiveToolCancellationHandler: () => activeHandler,
     setActiveToolCancellationHandler: (handler) => { activeHandler = handler; },
     getEventSender: () => null,
+    getInteractionPolicy: () => 'allow-ui',
     currentModelSupportsTools: () => true,
     getCurrentModelId: () => 'gpt-5',
-    getSubAgentConfig: () => undefined,
     getContextSummary: () => '',
     getCurrentChatSession: () => currentChatSession as any,
+    getCurrentUserMessageId: () => undefined,
     saveChatSession: vi.fn().mockResolvedValue({ success: true }),
+    getSkipPersistence: () => false,
     getAgentMcpServerNames: () => [],
     ...overrides,
   });
@@ -63,6 +68,7 @@ describe('AgentChatToolExecutor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExecuteTool.mockResolvedValue({ content: [] });
+    mockIsBuiltinTool.mockReturnValue(false);
   });
 
   // ── executeToolCall ─────────────────────────────────────────────────────────
@@ -148,6 +154,81 @@ describe('AgentChatToolExecutor', () => {
     expect(result).toEqual({ content: [{ type: 'text', text: 'done' }] });
   });
 
+  it('captures execution context callbacks before dispatching built-in tools', async () => {
+    const eventSender = {} as Electron.WebContents;
+    const disposeTokenListener = vi.fn();
+    const cancellationToken = {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn((cb: () => void) => {
+        cb();
+        return { dispose: disposeTokenListener };
+      }),
+    } as any;
+    const executor = createExecutor({
+      getEventSender: () => eventSender,
+      getCurrentCancellationToken: () => cancellationToken,
+      getContextSummary: () => 'parent summary',
+      getCurrentUserMessageId: () => 'current-user-message',
+      getAgentMcpServerNames: () => ['builtin'],
+      getInteractionPolicy: () => 'forbid',
+    });
+
+    await executor.executeToolCall({ id: 'tool-context', function: { name: 'ctx_tool', arguments: undefined } });
+
+    const context = mockSetExecutionContext.mock.calls[0][0];
+    expect(context.agentName).toBe('OpenKosmos');
+    expect(context.interactionPolicy).toBe('forbid');
+    expect(context.eventSender).toBe(eventSender);
+    expect(context.currentUserMessageId).toBe('current-user-message');
+    await expect(context.getParentContextSummary()).resolves.toBe('parent summary');
+    const registeredHandler = vi.fn();
+    const registration = context.registerCancellationHandler(registeredHandler);
+    registration.dispose();
+    expect(cancellationToken.onCancellationRequested).toHaveBeenCalledTimes(1);
+    expect(disposeTokenListener).toHaveBeenCalledTimes(1);
+    expect(mockExecuteTool).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: 'ctx_tool',
+      toolArgs: {},
+      agentMcpServerNames: ['builtin'],
+    }));
+    expect(mockClearExecutionContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not infer a capture anchor from older chat history when the current turn id is unavailable', async () => {
+    const executor = createExecutor({
+      getCurrentChatSession: () => ({
+        chat_history: [
+          { id: 'old-user', role: 'user', timestamp: 1, content: [{ type: 'text', text: 'old' }] },
+        ],
+        context_history: [],
+      } as any),
+      getCurrentUserMessageId: () => undefined,
+    });
+
+    await executor.executeToolCall({ id: 'tool-no-anchor', function: { name: 'ctx_tool', arguments: '{}' } });
+
+    const context = mockSetExecutionContext.mock.calls[0][0];
+    expect(context.currentUserMessageId).toBeUndefined();
+  });
+
+  it('aborts the in-flight tool when the active cancellation handler runs', async () => {
+    let activeHandler: (() => Promise<void> | void) | null = null;
+    mockExecuteTool.mockImplementation(async ({ signal }) => {
+      expect(signal.aborted).toBe(false);
+      await activeHandler?.();
+      expect(signal.aborted).toBe(true);
+      return { content: [] };
+    });
+    const executor = createExecutor({
+      getActiveToolCancellationHandler: () => activeHandler,
+      setActiveToolCancellationHandler: (handler) => { activeHandler = handler; },
+    });
+
+    await executor.executeToolCall({ id: 'tool-abort', function: { name: 'abortable_tool', arguments: '{}' } });
+
+    expect(activeHandler).toBeNull();
+  });
+
   it('propagates MCP tool errors as thrown exceptions', async () => {
     const executor = createExecutor();
     mockExecuteTool.mockRejectedValue(new Error('MCP server unavailable'));
@@ -155,6 +236,177 @@ describe('AgentChatToolExecutor', () => {
     await expect(
       executor.executeToolCall({ id: 'tool-6', function: { name: 'crash', arguments: '{}' } }),
     ).rejects.toThrow('MCP server unavailable');
+  });
+
+  // ── central no-response watchdog ────────────────────────────────────────────
+
+  it('terminates a builtin tool that produces no response within the idle budget', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return new Promise(() => {}); // never resolves -> simulates a hung tool
+      });
+      const executor = createExecutor();
+
+      const callPromise = executor.executeToolCall({ id: 'idle-1', function: { name: 'slow_tool', arguments: '{}' } });
+      callPromise.catch(() => {}); // avoid an unhandled rejection while we advance timers
+
+      expect(capturedSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS);
+
+      await expect(callPromise).rejects.toBeInstanceOf(ToolIdleTimeoutError);
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(mockClearExecutionContext).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the idle budget when the tool reports activity', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return new Promise(() => {});
+      });
+      const executor = createExecutor();
+
+      const callPromise = executor.executeToolCall({ id: 'idle-2', function: { name: 'slow_tool', arguments: '{}' } });
+      callPromise.catch(() => {});
+
+      const context = mockSetExecutionContext.mock.calls[0][0];
+      expect(typeof context.reportActivity).toBe('function');
+
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      expect(capturedSignal?.aborted).toBe(false);
+      context.reportActivity();
+      // Total elapsed now exceeds one budget, but the reset keeps the tool alive.
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS - 1000);
+      expect(capturedSignal?.aborted).toBe(false);
+      // Cross the budget measured from the last activity.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(capturedSignal?.aborted).toBe(true);
+      await expect(callPromise).rejects.toBeInstanceOf(ToolIdleTimeoutError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not arm the watchdog for third-party MCP tools', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockReturnValue(false);
+      let resolveExec: (value: unknown) => void = () => {};
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return new Promise((resolve) => { resolveExec = resolve; });
+      });
+      const executor = createExecutor();
+
+      const callPromise = executor.executeToolCall({ id: 'mcp-1', function: { name: 'mcp_tool', arguments: '{}' } });
+
+      const context = mockSetExecutionContext.mock.calls[0][0];
+      expect(context.reportActivity).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS * 2);
+      expect(capturedSignal?.aborted).toBe(false);
+
+      resolveExec({ content: [] });
+      await expect(callPromise).resolves.toEqual({ content: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses agent-scoped routing when deciding whether to arm the builtin watchdog', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockImplementation((_toolName?: string, agentServers?: string[]) => {
+        return !agentServers?.includes('agent-server');
+      });
+      let resolveExec: (value: unknown) => void = () => {};
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return new Promise((resolve) => { resolveExec = resolve; });
+      });
+      const executor = createExecutor({ getAgentMcpServerNames: () => ['agent-server'] });
+
+      const callPromise = executor.executeToolCall({ id: 'scoped-1', function: { name: 'shared_tool', arguments: '{}' } });
+
+      expect(mockIsBuiltinTool).toHaveBeenCalledWith('shared_tool', ['agent-server']);
+      const context = mockSetExecutionContext.mock.calls[0][0];
+      expect(context.reportActivity).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS * 2);
+      expect(capturedSignal?.aborted).toBe(false);
+
+      resolveExec({ content: [] });
+      await expect(callPromise).resolves.toEqual({ content: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not arm the watchdog for self-managed builtin tools (coding_agent)', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let resolveExec: (value: unknown) => void = () => {};
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return new Promise((resolve) => { resolveExec = resolve; });
+      });
+      const executor = createExecutor();
+
+      const callPromise = executor.executeToolCall({ id: 'ca-1', function: { name: 'coding_agent', arguments: '{}' } });
+
+      const context = mockSetExecutionContext.mock.calls[0][0];
+      expect(context.reportActivity).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS * 2);
+      expect(capturedSignal?.aborted).toBe(false);
+
+      resolveExec({ content: [] });
+      await expect(callPromise).resolves.toEqual({ content: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('disposes the watchdog when a builtin tool completes normally', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIsBuiltinTool.mockReturnValue(true);
+      let capturedSignal: AbortSignal | undefined;
+      mockExecuteTool.mockImplementation(({ signal }: { signal: AbortSignal }) => {
+        capturedSignal = signal;
+        return Promise.resolve({ content: [] });
+      });
+      const executor = createExecutor();
+
+      await executor.executeToolCall({ id: 'done-1', function: { name: 'fast_tool', arguments: '{}' } });
+
+      // Advancing well past the budget must not abort after a clean completion.
+      await vi.advanceTimersByTimeAsync(TOOL_IDLE_TIMEOUT_MS * 2);
+      expect(capturedSignal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('propagates a builtin tool rejection while the watchdog is armed', async () => {
+    mockIsBuiltinTool.mockReturnValue(true);
+    mockExecuteTool.mockRejectedValue(new Error('builtin boom'));
+    const executor = createExecutor();
+
+    await expect(
+      executor.executeToolCall({ id: 'b-err', function: { name: 'b_tool', arguments: '{}' } }),
+    ).rejects.toThrow('builtin boom');
   });
 
   // ── assertExecutionActive ───────────────────────────────────────────────────
@@ -222,6 +474,18 @@ describe('AgentChatToolExecutor', () => {
 
   it('swallows errors thrown by the cancellation handler', async () => {
     const handler = vi.fn().mockRejectedValue(new Error('cancel boom'));
+    let activeHandler: (() => Promise<void> | void) | null = handler;
+
+    const executor = createExecutor({
+      getActiveToolCancellationHandler: () => activeHandler,
+      setActiveToolCancellationHandler: (h) => { activeHandler = h; },
+    });
+
+    await expect(executor.cancelActiveToolExecution()).resolves.toBeUndefined();
+  });
+
+  it('swallows non-Error values thrown by the cancellation handler', async () => {
+    const handler = vi.fn().mockRejectedValue('cancel boom');
     let activeHandler: (() => Promise<void> | void) | null = handler;
 
     const executor = createExecutor({
@@ -406,6 +670,60 @@ describe('AgentChatToolExecutor', () => {
     expect(saveChatSession).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps executed tool calls when the assistant message is absent from context history', async () => {
+    const currentChatSession = {
+      chat_history: [
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: [{ type: 'text', text: '' }],
+          tool_calls: [
+            { id: 'call-1', function: { name: 'tool_a', arguments: '{}' } },
+            { id: 'call-2', function: { name: 'tool_b', arguments: '{}' } },
+          ],
+        },
+        { id: 't1', role: 'tool', tool_call_id: 'call-1', content: [{ type: 'text', text: 'ok' }] },
+      ],
+      context_history: [],
+    } as any;
+    const saveChatSession = vi.fn().mockResolvedValue({ success: true });
+
+    const executor = createExecutor({
+      getCurrentChatSession: () => currentChatSession,
+      saveChatSession,
+    });
+
+    await executor.cleanupIncompleteToolCalls();
+
+    expect(currentChatSession.chat_history[0].tool_calls).toHaveLength(1);
+    expect(saveChatSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes an empty assistant message when it is absent from context history', async () => {
+    const currentChatSession = {
+      chat_history: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: [{ type: 'text', text: '' }],
+          tool_calls: [{ id: 'call-1', function: { name: 'tool_a', arguments: '{}' } }],
+        },
+      ],
+      context_history: [],
+    } as any;
+    const saveChatSession = vi.fn().mockResolvedValue({ success: true });
+
+    const executor = createExecutor({
+      getCurrentChatSession: () => currentChatSession,
+      saveChatSession,
+    });
+
+    await executor.cleanupIncompleteToolCalls();
+
+    expect(currentChatSession.chat_history).toEqual([]);
+    expect(saveChatSession).toHaveBeenCalledTimes(1);
+  });
+
   it('clears tool_calls entirely and keeps content when assistant has text but all tool calls are unexecuted', async () => {
     const currentChatSession = {
       chat_history: [
@@ -440,5 +758,51 @@ describe('AgentChatToolExecutor', () => {
     expect(assistantMsg.tool_calls).toBeUndefined();
     expect(assistantMsg.content[0].text).toBe('Thinking...');
     expect(saveChatSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps assistant content when the message is absent from context history', async () => {
+    const currentChatSession = {
+      chat_history: [
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Thinking...' }],
+          tool_calls: [{ id: 'call-1', function: { name: 'tool_a', arguments: '{}' } }],
+        },
+      ],
+      context_history: [],
+    } as any;
+    const saveChatSession = vi.fn().mockResolvedValue({ success: true });
+
+    const executor = createExecutor({
+      getCurrentChatSession: () => currentChatSession,
+      saveChatSession,
+    });
+
+    await executor.cleanupIncompleteToolCalls();
+
+    expect(currentChatSession.chat_history[0].tool_calls).toBeUndefined();
+    expect(saveChatSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows cleanup errors after logging them', async () => {
+    const executor = createExecutor({
+      getAgentName: () => 'CleanupAgent',
+      getCurrentChatSession: () => {
+        throw new Error('session unavailable');
+      },
+    });
+
+    await expect(executor.cleanupIncompleteToolCalls()).resolves.toBeUndefined();
+  });
+
+  it('swallows non-Error cleanup failures after logging them', async () => {
+    const executor = createExecutor({
+      getCurrentChatSession: () => {
+        throw 'session unavailable';
+      },
+    });
+
+    await expect(executor.cleanupIncompleteToolCalls()).resolves.toBeUndefined();
   });
 });

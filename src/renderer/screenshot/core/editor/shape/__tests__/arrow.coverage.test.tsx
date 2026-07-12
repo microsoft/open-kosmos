@@ -31,6 +31,7 @@ vi.mock('../../../common/keyboard-painter', () => ({
 }));
 
 import { ArrowPainter, ArrowShape } from '../arrow';
+import { appDataManager } from '../../../../../lib/userData/appDataManager';
 
 const defaultArea = [0, 0, 800, 600] as [number, number, number, number];
 
@@ -48,6 +49,7 @@ function makeArrowModel(overrides = {}) {
 
 describe('ArrowPainter', () => {
   beforeEach(() => {
+    (appDataManager as any).cache = { uiLanguage: 'en' };
     mockHandleDrag.mockClear();
     mockUuid.mockReturnValue('test-uuid');
     MockDragLimiter.mockImplementation(function(_area: any, ev: any) {
@@ -82,6 +84,23 @@ describe('ArrowPainter', () => {
     });
 
     expect(container.querySelector('[aria-label="render arrow"]')).toBeTruthy();
+  });
+
+  it('uses the selected language for the painted arrow aria-label', () => {
+    (appDataManager as any).cache = { uiLanguage: 'zh-CN' };
+    const addArrow = vi.fn();
+    const ref = React.createRef<ArrowPainter>();
+    const { container } = render(
+      <svg>
+        <ArrowPainter ref={ref} area={defaultArea} addArrow={addArrow} />
+      </svg>
+    );
+
+    act(() => {
+      ref.current!.setState({ from: [10, 10], to: [200, 100] });
+    });
+
+    expect(container.querySelector('[aria-label="渲染箭头"]')).toBeTruthy();
   });
 
   it('start() calls handleDrag', () => {
@@ -511,7 +530,7 @@ describe('ArrowShape', () => {
     // Make position return same as from so equal check triggers
     MockDragLimiter.mockImplementation(function() {
       return {
-        position: vi.fn(function() { return [100, 100] as [number, number]; }),
+        position: vi.fn(function() { return [10, 10] as [number, number]; }),
         offset: vi.fn(function() { return [5, 5] as [number, number]; }),
       };
     });
@@ -521,6 +540,73 @@ describe('ArrowShape', () => {
     act(() => { circle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); });
     // onMove with equal points shouldn't update state
     act(() => { capturedOnMove?.({ clientX: 100, clientY: 100 }); });
+  });
+
+  it('onResize covers equal x with different y and commits resized editing on end', () => {
+    const model = makeArrowModel({ from: [10, 10], to: [100, 100] });
+    const onChange = vi.fn();
+    const ref = React.createRef<ArrowShape>();
+    const { container } = render(
+      <svg>
+        <ArrowShape
+          ref={ref}
+          area={defaultArea}
+          model={model}
+          onChange={onChange}
+          onActive={vi.fn(() => vi.fn())}
+          active={true}
+        />
+      </svg>
+    );
+
+    let capturedOnMove: Function | undefined;
+    let capturedOnEnd: Function | undefined;
+    mockHandleDrag.mockImplementation(({ onMove, onEnd }: any) => {
+      capturedOnMove = onMove;
+      capturedOnEnd = onEnd;
+    });
+    MockDragLimiter.mockImplementation(function() {
+      return {
+        position: vi.fn(function() { return [10, 20] as [number, number]; }),
+        offset: vi.fn(function() { return [5, 5] as [number, number]; }),
+      };
+    });
+
+    const circle = container.querySelectorAll('circle')[1];
+    act(() => { circle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); });
+    act(() => { capturedOnMove?.({ clientX: 10, clientY: 20 }); });
+    expect(ref.current!.state.editing).toBeDefined();
+
+    act(() => { capturedOnEnd?.(); });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      from: [10, 10],
+      to: [10, 20],
+    }));
+  });
+
+  it('onResize onEnd with no editing does not call onChange', () => {
+    const model = makeArrowModel();
+    const onChange = vi.fn();
+    const { container } = render(
+      <svg>
+        <ArrowShape
+          area={defaultArea}
+          model={model}
+          onChange={onChange}
+          onActive={vi.fn(() => vi.fn())}
+          active={true}
+        />
+      </svg>
+    );
+
+    let capturedOnEnd: Function | undefined;
+    mockHandleDrag.mockImplementation(({ onEnd }: any) => { capturedOnEnd = onEnd; });
+
+    const circle = container.querySelector('circle')!;
+    act(() => { circle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); });
+    act(() => { capturedOnEnd?.(); });
+
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('uses editing from+to when rendering if editing is set', () => {

@@ -39,6 +39,9 @@ const { mockGetDefaultModel, mockGetAllOpenKosmosUsedModels } = vi.hoisted(() =>
 
 const mockUseScrollSelectedIntoView = vi.fn().mockReturnValue({ current: null });
 
+// Mutable chat list so individual tests can drive duplicate-name detection.
+const { mockChats } = vi.hoisted(() => ({ mockChats: { value: [] as any[] } }));
+
 // ---- vi.mock calls ----
 
 vi.mock('../../../../styles/Agent.css', () => ({}));
@@ -50,7 +53,7 @@ vi.mock('../../../../lib/models/ghcModels', () => ({
 
 vi.mock('../../../userData/userDataProvider', () => ({
   useChats: () => ({
-    chats: [],
+    chats: mockChats.value,
   }),
 }));
 
@@ -86,7 +89,7 @@ vi.mock('../../../../lib/hooks/useScrollSelectedIntoView', () => ({
 
 const defaultProps = {
   mode: 'add' as const,
-  agentId: undefined,
+  chatId: undefined,
   agentData: undefined,
   onSave: mockOnSave,
   onDataChange: mockOnDataChange,
@@ -94,7 +97,6 @@ const defaultProps = {
   cachedData: undefined,
   fieldErrors: undefined,
   readOnly: false,
-  isFromLibrary: false,
 };
 
 // ---- tests ----
@@ -139,14 +141,14 @@ describe('AgentBasicTab - update mode with agentData', () => {
   });
 
   it('loads agent data in update mode', async () => {
-    render(<AgentBasicTab {...defaultProps} mode="update" agentId="agent-1" agentData={agentData} />);
+    render(<AgentBasicTab {...defaultProps} mode="update" chatId="agent-1" agentData={agentData} />);
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('TestAgent');
     });
   });
 
   it('shows version and source metadata', async () => {
-    render(<AgentBasicTab {...defaultProps} mode="update" agentId="agent-1" agentData={agentData} />);
+    render(<AgentBasicTab {...defaultProps} mode="update" chatId="agent-1" agentData={agentData} />);
     await waitFor(() => {
       expect(screen.getByText('Agent Info')).toBeInTheDocument();
       expect(screen.getByText('1.0.0')).toBeInTheDocument();
@@ -154,24 +156,24 @@ describe('AgentBasicTab - update mode with agentData', () => {
   });
 
   it('shows version and source as ON-DEVICE', async () => {
-    render(<AgentBasicTab {...defaultProps} mode="update" agentId="agent-1" agentData={agentData} />);
+    render(<AgentBasicTab {...defaultProps} mode="update" chatId="agent-1" agentData={agentData} />);
     await waitFor(() => {
       expect(screen.getByText(/💻 On Device/)).toBeInTheDocument();
     });
   });
 
   it('notifies onDataChange when data loaded', async () => {
-    render(<AgentBasicTab {...defaultProps} mode="update" agentId="agent-1" agentData={agentData} />);
+    render(<AgentBasicTab {...defaultProps} mode="update" chatId="agent-1" agentData={agentData} />);
     await waitFor(() => {
       expect(mockOnDataChange).toHaveBeenCalledWith('basic', expect.any(Object), expect.any(Boolean));
     });
   });
 });
 
-describe('AgentBasicTab - IN-LIBRARY agent', () => {
-  const libraryAgentData = {
-    id: 'lib-agent-1',
-    name: 'LibAgent',
+describe('AgentBasicTab - legacy source metadata', () => {
+  const legacyMetadataAgent = {
+    id: 'legacy-agent-1',
+    name: 'LegacyAgent',
     emoji: '📚',
     avatar: 'https://example.com/avatar.png',
     role: '',
@@ -184,49 +186,46 @@ describe('AgentBasicTab - IN-LIBRARY agent', () => {
     vi.clearAllMocks();
   });
 
-  it('shows Library source badge', async () => {
+  it('renders legacy source metadata with local semantics', async () => {
     render(
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="lib-agent-1"
-        agentData={libraryAgentData}
-        isFromLibrary={true}
+        chatId="legacy-agent-1"
+        agentData={legacyMetadataAgent}
       />
     );
     await waitFor(() => {
-      expect(screen.getByText(/📚 Library/)).toBeInTheDocument();
+      expect(screen.getByText(/💻 On Device/)).toBeInTheDocument();
     });
   });
 
-  it('name input is disabled for library agents', async () => {
+  it('keeps agents with legacy source metadata editable', async () => {
     render(
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="lib-agent-1"
-        agentData={libraryAgentData}
-        isFromLibrary={true}
+        chatId="legacy-agent-1"
+        agentData={legacyMetadataAgent}
       />
     );
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Enter agent name...')).toBeDisabled();
+      expect(screen.getByPlaceholderText('Enter agent name...')).toBeEnabled();
     });
   });
 
-  it('emoji display shows cursor not-allowed title for library agents', async () => {
+  it('does not lock the avatar for agents with legacy source metadata', async () => {
     render(
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="lib-agent-1"
-        agentData={libraryAgentData}
-        isFromLibrary={true}
+        chatId="legacy-agent-1"
+        agentData={legacyMetadataAgent}
       />
     );
     await waitFor(() => {
       const emojiDisplay = document.querySelector('.emoji-display') as HTMLElement;
-      expect(emojiDisplay.title).toContain("cannot be modified");
+      expect(emojiDisplay.title).toBe('Click to change avatar');
     });
   });
 });
@@ -253,7 +252,7 @@ describe('AgentBasicTab - EXTERNAL agent', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="ext-agent-1"
+        chatId="ext-agent-1"
         agentData={externalAgentData}
       />
     );
@@ -267,7 +266,7 @@ describe('AgentBasicTab - EXTERNAL agent', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="ext-agent-1"
+        chatId="ext-agent-1"
         agentData={externalAgentData}
       />
     );
@@ -282,7 +281,7 @@ describe('AgentBasicTab - EXTERNAL agent', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="ext-agent-1"
+        chatId="ext-agent-1"
         agentData={externalAgentData}
       />
     );
@@ -313,7 +312,7 @@ describe('AgentBasicTab - readOnly mode', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="agent-ro"
+        chatId="agent-ro"
         agentData={agentData}
         readOnly={true}
       />
@@ -328,7 +327,7 @@ describe('AgentBasicTab - readOnly mode', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="agent-ro"
+        chatId="agent-ro"
         agentData={agentData}
         readOnly={true}
       />
@@ -479,7 +478,7 @@ describe('AgentBasicTab - Kobi agent', () => {
       <AgentBasicTab
         {...defaultProps}
         mode="update"
-        agentId="kobi-agent"
+        chatId="kobi-agent"
         agentData={kobiAgentData}
       />
     );
@@ -504,6 +503,139 @@ describe('AgentBasicTab - cachedData', () => {
     );
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('CachedAgent');
+    });
+  });
+
+  it('falls back to defaults for fields missing from a partial cachedData (add mode)', async () => {
+    // Only `name` provided; the remaining fields exercise the `: defaultInitialData.X` arm.
+    render(
+      <AgentBasicTab
+        {...defaultProps}
+        cachedData={{ name: 'PartialAgent' }}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('PartialAgent');
+    });
+    // Default emoji is preserved when cachedData omits it.
+    const avatar = screen.getByTestId('agent-avatar');
+    expect(avatar.getAttribute('data-emoji')).toBe('🤖');
+  });
+
+  it('prefers cachedData over agent data in update mode', async () => {
+    const agentData = {
+      id: 'agent-with-cache',
+      name: 'Original Name',
+      emoji: '🤖',
+      avatar: '',
+      role: '',
+      model: 'gpt-4.1',
+      version: '2.0.0',
+      source: 'ON-DEVICE' as const,
+    };
+    render(
+      <AgentBasicTab
+        {...defaultProps}
+        mode="update"
+        chatId="agent-with-cache"
+        agentData={agentData}
+        cachedData={{ name: 'Edited Name', emoji: '🚀', avatar: '', role: '', model: 'o3-mini' }}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('Edited Name');
+    });
+  });
+
+  it('treats add mode with an already-created agent id like update mode', async () => {
+    // mode==='add' but agentData.id present -> the `mode === 'add' && agentData.id` arm.
+    // version/source omitted -> the `|| ''` fallback arms.
+    const agentData = {
+      id: 'created-in-add',
+      name: 'Created Agent',
+      emoji: '🤖',
+      avatar: '',
+      role: '',
+      model: 'gpt-4.1',
+    };
+    render(
+      <AgentBasicTab
+        {...defaultProps}
+        mode="add"
+        chatId="created-in-add"
+        agentData={agentData}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('Created Agent');
+    });
+  });
+});
+
+describe('AgentBasicTab - duplicate name detection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockChats.value = [];
+  });
+
+  afterEach(() => {
+    mockChats.value = [];
+  });
+
+  it('warns when a typed name matches an existing agent (add mode)', async () => {
+    mockChats.value = [{ agent: { name: 'Existing Agent' } }];
+    render(<AgentBasicTab {...defaultProps} />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'Existing Agent' },
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/This agent name already exists/)).toBeInTheDocument();
+    });
+  });
+
+  it('does not warn when the name matches only the agent currently being edited (update mode)', async () => {
+    const currentAgent = {
+      id: 'current-agent',
+      name: 'Current Agent',
+      emoji: '🤖',
+      avatar: '',
+      role: '',
+      model: 'gpt-4.1',
+      version: '1.0.0',
+      source: 'ON-DEVICE' as const,
+    };
+    mockChats.value = [
+      { agent: { name: 'Current Agent' } },
+      { agent: { name: 'Other Agent' } },
+    ];
+    render(
+      <AgentBasicTab
+        {...defaultProps}
+        mode="update"
+        chatId="current-agent"
+        agentData={currentAgent}
+      />,
+    );
+    const input = screen.getByPlaceholderText('Enter agent name...');
+    // Type a brand-new value (differs from the loaded name so onChange fires). The
+    // current agent's own entry must be skipped, and no other entry collides.
+    fireEvent.change(input, { target: { value: 'Renamed Agent' } });
+    await waitFor(() => {
+      expect(screen.queryByText(/This agent name already exists/)).toBeNull();
+    });
+  });
+
+  it('clears the warning once the typed name no longer collides', async () => {
+    mockChats.value = [{ agent: { name: 'Existing Agent' } }];
+    render(<AgentBasicTab {...defaultProps} />);
+    const input = screen.getByPlaceholderText('Enter agent name...');
+    fireEvent.change(input, { target: { value: 'Existing Agent' } });
+    await waitFor(() => {
+      expect(screen.getByText(/This agent name already exists/)).toBeInTheDocument();
+    });
+    fireEvent.change(input, { target: { value: 'Unique Agent' } });
+    await waitFor(() => {
+      expect(screen.queryByText(/This agent name already exists/)).toBeNull();
     });
   });
 });

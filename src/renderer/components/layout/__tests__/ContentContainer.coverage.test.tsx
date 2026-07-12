@@ -101,6 +101,42 @@ describe('ContentContainer', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/chat-123/settings/basic');
   });
 
+  it('falls back to basic route for an unknown initialTab', async () => {
+    render(<ContentContainer />);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('agent:editAgent', { detail: { chatId: 'chat-x', initialTab: 'unknown-tab' } })
+      );
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/chat-x/settings/basic');
+  });
+
+  it('falls back to basic route when initialTab is omitted', async () => {
+    render(<ContentContainer />);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('agent:editAgent', { detail: { chatId: 'chat-y' } })
+      );
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/chat-y/settings/basic');
+  });
+
+  it('ignores agent:editAgent when no chatId and no currentChatId', async () => {
+    vi.resetModules();
+    vi.doMock('../../../lib/chat/agentChatSessionCacheManager', () => ({
+      useCurrentChatId: () => null,
+    }));
+    const { default: CC } = await import('../ContentContainer');
+    render(<CC />);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('agent:editAgent', { detail: { chatId: null, initialTab: 'mcp' } })
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('/settings/'));
+    vi.doUnmock('../../../lib/chat/agentChatSessionCacheManager');
+  });
+
   it('cleans up event listeners on unmount', () => {
     const removeEventListener = vi.spyOn(window, 'removeEventListener');
     const { unmount } = render(<ContentContainer />);

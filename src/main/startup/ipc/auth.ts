@@ -3,10 +3,84 @@ import { ipcMain } from 'electron';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { getMainAuthManager, getMainTokenMonitor, getAdvancedLogger } from '../lazy';
 import type { Context } from './shared';
-import { browserControlHttpServer } from "../../lib/browserControl/browserControlHttpServer";
 import { schedulerManager } from "../../lib/scheduler/SchedulerManager";
 import { ghcAuthManager } from "../../lib/auth/ghcAuth";
 import { BuddyManager } from '../../lib/buddy/BuddyManager';
+
+// Deduplicates concurrent/duplicate auth:setCurrentSession calls per user. The
+// renderer can fire this more than once (e.g. React StrictMode double-invokes
+// effects in dev), and running the full post-auth flow twice concurrently raced
+// profile load against profile write — corrupting/overwriting the profile. By
+// reusing the in-flight promise the work runs exactly once per alias.
+const setCurrentSessionInflight = new Map<string, Promise<{ success: boolean; error?: string }>>();
+
+/**
+ * Initialize background services after successful authentication.
+ * This includes SchedulerManager and BuddyManager.
+ *
+ * Called from both:
+ * - auth:setCurrentSession (session restore / auto-login path)
+ * - auth:startGhcDeviceFlow onSuccess (first-time device flow login path)
+ *
+ * All initializations are fire-and-forget to avoid blocking the sign-in flow.
+ * See postmortem: v2.7.10 signing hang for why this must not await.
+ */
+function initializeBackgroundServices(
+  ctx: Context,
+  userLogin: string,
+  trigger: 'session_restore' | 'device_flow',
+): void {
+  const logger = getAdvancedLogger();
+  const logSource = trigger === 'session_restore' ? 'auth:setCurrentSession' : 'auth:startGhcDeviceFlow';
+
+  // Initialize SchedulerManager in background — must not block sign-in
+  // Chain onto any prior init promise so dispose always waits for the full sequence
+  if (isFeatureEnabled('openkosmosFeatureScheduler')) {
+    logger.info('[Startup] SchedulerManager initialization requested (background)', logSource, {
+      userLogin,
+      trigger,
+    });
+    const previousInit = ctx._schedulerInitPromise ?? Promise.resolve();
+    ctx._schedulerInitPromise = previousInit.then(() =>
+      Promise.resolve()
+        .then(() => {
+          logger.info(`scheduler.lifecycle.${trigger}.before-init`, logSource, {
+            userLogin,
+            trigger,
+            schedulerState: schedulerManager.getRuntimeDiagnostics(),
+          });
+          return schedulerManager.initialize(userLogin).then(() => {
+            logger.info(`scheduler.lifecycle.${trigger}.after-init`, logSource, {
+              userLogin,
+              trigger,
+              schedulerState: schedulerManager.getRuntimeDiagnostics(),
+            });
+            logger.info('[Startup] SchedulerManager initialization completed', logSource, {
+              userLogin,
+            });
+          });
+        })
+        .catch((schedulerError) => {
+          logger.warn('[Startup] SchedulerManager initialization failed', logSource, {
+            userLogin,
+            error: schedulerError instanceof Error ? schedulerError.message : String(schedulerError),
+          });
+        }),
+    );
+  }
+
+  // Initialize BuddyManager in background — chained to prevent cross-account state pollution
+  const previousBuddyInit = ctx._buddyInitPromise ?? Promise.resolve();
+  ctx._buddyInitPromise = previousBuddyInit.then(() =>
+    BuddyManager.getInstance().initialize(userLogin)
+      .catch((buddyError) => {
+        logger.warn('[Startup] BuddyManager initialization failed', logSource, {
+          userLogin,
+          error: buddyError instanceof Error ? buddyError.message : String(buddyError),
+        });
+      }),
+  );
+}
 
 export default function(ctx: Context) {
   // Get locally available sessions
@@ -22,80 +96,44 @@ export default function(ctx: Context) {
 
   // Set current session - V2.0 using AuthData
   ipcMain.handle('auth:setCurrentSession', async (event, authData: any) => {
+    // Defensive check: ensure authData structure is complete
+    if (!authData || !authData.ghcAuth || !authData.ghcAuth.user || !authData.ghcAuth.user.login) {
+      const errorMsg = 'Invalid AuthData structure in IPC handler';
+      return { success: false, error: errorMsg };
+    }
+
+    const userLogin = authData.ghcAuth.user.login;
+
+    // Collapse duplicate/concurrent calls for the same user onto one in-flight run.
+    const existing = setCurrentSessionInflight.get(userLogin);
+    if (existing) {
+      return existing;
+    }
+
+    const run = (async () => {
+      try {
+        const authManager = await getMainAuthManager();
+        await authManager.setCurrentAuth(authData);
+
+        // Set currentUserAlias in main process
+        ctx.currentUserAlias = userLogin;
+
+        await ctx.registerGlobalShortcuts(); // Register global shortcuts
+
+        // Initialize background services (scheduler, buddy) - fire-and-forget
+        initializeBackgroundServices(ctx, userLogin, 'session_restore');
+
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
+    })();
+
+    setCurrentSessionInflight.set(userLogin, run);
     try {
-      // 🔥 Defensive check: ensure authData structure is complete
-      if (!authData || !authData.ghcAuth || !authData.ghcAuth.user || !authData.ghcAuth.user.login) {
-        const errorMsg = 'Invalid AuthData structure in IPC handler';
-        return { success: false, error: errorMsg };
-      }
-
-      const userLogin = authData.ghcAuth.user.login;
-      const logger = getAdvancedLogger();
-
-      const authManager = await getMainAuthManager();
-      await authManager.setCurrentAuth(authData);
-
-      // 🔥 Set currentUserAlias in main process
-      ctx.currentUserAlias = userLogin;
-
-      await ctx.registerGlobalShortcuts(); // Register global shortcuts
-
-      // 🆕 Start Browser Control HTTP server (only when feature flag is enabled)
-      if (isFeatureEnabled('browserControl')) {
-        await browserControlHttpServer.ensureStarted();
-      }
-
-      // Initialize SchedulerManager in background — must not block sign-in
-      // Chain onto any prior init promise so dispose always waits for the full sequence
-      if (isFeatureEnabled('openkosmosFeatureScheduler')) {
-        logger.info('[Startup] SchedulerManager initialization requested (background)', 'auth:setCurrentSession', {
-          userLogin,
-          trigger: 'session_restore',
-        });
-        const previousInit = ctx._schedulerInitPromise ?? Promise.resolve();
-        ctx._schedulerInitPromise = previousInit.then(() =>
-          Promise.resolve()
-            .then(() => {
-              logger.info('scheduler.lifecycle.auth-setCurrentSession.before-init', 'auth:setCurrentSession', {
-                userLogin,
-                trigger: 'session_restore',
-                schedulerState: schedulerManager.getRuntimeDiagnostics(),
-              });
-              return schedulerManager.initialize(userLogin).then(() => {
-                logger.info('scheduler.lifecycle.auth-setCurrentSession.after-init', 'auth:setCurrentSession', {
-                  userLogin,
-                  trigger: 'session_restore',
-                  schedulerState: schedulerManager.getRuntimeDiagnostics(),
-                });
-                logger.info('[Startup] SchedulerManager initialization completed', 'auth:setCurrentSession', {
-                  userLogin,
-                });
-              });
-            })
-            .catch((schedulerError) => {
-              logger.warn('[Startup] SchedulerManager initialization failed', 'auth:setCurrentSession', {
-                userLogin,
-                error: schedulerError instanceof Error ? schedulerError.message : String(schedulerError),
-              });
-            }),
-        );
-      }
-
-      // Initialize BuddyManager in background — chained to prevent cross-account state pollution
-      const previousBuddyInit = ctx._buddyInitPromise ?? Promise.resolve();
-      ctx._buddyInitPromise = previousBuddyInit.then(() => {
-        BuddyManager.getInstance().initialize(userLogin)
-          .catch((buddyError) => {
-            logger.warn('[Startup] BuddyManager initialization failed', 'auth:setCurrentSession', {
-              userLogin,
-              error: buddyError instanceof Error ? buddyError.message : String(buddyError),
-            });
-          });
-      });
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return await run;
+    } finally {
+      setCurrentSessionInflight.delete(userLogin);
     }
   });
 
@@ -163,7 +201,7 @@ export default function(ctx: Context) {
       const authManager = await getMainAuthManager();
       await authManager.destroyCurrentAuth();
 
-      // 🔥 Critical fix: clean up currentUserAlias in main process
+      // Clean up currentUserAlias in main process
       ctx.currentUserAlias = null;
 
       return { success: true };
@@ -256,19 +294,23 @@ export default function(ctx: Context) {
         },
         // onSuccess: notify renderer process on authentication success and perform follow-up
         async (authInfo) => {
+          const userLogin = authInfo.ghcAuth.user.login;
 
           try {
-            // 🔥 Critical fix: setCurrentAuth calls handlePostAuthentication to complete all initialization
+            // setCurrentAuth calls handlePostAuthentication to complete all initialization
             // Including starting Token monitoring, we need to wait for it to complete before notifying frontend
             const authManager = await getMainAuthManager();
             await authManager.setCurrentAuth(authInfo);
 
             // Set current user alias
-            ctx.currentUserAlias = authInfo.ghcAuth.user.login;
+            ctx.currentUserAlias = userLogin;
 
             await ctx.registerGlobalShortcuts(); // Register global shortcuts
 
-            // 🔥 Important: only notify frontend after all initialization is complete
+            // Initialize background services for device flow login — fire-and-forget
+            initializeBackgroundServices(ctx, userLogin, 'device_flow');
+
+            // Only notify frontend after all initialization is complete
             safeSend('auth:deviceFlowSuccess', { authInfo });
 
           } catch (sessionError: any) {
@@ -287,11 +329,6 @@ export default function(ctx: Context) {
   // Unified sign-out handler - coordinate cleanup of all components
   ipcMain.handle('auth:signOut', async () => {
     try {
-      // 🆕 Stop Browser Control HTTP server
-      if (isFeatureEnabled('browserControl') && (process.platform === 'win32' || process.platform === 'darwin')) {
-        await browserControlHttpServer.stop();
-      }
-
       const authManager = await getMainAuthManager();
       await authManager.signOut();
       return { success: true };

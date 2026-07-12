@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface Props {
   position: { x: number; y: number };
@@ -18,8 +19,14 @@ interface Props {
 function adjustMenuPosition(pos: { x: number; y: number }): { x: number; y: number } {
   const MENU_WIDTH = 160; // matches min-width in CSS
   const MENU_HEIGHT = 300; // approximate height for 8 items + separators
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1920;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 1080;
+  const vw = typeof window !== 'undefined'
+    ? window.innerWidth
+    /* v8 ignore next -- this renderer-only menu always runs with a window in app and tests. */
+    : 1920;
+  const vh = typeof window !== 'undefined'
+    ? window.innerHeight
+    /* v8 ignore next -- this renderer-only menu always runs with a window in app and tests. */
+    : 1080;
 
   let x = pos.x;
   let y = pos.y;
@@ -42,6 +49,7 @@ export const BuddyContextMenu: React.FC<Props> = ({
   onHide,
   onClose,
 }) => {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const adjustedPos = adjustMenuPosition(position);
 
@@ -65,21 +73,21 @@ export const BuddyContextMenu: React.FC<Props> = ({
   return (
     <div ref={menuRef} className="buddy-context-menu" style={{ left: adjustedPos.x, top: adjustedPos.y }}>
       <div className="buddy-context-menu-item" onClick={onPet}>
-        ❤️ Pet
+        ❤️ {t('buddy.pet')}
       </div>
       <div className="buddy-context-menu-item" onClick={onStats}>
-        📊 Stats
+        📊 {t('buddy.stats')}
       </div>
       <div className="buddy-context-menu-separator" />
       <div className="buddy-context-menu-item" onClick={onOpenBackpack}>
-        🎒 Open Backpack
+        🎒 {t('buddy.openBackpack')}
       </div>
       <div className="buddy-context-menu-item" onClick={onToggleMute}>
-        {muted ? '🔊 Unmute' : '🔇 Mute'}
+        {muted ? `🔊 ${t('buddy.unmute')}` : `🔇 ${t('buddy.mute')}`}
       </div>
       <div className="buddy-context-menu-separator" />
       <div className="buddy-context-menu-item" onClick={onHide}>
-        👁️ Hide
+        👁️ {t('buddy.hide')}
       </div>
     </div>
   );

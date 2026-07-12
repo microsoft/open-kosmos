@@ -1,8 +1,8 @@
 import { installAndActivateSkill } from '../installAndActivateSkill';
 import { addSkillFromDevice } from '../skillDeviceImporter';
 import { applySkillToAgents } from '../applySkillToAgents';
-import { SkillLibraryFetcher } from '../skillLibraryFetcher';
 import { profileCacheManager } from '../../userDataADO';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 
 const mockRecordCompleted = vi.fn();
 const mockRecordAbandoned = vi.fn();
@@ -15,12 +15,6 @@ vi.mock('../applySkillToAgents', async () => ({
   applySkillToAgents: vi.fn(),
 }));
 
-vi.mock('../skillLibraryFetcher', async () => ({
-  SkillLibraryFetcher: {
-    getInstance: vi.fn(),
-  },
-}));
-
 vi.mock('../../userDataADO', async () => ({
   profileCacheManager: {
     getCachedProfile: vi.fn(),
@@ -28,10 +22,11 @@ vi.mock('../../userDataADO', async () => ({
   },
 }));
 
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordSkillInstallAndActivateCompleted: (...args: unknown[]) => mockRecordCompleted(...args),
-    recordSkillInstallActivationAbandoned: (...args: unknown[]) => mockRecordAbandoned(...args),
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
   },
 }));
 
@@ -40,6 +35,7 @@ describe('installAndActivateSkill — extended coverage', () => {
     vi.clearAllMocks();
     mockRecordCompleted.mockResolvedValue(undefined);
     mockRecordAbandoned.mockResolvedValue(undefined);
+    (skillsConfigManager.hasSkill as Mock).mockReturnValue(true);
   });
 
   // ─── install failures ────────────────────────────────────────────────────
@@ -60,26 +56,6 @@ describe('installAndActivateSkill — extended coverage', () => {
     expect(result.success).toBe(false);
     expect(result.resolution).toBe('failed');
     expect(result.error).toBe('FILE_NOT_FOUND');
-  });
-
-  it('returns failed result when library install fails', async () => {
-    const addSkill = vi.fn().mockResolvedValue({
-      success: false,
-      error: 'SKILL_NOT_IN_LIBRARY',
-    });
-    (SkillLibraryFetcher.getInstance as Mock).mockReturnValue({ addSkill });
-    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [] });
-    (profileCacheManager.getChatConfig as Mock).mockReturnValue(null);
-
-    const result = await installAndActivateSkill({
-      userAlias: 'tester',
-      source: { type: 'library-name', value: 'nonexistent' },
-      activation: { mode: 'current-agent', chatId: 'chat-1' },
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.resolution).toBe('failed');
-    expect(result.error).toBe('SKILL_NOT_IN_LIBRARY');
   });
 
   // ─── install-only mode ───────────────────────────────────────────────────
@@ -293,10 +269,10 @@ describe('installAndActivateSkill — extended coverage', () => {
       success: false,
       message: 'Failed',
       skillName: 'pdf',
-      appliedCount: 0,
+      appliedCount: 1,
       alreadyAppliedCount: 0,
       failedCount: 1,
-      appliedTargets: [],
+      appliedTargets: [{ chatId: 'chat-1', agentName: 'A' }],
       skippedTargets: [{ chatId: 'chat-1', agentName: 'A', reason: 'UPDATE_FAILED' }],
       error: 'NO_AGENT_UPDATES',
     });
@@ -525,4 +501,34 @@ describe('installAndActivateSkill — extended coverage', () => {
     expect(result.success).toBe(true);
     expect(result.inputType).toBe('zip');
   });
+
+  it('multi_agent current chat with matching agent name is callable', async () => {
+    (addSkillFromDevice as Mock).mockResolvedValue({
+      success: true, skillName: 'pdf', skillVersion: '1.0.0', isOverwrite: true, inputType: 'folder',
+    });
+    (applySkillToAgents as Mock).mockResolvedValue({
+      success: true, skillName: 'pdf', appliedCount: 1, alreadyAppliedCount: 0, failedCount: 0,
+      appliedTargets: [{ chatId: 'chat-1', agentName: 'Kobi' }], skippedTargets: [],
+    });
+    (profileCacheManager.getCachedProfile as Mock).mockReturnValue({ skills: [{ name: 'pdf' }] });
+    (profileCacheManager.getChatConfig as Mock).mockReturnValue({
+      chat_type: 'multi_agent', agents: [{ name: 'Kobi', skills: ['pdf'] }],
+    });
+    const result = await installAndActivateSkill({
+      userAlias: 'tester',
+      source: { type: 'device-path', value: '/tmp/pdf' },
+      activation: { mode: 'selected-agents', chatId: 'chat-1', agentName: 'Kobi', targets: [{ chatId: 'chat-1', agentName: 'Kobi' }] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('device install failure without error/skillName uses fallbacks', async () => {
+    (addSkillFromDevice as Mock).mockResolvedValue({ success: false });
+    const result = await installAndActivateSkill({
+      userAlias: 'tester', source: { type: 'device-path', value: '/tmp/pdf' }, activation: { mode: 'install-only' },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('INSTALL_FAILED');
+  });
+
 });

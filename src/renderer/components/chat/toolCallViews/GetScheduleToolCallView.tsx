@@ -8,6 +8,8 @@ import { ToolCallViewProps, GetScheduleToolArgs, GetScheduleToolResult } from '.
 import { MessageHelper } from '@shared/types/chatTypes';
 import { describeCronExpression } from '../../../lib/scheduler/cronDescriptions';
 import { useCurrentChatId } from '../../../lib/chat/agentChatSessionCacheManager';
+import { useI18n } from '../../../lib/i18n/useI18n';
+import type { TranslationKey, TranslationParams } from '../../../lib/i18n';
 
 const parseToolArgs = (argsStr?: string): GetScheduleToolArgs | null => {
   if (!argsStr) return null;
@@ -27,17 +29,20 @@ const parseToolResult = (content: string): GetScheduleToolResult | null => {
   }
 };
 
-const formatRunAt = (runAt?: string): string => {
-  if (!runAt) return 'One-time schedule';
+const formatRunAt = (
+  runAt: string | undefined,
+  t: (key: TranslationKey, params?: TranslationParams) => string,
+): string => {
+  if (!runAt) return t('chat.schedule.oneTimeSchedule');
   try {
-    return `One-time ${new Date(runAt).toLocaleString()}`;
+    return t('chat.schedule.oneTimeAt', { time: new Date(runAt).toLocaleString() });
   } catch {
-    return `One-time ${runAt}`;
+    return t('chat.schedule.oneTimeAt', { time: runAt });
   }
 };
 
-const getUniqueAgentIds = (schedules: NonNullable<GetScheduleToolResult['schedules']>): string[] => (
-  Array.from(new Set(schedules.map((schedule) => schedule.agent_id).filter(Boolean)))
+const getUniqueChatIds = (schedules: NonNullable<GetScheduleToolResult['schedules']>): string[] => (
+  Array.from(new Set(schedules.map((schedule) => schedule.chat_id).filter(Boolean)))
 );
 
 export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
@@ -45,6 +50,7 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const currentChatId = useCurrentChatId();
   const args = parseToolArgs(toolCall.function.arguments);
@@ -55,9 +61,9 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
   const isInterrupted = executionStatus === 'interrupted';
   const isSuccess = result?.success === true;
   const schedules = result?.schedules || [];
-  const uniqueAgentIds = getUniqueAgentIds(schedules);
-  const singleTargetAgentId = args?.agent_id || (uniqueAgentIds.length === 1 ? uniqueAgentIds[0] : undefined) || currentChatId;
-  const shouldUsePerScheduleLinks = !args?.agent_id && uniqueAgentIds.length > 1;
+  const uniqueChatIds = getUniqueChatIds(schedules);
+  const singleTargetChatId = args?.chat_id || (uniqueChatIds.length === 1 ? uniqueChatIds[0] : undefined) || currentChatId;
+  const shouldUsePerScheduleLinks = !args?.chat_id && uniqueChatIds.length > 1;
 
   return (
     <div className="create-schedule-view">
@@ -68,23 +74,23 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
             <Clock size={18} />
           </div>
           <div className="schedule-card-title">
-            {args?.agent_id ? 'Agent Schedules' : 'All Schedules'}
+            {args?.chat_id ? t('chat.schedule.agentSchedules') : t('chat.schedule.allSchedules')}
           </div>
           <button
             className="schedule-card-link"
             onClick={() => {
-              if (singleTargetAgentId && !shouldUsePerScheduleLinks) {
-                navigate(`/agent/chat/${singleTargetAgentId}/settings/schedules`);
+              if (singleTargetChatId && !shouldUsePerScheduleLinks) {
+                navigate(`/agent/chat/${singleTargetChatId}/settings/schedules`);
               }
             }}
             title={
               shouldUsePerScheduleLinks
-                ? 'Open each schedule from its own agent row'
-                : singleTargetAgentId
-                  ? 'Open related agent schedules'
-                  : 'Agent schedules unavailable'
+                ? t('chat.schedule.openFromOwnAgentRow')
+                : singleTargetChatId
+                  ? t('chat.schedule.openRelatedAgentSchedules')
+                  : t('chat.schedule.unavailable')
             }
-            disabled={!singleTargetAgentId || shouldUsePerScheduleLinks}
+            disabled={!singleTargetChatId || shouldUsePerScheduleLinks}
           >
             <ExternalLink size={14} />
           </button>
@@ -98,7 +104,7 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
         {/* Result summary */}
         {!isExecuting && (
           <div className="schedule-card-description">
-            {isInterrupted ? 'Interrupted before schedule query result was recorded.' : result?.message}
+            {isInterrupted ? t('chat.schedule.queryInterrupted') : result?.message}
           </div>
         )}
 
@@ -117,16 +123,16 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
                   {!s.enabled && (
                     <span style={{
                       fontSize: '11px',
-                      color: '#9CA3AF',
-                      backgroundColor: '#F3F4F6',
+                      color: 'var(--color-neutral-400)',
+                      backgroundColor: 'var(--color-neutral-100)',
                       padding: '0 5px',
                       borderRadius: '3px',
-                    }}>disabled</span>
+                    }}>{t('chat.schedule.disabledStatus')}</span>
                   )}
                 </span>
                 <span className="schedule-field-value" style={{ fontSize: '12px' }}>
                   {s.schedule_type === 'once'
-                    ? formatRunAt(s.run_at)
+                    ? formatRunAt(s.run_at, t)
                     : describeCronExpression(s.cron_expression)}
                   {' '}
                   &middot; {s.message}
@@ -135,9 +141,9 @@ export const GetScheduleToolCallView: React.FC<ToolCallViewProps> = ({
                   <button
                     type="button"
                     className="schedule-inline-link"
-                    onClick={() => navigate(`/agent/chat/${s.agent_id}/settings/schedules`)}
+                    onClick={() => navigate(`/agent/chat/${s.chat_id}/settings/schedules`)}
                   >
-                    Open agent
+                    {t('chat.schedule.openAgent')}
                   </button>
                 )}
               </div>

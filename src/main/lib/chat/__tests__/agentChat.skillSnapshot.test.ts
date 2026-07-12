@@ -45,6 +45,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   UserInputField: class UserInputField {},
 }));
 
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
 }));
@@ -54,12 +55,30 @@ const { mockProfileCacheManager } = vi.hoisted(() => ({
     getChatConfig: vi.fn(),
     getAllChatConfigs: vi.fn(),
     getCachedProfile: vi.fn(),
-    updateChatSkillSnapshot: vi.fn(),
   },
 }));
 
 vi.mock('../../userDataADO/profileCacheManager', async () => ({
   profileCacheManager: mockProfileCacheManager,
+}));
+
+vi.mock('../../userDataADO/chatSkillSnapshotStore', () => ({
+  chatSkillSnapshotStore: {
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    clearForAlias: vi.fn(),
+    clearAll: vi.fn(),
+    invalidateAffectedChats: vi.fn(),
+  },
+}));
+
+vi.mock('../../userDataADO/skillsConfigManager', () => ({
+  skillsConfigManager: {
+    getSkills: vi.fn(() => []),
+    getSkill: vi.fn(),
+    hasSkill: vi.fn(),
+  },
 }));
 
 vi.mock('../chatSessionStore', async () => ({
@@ -114,6 +133,8 @@ vi.mock('../agentChatUtilities', async () => ({
 import { MessageHelper } from '@shared/types/chatTypes';
 import { AgentChatPromptService } from '../agentChatPromptService';
 import { buildChatSkillSnapshot } from '../skillSnapshotBuilder';
+import { chatSkillSnapshotStore } from '../../userDataADO/chatSkillSnapshotStore';
+import { skillsConfigManager } from '../../userDataADO/skillsConfigManager';
 
 function createPromptServiceForSkillSnapshot() {
   return new AgentChatPromptService({
@@ -122,7 +143,6 @@ function createPromptServiceForSkillSnapshot() {
     getChatSessionId: () => 'chatSession_20260324000000',
     getAgentName: () => 'Agent One',
     getLatestAgentConfig: () => null,
-    isRemoteSession: () => false,
     getInteractionPolicy: () => 'allow-ui',
   });
 }
@@ -130,8 +150,9 @@ function createPromptServiceForSkillSnapshot() {
 describe('AgentChatPromptService skill snapshot behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileCacheManager.updateChatSkillSnapshot.mockResolvedValue(true);
     mockProfileCacheManager.getCachedProfile.mockReturnValue({ skills: [] });
+    vi.mocked(chatSkillSnapshotStore.get).mockReturnValue(undefined);
+    vi.mocked(skillsConfigManager.getSkills).mockReturnValue([]);
   });
 
   it('refreshes and persists a missing skill snapshot before the next turn', async () => {
@@ -148,23 +169,21 @@ describe('AgentChatPromptService skill snapshot behavior', () => {
         skills: ['pptx'],
       },
     });
-    mockProfileCacheManager.getCachedProfile.mockReturnValue({
-      skills: [
-        {
-          name: 'pptx',
-          description: 'Create decks',
-          version: '1.0.0',
-          source: 'ON-DEVICE',
-        },
-      ],
-    });
+    vi.mocked(skillsConfigManager.getSkills).mockReturnValue([
+      {
+        name: 'pptx',
+        description: 'Create decks',
+        version: '1.0.0',
+        source: 'ON-DEVICE',
+      },
+    ] as any);
 
     const service = createPromptServiceForSkillSnapshot();
 
     await service.refreshSkillSnapshotIfNeeded();
 
-    expect(mockProfileCacheManager.updateChatSkillSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockProfileCacheManager.updateChatSkillSnapshot).toHaveBeenCalledWith(
+    expect(chatSkillSnapshotStore.set).toHaveBeenCalledTimes(1);
+    expect(chatSkillSnapshotStore.set).toHaveBeenCalledWith(
       'testUser',
       'chat-1',
       expect.objectContaining({
@@ -205,24 +224,22 @@ describe('AgentChatPromptService skill snapshot behavior', () => {
         system_prompt: 'agent prompt',
         skills: ['pptx'],
       },
-      skill_snapshot: snapshot,
     });
-    mockProfileCacheManager.getCachedProfile.mockReturnValue({
-      skills: [
-        {
-          name: 'pptx',
-          description: 'Create decks',
-          version: '1.0.0',
-          source: 'ON-DEVICE',
-        },
-      ],
-    });
+    vi.mocked(chatSkillSnapshotStore.get).mockReturnValue(snapshot);
+    vi.mocked(skillsConfigManager.getSkills).mockReturnValue([
+      {
+        name: 'pptx',
+        description: 'Create decks',
+        version: '1.0.0',
+        source: 'ON-DEVICE',
+      },
+    ] as any);
 
     const service = createPromptServiceForSkillSnapshot();
 
     await service.refreshSkillSnapshotIfNeeded();
 
-    expect(mockProfileCacheManager.updateChatSkillSnapshot).not.toHaveBeenCalled();
+    expect(chatSkillSnapshotStore.set).not.toHaveBeenCalled();
   });
 
   it('injects the persisted skill snapshot prompt instead of live-resolving skills', () => {
@@ -238,14 +255,14 @@ describe('AgentChatPromptService skill snapshot behavior', () => {
         system_prompt: 'agent prompt',
         skills: ['missing-skill'],
       },
-      skill_snapshot: {
-        binding_signature: '["missing-skill"]',
-        registry_signature: '[]',
-        generated_at: '2026-03-24T00:00:00.000Z',
-        skills: [],
-        prompt: '\n---\nSNAPSHOT_PROMPT_ONLY\n---',
-      },
     }));
+    vi.mocked(chatSkillSnapshotStore.get).mockReturnValue({
+      binding_signature: '["missing-skill"]',
+      registry_signature: '[]',
+      generated_at: '2026-03-24T00:00:00.000Z',
+      skills: [],
+      prompt: '\n---\nSNAPSHOT_PROMPT_ONLY\n---',
+    } as any);
     mockProfileCacheManager.getAllChatConfigs.mockReturnValue([
       {
         chat_id: 'chat-1',
@@ -259,16 +276,9 @@ describe('AgentChatPromptService skill snapshot behavior', () => {
           system_prompt: 'agent prompt',
           skills: ['missing-skill'],
         },
-        skill_snapshot: {
-          binding_signature: '["missing-skill"]',
-          registry_signature: '[]',
-          generated_at: '2026-03-24T00:00:00.000Z',
-          skills: [],
-          prompt: '\n---\nSNAPSHOT_PROMPT_ONLY\n---',
-        },
       },
     ]);
-    mockProfileCacheManager.getCachedProfile.mockReturnValue({ skills: [] });
+    vi.mocked(skillsConfigManager.getSkills).mockReturnValue([]);
 
     const service = createPromptServiceForSkillSnapshot();
 

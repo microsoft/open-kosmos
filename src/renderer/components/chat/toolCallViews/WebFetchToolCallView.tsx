@@ -4,6 +4,7 @@
 import React from 'react';
 import { ToolCallViewProps, WebFetchToolResult, WebFetchToolArgs, WebContentResult } from './types';
 import { MessageHelper } from '@shared/types/chatTypes';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 /**
  * Parse tool call arguments
@@ -166,6 +167,7 @@ export const WebFetchToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
   const resultText = toolResult ? MessageHelper.getText(toolResult) : '';
@@ -184,11 +186,16 @@ export const WebFetchToolCallView: React.FC<ToolCallViewProps> = ({
     <div className="web-fetch-view">
       {isExecuting ? (
         <div className="web-fetch-loading">
-          <span>Fetching {urls.length} page{urls.length > 1 ? 's' : ''}...</span>
+          <span>
+            {t('chat.tool.webFetch.fetching', {
+              count: urls.length,
+              pageLabel: urls.length > 1 ? t('chat.tool.webFetch.pages') : t('chat.tool.webFetch.page'),
+            })}
+          </span>
         </div>
       ) : isInterrupted ? (
         <div className="web-fetch-no-results">
-          Fetch interrupted before results were recorded
+          {t('chat.tool.webFetch.interrupted')}
         </div>
       ) : result?.results && result.results.length > 0 ? (
         <div className="web-fetch-results-list">
@@ -198,7 +205,7 @@ export const WebFetchToolCallView: React.FC<ToolCallViewProps> = ({
         </div>
       ) : (
         <div className="web-fetch-no-results">
-          No content fetched
+          {t('chat.tool.webFetch.noContent')}
         </div>
       )}
 

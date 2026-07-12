@@ -182,6 +182,71 @@ describe('performCompression: firstUserMessageIndex pinned with gap (line 319)',
   });
 });
 
+describe('performCompression: direct pre-summary slices', () => {
+  it('preserves pre-middle messages when no first user is pinned but the middle range starts later', async () => {
+    const compressor = createFullModeCompressor();
+    vi.spyOn(compressor as any, 'generateSummary').mockResolvedValue('synthetic summary');
+
+    const messages: Message[] = [
+      makeAssistant('preamble 1', 'pre1'),
+      makeAssistant('preamble 2', 'pre2'),
+      makeAssistant('middle to summarize', 'mid1'),
+      makeAssistant('recent assistant', 'recent-a'),
+      makeUser('recent user', 'recent-u'),
+    ];
+
+    const result = await (compressor as any).performCompression(messages, {
+      totalMessages: messages.length,
+      firstUserMessageIndex: -1,
+      firstSkillToolCallIndices: [],
+      recentMessagesStartIndex: 3,
+      middleMessagesRange: { start: 2, end: 2, count: 1 },
+      needsCompression: true,
+    });
+
+    expect(result.summary).toBe('synthetic summary');
+    expect(result.compressedMessages.map((message: Message) => message.id)).toEqual([
+      'pre1',
+      'pre2',
+      expect.stringMatching(/^summary_/),
+      'recent-a',
+      'recent-u',
+    ]);
+  });
+
+  it('preserves messages between the pinned first user and the middle range in original order', async () => {
+    const compressor = createFullModeCompressor();
+    vi.spyOn(compressor as any, 'generateSummary').mockResolvedValue('synthetic summary');
+
+    const messages: Message[] = [
+      makeUser('first user', 'u-first'),
+      makeAssistant('gap one', 'gap-1'),
+      makeAssistant('gap two', 'gap-2'),
+      makeAssistant('middle to summarize', 'mid1'),
+      makeAssistant('recent assistant', 'recent-a'),
+      makeUser('recent user', 'recent-u'),
+    ];
+
+    const result = await (compressor as any).performCompression(messages, {
+      totalMessages: messages.length,
+      firstUserMessageIndex: 0,
+      firstSkillToolCallIndices: [],
+      recentMessagesStartIndex: 4,
+      middleMessagesRange: { start: 3, end: 3, count: 1 },
+      needsCompression: true,
+    });
+
+    expect(result.compressedMessages.map((message: Message) => message.id)).toEqual([
+      'u-first',
+      'gap-1',
+      'gap-2',
+      expect.stringMatching(/^summary_/),
+      'recent-a',
+      'recent-u',
+    ]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // summarizeMessagesRecursively with empty chunks (line 447)
 // ---------------------------------------------------------------------------
@@ -486,6 +551,21 @@ describe('fitMessageToPromptBudget — merge stage', () => {
     const text = MessageHelper.getText(fitted);
     expect(text).toContain('[Truncated to fit summary prompt budget]');
   });
+
+  it('throws when a truncated message still exceeds the allowed budget', () => {
+    const compressor = createFullModeCompressor();
+    const longMsg = makeAssistant('still too long', 'a_unfit');
+
+    vi.spyOn(compressor as any, 'truncateMessageTextToPromptBudget').mockReturnValue('still too long');
+    vi.spyOn(compressor as any, 'estimateMessageSummaryPromptTokens').mockImplementation((...args: unknown[]) => {
+      const message = args[0] as Message;
+      return MessageHelper.getText(message) === 'still too long' ? 999 : 1;
+    });
+
+    expect(() => (compressor as any).fitMessageToPromptBudget(longMsg, 10, 'conversation')).toThrow(
+      'Unable to fit single assistant message within summary prompt budget 10'
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -493,6 +573,19 @@ describe('fitMessageToPromptBudget — merge stage', () => {
 // ---------------------------------------------------------------------------
 
 describe('truncateMessageTextToPromptBudget — error throw path (line 840)', () => {
+  it('returns only the truncation suffix when no original characters fit but the suffix still does', () => {
+    const compressor = createFullModeCompressor();
+    const msg = makeAssistant('A'.repeat(200), 'a_suffix_only');
+    const suffixOnly = '[Truncated to fit summary prompt budget]';
+    vi.spyOn((compressor as any).tokenCounter, 'countTextTokens').mockImplementation((...args: unknown[]) => {
+      const text = args[0] as string;
+      return text.includes(`**assistant**: ${suffixOnly}\n\n`) ? 5 : 999;
+    });
+
+    const result = (compressor as any).truncateMessageTextToPromptBudget(msg, 5);
+    expect(result).toBe(suffixOnly);
+  });
+
   it('throws when the token budget is too small even for the truncation suffix alone', () => {
     // Budget=1: both empty+suffix (15 tokens) and suffix.trim() (15 tokens) exceed it → throws.
     const compressor = createFullModeCompressor();

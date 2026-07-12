@@ -2,8 +2,7 @@
  * Additional coverage tests for src/main/main.ts — coverage2
  * Targets: createMainWindow event handlers, registerPowerMonitorLogging,
  * checkAppReadiness, onActivate branches, exportDebugInfo, addPathToZip,
- * forceCleanupChildProcesses, menu item clicks, initSelectionHook,
- * captureSelectedText, calculateToolBarWidth, etc.
+ * forceCleanupChildProcesses, menu item clicks, etc.
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -144,21 +143,6 @@ vi.mock('electron', () => ({
   globalShortcut: mocks.mockGlobalShortcut,
 }));
 
-// ─── selection-hook mock ──────────────────────────────────────────────────────
-const mockSelectionHookInstance = {
-  on: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  getCurrentSelection: vi.fn(() => null),
-};
-vi.mock('selection-hook', () => ({
-  default: vi.fn(() => mockSelectionHookInstance),
-}));
-
-vi.mock('../lib/selectionHookEncoding', () => ({
-  recoverSelectionText: vi.fn((t: string) => t),
-}));
-
 vi.mock('../lib/unifiedLogger', () => ({
   createLogger: vi.fn(() => ({
     info: vi.fn(),
@@ -262,7 +246,6 @@ vi.mock('../startup/lazy', () => ({
     getAllChatConfigs: vi.fn(() => []),
   })),
   getAdvancedLogger: vi.fn(() => mockAdvancedLogger),
-  useRemoteChannelManager: vi.fn(async (fn: any) => fn({ stopAll: vi.fn(() => Promise.resolve()) })),
   useAdvancedLogger: vi.fn((fn: any) => fn(mockAdvancedLogger)),
 }));
 
@@ -277,26 +260,6 @@ vi.mock('../startup/evalMode', () => ({
 vi.mock('../lib/llm/ghcModelsManager', () => ({
   ghcModelsManager: {
     refreshFromRemote: vi.fn(() => Promise.resolve(true)),
-  },
-}));
-
-vi.mock('../lib/assetsFetcher/assetsLibraryManager', () => ({
-  assetsLibraryManager: {
-    checkAndUpdateLibraries: vi.fn(() =>
-      Promise.resolve({
-        fetchResults: [{ success: true }],
-        updateResult: null, // test null updateResult path
-      }),
-    ),
-  },
-}));
-
-vi.mock('../lib/analytics', () => ({
-  analyticsManager: {
-    init: vi.fn(() => Promise.resolve()),
-    recordAppStart: vi.fn(() => Promise.resolve()),
-    recordAppClose: vi.fn(() => Promise.resolve()),
-    shutdown: vi.fn(() => Promise.resolve()),
   },
 }));
 
@@ -331,13 +294,6 @@ vi.mock('../lib/scheduler/scheduleStore', () => ({
   scheduleStore: {
     setMainWindow: vi.fn(),
   },
-}));
-
-vi.mock('../lib/autoUpdate/updateManager', () => ({
-  UpdateManager: vi.fn().mockImplementation(() => ({
-    startPeriodicCheck: vi.fn(),
-    destroy: vi.fn(),
-  })),
 }));
 
 vi.mock('../lib/screenshot', () => ({
@@ -499,7 +455,7 @@ describe('main.ts – coverage2', () => {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
 
-    it('closed event on linux sets mainWindow to null and cleans up toolbar/debug windows', () => {
+    it('closed event on linux sets mainWindow to null and cleans up debug windows', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
       const handlers = mocks.windowEventHandlers['closed'];
@@ -593,16 +549,6 @@ describe('main.ts – coverage2', () => {
       if (suspendHandlers?.length > 0 && resumeHandlers?.length > 0) {
         expect(() => suspendHandlers[0]()).not.toThrow();
         expect(() => resumeHandlers[0]()).not.toThrow();
-      }
-    });
-  });
-
-  // ─── checkAppReadiness ───────────────────────────────────────────────────
-  describe('checkAppReadiness via Injection.checkAssetsLibrariesAsync', () => {
-    it('checkAssetsLibrariesAsync resolves without throwing when updateResult is null', async () => {
-      // assetsLibraryManager mock returns updateResult: null — exercises the null-check branch
-      if (capturedInjection) {
-        await expect(capturedInjection.checkAssetsLibrariesAsync()).resolves.not.toThrow();
       }
     });
   });
@@ -820,48 +766,6 @@ describe('main.ts – coverage2', () => {
         expect(() =>
           handlers[0]({}, { key: 'r', control: true }),
         ).not.toThrow();
-      }
-    });
-  });
-
-  // ─── teams-image protocol handler ────────────────────────────────────────
-  describe('teams-image protocol handler', () => {
-    it('protocol.handle registers teams-image handler (if onReady was triggered)', () => {
-      // onReady is not guaranteed to be called in this test context (app.on is mocked)
-      // Simply verify the mock was set up correctly and handle gracefully.
-      const teamsHandlerCall = mocks.mockProtocol.handle.mock.calls.find(
-        (c: any[]) => c[0] === 'teams-image',
-      );
-      if (!teamsHandlerCall) {
-        // onReady was not triggered — this is valid in the test context
-        return;
-      }
-      expect(teamsHandlerCall[1]).toBeTypeOf('function');
-    });
-
-    it('teams-image handler returns 404 when file does not exist', async () => {
-      const handler = mocks.mockProtocol.handle.mock.calls.find(
-        (c: any[]) => c[0] === 'teams-image',
-      )?.[1];
-      if (handler) {
-        const fakeRequest = { url: 'teams-image:///nonexistent.png' };
-        const response = await handler(fakeRequest);
-        expect(response).toBeDefined();
-      }
-    });
-
-    it('teams-image handler returns 200 when file exists', async () => {
-      const fs = await import('fs');
-      (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
-      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(Buffer.from('img'));
-
-      const handler = mocks.mockProtocol.handle.mock.calls.find(
-        (c: any[]) => c[0] === 'teams-image',
-      )?.[1];
-      if (handler) {
-        const fakeRequest = { url: 'teams-image:///test.png' };
-        const response = await handler(fakeRequest);
-        expect(response).toBeDefined();
       }
     });
   });

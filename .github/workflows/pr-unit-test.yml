@@ -1,0 +1,148 @@
+name: PR Unit Tests
+
+# Run unit tests for every pull request to catch regressions early. When a PR
+# changes src/*.ts(x) or the coverage gate config, the unit-test job also emits
+# a coverage artifact so the Coverage Check job can enforce per-file thresholds
+# and reject new allowlist entries without running tests again. The Coverage
+# Check job renders its per-file report to the run's job summary (and a sticky
+# PR comment) so results are visible directly on GitHub.
+
+on:
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+concurrency:
+  group: pr-unit-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    outputs:
+      has_coverage_gate: ${{ steps.changes.outputs.has_coverage_gate }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect coverage-gated changes
+        id: changes
+        run: |
+          BASE_REF='${{ github.event.pull_request.base.sha }}'
+          HEAD_REF='${{ github.event.pull_request.head.sha }}'
+          CHANGED=$(git diff --name-only --diff-filter=ACMR --find-renames \
+            "$BASE_REF...$HEAD_REF" \
+            -- 'src/**/*.ts' 'src/**/*.tsx' 'scripts/coverage-threshold-config.json')
+          if [ -n "$CHANGED" ]; then
+            echo "has_coverage_gate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_coverage_gate=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        if: steps.changes.outputs.has_coverage_gate != 'true'
+        run: npm test
+
+      - name: Run Unit Tests with Coverage
+        if: steps.changes.outputs.has_coverage_gate == 'true'
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: steps.changes.outputs.has_coverage_gate == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-final
+          path: coverage/coverage-final.json
+          if-no-files-found: error
+
+      # Upload test results on failure for debugging
+      - name: Upload unit test results
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-test-results
+          path: tests/unit/test-results/
+          retention-days: 7
+
+  coverage-check:
+    name: Coverage Check
+    runs-on: ubuntu-latest
+    needs: unit-test
+    permissions:
+      contents: read
+
+    steps:
+      - name: Skip coverage check
+        if: needs.unit-test.outputs.has_coverage_gate != 'true'
+        run: |
+          echo "No coverage-gated changes detected; skipping coverage check."
+          echo "### ✅ Coverage Check skipped — no \`src/**/*.ts(x)\` or coverage config changes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout code
+        if: needs.unit-test.outputs.has_coverage_gate == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        if: needs.unit-test.outputs.has_coverage_gate == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download coverage report
+        if: needs.unit-test.outputs.has_coverage_gate == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: coverage-final
+          path: coverage
+
+      - name: Run coverage check and generate report
+        id: check
+        if: needs.unit-test.outputs.has_coverage_gate == 'true'
+        run: |
+          BASE_REF='${{ github.event.pull_request.base.sha }}'
+          HEAD_REF='${{ github.event.pull_request.head.sha }}'
+          set +e
+          node scripts/check-coverage.js \
+            --base-ref "$BASE_REF" \
+            --head-ref "$HEAD_REF" \
+            --output coverage-report.md
+          CHECK_EXIT=$?
+          echo "exit_code=$CHECK_EXIT" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Render coverage report to job summary
+        if: needs.unit-test.outputs.has_coverage_gate == 'true'
+        run: |
+          if [ -f coverage-report.md ]; then
+            cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_Coverage report unavailable._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fail if coverage below threshold
+        if: needs.unit-test.outputs.has_coverage_gate == 'true' && steps.check.outputs.exit_code != '0'
+        run: |
+          echo "::error::Per-file coverage threshold not met or new coverage allowlist entries were added. See PR comment report for details."
+          exit 1

@@ -16,6 +16,7 @@ import {
 } from './shape';
 import { css } from '../common/styled';
 import { message } from '../components/message';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 
 export const SEditorBox = css`
@@ -51,6 +52,7 @@ function useSelf() {
 }
 
 export function Editor({ bg }: Props) {
+  const { t } = useI18n();
   const [area, areaActions] = areaAtom.use();
   const [activeShape, setActiveShape] = activeShapeAtom.use();
   const { isEmpty } = shapesAtom.useCreation();
@@ -71,11 +73,11 @@ export function Editor({ bg }: Props) {
     const blob = await copy();
     await Promise.all([
       sendToMain(isEmpty() ? null : blob),
-      message({ text: 'Added to clipboard', duration: 1000, modal: true }),
+      message({ text: t('screenshot.editor.addedToClipboard'), duration: 1000, modal: true }),
       resetAll(),
     ]);
     quit();
-  }, [isEmpty]);
+  }, [isEmpty, t]);
 
   function onStart(ev: React.PointerEvent) {
     ev.stopPropagation();
@@ -93,7 +95,7 @@ export function Editor({ bg }: Props) {
     if (!isPainterConfig(activeTool)) return {};
     return {
       // for screen reader
-      'aria-label': 'canvas focused',
+      'aria-label': t('screenshot.editor.canvasFocused'),
       // when painter tool is active, make the editor area focusable
       tabIndex: 0,
       // when it's focused, start listening to keyboard events and handle drawing

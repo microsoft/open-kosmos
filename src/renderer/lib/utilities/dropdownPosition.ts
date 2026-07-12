@@ -40,8 +40,7 @@ export const ANCHORED_DROPDOWN_SIZE_PRESETS = {
   mcpAddMenu: { estimatedWidth: 220, estimatedHeight: 120 },
   skillsAddMenu: { estimatedWidth: 220, estimatedHeight: 80 },
   skillMenu: { estimatedWidth: 220, estimatedHeight: 80 },
-  subAgentsAddMenu: { estimatedWidth: 220, estimatedHeight: 80 },
-  subAgentMenu: { estimatedWidth: 240, estimatedHeight: 120 },
+  hookMenu: { estimatedWidth: 200, estimatedHeight: 132 },
   tagFilterMenu: { estimatedWidth: 180, estimatedHeight: 240 },
 } satisfies Record<string, DropdownSizeEstimate>;
 

@@ -215,6 +215,36 @@ describe('BingWebSearchTool — getHostMachineConfig timezone branches', () => {
   });
 });
 
+// ── getHostMachineConfig platform branches ────────────────────────────────────
+
+describe('BingWebSearchTool — getHostMachineConfig platform branches', () => {
+  const getConfigForPlatform = (platform: string) => {
+    const origPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    try {
+      return (BingWebSearchTool as any).getHostMachineConfig();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+    }
+  };
+
+  it('handles darwin (deviceName overridden to Chrome at end)', () => {
+    expect(getConfigForPlatform('darwin').deviceName).toBe('Desktop Chrome');
+  });
+
+  it('handles win32', () => {
+    expect(getConfigForPlatform('win32').deviceName).toBe('Desktop Chrome');
+  });
+
+  it('handles linux', () => {
+    expect(getConfigForPlatform('linux').deviceName).toBe('Desktop Chrome');
+  });
+
+  it('handles a non-matching platform (no branch taken)', () => {
+    expect(getConfigForPlatform('freebsd').deviceName).toBe('Desktop Chrome');
+  });
+});
+
 // ── isPageStable ──────────────────────────────────────────────────────────────
 
 describe('BingWebSearchTool — isPageStable', () => {
@@ -331,25 +361,49 @@ describe('BingWebSearchTool.execute — abort signal', () => {
   });
 });
 
-// ── performSingleSearch: state save failure path ──────────────────────────────
+// ── performSingleSearch: abort handling and isolation ─────────────────────────
 
-describe('BingWebSearchTool — performSingleSearch state save failure', () => {
-  it('warns but still returns HTML when storageState throws', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    mockStorageState.mockRejectedValueOnce(new Error('write error'));
+const WEB_MULTI_HTML =
+  '<html><body><ul>' +
+  '<li class="b_algo"><h2><a href="https://example.com/1">Title 1</a></h2><p class="b_lineclamp2">Caption 1</p><cite>example.com</cite></li>' +
+  '<li class="b_algo"><h2><a href="https://example.com/2">Title 2</a></h2><p class="b_lineclamp2">Caption 2</p><cite>example.com</cite></li>' +
+  '</ul></body></html>';
 
-    setupBrowserChain();
-    mockPageContent.mockResolvedValue('<html><body>content</body></html>');
-    mockPageUrl.mockReturnValue('https://www.bing.com/search?q=test');
+describe('BingWebSearchTool — performSingleSearch abort handling', () => {
+  it('closes the page via the abort handler when the signal fires mid-flight', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const controller = new AbortController();
+    const page = makePage({
+      goto: vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return { url: () => 'https://www.bing.com/search?q=test' };
+      }),
+      content: vi.fn().mockResolvedValue(WEB_MULTI_HTML),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
 
-    const result = await BingWebSearchTool.execute(baseArgs);
-    expect(result.success).toBe(true);
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to save browser state')
-    );
+    const result = await BingWebSearchTool.execute(baseArgs, { signal: controller.signal });
+    expect(result).toBeDefined();
+    expect(mockPageClose).toHaveBeenCalled();
   });
 
-  it('handles error path in performSingleSearch and saves state before re-throw', async () => {
+  it('throws inside attempt when the signal aborts after the launch gate', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain();
+    let reads = 0;
+    const fakeSignal: any = {
+      get aborted() { reads++; return reads > 1; },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const result = await BingWebSearchTool.execute(baseArgs, { signal: fakeSignal });
+    expect(result.errors).toBeDefined();
+    expect(result.errors?.[0]).toContain('failed');
+  });
+
+  it('records an error for the query when navigation fails', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const page = makePage({
@@ -393,30 +447,97 @@ describe('BingWebSearchTool — extractDomainFromUrl', () => {
   });
 });
 
-// ── execute: existing savedState with fingerprint ─────────────────────────────
+// ── execute: close() failures are swallowed ──────────────────────────────────
 
-describe('BingWebSearchTool.execute — saved state from file', () => {
-  it('uses saved fingerprint when stateFile and fingerprintFile exist', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(
-      JSON.stringify({ fingerprint: { deviceName: 'Desktop Chrome', locale: 'en-US', timezoneId: 'America/New_York', colorScheme: 'light', reducedMotion: 'no-preference', forcedColors: 'none' }, bingDomain: 'www.bing.com' })
-    );
-    setupBrowserChain();
-    mockPageContent.mockResolvedValue('<html><body></body></html>');
-    mockPageUrl.mockReturnValue('https://www.bing.com/search?q=test');
-
+describe('BingWebSearchTool.execute — close() failures', () => {
+  it('warns but still returns when the shared browser fails to close', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(WEB_MULTI_HTML) });
+    mockBrowserClose.mockRejectedValue(new Error('browser close boom'));
     const result = await BingWebSearchTool.execute(baseArgs);
-    expect(result.totalQueries).toBe(1);
+    expect(result).toBeDefined();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to close shared browser')
+    );
   });
 
-  it('handles invalid JSON in savedState file', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue('not-json');
-    setupBrowserChain();
-    mockPageContent.mockResolvedValue('<html><body></body></html>');
-    mockPageUrl.mockReturnValue('https://www.bing.com/search?q=test');
-
+  it('swallows page and context close rejection in the per-query finally', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({ content: vi.fn().mockResolvedValue(WEB_MULTI_HTML) });
+    mockPageClose.mockRejectedValue(new Error('page close boom'));
+    mockContextClose.mockRejectedValue(new Error('context close boom'));
     const result = await BingWebSearchTool.execute(baseArgs);
+    expect(result.success).toBe(true);
+    expect(mockPageClose).toHaveBeenCalled();
+    expect(mockContextClose).toHaveBeenCalled();
+  });
+
+  it('swallows page.close rejection triggered by the mid-flight abort handler', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const controller = new AbortController();
+    const page = makePage({
+      goto: vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return { url: () => 'https://www.bing.com/search?q=test' };
+      }),
+      content: vi.fn().mockResolvedValue(WEB_MULTI_HTML),
+      close: vi.fn().mockRejectedValue(new Error('page close boom')),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
+    const result = await BingWebSearchTool.execute(baseArgs, { signal: controller.signal });
+    expect(result).toBeDefined();
+  });
+});
+
+// ── execute: no-response watchdog activity reporting ──────────────────────────
+
+describe('BingWebSearchTool.execute — reportActivity wiring', () => {
+  it('reports activity once per query as each query settles (success path)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({
+      content: vi.fn().mockResolvedValue(WEB_MULTI_HTML),
+      url: vi.fn().mockReturnValue('https://www.bing.com/search?q=test'),
+    });
+    const reportActivity = vi.fn();
+
+    const result = await BingWebSearchTool.execute(
+      { ...baseArgs, queries: ['q1', 'q2', 'q3'] },
+      { executionContext: { reportActivity } as any },
+    );
+
+    expect(result.totalQueries).toBe(3);
+    expect(reportActivity).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports activity even when a query fails (finally path)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const page = makePage({
+      goto: vi.fn().mockRejectedValue(new Error('navigation failed')),
+    });
+    const ctx = makeContext(page);
+    const browser = makeBrowser(ctx);
+    mockLaunchBrowser.mockResolvedValue(browser);
+    const reportActivity = vi.fn();
+
+    const result = await BingWebSearchTool.execute(
+      { ...baseArgs, queries: ['q1', 'q2'] },
+      { executionContext: { reportActivity } as any },
+    );
+
+    expect(result.errors!.length).toBeGreaterThan(0);
+    expect(reportActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs without an execution context (reportActivity is optional)', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setupBrowserChain({
+      content: vi.fn().mockResolvedValue(WEB_MULTI_HTML),
+      url: vi.fn().mockReturnValue('https://www.bing.com/search?q=test'),
+    });
+
+    const result = await BingWebSearchTool.execute({ ...baseArgs, queries: ['q1'] }, {});
     expect(result.totalQueries).toBe(1);
   });
 });

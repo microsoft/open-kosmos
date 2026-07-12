@@ -116,6 +116,7 @@ export class SubAgentChat {
   private deliverables: string[] = [];
   /** Context compaction helper — holds a reference to contextHistory and mutates it in-place */
   private compactor!: SubAgentContextCompactor;
+  private compactorCompressEarlyMessagesDelegate?: (batchSize: number) => Promise<void>;
   /** Tool execution helper */
   private toolExecutor!: SubAgentToolExecutor;
   /** LLM transport client — handles API calls, SSE parsing, and message formatting */
@@ -535,7 +536,7 @@ export class SubAgentChat {
    * Get the sub-agent's available tools list
    *
    * Uses MCPClientManager.getToolsForSubAgent() method
-   * which has built-in recursive spawn prevention (removes spawn_subagent / spawn_subagents)
+   * which has built-in recursive sub-agent delegation prevention.
    */
   private async getAvailableTools(): Promise<any[]> {
     try {
@@ -545,7 +546,7 @@ export class SubAgentChat {
       // Use resolved MCP servers (includes inherited from parent) instead of raw config
       const mcpServersForTools = subAgent.resolvedMcpServers.length > 0
         ? subAgent.resolvedMcpServers.map(s => ({ name: s.name, tools: s.tools }))
-        : (config.mcpServers || []).filter((s): s is import('../userDataADO/types/profile').AgentMcpServer => typeof s !== 'string');
+        : (config.mcp_servers || []);
 
       return mcpClientManager.getToolsForSubAgent(
         mcpServersForTools,
@@ -695,18 +696,23 @@ export class SubAgentChat {
     // Patch compactor's compressEarlyMessages to route through our wrapper,
     // so vi.spyOn(chat, 'compressEarlyMessages') works in tests.
     const origFn = (this.compactor as any).compressEarlyMessages.bind(this.compactor);
+    this.compactorCompressEarlyMessagesDelegate = origFn;
     (this.compactor as any).compressEarlyMessages = (batchSize: number) => this.compressEarlyMessages(batchSize);
     try {
       return await this.compactor.compactContextIfNeeded(systemMessages, tools);
     } finally {
       (this.compactor as any).compressEarlyMessages = origFn;
+      this.compactorCompressEarlyMessagesDelegate = undefined;
     }
   }
 
   /** @internal for tests — delegates to compactor (using reflection since it's private) */
   private async compressEarlyMessages(batchSize: number): Promise<void> {
     this.syncCompactorHistory();
-    await (this.compactor as any).compressEarlyMessages(batchSize);
+    const compressEarlyMessages =
+      this.compactorCompressEarlyMessagesDelegate ??
+      (this.compactor as any).compressEarlyMessages.bind(this.compactor);
+    await compressEarlyMessages(batchSize);
     // Sync back: compactor may have mutated its array
     const compactorHist: Message[] = (this.compactor as any).contextHistory;
     if (compactorHist !== this.contextHistory) {

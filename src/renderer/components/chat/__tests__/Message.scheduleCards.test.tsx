@@ -47,7 +47,6 @@ vi.mock('../../ui/ToastProvider', async () => ({
   }),
 }));
 
-
 vi.mock('../../../lib/featureFlags', async () => ({
   useFeatureFlag: () => false,
 }));
@@ -99,6 +98,8 @@ vi.mock('../message/SayHiActionItems', async () => ({
   })),
 }));
 
+
+
 describe('Message schedule cards', () => {
   const scheduleId = 'sched_20260403214625_b262cf37-84d1-4ebf-b1ab-aa05d6712768_6dsl1ydrr';
 
@@ -127,7 +128,7 @@ describe('Message schedule cards', () => {
           scheduleType: 'cron',
           cronExpression: '0 9 * * 1-5',
           enabled: true,
-          agentId: 'chat-123',
+          chat_id: 'chat-123',
           message: 'Summarize the latest updates.',
           status: 'pending',
         },
@@ -165,9 +166,8 @@ describe('Message schedule cards', () => {
       expect(mockShowToast).toHaveBeenCalledWith(
         'Scheduled run started.',
         'success',
-        undefined,
+        5000,
         expect.objectContaining({
-          persistent: true,
           actions: [
             expect.objectContaining({
               label: 'Open schedule run',

@@ -99,6 +99,17 @@ function makePage(overrides: Partial<Record<string, any>> = {}) {
 
 function makeSetup(pageOverrides: Partial<Record<string, any>> = {}) {
   vi.mocked(fs.existsSync).mockReturnValue(false);
+  // Restore clean page-interaction defaults. Earlier describes install
+  // persistent mock implementations (e.g. mockGoto.mockRejectedValue, a
+  // closure-counting mockWaitForLoadState, a rejecting mockWaitForSelector)
+  // that survive vi.clearAllMocks() — which only clears call history, not
+  // implementations — and would otherwise bleed into makeSetup-based tests.
+  // mockPageUrl is intentionally left untouched: the page-stability test sets
+  // a custom URL sequence before calling makeSetup.
+  mockGoto.mockResolvedValue({ url: () => 'https://www.bing.com/search?q=test' });
+  mockWaitForSelector.mockResolvedValue(null);
+  mockWaitForLoadState.mockResolvedValue(undefined);
+  mockWaitForTimeout.mockResolvedValue(undefined);
   mockEnsureBrowserInstalled.mockResolvedValue({ installed: true, browserPath: '/usr/bin/chromium' });
   const page = makePage(pageOverrides);
   const ctx = {
@@ -115,6 +126,28 @@ function makeSetup(pageOverrides: Partial<Record<string, any>> = {}) {
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
+
+describe('BingWebSearchTool.execute — argument validation', () => {
+  it('returns error when queries is undefined (empty args from LLM)', async () => {
+    const result = await BingWebSearchTool.execute({} as any);
+    expect(result.success).toBe(false);
+    expect(result.totalQueries).toBe(0);
+    expect(result.errors![0]).toContain('queries');
+    expect(mockEnsureBrowserInstalled).not.toHaveBeenCalled();
+  });
+
+  it('returns error when queries is not an array', async () => {
+    const result = await BingWebSearchTool.execute({ description: 't', queries: 'q', lang: 'en', locale: 'us' } as any);
+    expect(result.success).toBe(false);
+    expect(result.errors![0]).toContain('queries');
+  });
+
+  it('returns error when queries array is empty', async () => {
+    const result = await BingWebSearchTool.execute({ description: 't', queries: [], lang: 'en', locale: 'us' } as any);
+    expect(result.success).toBe(false);
+    expect(result.errors![0]).toContain('empty');
+  });
+});
 
 describe('BingWebSearchTool.execute — page.goto throws (error recovery path)', () => {
   afterEach(() => vi.clearAllMocks());
@@ -265,48 +298,60 @@ describe('BingWebSearchTool.execute — corrupt state + fingerprint file', () =>
   });
 });
 
-describe('BingWebSearchTool.execute — state saving after successful search', () => {
+describe('BingWebSearchTool.execute — shared browser and isolation', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('still succeeds when state dir does not exist and is created', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    mockEnsureBrowserInstalled.mockResolvedValue({ installed: true });
-    const page = makePage();
-    const ctx = {
-      newPage: mockNewPage.mockResolvedValue(page),
-      addInitScript: mockAddInitScript,
-      storageState: mockStorageState,
-      close: mockContextClose,
-    };
-    mockLaunchBrowser.mockResolvedValue({
-      newContext: mockNewContext.mockResolvedValue(ctx),
-      close: mockBrowserClose,
-    });
-    const result = await BingWebSearchTool.execute(baseArgs);
-    expect(result.success).toBe(true);
-    expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalled();
+  const webAlgo = (n: number) =>
+    `<li class="b_algo"><h2><a href="https://example.com/${n}">Title ${n}</a></h2><p class="b_lineclamp2">Caption ${n}</p><cite>example.com</cite></li>`;
+  const WEB_SINGLE = `<html><body><ul>${webAlgo(1)}</ul></body></html>`;
+  const WEB_MULTI = `<html><body><ul>${webAlgo(1)}${webAlgo(2)}${webAlgo(3)}</ul></body></html>`;
+
+  it('launches exactly one shared browser and closes it once for a multi-query call', async () => {
+    makeSetup({ content: vi.fn().mockResolvedValue(WEB_MULTI) });
+    const result = await BingWebSearchTool.execute({ ...baseArgs, queries: ['q1', 'q2', 'q3'] });
+    expect(result.totalQueries).toBe(3);
+    expect(mockLaunchBrowser).toHaveBeenCalledTimes(1);
+    expect(mockBrowserClose).toHaveBeenCalledTimes(1);
+    // A fresh isolated context per query; no shared state file is ever written.
+    expect(mockNewContext).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
+    expect(mockStorageState).not.toHaveBeenCalled();
   });
 
-  it('handles writeFileSync failure for fingerprint gracefully', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.writeFileSync).mockImplementation(() => {
-      throw new Error('Disk full');
-    });
-    mockEnsureBrowserInstalled.mockResolvedValue({ installed: true });
-    const page = makePage();
-    const ctx = {
-      newPage: mockNewPage.mockResolvedValue(page),
-      addInitScript: mockAddInitScript,
-      storageState: mockStorageState,
-      close: mockContextClose,
-    };
-    mockLaunchBrowser.mockResolvedValue({
-      newContext: mockNewContext.mockResolvedValue(ctx),
-      close: mockBrowserClose,
-    });
+  it('returns a failure result when the shared browser cannot launch', async () => {
+    makeSetup();
+    mockLaunchBrowser.mockRejectedValueOnce(new Error('no chromium'));
     const result = await BingWebSearchTool.execute(baseArgs);
-    // Should still succeed even if fingerprint save fails
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toContain('Failed to launch browser');
+    expect(mockBrowserClose).not.toHaveBeenCalled();
+  });
+
+  it('retries once in a fresh context when a query yields <=1 result and keeps the better attempt', async () => {
+    const content = vi.fn()
+      .mockResolvedValueOnce(WEB_SINGLE)
+      .mockResolvedValueOnce(WEB_MULTI);
+    makeSetup({ content });
+    const result = await BingWebSearchTool.execute(baseArgs);
+    expect(content).toHaveBeenCalledTimes(2);
+    expect(mockNewContext).toHaveBeenCalledTimes(2);
+    expect(result.totalResults).toBeGreaterThan(1);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('retrying once in a fresh context')
+    );
+  });
+
+  it('does not retry a successful one-result search when maxResults is 1', async () => {
+    const content = vi.fn().mockResolvedValue(WEB_SINGLE);
+    makeSetup({ content });
+
+    const result = await BingWebSearchTool.execute({ ...baseArgs, maxResults: 1 });
+    expect(content).toHaveBeenCalledTimes(1);
+    expect(mockNewContext).toHaveBeenCalledTimes(1);
+    expect(result.totalResults).toBe(1);
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('retrying once in a fresh context')
+    );
   });
 });
 

@@ -2,13 +2,17 @@ import { ipcMain } from 'electron';
 
 import { getAdvancedLogger } from '../lazy';
 import type { Context } from './shared';
-import { SystemPromptLlmWriter } from "../../lib/llm/systemPromptLlmWritter";
+import { SystemPromptLlmWriter, type SystemPromptWriterOptions } from "../../lib/llm/systemPromptLlmWritter";
 import { McpConfigLlmFormatter } from "../../lib/llm/mcpConfigLlmFormatter";
 import { ChatSessionTitleLlmSummarizer } from "../../lib/llm/chatSessionTitleLlmSummarizer";
 import { FileNameLlmGenerator } from "../../lib/llm/fileNameLlmGenerator";
 import { DocumentSummaryLlmGenerator } from "../../lib/llm/documentSummaryLlmGenerator";
 import { textLlmEmbedder } from "../../lib/llm/textLlmEmbedder";
 import { ensureModelsReady, getAllModels, getAllOpenKosmosUsedModels, getModelById, getModelCapabilities, validateModelId, getDefaultModel, isReasoningModel } from "../../lib/llm/ghcModelsManager";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export default function(ctx: Context) {
 
@@ -17,12 +21,12 @@ export default function(ctx: Context) {
   // ===============================
 
   // System Prompt optimization
-  ipcMain.handle('llm:improveSystemPrompt', async (event, userInputPrompt: string) => {
+  ipcMain.handle('llm:improveSystemPrompt', async (event, userInputPrompt: string, options?: SystemPromptWriterOptions) => {
     try {
-      const result = await SystemPromptLlmWriter.improveSystemPrompt(userInputPrompt);
+      const result = await SystemPromptLlmWriter.improveSystemPrompt(userInputPrompt, options);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -32,7 +36,7 @@ export default function(ctx: Context) {
       const result = await McpConfigLlmFormatter.formatMcpConfig(userInputMcpConfig);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -42,7 +46,7 @@ export default function(ctx: Context) {
       const result = await ChatSessionTitleLlmSummarizer.generateTitle(userMessage);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -52,7 +56,7 @@ export default function(ctx: Context) {
       const result = await FileNameLlmGenerator.generateFileName(content);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -72,7 +76,7 @@ export default function(ctx: Context) {
       return { success: true, data: result };
     } catch (error) {
       const durationMs = Date.now() - startTime;
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = getErrorMessage(error);
       logger.error(`[DocSummary] ❌ IPC error — fileName="${fileName}", error="${errorMsg}", duration=${durationMs}ms`, 'llm:generateDocumentSummary');
       return { success: false, error: errorMsg };
     }
@@ -84,7 +88,7 @@ export default function(ctx: Context) {
       const result = await textLlmEmbedder.embed(text);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -94,7 +98,7 @@ export default function(ctx: Context) {
       const result = await textLlmEmbedder.embedBatch(texts);
       return { success: true, data: result };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -109,7 +113,7 @@ export default function(ctx: Context) {
       const models = getAllModels();
       return { success: true, data: models };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -120,7 +124,7 @@ export default function(ctx: Context) {
       const models = getAllOpenKosmosUsedModels();
       return { success: true, data: models };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -131,7 +135,7 @@ export default function(ctx: Context) {
       const model = getModelById(modelId);
       return { success: true, data: model };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -142,7 +146,7 @@ export default function(ctx: Context) {
       const capabilities = getModelCapabilities(modelId);
       return { success: true, data: capabilities };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -153,7 +157,7 @@ export default function(ctx: Context) {
       const isValid = validateModelId(modelId);
       return { success: true, data: isValid };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -163,7 +167,7 @@ export default function(ctx: Context) {
       const defaultModel = getDefaultModel();
       return { success: true, data: defaultModel };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 
@@ -174,8 +178,7 @@ export default function(ctx: Context) {
       const isReasoning = isReasoningModel(modelId);
       return { success: true, data: isReasoning };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: getErrorMessage(error) };
     }
   });
 }
-

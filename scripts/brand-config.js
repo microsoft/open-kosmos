@@ -1,9 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 
-// 1. Determine Brand Name
-// Priority: npm_config_brand (CLI: --brand=xxx) > BRAND (Environment Variable) > 'openkosmos' (Default)
-const brandName =  process.env.BRAND || 'openkosmos';
+const brandName = 'openkosmos';
 
 const repoRoot = path.resolve(__dirname, '..');
 const brandDir = path.join(repoRoot, 'brands', brandName);

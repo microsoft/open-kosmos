@@ -20,14 +20,6 @@ vi.mock('../../ui/ToastProvider', () => ({
   }),
 }));
 
-vi.mock('../../ui/button', () => ({
-  Button: ({ children, onClick, disabled, ...rest }: any) => (
-    <button onClick={onClick} disabled={disabled} {...rest}>
-      {children}
-    </button>
-  ),
-}));
-
 vi.mock('../../ui/card', () => ({
   Card: ({ children, className }: any) => <div className={className}>{children}</div>,
   CardContent: ({ children }: any) => <div>{children}</div>,

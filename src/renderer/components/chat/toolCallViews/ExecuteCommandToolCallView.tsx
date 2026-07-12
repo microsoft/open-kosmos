@@ -4,6 +4,7 @@
 import React from 'react';
 import { ToolCallViewProps, ExecuteCommandToolArgs, ExecuteCommandToolResult } from './types';
 import { MessageHelper } from '@shared/types/chatTypes';
+import { useI18n } from '../../../lib/i18n/useI18n';
 
 /**
  * Parse tool call arguments
@@ -57,6 +58,7 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
   toolResult,
   executionStatus,
 }) => {
+  const { t } = useI18n();
   const args = parseToolArgs(toolCall.function.arguments);
   // Use MessageHelper.getText to extract text from UnifiedContentPart[]
   const resultText = toolResult ? MessageHelper.getText(toolResult) : '';
@@ -108,13 +110,13 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
         {/* Executing state */}
         {isExecuting && (
           <div className="terminal-line terminal-executing">
-            <span className="terminal-executing-text">Executing...</span>
+            <span className="terminal-executing-text">{t('chat.tool.command.executing')}</span>
           </div>
         )}
 
         {isInterrupted && (
           <div className="terminal-line terminal-timeout">
-            <span className="terminal-timeout-text">Interrupted before command output was recorded</span>
+            <span className="terminal-timeout-text">{t('chat.tool.command.interrupted')}</span>
           </div>
         )}
 
@@ -128,21 +130,21 @@ export const ExecuteCommandToolCallView: React.FC<ToolCallViewProps> = ({
         {/* Timeout indicator */}
         {timedOut && (
           <div className="terminal-line terminal-timeout">
-            <span className="terminal-timeout-text">⚠ Command timed out</span>
+            <span className="terminal-timeout-text">{t('chat.tool.command.timedOut')}</span>
           </div>
         )}
 
         {/* Truncation indicator */}
         {result?.truncated && (
           <div className="terminal-line terminal-truncated">
-            <span className="terminal-truncated-text">... (output truncated)</span>
+            <span className="terminal-truncated-text">{t('chat.tool.outputTruncated')}</span>
           </div>
         )}
 
         {/* Exit code (only shown when non-zero) */}
         {result && result.exitCode !== null && result.exitCode !== 0 && !timedOut && (
           <div className="terminal-line terminal-exit-code">
-            <span className="terminal-exit-code-text">Exit code: {result.exitCode}</span>
+            <span className="terminal-exit-code-text">{t('chat.tool.exitCode', { code: result.exitCode })}</span>
           </div>
         )}
       </div>

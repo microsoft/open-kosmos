@@ -64,7 +64,7 @@ function makeDefaultChat(): ChatConfig {
       version: '1.0.0',
       source: 'ON-DEVICE',
       mcp_servers: [{ name: 'builtin-tools', tools: [] }],
-      system_prompt: '',
+      system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
       skills: [],
     },
   } as ChatConfig;
@@ -183,17 +183,110 @@ describe('applyProfileMigrations — additional branches', () => {
     expect(p.freDone).toBe(true);
   });
 
+  it('migration V7: removes legacy remote channel configuration', () => {
+    const p = makeProfile({ profileMigrationVersion: 6 }) as ProfileV2 & { remoteChannels?: unknown };
+    p.remoteChannels = { legacy: true };
+    applyProfileMigrations(p);
+    expect(Object.prototype.hasOwnProperty.call(p, 'remoteChannels')).toBe(false);
+  });
+
   it('migration V1: does nothing when no teams config', () => {
     const p = makeProfile({ profileMigrationVersion: 0 });
     expect(() => applyProfileMigrations(p)).not.toThrow();
   });
 
-  it('migration V2: skips chats without agents', () => {
+  it('migration V1: normalizes legacy mcp_servers string format', () => {
+    const p = makeProfile({
+      profileMigrationVersion: 0,
+      chats: [{
+        chat_id: 'c1',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'Bot',
+          role: 'assistant',
+          emoji: '',
+          avatar: '',
+          model: 'm',
+          workspace: '/w',
+          version: '1',
+          source: 'ON-DEVICE',
+          mcp_servers: ['server-name', { name: 'obj-server', tools: [] }] as any,
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
+          skills: [],
+        },
+      }],
+    });
+    applyProfileMigrations(p);
+    const servers = p.chats[0].agent?.mcp_servers ?? [];
+    expect(servers.every((s: any) => typeof s === 'object')).toBe(true);
+    expect(servers.some((s: any) => s.name === 'server-name')).toBe(true);
+  });
+
+  it('filters out null/invalid mcp_servers entries when legacy format detected', () => {
+    const p = makeProfile({
+      profileMigrationVersion: 0,
+      chats: [{
+        chat_id: 'c1',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'Bot',
+          role: 'assistant',
+          emoji: '',
+          avatar: '',
+          model: 'm',
+          workspace: '/w',
+          version: '1',
+          source: 'ON-DEVICE',
+          // Include a string entry so hasLegacyFormat=true triggers the filter path
+          mcp_servers: ['string-server', { name: '', tools: [] }, { name: 'valid', tools: undefined as any }] as any,
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
+          skills: [],
+        },
+      }],
+    });
+    applyProfileMigrations(p);
+    const servers = p.chats[0].agent?.mcp_servers ?? [];
+    // '' name should be filtered out; 'string-server' and 'valid' should remain
+    expect(servers.length).toBe(2);
+    expect(servers.some((s: any) => s.name === 'string-server')).toBe(true);
+    expect(servers.some((s: any) => s.name === 'valid')).toBe(true);
+    expect(servers[1].tools).toEqual([]);
+  });
+
+  it('migration V1: skips chats without agents', () => {
     const p = makeProfile({
       profileMigrationVersion: 0,
       chats: [{ chat_id: 'c1', chat_type: 'single_agent' }] as any,
     });
     expect(() => applyProfileMigrations(p)).not.toThrow();
+  });
+
+  it('migration V3: skips chats without legacy fields', () => {
+    const p = makeProfile({
+      profileMigrationVersion: 2,
+      chats: [{
+        chat_id: 'c1',
+        chat_type: 'single_agent',
+        agent: {
+          name: 'CleanBot',
+          role: 'assistant',
+          emoji: '',
+          avatar: '',
+          model: 'm',
+          workspace: '/w',
+          knowledge: { knowledgeBase: '/k' },
+          version: '1',
+          source: 'ON-DEVICE',
+          mcp_servers: [],
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
+          skills: [],
+        },
+      }],
+    });
+    const mutated = applyProfileMigrations(p);
+    expect(mutated).toBe(true); // v3 bumps version
+    // Agent should be unchanged since no legacy fields
+    expect(p.chats[0].agent?.knowledge).toEqual({ knowledgeBase: '/k' });
   });
 });
 
@@ -220,7 +313,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: [],
         },
       }],
@@ -246,7 +339,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [{ name: 'builtin-tools', tools: ['some-tool'] }],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: [],
         },
       }],
@@ -272,7 +365,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: [],
         },
       }],
@@ -300,7 +393,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: ['skill-creator'],
         },
       }],
@@ -329,7 +422,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: [],
         },
       }],
@@ -371,7 +464,7 @@ describe('applyBuiltinDefaultsMigrations', () => {
           version: '1',
           source: 'ON-DEVICE',
           mcp_servers: [],
-          system_prompt: '',
+          system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
           skills: undefined as any,
         },
       }],
@@ -417,7 +510,7 @@ describe('profileMigration — mergeDirectoryContents edge cases', () => {
             version: '1',
             source: 'ON-DEVICE',
             mcp_servers: [],
-            system_prompt: '',
+            system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
             skills: [],
           },
         }],
@@ -464,7 +557,7 @@ describe('profileMigration — mergeDirectoryContents edge cases', () => {
             version: '1',
             source: 'ON-DEVICE',
             mcp_servers: [],
-            system_prompt: '',
+            system_prompt: { 'Base.md': '', 'AGENTS.md': '' },
             skills: [],
           },
         }],

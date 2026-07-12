@@ -25,14 +25,18 @@ export interface AgentChatTurnRunnerDeps {
   getChatHistory(): Message[];
   getDisplayMessages(): Message[];
   getSessionFromAuthManager(): Promise<any | null>;
-  runConversationAttempt(token?: CancellationToken, callbacks?: StartChatCallbacks): Promise<void>;
+  runConversationAttempt(
+    token?: CancellationToken,
+    callbacks?: StartChatCallbacks,
+    options?: { deferFinalIdle?: boolean },
+  ): Promise<void>;
   checkAndCompress(options?: { emitStatus?: boolean; force?: boolean }): Promise<{ applied: boolean }>;
   setChatStatus(status: ChatStatus): void;
   callWithToolsStreaming(token?: CancellationToken): Promise<StreamingApiResponse>;
   addMessageToSession(message: Message): Promise<void>;
-  batchValidateAndRequestApproval(toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>): Promise<Map<string, boolean>>;
-  executeToolCall(toolCall: any, approved?: boolean): Promise<any>;
-  postProcessToolResult(toolCall: any, toolResult: any): Promise<any>;
+  batchValidateAndRequestApproval(toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>, token?: CancellationToken): Promise<Map<string, boolean>>;
+  executeToolCall(toolCall: any, approved?: boolean, token?: CancellationToken): Promise<any>;
+  postProcessToolResult(toolCall: any, toolResult: any, token?: CancellationToken): Promise<any>;
   assertExecutionActive(token: CancellationToken | undefined, executionNonce: number, stage: string): void;
   createMcpImageHash(data: string, mimeType: string): string;
   hasInjectedMcpImageHash(hash: string): boolean;
@@ -60,8 +64,8 @@ export class AgentChatTurnRunner {
 
   constructor(private readonly deps: AgentChatTurnRunnerDeps) {}
 
-  async runRetry(options: { token?: CancellationToken; callbacks?: StartChatCallbacks }): Promise<Message[]> {
-    const { token, callbacks } = options;
+  async runRetry(options: { token?: CancellationToken; callbacks?: StartChatCallbacks; deferFinalIdle?: boolean }): Promise<Message[]> {
+    const { token, callbacks, deferFinalIdle } = options;
 
     logger.info('[AgentChat] 🔄 Retrying chat with existing context', 'retryChat', {
       hasCancellationToken: !!token,
@@ -70,7 +74,11 @@ export class AgentChatTurnRunner {
 
     try {
       this.throwIfCancelled(token, 'before retry starts');
-      await this.deps.runConversationAttempt(token, callbacks);
+      if (deferFinalIdle) {
+        await this.deps.runConversationAttempt(token, callbacks, { deferFinalIdle: true });
+      } else {
+        await this.deps.runConversationAttempt(token, callbacks);
+      }
       return this.deps.getDisplayMessages();
     } catch (error) {
       if (error instanceof CancellationError) {
@@ -90,8 +98,10 @@ export class AgentChatTurnRunner {
     token?: CancellationToken;
     callbacks?: StartChatCallbacks;
     emitUserMessage?: boolean;
+    persistUserMessage?: boolean;
+    onUserMessageCommitted?: () => void;
   }): Promise<Message[]> {
-    const { userMessage, token, callbacks, emitUserMessage } = options;
+    const { userMessage, token, callbacks, emitUserMessage, persistUserMessage = true, onUserMessageCommitted } = options;
 
     logger.info('[AgentChat] 🚀 Starting streamMessage', 'streamMessage', {
       messageId: userMessage.id,
@@ -101,7 +111,9 @@ export class AgentChatTurnRunner {
 
     try {
       this.throwIfCancelled(token, 'before stream message starts');
-      await this.deps.addMessageToSession(userMessage);
+      if (persistUserMessage) {
+        await this.deps.addMessageToSession(userMessage);
+      }
 
       if (emitUserMessage) {
         const messageId = userMessage.id || `user_${this.deps.getChatSessionId()}_${Date.now()}`;
@@ -121,7 +133,15 @@ export class AgentChatTurnRunner {
         });
       }
 
-      await this.deps.runConversationAttempt(token, callbacks);
+      // The trigger message is now durably in the transcript (persisted, and echoed
+      // to the renderer when requested). Signal commit so callers that pulled the
+      // message out of an external queue finalize its removal only at this point and
+      // can safely restore it if an *earlier* failure prevented reaching here.
+      if (persistUserMessage) {
+        onUserMessageCommitted?.();
+      }
+
+      await this.deps.runConversationAttempt(token, callbacks, { deferFinalIdle: true });
       return this.deps.getDisplayMessages();
     } catch (error) {
       if (error instanceof CancellationError) {
@@ -136,8 +156,8 @@ export class AgentChatTurnRunner {
     }
   }
 
-  async run(options: { token?: CancellationToken; callbacks?: StartChatCallbacks; executionNonce: number }): Promise<void> {
-    const { token, executionNonce } = options;
+  async run(options: { token?: CancellationToken; callbacks?: StartChatCallbacks; executionNonce: number; deferFinalIdle?: boolean }): Promise<void> {
+    const { token, executionNonce, deferFinalIdle } = options;
 
     logger.info('[AgentChat] Starting chat conversation loop', 'startChat', {
       agentName: this.deps.getAgentName(),
@@ -173,7 +193,7 @@ export class AgentChatTurnRunner {
       }
       const response = streamingResponse.message;
 
-      // Persist usage + model on the message for downstream analytics (pew integration).
+      // Persist usage + model on the message for downstream PEW usage reporting.
       // Use API-reported model (canonical name from server) with config fallback.
       if (streamingResponse.usage) {
         response.usage = {
@@ -227,7 +247,6 @@ export class AgentChatTurnRunner {
           }
         }
 
-        await this.deps.addMessageToSession(response);
       } else if (responseText) {
         await this.deps.addMessageToSession(response);
       }
@@ -240,7 +259,9 @@ export class AgentChatTurnRunner {
         await this.applyStorageCompressionAndRecalculate();
         await this.deps.extractFactsFromConversation();
         requiresFollowUp = false;
-        this.deps.setChatStatus(ChatStatus.IDLE);
+        if (!deferFinalIdle) {
+          this.deps.setChatStatus(ChatStatus.IDLE);
+        }
       }
     }
   }
@@ -330,11 +351,27 @@ export class AgentChatTurnRunner {
 
     this.throwIfCancelled(token, 'before tool validation');
 
-    const approvalMap = toolCallsForExecution.length > 0
-      ? await this.deps.batchValidateAndRequestApproval(toolCallsForExecution)
-      : new Map<string, boolean>();
+    let assistantMessagePersisted = false;
+    const persistAssistantToolCallMessage = async (): Promise<void> => {
+      if (assistantMessagePersisted) {
+        return;
+      }
+      await this.deps.addMessageToSession(response);
+      assistantMessagePersisted = true;
+    };
 
-    this.throwIfCancelled(token, 'after tool validation');
+    let approvalMap: Map<string, boolean>;
+    try {
+      approvalMap = toolCallsForExecution.length > 0
+        ? await this.deps.batchValidateAndRequestApproval(toolCallsForExecution, token)
+        : new Map<string, boolean>();
+
+      this.throwIfCancelled(token, 'after tool validation');
+    } catch (error) {
+      await persistAssistantToolCallMessage();
+      throw error;
+    }
+    await persistAssistantToolCallMessage();
 
     for (const toolCall of toolCallsForExecution) {
       this.throwIfCancelled(token, 'during tool execution');
@@ -353,9 +390,9 @@ export class AgentChatTurnRunner {
       });
 
       try {
-        const toolResult = await this.deps.executeToolCall(toolCall, approved);
+        const toolResult = await this.deps.executeToolCall(toolCall, approved, token);
         this.deps.assertExecutionActive(token, executionNonce, `tool execution: ${toolName}`);
-        const postProcessedResult = await this.deps.postProcessToolResult(toolCall, toolResult);
+        const postProcessedResult = await this.deps.postProcessToolResult(toolCall, toolResult, token);
         this.deps.assertExecutionActive(token, executionNonce, `tool post-processing: ${toolName}`);
 
         await this.persistToolResult(toolCall, toolResult, postProcessedResult, token, executionNonce);
@@ -404,19 +441,39 @@ export class AgentChatTurnRunner {
       ? JSON.stringify(postProcessedResult, null, 2)
       : String(postProcessedResult);
 
-    const isErrorResult = typeof toolResult === 'object' && (
-      toolResult.denied === true ||
-      toolResult.truncated === true ||
-      toolResult.parseError === true ||
-      toolResult.success === false
-    );
+    const isToolErrorResult = (value: unknown): boolean =>
+      typeof value === 'object' &&
+      value !== null &&
+      (
+        (value as { denied?: boolean }).denied === true ||
+        (value as { truncated?: boolean }).truncated === true ||
+        (value as { parseError?: boolean }).parseError === true ||
+        (value as { success?: boolean }).success === false
+      );
+    const isErrorResult = isToolErrorResult(toolResult) || isToolErrorResult(postProcessedResult);
 
-    let mcpImageData: { data: string; mimeType: string } | null = null;
+    let mcpImageData: { data: string; mimeType: string; width?: number; height?: number } | null = null;
     let sanitizedContent = processedContent;
 
     try {
       const parsed = JSON.parse(processedContent);
       if (parsed && parsed.type === 'image' && parsed.data && parsed.mimeType) {
+        // A tool may report the image's pixel size; carry it through to the injected
+        // vision message so auto-detail image-token accounting can size the frame
+        // instead of throwing "Width and height are required" and silently skipping
+        // every compression check for the rest of an image-heavy session.
+        const width = Number.isFinite(parsed.width) ? Number(parsed.width) : undefined;
+        const height = Number.isFinite(parsed.height) ? Number(parsed.height) : undefined;
+        const hasDims = width !== undefined && height !== undefined;
+        // A tool may also attach a human-readable description (e.g. Computer Use reports
+        // the frontmost app + display layout). Surface it as the tool's text result so
+        // the model keeps that situational context after the raw bytes are stripped.
+        const trimmedDescription = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+        const description =
+          trimmedDescription.length > 0
+            ? trimmedDescription
+            : '[Image returned, raw image data removed from tool result to avoid context bloat]';
+
         logger.info('[AgentChat] 🖼️ MCP Image detected in tool result', 'startChat', {
           toolName,
           toolCallId: toolCall.id,
@@ -427,12 +484,14 @@ export class AgentChatTurnRunner {
         mcpImageData = {
           data: parsed.data,
           mimeType: parsed.mimeType,
+          ...(hasDims ? { width, height } : {}),
         };
 
         sanitizedContent = JSON.stringify({
           type: 'image',
           mimeType: parsed.mimeType,
-          description: '[Image returned, raw image data removed from tool result to avoid context bloat]',
+          ...(hasDims ? { width, height } : {}),
+          description,
         }, null, 2);
       }
     } catch {
@@ -469,6 +528,11 @@ export class AgentChatTurnRunner {
                 fileName: `screenshot_${Date.now()}.${mcpImageData.mimeType.split('/')[1] || 'jpg'}`,
                 fileSize: actualFileSize,
                 mimeType: mcpImageData.mimeType,
+                // width/height are set together (see hasDims above), so checking one
+                // is sufficient; both feed the vision token calculator.
+                ...(mcpImageData.width !== undefined
+                  ? { width: mcpImageData.width, height: mcpImageData.height }
+                  : {}),
                 autoInjectedToolResultHash: imageHash,
               },
             } as any,

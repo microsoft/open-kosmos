@@ -1,4 +1,5 @@
 import React from 'react'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 
 import '../../../styles/Agent.css';
@@ -13,6 +14,7 @@ const ErrorHandler: React.FC<ErrorHandlerProps> = ({
   onDismiss,
   className = ''
 }) => {
+  const { t } = useI18n()
   if (!error) return null
 
   return (
@@ -24,7 +26,7 @@ const ErrorHandler: React.FC<ErrorHandlerProps> = ({
           <button
             className="error-dismiss"
             onClick={onDismiss}
-            aria-label="Dismiss error"
+            aria-label={t('common.dismissError')}
           >
             ×
           </button>

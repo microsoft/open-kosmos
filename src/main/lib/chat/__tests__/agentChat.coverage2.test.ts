@@ -5,9 +5,6 @@
  *  - handlePushChunk / handlePushComplete / cancelPush
  *  - getSystemMessages / getContextHistory / getChatHistory
  *  - getInteractionHistory with populated history
- *  - shouldTrackChatSessionActivated with existing same-day message
- *  - getAnalyticsDayKey edge cases via getMessageTimestampMs paths
- *  - trackChatSessionActivated (fire-and-forget, no throw)
  *  - streamMessage routing (EXTERNAL agent path + normal path)
  *  - retryChat delegation
  *  - executeToolCall delegation
@@ -132,24 +129,6 @@ vi.mock('../agentChatUtilities', async () => ({
   applyStorageCompressionToRecentMessages: vi.fn(),
 }));
 
-vi.mock('../../subAgent/subAgentFileManager', async () => ({
-  SubAgentFileManager: {
-    getInstance: vi.fn(() => ({ getCachedConfig: vi.fn() })),
-  },
-}));
-
-vi.mock('../../analytics', async () => ({
-  analyticsManager: {
-    recordChatSessionActivated: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock('../../plugin/hooks/hookRegistry', async () => ({
-  hookRegistry: {
-    execute: vi.fn().mockResolvedValue({ additionalContexts: [] }),
-  },
-}));
-
 vi.mock('../agentChatManager', async () => ({
   agentChatManager: {
     exitNewChatSessionFor: vi.fn(),
@@ -205,7 +184,6 @@ vi.mock('../agentChatPromptService', async () => ({
     getLatestCustomSystemPrompt = vi.fn().mockReturnValue([]);
     getGlobalSystemPrompt = vi.fn().mockReturnValue([]);
     getAgentSpecificSystemPrompt = vi.fn().mockReturnValue([]);
-    buildSubAgentsSystemPrompt = vi.fn().mockReturnValue('');
     getCombinedSystemPromptForContext = vi.fn().mockReturnValue([]);
     getCombinedSystemPromptForCurrentTurn = vi.fn().mockResolvedValue([]);
     refreshSkillSnapshotIfNeeded = vi.fn().mockResolvedValue(undefined);
@@ -231,8 +209,6 @@ vi.mock('../agentChatToolPostProcessor', async () => ({
   AgentChatToolPostProcessor: class {
     postProcessToolResult = vi.fn().mockResolvedValue(undefined);
     postProcessForRequestInteractiveInputTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetMcpTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
-    postProcessForGetAgentTemplateFromLibraryTool = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
@@ -295,6 +271,15 @@ vi.mock('../agentChatRuntimeState', async () => ({
     setPendingInteractiveRequest = vi.fn().mockImplementation((r: any) => { this.pendingInteractiveRequest = r; });
     setMessagesToSave = vi.fn().mockImplementation((m: any[]) => { this.messagesToSave = m; });
     setSaveChain = vi.fn().mockImplementation((c: Promise<any>) => { this.saveChain = c; });
+
+    queuedSteeringMessages: any[] = [];
+    enqueueSteeringMessage = vi.fn();
+    removeSteeringMessage = vi.fn();
+    promoteSteeringMessage = vi.fn().mockReturnValue(null);
+    peekNextSteeringMessage = vi.fn().mockReturnValue(null);
+    takeSteeringMessage = vi.fn().mockReturnValue(null);
+    takeNextSteeringMessage = vi.fn().mockReturnValue(null);
+    clearSteeringMessages = vi.fn();
   },
 }));
 
@@ -307,6 +292,7 @@ vi.mock('../agentChatPushReceiver', async () => ({
     destroy = vi.fn();
   },
 }));
+
 
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
@@ -637,21 +623,6 @@ describe('AgentChat - streamMessage normal path', () => {
     agent = createAgent();
   });
 
-  it('sets isRemoteSession from options and resets after', async () => {
-    const mockRunner = { runStreamMessage: vi.fn().mockResolvedValue([]) };
-    (agent as any).turnRunner = mockRunner;
-
-    await agent.streamMessage(
-      { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any,
-      undefined,
-      {},
-      { isRemoteSession: true, interactionPolicy: 'plain-text-only' }
-    );
-    // After call, should be reset to false
-    expect((agent as any).isRemoteSession).toBe(false);
-    expect((agent as any).interactionPolicy).toBe('allow-ui');
-  });
-
   it('emits user message when emitUserMessage option is set', async () => {
     const mockRunner = { runStreamMessage: vi.fn().mockResolvedValue([]) };
     (agent as any).turnRunner = mockRunner;
@@ -665,122 +636,6 @@ describe('AgentChat - streamMessage normal path', () => {
     expect(mockRunner.runStreamMessage).toHaveBeenCalledWith(
       expect.objectContaining({ emitUserMessage: true })
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// trackChatSessionActivated (fire-and-forget, no throw)
-// ---------------------------------------------------------------------------
-describe('AgentChat - trackChatSessionActivated', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('does not throw when called', () => {
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect(() => (agent as any).trackChatSessionActivated(msg, 'new')).not.toThrow();
-    expect(() => (agent as any).trackChatSessionActivated(msg, 'continued')).not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// shouldTrackChatSessionActivated with same-day history
-// ---------------------------------------------------------------------------
-describe('AgentChat - shouldTrackChatSessionActivated same-day check', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns false when a same-day user message already exists in chat_history', () => {
-    const now = Date.now();
-    const existingMsg = { id: 'm0', role: 'user', content: [], timestamp: now } as any;
-    agent.addMessageToChatHistory(existingMsg);
-
-    const newMsg = { id: 'm1', role: 'user', content: [], timestamp: now } as any;
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(newMsg)).toBe(false);
-  });
-
-  it('returns true when previous user message is on a different day', () => {
-    const yesterday = Date.now() - 24 * 60 * 60 * 1000;
-    const oldMsg = { id: 'm0', role: 'user', content: [], timestamp: yesterday } as any;
-    agent.addMessageToChatHistory(oldMsg);
-
-    const newMsg = { id: 'm1', role: 'user', content: [], timestamp: Date.now() } as any;
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(newMsg)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getMessageTimestampMs edge cases
-// ---------------------------------------------------------------------------
-describe('AgentChat - getMessageTimestampMs', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns timestamp when message.timestamp is a finite number', () => {
-    const ts = 1700000000000;
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: ts } as any;
-    expect((agent as any).getMessageTimestampMs(msg)).toBe(ts);
-  });
-
-  it('returns parsed timestamp when message.timestamp is a valid ISO string', () => {
-    const isoStr = '2026-01-01T00:00:00.000Z';
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: isoStr } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    expect(typeof result).toBe('number');
-    expect(result).toBe(Date.parse(isoStr));
-  });
-
-  it('returns Date.now() approx when timestamp is invalid string', () => {
-    const before = Date.now();
-    const msg = { id: 'm1', role: 'user', content: [], timestamp: 'not-a-date' } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(result).toBeGreaterThanOrEqual(before);
-    expect(result).toBeLessThanOrEqual(after);
-  });
-
-  it('returns Date.now() approx when timestamp is missing', () => {
-    const before = Date.now();
-    const msg = { id: 'm1', role: 'user', content: [] } as any;
-    const result = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(result).toBeGreaterThanOrEqual(before);
-    expect(result).toBeLessThanOrEqual(after);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getAnalyticsDayKey
-// ---------------------------------------------------------------------------
-describe('AgentChat - getAnalyticsDayKey', () => {
-  let agent: AgentChat;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    agent = createAgent();
-  });
-
-  it('returns a date string in YYYY-MM-DD format', () => {
-    const key = (agent as any).getAnalyticsDayKey(Date.now());
-    expect(key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it('returns consistent key for same epoch value', () => {
-    const ts = 1700000000000;
-    const k1 = (agent as any).getAnalyticsDayKey(ts);
-    const k2 = (agent as any).getAnalyticsDayKey(ts);
-    expect(k1).toBe(k2);
   });
 });
 

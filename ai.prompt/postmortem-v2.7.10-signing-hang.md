@@ -1,6 +1,6 @@
 # Postmortem: v2.7.10 signing hang
 
-**Date:** 2026-04-22 | **Severity:** P1 (some users unable to sign in) | **Affected:** v2.7.10, users with multiple scheduled tasks who had been offline for several hours or more
+**Date:** 2026-04-22 | **Severity:** P1 (some users unable to sign in) | **Affected:** OpenKosmos 2.7.10, users with multiple scheduled tasks who had been offline for several hours or more
 
 ## Symptom
 After updating to 2.7.10, some users launched the app and were stuck on the "Signing In... Loading your profile..." screen for 12+ minutes.

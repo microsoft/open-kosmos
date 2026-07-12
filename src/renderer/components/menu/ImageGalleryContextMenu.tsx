@@ -4,6 +4,7 @@ import { clampMenuToViewport, CONTEXT_MENU_SIZE_PRESETS, ContextMenuPosition, ge
 import { atom } from '@/atom';
 import { useClickOut } from '../ui/use-click-out';
 import { createLogger } from '../../lib/utilities/logger';
+import { useI18n } from '../../lib/i18n/useI18n';
 const logger = createLogger('[ImageGalleryContextMenu]');
 
 const zeroState: {
@@ -58,6 +59,7 @@ const ImageGalleryContextMenu: React.FC<InnerProps> = ({
   initialIndex,
 }) => {
   const { close: onClose } = ImageGalleryMenuAtom.useChange();
+  const { t } = useI18n();
   const imageGalleryMenuRef = useRef<HTMLDivElement>(null);
 
   useClickOut(imageGalleryMenuRef, onClose);
@@ -93,6 +95,7 @@ const ImageGalleryContextMenu: React.FC<InnerProps> = ({
 
   // 🔧 Fix: Adjust menu position if it overflows window bottom
   useLayoutEffect(() => {
+    /* v8 ignore next 3 -- defensive ref-null guard in layout effect; the mounted menu always assigns this ref before the effect runs */
     if (imageGalleryMenuRef.current) {
       clampMenuToViewport(imageGalleryMenuRef.current);
     }
@@ -225,7 +228,7 @@ const ImageGalleryContextMenu: React.FC<InnerProps> = ({
             <circle cx="12" cy="12" r="3"></circle>
           </svg>
         </span>
-        <span className="dropdown-menu-item-text">View image</span>
+        <span className="dropdown-menu-item-text">{t('chat.image.view')}</span>
       </button>
       <button
         className="dropdown-menu-item"
@@ -235,7 +238,7 @@ const ImageGalleryContextMenu: React.FC<InnerProps> = ({
         <span className="dropdown-menu-item-icon">
           <Copy size={16} strokeWidth={2} />
         </span>
-        <span className="dropdown-menu-item-text">Copy</span>
+        <span className="dropdown-menu-item-text">{t('common.copy')}</span>
       </button>
       <button
         className="dropdown-menu-item"
@@ -245,7 +248,7 @@ const ImageGalleryContextMenu: React.FC<InnerProps> = ({
         <span className="dropdown-menu-item-icon">
           <Download size={16} strokeWidth={2} />
         </span>
-        <span className="dropdown-menu-item-text">Save as</span>
+        <span className="dropdown-menu-item-text">{t('common.saveAs')}</span>
       </button>
     </div>
   );

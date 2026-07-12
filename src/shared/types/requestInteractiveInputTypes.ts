@@ -45,6 +45,7 @@ export interface RequestInteractiveInputArgs {
   source?: InteractiveRequestSource;
   submitLabel?: string;
   skipLabel?: string;
+  metadata?: Record<string, unknown>;
   schema: InteractiveInputSchema;
 }
 

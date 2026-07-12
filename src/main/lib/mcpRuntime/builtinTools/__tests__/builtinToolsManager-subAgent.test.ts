@@ -1,16 +1,12 @@
 /**
- * BuiltinToolsManager — Sub-Agent Feature Flag unit tests
+ * BuiltinToolsManager — Sub-Agent tools unit tests
  *
- * Covers Phase 4 Step 4.2:
- * - flag=true: spawn_subagent / spawn_subagents tools are registered normally
- * - flag=false: spawn_subagent / spawn_subagents tools are not registered
- * - flag=false: executeTool returns disabled error (defensive check)
- * - Other tools are not affected by the flag
+ * Covers always-registered sub_agent and inline-dispatched sub-agent tools.
  */
 
 // ─── Mock all tool modules to avoid heavy dependencies ───
 
-const { createMockTool } = vi.hoisted(() => ({
+const { createMockTool, mockSubAgentManager } = vi.hoisted(() => ({
   createMockTool: (name: string) => ({
     getDefinition: () => ({
       name,
@@ -19,16 +15,16 @@ const { createMockTool } = vi.hoisted(() => ({
     }),
     execute: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] }),
   }),
+  mockSubAgentManager: {
+    getBackgroundTaskStatus: vi.fn().mockReturnValue({ running: [], completed: [], failed: [] }),
+    handleNotification: vi.fn(),
+    sendMessageToSubAgent: vi.fn().mockReturnValue({ success: true }),
+    getInstance: vi.fn(),
+  },
 }));
 
-// Mock featureFlags — mutable flag for per-test toggling
-let mockSubAgentFeatureEnabled = true;
 vi.mock('../../../featureFlags', async () => ({
-  isFeatureEnabled: vi.fn((name: string) => {
-    if (name === 'openkosmosFeatureSubAgent') return mockSubAgentFeatureEnabled;
-    if (name === 'browserControl') return true;
-    return true;
-  }),
+  isFeatureEnabled: vi.fn(() => true),
 }));
 
 // Mock all lightweight tool imports with minimal stubs
@@ -41,8 +37,6 @@ vi.mock('../searchFileContentsTool', async () => ({ SearchFileContentsTool: crea
 vi.mock('../searchFilesTool', async () => ({ SearchFilesTool: createMockTool('search_files') }));
 vi.mock('../executeCommandTool', async () => ({ ExecuteCommandTool: createMockTool('execute_command') }));
 vi.mock('../getCurrentDateTimeTool', async () => ({ GetCurrentDateTimeTool: createMockTool('get_current_datetime') }));
-vi.mock('../getMcpTemplateFromLibraryTool', async () => ({ GetMcpTemplateFromLibraryTool: createMockTool('get_mcp_template_from_library') }));
-vi.mock('../getAgentTemplateFromLibraryTool', async () => ({ GetAgentTemplateFromLibraryTool: createMockTool('get_agent_template_from_library') }));
 vi.mock('../createMcpServerFromConfigTool', async () => ({ CreateMcpServerFromConfigTool: createMockTool('create_mcp_server_from_config') }));
 vi.mock('../updateMcpServerTool', async () => ({ UpdateMcpServerTool: createMockTool('update_mcp_server') }));
 vi.mock('../getMcpStatusTool', async () => ({ GetMcpStatusTool: createMockTool('get_mcp_status') }));
@@ -58,17 +52,22 @@ vi.mock('../setPrimaryAgentTool', async () => ({ SetPrimaryAgentTool: createMock
 vi.mock('../moveFileTool', async () => ({ MoveFileTool: createMockTool('move_file') }));
 vi.mock('../presentDeliverablesTool', async () => ({ PresentTool: createMockTool('present_deliverables') }));
 
+// Mock SubAgentManager for inline-dispatched tool tests
+mockSubAgentManager.getInstance.mockReturnValue(mockSubAgentManager);
+vi.mock('../../../subAgent/subAgentManager', async () => ({
+  SubAgentManager: mockSubAgentManager,
+}));
+
 // Mock lazy-loaded sub-agent tool
 vi.mock('../subAgentTool', async () => ({
   SubAgentTool: {
     getDefinition: () => ({
       name: 'sub_agent',
-      description: 'Mock sub_agent',
+      description: 'Launch a sub-agent to handle a task.',
       inputSchema: {
         type: 'object',
         properties: {
           prompt: { type: 'string', description: 'The task' },
-          subagent_type: { type: 'string', description: 'Named agent type' },
           run_in_background: { type: 'boolean', description: 'Run in background' },
         },
         required: ['prompt'],
@@ -82,34 +81,34 @@ import { BuiltinToolsManager } from '../builtinToolsManager';
 
 // ─── Tests ───
 
-describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
+describe('BuiltinToolsManager — Sub-Agent tools', () => {
   let manager: BuiltinToolsManager;
 
   beforeEach(() => {
     // Reset singleton and create fresh instance for each test
     BuiltinToolsManager.resetInstance();
     manager = BuiltinToolsManager.getInstance();
-    // Reset default flag state
-    mockSubAgentFeatureEnabled = true;
   });
 
   afterEach(() => {
+    BuiltinToolsManager.clearExecutionContext();
     BuiltinToolsManager.resetInstance();
+    mockSubAgentManager.getBackgroundTaskStatus.mockClear();
+    mockSubAgentManager.handleNotification.mockClear();
+    mockSubAgentManager.sendMessageToSubAgent.mockClear();
   });
 
   // ─── Tool Registration ───
 
   describe('tool registration (initialize)', () => {
-    it('should always register sub_agent regardless of flag', async () => {
-      mockSubAgentFeatureEnabled = false;
+    it('should register sub_agent', async () => {
       await manager.initialize();
 
       expect(manager.hasTool('sub_agent')).toBe(true);
       expect(manager.hasTool('get_subagent_status')).toBe(true);
     });
 
-    it('should still register other tools when sub-agent flag is disabled', async () => {
-      mockSubAgentFeatureEnabled = false;
+    it('should still register other tools', async () => {
       await manager.initialize();
 
       // Core tools should still be registered
@@ -121,28 +120,12 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
       expect(manager.hasTool('search_file_contents')).toBe(true);
     });
 
-    it('should have same tool count regardless of sub-agent flag', async () => {
-      mockSubAgentFeatureEnabled = true;
-      await manager.initialize();
-      const enabledCount = manager.getAllTools().length;
-
-      // Reset and re-initialize with flag disabled
-      BuiltinToolsManager.resetInstance();
-      manager = BuiltinToolsManager.getInstance();
-      mockSubAgentFeatureEnabled = false;
-      await manager.initialize();
-      const disabledCount = manager.getAllTools().length;
-
-      // sub_agent tools are always registered now
-      expect(enabledCount).toBe(disabledCount);
-    });
   });
 
   // ─── OpenAI Tool Definitions ───
 
   describe('getOpenAIToolDefinitions', () => {
     it('should always include sub_agent in OpenAI definitions', async () => {
-      mockSubAgentFeatureEnabled = false;
       await manager.initialize();
 
       const definitions = manager.getOpenAIToolDefinitions();
@@ -156,7 +139,6 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
 
   describe('getAllToolsInfo', () => {
     it('should always include sub_agent in MCP info', async () => {
-      mockSubAgentFeatureEnabled = false;
       await manager.initialize();
 
       const toolsInfo = manager.getAllToolsInfo();
@@ -166,41 +148,21 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
     });
   });
 
-  // ─── Tool Execution (defensive guard) ───
+  // ─── Tool Execution ───
 
-  describe('executeTool — defensive feature flag guard', () => {
-    it('should execute sub_agent successfully when flag is enabled', async () => {
-      mockSubAgentFeatureEnabled = true;
+  describe('executeTool — sub_agent', () => {
+    it('should execute sub_agent successfully', async () => {
       await manager.initialize();
 
       const result = await manager.executeTool('sub_agent', {
         prompt: 'test task',
-        subagent_type: 'test-agent',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
     });
 
-    it('should return disabled error for named sub_agent when flag is disabled at execution time', async () => {
-      mockSubAgentFeatureEnabled = true;
-      await manager.initialize();
-
-      // Then disable at execution time (defensive guard)
-      mockSubAgentFeatureEnabled = false;
-      const result = await manager.executeTool('sub_agent', {
-        prompt: 'test task',
-        subagent_type: 'test-agent',
-      });
-
-      expect(result.success).toBe(true);
-      const innerResult = JSON.parse(result.data);
-      expect(innerResult.isError).toBe(true);
-      expect(innerResult.content[0].text).toContain('Named Sub-Agent feature is disabled');
-    });
-
-    it('should execute adhoc sub_agent even when flag is disabled', async () => {
-      mockSubAgentFeatureEnabled = false;
+    it('should execute adhoc sub_agent', async () => {
       await manager.initialize();
 
       const result = await manager.executeTool('sub_agent', {
@@ -217,8 +179,7 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
   // ─── Tool schema validation ───
 
   describe('sub_agent tool schema', () => {
-    it('sub_agent should have correct input schema', async () => {
-      mockSubAgentFeatureEnabled = false;
+    it('sub_agent should expose ad-hoc schema', async () => {
       await manager.initialize();
 
       const tool = manager.getTool('sub_agent');
@@ -226,7 +187,6 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
       expect(tool!.inputSchema.type).toBe('object');
       expect(tool!.inputSchema.required).toContain('prompt');
       expect(tool!.inputSchema.properties).toHaveProperty('prompt');
-      expect(tool!.inputSchema.properties).toHaveProperty('subagent_type');
       expect(tool!.inputSchema.properties).toHaveProperty('run_in_background');
     });
   });
@@ -235,7 +195,6 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
 
   describe('isBuiltinTool', () => {
     it('should always return true for sub_agent', async () => {
-      mockSubAgentFeatureEnabled = false;
       await manager.initialize();
 
       expect(manager.isBuiltinTool('sub_agent')).toBe(true);
@@ -246,11 +205,136 @@ describe('BuiltinToolsManager — Sub-Agent Feature Flag', () => {
 
   describe('getStats', () => {
     it('should always include sub_agent in stats', async () => {
-      mockSubAgentFeatureEnabled = false;
       await manager.initialize();
 
       const stats = manager.getStats();
       expect(stats.tools).toContain('sub_agent');
+    });
+  });
+
+  // ─── Inline-dispatched sub-agent tools ───
+
+  describe('get_subagent_status execution', () => {
+    it('should return error when no execution context is set', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.clearExecutionContext();
+
+      const result = await manager.executeTool('get_subagent_status', {});
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('No execution context');
+    });
+
+    it('should return background task status when context is set', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1',
+      } as any);
+
+      const result = await manager.executeTool('get_subagent_status', {});
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(false);
+      expect(mockSubAgentManager.getBackgroundTaskStatus).toHaveBeenCalledWith('sess-1');
+    });
+  });
+
+  describe('notify_parent execution', () => {
+    it('should return error when no execution context is set', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.clearExecutionContext();
+
+      const result = await manager.executeTool('notify_parent', { message: 'hi' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('No execution context');
+    });
+
+    it('should return error when called from a non-sub-agent context', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1', isSubAgent: false,
+      } as any);
+
+      const result = await manager.executeTool('notify_parent', { message: 'hi' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('only be called from within a sub-agent');
+    });
+
+    it('should send notification when called from a sub-agent context', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1',
+        isSubAgent: true, currentToolCallId: 'tool-42',
+      } as any);
+
+      const result = await manager.executeTool('notify_parent', { message: 'done', type: 'success' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(false);
+      expect(mockSubAgentManager.handleNotification).toHaveBeenCalledWith('sess-1', expect.objectContaining({
+        taskId: 'tool-42',
+        type: 'success',
+        message: 'done',
+      }));
+    });
+  });
+
+  describe('send_to_subagent execution', () => {
+    it('should return error when no execution context is set', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.clearExecutionContext();
+
+      const result = await manager.executeTool('send_to_subagent', { task_id: 't1', message: 'go' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('No execution context');
+    });
+
+    it('should return error when called from a sub-agent context', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1', isSubAgent: true,
+      } as any);
+
+      const result = await manager.executeTool('send_to_subagent', { task_id: 't1', message: 'go' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('only be called by the parent agent');
+    });
+
+    it('should deliver message when called from parent context', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1', isSubAgent: false,
+      } as any);
+      mockSubAgentManager.sendMessageToSubAgent.mockReturnValue({ success: true });
+
+      const result = await manager.executeTool('send_to_subagent', { task_id: 't1', message: 'go' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(false);
+      expect(inner.content[0].text).toContain('Message delivered');
+    });
+
+    it('should return error when send fails', async () => {
+      await manager.initialize();
+      BuiltinToolsManager.setExecutionContext({
+        userAlias: 'alice', chatId: 'c1', chatSessionId: 'sess-1', isSubAgent: false,
+      } as any);
+      mockSubAgentManager.sendMessageToSubAgent.mockReturnValue({ success: false, error: 'Task not found' });
+
+      const result = await manager.executeTool('send_to_subagent', { task_id: 't1', message: 'go' });
+      expect(result.success).toBe(true);
+      const inner = JSON.parse(result.data);
+      expect(inner.isError).toBe(true);
+      expect(inner.content[0].text).toContain('Task not found');
     });
   });
 });

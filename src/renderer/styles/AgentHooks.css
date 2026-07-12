@@ -1,0 +1,1210 @@
+/* ===========================
+   Agent Hooks settings view
+   Layout and styling aligned with the MCP / Skills settings pages
+   (unified-header bar + warm card palette) for a consistent UX.
+   =========================== */
+
+.agent-hooks-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Let the title area shrink instead of overflowing the fixed-height header */
+.agent-hooks-view .header-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.agent-hooks-view .header-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status badge group, same visual as the MCP header badges */
+.agent-hooks-status-badges {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Master enable switch lives on the right side of the header */
+.agent-hooks-master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-warm-900);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.agent-hooks-view .header-actions {
+  gap: 8px;
+}
+
+.agent-hooks-master .toolbar-toggle-wrapper {
+  margin-left: 0;
+}
+
+/* Scrollable content body below the header */
+.agent-hooks-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-hooks-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-hooks-content::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.6);
+  border-radius: var(--radius-scrollbar);
+}
+
+.agent-hooks-subtitle {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: 13px;
+}
+
+.agent-hooks-loading {
+  padding: 24px;
+  color: var(--color-neutral-500);
+  font-size: 13px;
+}
+
+/* Confirmation / notice banners */
+.agent-hooks-banner {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--color-white);
+  padding: 12px 16px;
+}
+
+.agent-hooks-banner--warning {
+  border-color: var(--color-warning-500);
+  background: var(--color-warning-50);
+}
+
+.agent-hooks-banner p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-amber-900);
+}
+
+.agent-hooks-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-hooks-error {
+  margin: 0;
+  padding: 16px 24px 0;
+  color: var(--color-danger-700);
+  font-size: 13px;
+}
+
+.agent-hooks-disabled-body {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px;
+  background: var(--color-white);
+  box-sizing: border-box;
+  gap: 0;
+}
+
+.agent-hooks-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  padding: 2rem;
+  color: rgb(107, 114, 128);
+}
+
+.agent-hooks-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}
+
+.agent-hooks-empty-state h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(55, 65, 81);
+}
+
+.agent-hooks-empty-state p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: rgb(107, 114, 128);
+}
+
+.agent-hooks-empty-hint {
+  margin-top: 0.75rem !important;
+  font-size: 0.75rem !important;
+  color: rgb(156, 163, 175) !important;
+}
+
+.agent-hooks-disabled-actions {
+  margin-top: 1rem;
+}
+
+.agent-hooks-disabled-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  min-height: 40px;
+  border: 1px solid var(--color-warm-900);
+  border-radius: var(--radius-lg);
+  background: var(--color-warm-900);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.agent-hooks-disabled-primary:hover {
+  background: var(--color-warm-700);
+  border-color: var(--color-warm-700);
+}
+
+.agent-hooks-disabled-primary:active {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-900);
+}
+
+/* Generic card section (Import panel, Effective preview) */
+.agent-hooks-section {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--color-white);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-hooks-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--color-warm-900);
+  font-variation-settings: 'opsz' 10.5;
+}
+
+.agent-hooks-section-desc {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: 12px;
+}
+
+/* ===========================
+   Two-column list + detail
+   (aligned with the MCP / Skills content layout)
+   =========================== */
+
+.hook-two-col {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  padding: 24px;
+  background: var(--color-white);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Left list column: borderless, aligned with .skill-list-panel /
+   .server-list-panel. Uses a fixed width (within the 250-400px range those
+   panels adapt across) so the column never reflows: the card name truncates
+   with an ellipsis and an empty search result keeps the list at a stable
+   width instead of collapsing to its min-content size. */
+.hook-list-panel {
+  flex-shrink: 0;
+  overflow: hidden;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The list search box stays fixed at the top of the panel; only the hook list
+   below it scrolls, so the scrollbar never runs alongside the search box. */
+.hook-list-panel > .list-search-box {
+  flex-shrink: 0;
+}
+
+.hook-detail-panel {
+  min-width: 0;
+  background: var(--color-white);
+}
+
+/* Right detail column: a bordered, rounded card that fills the remaining space
+   and scrolls its own content, aligned with .skill-view-panel-container /
+   .mcp-tool-list-view. */
+.hook-two-col > .hook-detail-panel {
+  flex: 1;
+  min-width: 300px;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+}
+
+.hook-two-col > .hook-detail-panel > .hook-detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ===========================
+   Hook list and rows
+   =========================== */
+
+.hook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 0 0 3rem 0;
+  overflow-y: auto;
+}
+
+/* Scrollbar auto-hides, aligned with the MCP and Skills lists: track and thumb
+   are transparent by default (the 6px width is always reserved so revealing it
+   causes no layout shift) and appear when the list is hovered or actively
+   scrolling (the `is-scrolling` class is toggled by useAutoHideScrollbar).
+   NOTE: globals.css declares `::-webkit-scrollbar-thumb` with a solid color and
+   `!important`, so every rule here must also use `!important` to win — otherwise
+   the thumb stays permanently visible. */
+.hook-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.hook-list::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+}
+
+.hook-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: var(--radius-scrollbar);
+  transition: background 0.2s ease !important;
+}
+
+.hook-list:hover::-webkit-scrollbar-track,
+.hook-list.is-scrolling::-webkit-scrollbar-track {
+  background: rgba(203, 213, 225, 0.3) !important;
+}
+
+.hook-list:hover::-webkit-scrollbar-thumb,
+.hook-list.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.6) !important;
+}
+
+.hook-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.8) !important;
+}
+
+.hook-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Card wrapper - aligned with .server-card-wrapper (MCP) */
+.hook-card {
+  box-sizing: border-box;
+  min-height: 88px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.hook-card:hover {
+  background: var(--color-warm-100);
+}
+
+.hook-card.is-selected {
+  background: var(--color-warm-100);
+}
+
+/* Card header row - aligned with .server-card-header */
+.hook-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1.25rem;
+}
+
+.hook-card-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+/* Name + meta stack - aligned with .server-name-group */
+.hook-name-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Row 1: hook name - aligned with .server-title-row */
+.hook-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hook-card-name {
+  margin: 0;
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-warm-900);
+  font-variation-settings: 'opsz' 10.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Row 2: version, source and enabled/disabled status -
+   aligned with .server-meta-group + .server-status-group */
+.hook-meta-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Version / source badges - aligned with .server-version-badge / .server-source-badge */
+.hook-version-badge,
+.hook-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  gap: 4px;
+  background: rgba(224, 158, 102, 0.3);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-warning-900);
+  font-variation-settings: 'opsz' 10.5;
+  flex: none;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+/* Enabled/disabled status pill - aligned with .server-status (connected/disconnected) */
+.hook-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  gap: 4px;
+  height: 24px;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  font-variation-settings: 'opsz' 10.5;
+  flex: none;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+.hook-status.enabled {
+  background: rgba(34, 197, 94, 0.3);
+  color: var(--color-success-600);
+}
+
+.hook-status.disabled {
+  background: rgba(107, 114, 128, 0.3);
+  color: var(--color-neutral-600);
+}
+
+/* Menu button - aligned with .server-menu-container / .server-menu-btn (hover reveal) */
+.hook-card-menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-neutral-500);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.hook-card:hover .hook-card-menu {
+  opacity: 1;
+}
+
+.hook-card-menu:hover {
+  opacity: 0.8;
+  transform: scale(1.1);
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius);
+}
+
+.agent-hooks-empty {
+  color: var(--color-neutral-500);
+  font-size: 13px;
+  padding: 28px 24px;
+  text-align: center;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-xl);
+  background: var(--color-white);
+}
+
+/* ===========================
+   Read-only detail panel
+   =========================== */
+
+.hook-detail-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-neutral-400);
+  font-size: 13px;
+  text-align: center;
+}
+
+.hook-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.hook-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.4);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+
+.hook-detail-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.hook-detail-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.hook-detail-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(55, 65, 81);
+  font-variation-settings: 'opsz' 10.5;
+  word-break: break-word;
+}
+
+.hook-detail-header-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgb(107, 114, 128);
+}
+
+.hook-detail-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.hook-detail-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+  padding-bottom: 3rem;
+}
+
+.hook-detail-section {
+  margin-bottom: 1.5rem;
+}
+
+.hook-detail-section:last-child {
+  margin-bottom: 1rem;
+}
+
+.hook-detail-section-title {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(55, 65, 81);
+}
+
+.hook-detail-section-content {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(203, 213, 225, 0.5);
+  border-radius: var(--radius-xl);
+  padding: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.hook-detail-description {
+  margin: 0;
+  color: rgb(55, 65, 81);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+  font-weight: 500;
+}
+
+.hook-detail-property-grid {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.hook-detail-property-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+}
+
+.hook-detail-property-item:last-child {
+  border-bottom: none;
+}
+
+.hook-detail-property-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgb(107, 114, 128);
+  white-space: nowrap;
+}
+
+.hook-detail-property-value {
+  min-width: 0;
+  max-width: 65%;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgb(55, 65, 81);
+  word-break: break-word;
+  text-align: right;
+}
+
+.hook-detail-property-value--code {
+  font-family: monospace;
+  font-size: 0.75rem;
+  background: rgba(246, 241, 236, 0.9);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+}
+
+.hook-detail-action-card {
+  border: 1px solid rgba(203, 213, 225, 0.5);
+  border-radius: var(--radius-xl);
+  padding: 0.875rem;
+  margin-bottom: 0.75rem;
+  background: rgba(251, 247, 243, 0.85);
+}
+
+.hook-detail-action-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.hook-detail-action-type {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgb(55, 65, 81);
+}
+
+.hook-detail-action-summary {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgb(107, 114, 128);
+}
+
+.hook-detail-code-block {
+  margin: 0;
+  background: rgba(17, 24, 39, 0.95);
+  color: rgb(229, 231, 235);
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.hook-detail-code-block code {
+  color: inherit;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.hook-detail-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.hook-detail-method {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: rgb(var(--color-accent-rgb) / 0.12);
+  color: var(--color-accent-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.hook-detail-endpoint code {
+  min-width: 0;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: rgb(55, 65, 81);
+  word-break: break-all;
+}
+
+.hook-detail-subsection {
+  margin-top: 0.875rem;
+}
+
+.hook-detail-subsection-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgb(55, 65, 81);
+}
+
+.hook-enable-review {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+}
+
+.hook-preserved-operations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hook-preserved-operation {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-warm-600);
+}
+
+.hook-preserved-operation-event {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-warm-900);
+}
+
+/* ===========================
+   Buttons
+   =========================== */
+
+.hook-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-warm-900);
+  transition: background 0.15s ease, border 0.15s ease;
+}
+
+.hook-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hook-btn--primary {
+  background: var(--color-warm-900);
+  border-color: var(--color-warm-900);
+  color: var(--color-white);
+}
+
+.hook-btn--primary:hover:not(:disabled) {
+  background: var(--color-warm-700);
+  border-color: var(--color-warm-700);
+}
+
+.hook-btn--ghost {
+  border-color: var(--color-border-strong);
+  background: var(--color-white);
+}
+
+.hook-btn--ghost:hover:not(:disabled) {
+  background: var(--color-warm-100);
+}
+
+.hook-btn--danger {
+  color: var(--color-danger-700);
+  border-color: rgba(180, 35, 24, 0.25);
+  background: var(--color-white);
+}
+
+.hook-btn--danger:hover:not(:disabled) {
+  background: var(--color-danger-50);
+}
+
+/* ===========================
+   Editor form
+   =========================== */
+
+.hook-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: none;
+}
+
+/* Scrollable body for the full-page Create/Edit Hook view (HookEditorView). */
+.hook-editor-view-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+
+.hook-detail-panel > .agent-hooks-section {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.hook-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hook-field--full {
+  grid-column: 1 / -1;
+}
+
+.hook-field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-warm-900);
+}
+
+.hook-field-unit {
+  margin-left: 4px;
+  color: var(--color-neutral-500);
+  font-weight: 400;
+}
+
+.hook-field-hint {
+  margin: -2px 0 0;
+  color: var(--color-neutral-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.hook-input,
+.hook-textarea,
+.hook-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--color-white);
+  color: var(--color-warm-900);
+  font-family: inherit;
+}
+
+.hook-input:focus,
+.hook-textarea:focus,
+.hook-select:focus {
+  outline: none;
+  border-color: var(--color-warm-900);
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
+}
+
+.hook-select-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 34px;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  background: var(--color-white);
+  color: var(--color-warm-900);
+  font: inherit;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: border 0.15s ease, background 0.15s ease;
+}
+
+.hook-select-trigger:hover,
+.hook-select-trigger.is-open {
+  background: var(--color-neutral-50);
+  border-color: var(--color-warm-900);
+}
+
+.hook-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-warm-900);
+  box-shadow: 0 0 0 2px rgba(39, 35, 32, 0.08);
+}
+
+.hook-select-trigger-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hook-select-menu {
+  min-width: 0;
+}
+
+.hook-select-menu-item.is-selected {
+  background: var(--color-selection-surface);
+}
+
+.hook-textarea {
+  resize: vertical;
+}
+
+.hook-textarea--mono {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.hook-input--inline {
+  width: 100%;
+  max-width: none;
+}
+
+.hook-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-warm-900);
+}
+
+.hook-editor-section {
+  background: var(--color-white);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hook-editor-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 4px 2px;
+}
+
+.hook-editor-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-warm-900);
+  font-variation-settings: 'opsz' 10.5;
+}
+
+.hook-editor-section-desc {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: 12px;
+}
+
+.hook-editor-section-link {
+  color: var(--color-warm-900);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hook-editor-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 4px 10px;
+}
+
+.hook-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.hook-bindings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hook-binding-group {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-warm-100);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hook-binding-group legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-warm-900);
+}
+
+.hook-operation-card {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hook-operation-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.hook-muted {
+  color: var(--color-neutral-400);
+  font-size: 12px;
+}
+
+.hook-errors {
+  color: var(--color-danger-700);
+  margin: 0;
+  padding-left: 18px;
+}
+
+.hook-actions-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 4px 0;
+}
+
+@media (max-width: 920px) {
+  .hook-bindings {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hook-preview-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.hook-warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--color-warning-700);
+}
+
+.hook-success {
+  color: var(--color-success-700);
+  margin: 0;
+  font-size: 13px;
+}
+
+[data-theme="dark"] .hook-detail-description,
+[data-theme="dark"] .hook-detail-property-value,
+[data-theme="dark"] .hook-detail-action-type,
+[data-theme="dark"] .hook-detail-endpoint code,
+[data-theme="dark"] .hook-detail-subsection-title,
+[data-theme="dark"] .hook-preserved-operation-event,
+[data-theme="dark"] .hook-editor-section-link,
+[data-theme="dark"] .hook-checkbox-label,
+[data-theme="dark"] .hook-field-label,
+[data-theme="dark"] .hook-editor-section-title,
+[data-theme="dark"] .hook-binding-group legend {
+  color: var(--color-text-default);
+}
+
+[data-theme="dark"] .hook-detail-property-label,
+[data-theme="dark"] .hook-detail-action-summary,
+[data-theme="dark"] .hook-field-hint,
+[data-theme="dark"] .hook-field-unit,
+[data-theme="dark"] .hook-editor-section-desc,
+[data-theme="dark"] .hook-muted,
+[data-theme="dark"] .hook-preserved-operation {
+  color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .hook-detail-action-card,
+[data-theme="dark"] .hook-detail-property-value--code,
+[data-theme="dark"] .hook-editor-section,
+[data-theme="dark"] .hook-binding-group {
+  background: var(--color-surface-card);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-default);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .hook-input,
+[data-theme="dark"] .hook-textarea,
+[data-theme="dark"] .hook-select,
+[data-theme="dark"] .hook-select-trigger {
+  background: var(--form-control-bg);
+  border-color: var(--form-control-border);
+  color: var(--form-control-fg);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .hook-input:focus,
+[data-theme="dark"] .hook-textarea:focus,
+[data-theme="dark"] .hook-select:focus,
+[data-theme="dark"] .hook-select-trigger:hover,
+[data-theme="dark"] .hook-select-trigger.is-open,
+[data-theme="dark"] .hook-select-trigger:focus-visible {
+  background: var(--form-control-bg-focus);
+  border-color: var(--form-control-focus-border);
+  color: var(--form-control-fg);
+}
+
+[data-theme="dark"] .hook-btn--primary {
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+}
+
+[data-theme="dark"] .hook-btn--primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg);
+  border-color: var(--button-primary-hover-bg);
+}
+
+[data-theme="dark"] .hook-btn--ghost,
+[data-theme="dark"] .hook-btn--danger {
+  background: var(--button-secondary-bg);
+  border-color: var(--button-secondary-border);
+  color: var(--button-secondary-fg);
+}
+
+[data-theme="dark"] .hook-btn--ghost:hover:not(:disabled),
+[data-theme="dark"] .hook-btn--danger:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+  border-color: var(--button-secondary-hover-border);
+  color: var(--button-secondary-hover-fg);
+}
+
+[data-theme="dark"] .hook-warnings {
+  color: var(--color-warning-300);
+}
+
+[data-theme="dark"] .hook-success {
+  color: var(--color-success-300);
+}

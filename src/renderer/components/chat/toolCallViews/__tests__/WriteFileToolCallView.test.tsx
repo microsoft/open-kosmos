@@ -161,6 +161,9 @@ describe('WriteFileToolCallView', () => {
       const event = dispatchSpy.mock.calls[0][0] as CustomEvent;
       expect(event.type).toBe('imageViewer:open');
       expect(event.detail.images[0].alt).toBe('capture.png');
+      // Must be a loadable file:// URL, not a bare path (which 404s and hangs
+      // the viewer's loading spinner).
+      expect(event.detail.images[0].url).toBe('file:///screenshots/capture.png');
       dispatchSpy.mockRestore();
     });
 

@@ -5,7 +5,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const mockProfileCacheManager = {
-  setRemoteChannelManagerGetter: vi.fn(),
   setMainWindow: vi.fn(),
   getAllChatConfigs: vi.fn(() => []),
 };
@@ -93,11 +92,10 @@ describe('startup/lazy', () => {
 
   // ---- getProfileCacheManager --------------------------------------------
 
-  it('getProfileCacheManager returns the singleton and wires the getter', async () => {
+  it('getProfileCacheManager returns the singleton', async () => {
     const { getProfileCacheManager } = await import('../lazy');
     const result = await getProfileCacheManager();
     expect(result).toBe(mockProfileCacheManager);
-    expect(mockProfileCacheManager.setRemoteChannelManagerGetter).toHaveBeenCalledOnce();
   });
 
   it('getProfileCacheManager returns the same instance on second call (cached)', async () => {
@@ -105,8 +103,6 @@ describe('startup/lazy', () => {
     const a = await getProfileCacheManager();
     const b = await getProfileCacheManager();
     expect(a).toBe(b);
-    // Wire function called only once even on repeated calls
-    expect(mockProfileCacheManager.setRemoteChannelManagerGetter).toHaveBeenCalledTimes(1);
   });
 
   // ---- getAppCacheManager ------------------------------------------------
@@ -168,53 +164,6 @@ describe('startup/lazy', () => {
     const a = await getTerminalManagerInstance();
     const b = await getTerminalManagerInstance();
     expect(a).toBe(b);
-  });
-
-  // ---- getRemoteChannelManager -------------------------------------------
-
-  it('getRemoteChannelManager dynamically imports and initializes the module', async () => {
-    const mockRCM = { stopAll: vi.fn() };
-    vi.doMock('../../lib/remoteChannel', () => ({
-      initRemoteChannelModule: vi.fn().mockResolvedValue(mockRCM),
-    }));
-
-    const { getRemoteChannelManager } = await import('../lazy');
-    const result = await getRemoteChannelManager();
-    expect(result).toBe(mockRCM);
-  });
-
-  it('getRemoteChannelManager returns the same instance on second call', async () => {
-    const mockRCM = { stopAll: vi.fn() };
-    vi.doMock('../../lib/remoteChannel', () => ({
-      initRemoteChannelModule: vi.fn().mockResolvedValue(mockRCM),
-    }));
-
-    const { getRemoteChannelManager } = await import('../lazy');
-    const a = await getRemoteChannelManager();
-    const b = await getRemoteChannelManager();
-    expect(a).toBe(b);
-  });
-
-  // ---- useRemoteChannelManager -------------------------------------------
-
-  it('useRemoteChannelManager returns undefined when RCM is not initialized', async () => {
-    const { useRemoteChannelManager } = await import('../lazy');
-    const result = useRemoteChannelManager(() => 'called');
-    expect(result).toBeUndefined();
-  });
-
-  it('useRemoteChannelManager invokes callback with manager when initialized', async () => {
-    const mockRCM = { stopAll: vi.fn() };
-    vi.doMock('../../lib/remoteChannel', () => ({
-      initRemoteChannelModule: vi.fn().mockResolvedValue(mockRCM),
-    }));
-
-    const { getRemoteChannelManager, useRemoteChannelManager } = await import('../lazy');
-    await getRemoteChannelManager(); // populate cache
-
-    const result = useRemoteChannelManager((m) => m.stopAll());
-    expect(mockRCM.stopAll).toHaveBeenCalled();
-    expect(result).toBe(undefined); // stopAll returns void
   });
 
   // ---- getExternalAgentService -------------------------------------------

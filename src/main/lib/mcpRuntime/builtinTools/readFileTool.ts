@@ -15,6 +15,9 @@ import * as nodePath from 'path';
 import * as readline from 'readline';
 import { BuiltinToolDefinition, ToolExecutionResult } from './types';
 
+// Re-export types for backward compatibility
+export type { BuiltinToolDefinition, ToolExecutionResult } from './types';
+
 // ============ Safety limit constants ============
 const READ_FILE_LIMITS = {
   MAX_BYTES_PER_CALL: 128 * 1024,    // 128KB - maximum bytes per call
@@ -115,7 +118,10 @@ IMPORTANT CONSTRAINTS:
 - Lines exceeding ${READ_FILE_LIMITS.MAX_LINE_LENGTH / 1024}KB are truncated
 - Returns fileTypeHint: 'minified' for machine-generated files - consider using grep/selector tools instead
 - Returns fileTypeHint: 'binary' - DO NOT attempt to read binary files
-- Returns fileTypeHint: 'html' - Consider using read_html tool for better HTML handling`,
+- Returns fileTypeHint: 'html' - Consider using read_html tool for better HTML handling
+FILE-TYPE ROUTING (use the correct reader instead of this tool):
+- For .pdf/.docx/.xlsx/.pptx use read_office_file (this tool rejects them as binary)
+- For .html use read_html (this tool returns raw markup mixed with scripts/styles)`,
       inputSchema: {
         type: 'object',
         properties: {

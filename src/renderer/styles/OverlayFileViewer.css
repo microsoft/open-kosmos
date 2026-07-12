@@ -50,8 +50,8 @@
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 8px;
-  color: #6b7280;
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-500);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 16px;
@@ -59,7 +59,7 @@
 
 .file-viewer-header-btn:hover {
   background: rgba(0, 0, 0, 0.05);
-  color: #374151;
+  color: var(--color-neutral-700);
 }
 
 .file-viewer-header-btn:active {
@@ -67,13 +67,13 @@
 }
 
 .file-viewer-header-btn.file-viewer-header-btn-active {
-  background: rgba(79, 70, 229, 0.12);
-  color: #4338ca;
+  background: color-mix(in srgb, var(--color-accent-secondary-strong) 12%, transparent);
+  color: var(--color-accent-secondary-deep);
 }
 
 .file-viewer-header-btn.file-viewer-close:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-50);
+  color: var(--color-danger-600);
 }
 
 /* Edit button — no special styling, uses default gray */
@@ -82,7 +82,7 @@
 
 /* Save button — unsaved changes warning */
 .file-viewer-header-btn.file-viewer-save-dirty {
-  color: #dc2626;
+  color: var(--color-danger-600);
   animation: save-pulse 1.5s ease-in-out infinite;
 }
 
@@ -110,9 +110,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #fef2f2;
-  border-bottom: 1px solid #fecaca;
-  color: #dc2626;
+  background: var(--color-danger-50);
+  border-bottom: 1px solid var(--color-danger-200);
+  color: var(--color-danger-600);
   font-size: 13px;
   font-weight: 500;
   flex-shrink: 0;
@@ -141,8 +141,8 @@
   height: 85vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-white);
+  border-radius: var(--radius-xl);
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
   animation: fileContentZoomIn 0.3s ease-out;
   overflow: hidden;
@@ -173,8 +173,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-neutral-200);
   flex-shrink: 0;
 }
 
@@ -193,9 +193,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef2ff;
-  border-radius: 8px;
-  color: #4f46e5;
+  background: var(--color-accent-secondary-surface);
+  border-radius: var(--radius-lg);
+  color: var(--color-accent-secondary-strong);
   flex-shrink: 0;
 }
 
@@ -207,7 +207,7 @@
 .file-viewer-filename {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-neutral-900);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -215,7 +215,7 @@
 
 .file-viewer-file-meta {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   margin-top: 2px;
   display: flex;
   align-items: center;
@@ -228,20 +228,20 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   line-height: 1.4;
 }
 
 .file-viewer-mode-preview {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 1px solid #93c5fd;
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
+  border: 1px solid var(--color-primary-300);
 }
 
 .file-viewer-mode-edit {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fcd34d;
+  background: var(--color-warning-100);
+  color: var(--color-warning-800);
+  border: 1px solid var(--color-warning-300);
 }
 
 /* File body area */
@@ -250,7 +250,7 @@
   overflow: auto;
   padding: 0;
   position: relative;
-  background: #ffffff;
+  background: var(--color-white);
 }
 
 /* Text file content */
@@ -259,28 +259,28 @@
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-neutral-800);
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: 4;
   user-select: text;
   min-height: 100%;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 /* Plain text file layout with line numbers */
 .file-viewer-text-lined {
   display: flex;
   min-height: 100%;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 .file-viewer-text-line-numbers {
   flex-shrink: 0;
   padding: 16px 0;
   min-width: 48px;
-  background: #f3f4f6;
-  border-right: 1px solid #e5e7eb;
+  background: var(--color-neutral-100);
+  border-right: 1px solid var(--color-neutral-200);
   user-select: none;
   text-align: right;
 }
@@ -291,7 +291,7 @@
   line-height: 1.6;
   height: calc(13px * 1.6);
   padding: 0 12px 0 8px;
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   white-space: pre;
 }
 
@@ -302,7 +302,7 @@
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-neutral-800);
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: 4;
@@ -314,15 +314,15 @@
 .file-viewer-code-lined {
   display: flex;
   min-height: 100%;
-  background: #282c34;
+  background: var(--syntax-surface-onedark);
 }
 
 .file-viewer-code-line-numbers {
   flex-shrink: 0;
   padding: 16px 0;
   min-width: 48px;
-  background: #21252b;
-  border-right: 1px solid #3e4451;
+  background: var(--syntax-surface-onedark-raised);
+  border-right: 1px solid var(--syntax-gutter-border);
   overflow: hidden;
   user-select: none;
   text-align: right;
@@ -334,7 +334,7 @@
   line-height: 1.6;
   height: calc(13px * 1.6);
   padding: 0 12px 0 8px;
-  color: #636d83;
+  color: var(--syntax-line-number);
   white-space: pre;
 }
 
@@ -365,7 +365,7 @@
   width: 100%;
   height: 100%;
   border: none;
-  background: #ffffff;
+  background: var(--color-white);
 }
 
 /* ==============================
@@ -376,7 +376,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 /* JSON syntax error banner */
@@ -385,9 +385,9 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: #fef2f2;
-  border-bottom: 1px solid #fecaca;
-  color: #dc2626;
+  background: var(--color-danger-50);
+  border-bottom: 1px solid var(--color-danger-200);
+  color: var(--color-danger-600);
   font-size: 13px;
   font-weight: 500;
   flex-shrink: 0;
@@ -421,8 +421,8 @@
   flex-shrink: 0;
   padding: 16px 0;
   min-width: 48px;
-  background: #f3f4f6;
-  border-right: 1px solid #e5e7eb;
+  background: var(--color-neutral-100);
+  border-right: 1px solid var(--color-neutral-200);
   user-select: none;
   text-align: right;
 }
@@ -433,7 +433,7 @@
   line-height: 1.6;
   height: calc(13px * 1.6);
   padding: 0 12px 0 8px;
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   white-space: pre;
 }
 
@@ -446,7 +446,7 @@
 }
 
 .json-line:hover {
-  background: #f0f0f0;
+  background: var(--color-neutral-100);
 }
 
 /* Collapse arrow */
@@ -457,18 +457,18 @@
   width: 16px;
   height: 16px;
   font-size: 10px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   cursor: pointer;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-scrollbar);
   transition: all 0.15s ease;
   margin-right: 4px;
   user-select: none;
 }
 
 .json-collapse-toggle:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-700);
 }
 
 .json-collapse-placeholder {
@@ -486,35 +486,35 @@
 
 /* Collapsed hint text */
 .json-collapsed-hint {
-  color: #9ca3af;
+  color: var(--color-neutral-400);
   font-style: italic;
   font-size: 12px;
 }
 
-/* JSON syntax highlight colors */
+/* JSON syntax highlight colors (independent syntax registry: code-styles.css) */
 .json-key {
-  color: #4f46e5;
+  color: var(--syntax-json-key);
 }
 
 .json-string {
-  color: #059669;
+  color: var(--syntax-json-string);
 }
 
 .json-number {
-  color: #d97706;
+  color: var(--syntax-json-number);
 }
 
 .json-boolean {
-  color: #7c3aed;
+  color: var(--syntax-json-boolean);
 }
 
 .json-null {
-  color: #7c3aed;
+  color: var(--syntax-json-null);
   font-style: italic;
 }
 
 .json-bracket {
-  color: #374151;
+  color: var(--syntax-json-bracket);
 }
 
 /* Markdown rendered content */
@@ -523,7 +523,7 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 15px;
   line-height: 1.7;
-  color: #1f2937;
+  color: var(--color-neutral-800);
   user-select: text;
   min-height: 100%;
   overflow-wrap: break-word;
@@ -533,14 +533,14 @@
 .file-viewer-frontmatter {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border-strong);
 }
 
 .file-viewer-frontmatter-table {
   width: 100%;
   border-collapse: collapse;
   background-color: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -548,7 +548,7 @@
 .file-viewer-frontmatter-table td {
   padding: 10px 16px;
   font-size: 14px;
-  color: #272320;
+  color: var(--color-warm-900);
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
 }
 
@@ -558,7 +558,7 @@
 
 .file-viewer-frontmatter-key {
   font-weight: 600;
-  color: #0066cc;
+  color: var(--color-accent-strong);
   width: 120px;
   white-space: nowrap;
   background-color: rgba(0, 0, 0, 0.02);
@@ -573,7 +573,7 @@
   font-weight: 700;
   margin: 0.67em 0;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-neutral-200);
 }
 
 .file-viewer-markdown-content h2 {
@@ -581,7 +581,7 @@
   font-weight: 600;
   margin: 0.83em 0;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-neutral-200);
 }
 
 .file-viewer-markdown-content h3 {
@@ -602,7 +602,7 @@
 }
 
 .file-viewer-markdown-content a {
-  color: #4f46e5;
+  color: var(--color-accent-secondary-strong);
   text-decoration: none;
 }
 
@@ -610,20 +610,25 @@
   text-decoration: underline;
 }
 
+.file-viewer-markdown-content a.file-viewer-wikilink {
+  color: var(--color-primary-700);
+  font-weight: 500;
+}
+
 .file-viewer-markdown-content code {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
-  background: #f3f4f6;
+  background: var(--color-neutral-100);
   padding: 0.15em 0.4em;
-  border-radius: 4px;
-  color: #d946ef;
+  border-radius: var(--radius);
+  color: var(--syntax-md-inline-text);
 }
 
 .file-viewer-markdown-content pre {
-  background: #1f2937;
-  color: #e5e7eb;
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow-x: auto;
   margin: 1em 0;
 }
@@ -639,9 +644,9 @@
 .file-viewer-markdown-content blockquote {
   margin: 1em 0;
   padding: 0.5em 1em;
-  border-left: 4px solid #4f46e5;
-  background: #f9fafb;
-  color: #4b5563;
+  border-left: 4px solid var(--color-accent-secondary-strong);
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-600);
 }
 
 .file-viewer-markdown-content blockquote p {
@@ -667,29 +672,29 @@
 .file-viewer-markdown-content th,
 .file-viewer-markdown-content td {
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-neutral-300);
   text-align: left;
 }
 
 .file-viewer-markdown-content th {
-  background: #f3f4f6;
+  background: var(--color-neutral-100);
   font-weight: 600;
 }
 
 .file-viewer-markdown-content tr:nth-child(even) {
-  background: #f9fafb;
+  background: var(--color-neutral-50);
 }
 
 .file-viewer-markdown-content hr {
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-neutral-200);
   margin: 1.5em 0;
 }
 
 .file-viewer-markdown-content img {
   max-width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 
 .file-viewer-markdown-content input[type="checkbox"] {
@@ -714,20 +719,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef2ff;
-  border-radius: 16px;
-  color: #4f46e5;
+  background: var(--color-accent-secondary-surface);
+  border-radius: var(--radius-2xl);
+  color: var(--color-accent-secondary-strong);
 }
 
 .file-viewer-office-title {
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-neutral-900);
 }
 
 .file-viewer-office-desc {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   max-width: 400px;
   line-height: 1.5;
 }
@@ -735,10 +740,10 @@
 .file-viewer-office-open-btn {
   margin-top: 8px;
   padding: 10px 24px;
-  background: #4f46e5;
-  border: 1px solid #4338ca;
-  border-radius: 8px;
-  color: #ffffff;
+  background: var(--color-accent-secondary-strong);
+  border: 1px solid var(--color-accent-secondary-deep);
+  border-radius: var(--radius-lg);
+  color: var(--color-white);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -746,9 +751,9 @@
 }
 
 .file-viewer-office-open-btn:hover {
-  background: #4338ca;
-  border-color: #3730a3;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+  background: var(--color-accent-secondary-deep);
+  border-color: var(--color-indigo-800);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-secondary-strong) 30%, transparent);
 }
 
 .file-viewer-metadata-actions {
@@ -769,9 +774,9 @@
   gap: 6px;
   padding: 10px 24px;
   background: transparent;
-  border: 1.5px solid #4f46e5;
-  border-radius: 8px;
-  color: #4f46e5;
+  border: 1.5px solid var(--color-accent-secondary-strong);
+  border-radius: var(--radius-lg);
+  color: var(--color-accent-secondary-strong);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -779,10 +784,10 @@
 }
 
 .file-viewer-install-skill-btn:hover {
-  background: rgba(79, 70, 229, 0.08);
-  border-color: #4338ca;
-  color: #4338ca;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+  background: color-mix(in srgb, var(--color-accent-secondary-strong) 8%, transparent);
+  border-color: var(--color-accent-secondary-deep);
+  color: var(--color-accent-secondary-deep);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-secondary-strong) 15%, transparent);
 }
 
 /* Metadata display */
@@ -802,15 +807,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f3f4f6;
-  border-radius: 16px;
-  color: #6b7280;
+  background: var(--color-neutral-100);
+  border-radius: var(--radius-2xl);
+  color: var(--color-neutral-500);
 }
 
 .file-viewer-metadata-hint {
   max-width: 420px;
   text-align: center;
-  color: #6b7280;
+  color: var(--color-neutral-500);
   font-size: 13px;
   line-height: 1.5;
   margin: 0;
@@ -823,7 +828,7 @@
 }
 
 .file-viewer-metadata-table tr {
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--color-neutral-100);
 }
 
 .file-viewer-metadata-table tr:last-child {
@@ -837,14 +842,14 @@
 }
 
 .file-viewer-metadata-table td:first-child {
-  color: #6b7280;
+  color: var(--color-neutral-500);
   font-weight: 500;
   white-space: nowrap;
   width: 120px;
 }
 
 .file-viewer-metadata-table td:last-child {
-  color: #1f2937;
+  color: var(--color-neutral-800);
   word-break: break-all;
 }
 
@@ -869,8 +874,8 @@
 .file-viewer-loading .spinner-circle-large {
   width: 100%;
   height: 100%;
-  border: 4px solid #e5e7eb;
-  border-top-color: #4f46e5;
+  border: 4px solid var(--color-neutral-200);
+  border-top-color: var(--color-accent-secondary-strong);
   border-radius: 50%;
   animation: fileSpinnerRotate 0.8s linear infinite;
 }
@@ -886,7 +891,7 @@
 
 .file-viewer-loading .loading-text {
   font-size: 16px;
-  color: #374151;
+  color: var(--color-neutral-700);
   font-weight: 500;
 }
 
@@ -903,23 +908,23 @@
 }
 
 .file-viewer-error p {
-  color: #4b5563;
+  color: var(--color-neutral-600);
   font-size: 16px;
 }
 
 .file-viewer-error button {
   padding: 8px 20px;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  color: #374151;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-700);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .file-viewer-error button:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
+  background: var(--color-neutral-200);
+  border-color: var(--color-neutral-400);
 }
 
 .file-viewer-content:fullscreen {
@@ -983,10 +988,10 @@
 }
 
 .file-viewer-body::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 4px;
+  background: var(--color-neutral-300);
+  border-radius: var(--radius);
 }
 
 .file-viewer-body::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--color-neutral-400);
 }

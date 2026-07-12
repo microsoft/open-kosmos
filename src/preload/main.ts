@@ -1,15 +1,30 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { InvokeFn, OnOff } from '@shared/ipc/base';
+import type { MemexCardsChangedEvent } from '@shared/ipc/memex';
 import type { McpAuthClientIdRequestPayload, McpAuthClientIdResponse } from '@shared/types/mcpAuth';
 import invokeScreenshot from './screenshot/invoke';
 import invokeScheduler from './scheduler/invoke';
-import invokeBrowserControl from './browserControl/invoke';
-import invokeRemoteChannel from './remoteChannel/invoke';
+import invokeAgentHooks from './agentHooks/invoke';
+import invokeCodingCli from './codingCli/invoke';
+import invokeEmbeddedBrowser from './embeddedBrowser/invoke';
+import { createMemexPreloadApi } from './memex/api';
+import { createProfileSidecarBridge } from './profileSidecar/invoke';
 import invokeExternalAgent from './externalAgent/invoke';
 import invokeBuddy from './buddy/invoke';
-import invokePlugin from './plugin/invoke';
-import invokeDoctor from './doctor/invoke';
 import { UserMessage } from '@shared/types/chatTypes';
+import { parseInitialThemeSourceArgument, type InitialThemeSource } from '@shared/constants/startupTheme';
+import type { AgentSystemPromptFile } from '@shared/types/agentSystemPrompt';
+
+type InitialAppConfigSeed = {
+  appearance: {
+    themeSource: InitialThemeSource;
+  };
+};
+
+function getInitialAppConfigSeed(): InitialAppConfigSeed | undefined {
+  const themeSource = parseInitialThemeSourceArgument(process.argv);
+  return themeSource ? { appearance: { themeSource } } : undefined;
+}
 
 // Define the API that will be exposed to the renderer process
 export interface ElectronAPI {
@@ -106,7 +121,39 @@ export interface ElectronAPI {
         timestamp: number;
       }) => void,
     ) => () => void;
-    // 🔥 New: listen for auto-select ChatSession IPC event
+    // Normalized sidecar caches (renderer normalization Phase 1): per-entity
+    // pulls + change subscriptions for agents/skills/hooks, mirroring
+    // mcp.getServerStatus / mcp.onServerStatesUpdated.
+    getRegisteredAgents: (
+      alias: string,
+    ) => Promise<{ success: boolean; data?: any[]; error?: string }>;
+    getSkillsForAlias: (
+      alias: string,
+    ) => Promise<{ success: boolean; data?: any[]; error?: string }>;
+    getHooksForAlias: (
+      alias: string,
+    ) => Promise<{ success: boolean; data?: any[]; error?: string }>;
+    onAgentsChanged: (
+      callback: (data: {
+        alias: string;
+        agents: any[];
+        timestamp: number;
+      }) => void,
+    ) => () => void;
+    onSkillsChanged: (
+      callback: (data: {
+        alias: string;
+        skills: any[];
+        timestamp: number;
+      }) => void,
+    ) => () => void;
+    onHooksChanged: (
+      callback: (data: {
+        alias: string;
+        hooks: any[];
+        timestamp: number;
+      }) => void,
+    ) => () => void;
     onAutoSelectChatSession: (
       callback: (data: {
         alias: string;
@@ -175,9 +222,9 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void;
 
-    // Primary Agent operations
-    setPrimaryAgent: (
-      agentName: string,
+    // Primary Chat operations
+    setPrimaryChat: (
+      chatId: string,
     ) => Promise<{ success: boolean; error?: string }>;
 
     // FRE (First Run Experience) operations
@@ -189,6 +236,32 @@ export interface ElectronAPI {
       alias: string,
       settings: any,
     ) => Promise<{ success: boolean; error?: string }>;
+    updateBrowserSettings: (
+      alias: string,
+      settings: any,
+    ) => Promise<{ success: boolean; error?: string }>;
+    updateMemexSettings: (
+      alias: string,
+      settings: any,
+    ) => Promise<{ success: boolean; error?: string }>;
+    updateComputerUseSettings: (
+      alias: string,
+      settings: any,
+    ) => Promise<{ success: boolean; error?: string }>;
+    getComputerUseStatus: (
+      prompt?: boolean,
+    ) => Promise<{
+      success: boolean;
+      status?: {
+        screenRecording: string;
+        accessibility: boolean;
+        platform: string;
+        arch: string;
+        platformSupported: boolean;
+        unsupportedReason?: string;
+      };
+      error?: string;
+    }>;
 
     // MCP operations through ProfileCacheManager
     addMcpServer: (
@@ -291,6 +364,11 @@ export interface ElectronAPI {
       chatId: string,
       fromMonthIndex: number,
     ) => Promise<{ success: boolean; data?: any; error?: string }>;
+    getAllScheduledSessions: (
+      alias: string,
+      chatId: string,
+      options?: { limit?: number; offset?: number },
+    ) => Promise<{ success: boolean; data?: { sessions: any[]; total: number; hasMore: boolean }; error?: string }>;
     getChatSession: (
       chatId: string,
       sessionId: string,
@@ -359,6 +437,32 @@ export interface ElectronAPI {
     }>;
     onAuthChanged: (callback: (data: any) => void) => () => void;
 
+    // Legacy naming (backward compatible - mapped to new methods)
+    getLocalActiveSessions: () => Promise<{
+      success: boolean;
+      data?: any[];
+      error?: string;
+    }>;
+    setCurrentSession: (
+      session: any,
+    ) => Promise<{ success: boolean; error?: string }>;
+    getCurrentSession: () => Promise<{
+      success: boolean;
+      data?: any;
+      error?: string;
+    }>;
+    destroyCurrentSession: () => Promise<{ success: boolean; error?: string }>;
+    getAccessToken: () => Promise<{
+      success: boolean;
+      data?: string;
+      error?: string;
+    }>;
+    refreshCurrentSessionToken: () => Promise<{
+      success: boolean;
+      data?: any;
+      error?: string;
+    }>;
+    onSessionChanged: (callback: (data: any) => void) => () => void;
 
     // Token monitoring
     // Note: startTokenMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth()
@@ -393,6 +497,7 @@ export interface ElectronAPI {
     // System Prompt optimization
     improveSystemPrompt: (
       userInputPrompt: string,
+      options?: { promptFile?: AgentSystemPromptFile },
     ) => Promise<{ success: boolean; data?: any; error?: string }>;
 
     // MCP config formatting
@@ -426,6 +531,7 @@ export interface ElectronAPI {
     embedBatch: (
       texts: string[],
     ) => Promise<{ success: boolean; data?: number[][]; error?: string }>;
+
   };
 
   // Models APIs - GitHub Copilot model management
@@ -572,25 +678,18 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
-  // MCP Library APIs
-  mcpLibrary: {
-    getLibraryData: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-    fetchAndUpdate: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-  };
-
   // Runtime Environment Management
   runtime: {
     setMode: (mode: 'system' | 'internal') => Promise<any>;
     install: (tool: 'bun' | 'uv', version: string) => Promise<{ success: boolean; error?: string }>;
     checkStatus: () => Promise<{
+      bun: boolean;
+      uv: boolean;
+      bunPath: string;
+      uvPath: string;
+    }>;
+    /** Synchronous core-tool check (bun/uv) — returns instantly, used for non-blocking Runtime tab render. */
+    checkCore: () => Promise<{
       bun: boolean;
       uv: boolean;
       bunPath: string;
@@ -608,9 +707,12 @@ export interface ElectronAPI {
     uninstallPythonVersion: (version: string) => Promise<void>;
     setPinnedPythonVersion: (version: string | null) => Promise<void>;
     cleanUvCache: () => Promise<void>;
+    listPythonPackages: () => Promise<{ name: string; version: string }[]>;
+    addPythonPackages: (packages: string[]) => Promise<void>;
+    uninstallPythonPackage: (packageName: string) => Promise<void>;
   };
 
-  // OpenKosmos Placeholder APIs - handle @OpenKosmos_ placeholder variables
+  // OpenKosmos Placeholder APIs - handle @OPENKOSMOS_ placeholder variables
   openkosmos: {
     replacePlaceholders: (envObj: Record<string, string>) => Promise<{
       success: boolean;
@@ -636,38 +738,8 @@ export interface ElectronAPI {
     }>;
   };
 
-  // Skill Library APIs
-  skillLibrary: {
-    getLibraryData: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-    validateSkill: (
-      skillName: string,
-    ) => Promise<{ success: boolean; error?: string; hasExisting?: boolean; existingSkill?: any }>;
-    addSkill: (
-      skillName: string,
-      options?: { overwrite?: boolean; chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }
-    ) => Promise<{
-      success: boolean;
-      skillName?: string;
-      skillVersion?: string;
-      message?: string;
-      error?: string;
-      isOverwrite?: boolean;
-      resolution?: 'installed_and_callable' | 'installed_but_not_applied' | 'installed_but_needs_target_selection' | 'already_callable' | 'failed';
-      currentChat?: { chatId?: string; agentName?: string; callable: boolean };
-      activation?: {
-        attempted: boolean;
-        success: boolean;
-        appliedTargets: Array<{ chatId: string; agentName: string }>;
-        skippedTargets: Array<{ chatId: string; agentName: string; reason: string }>;
-      };
-    }>;
-    updateSkill: (
-      skillName: string,
-    ) => Promise<{ success: boolean; error?: string }>;
+  // Local skill APIs
+  skills: {
     addSkillFromDevice: (selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) => Promise<{
       success: boolean;
       skillName?: string;
@@ -729,29 +801,6 @@ export interface ElectronAPI {
       skippedTargets: Array<{ chatId: string; agentName: string; reason: string }>;
       error?: string;
     }>;
-    showOverwriteConfirmDialog: (
-      skillName: string,
-    ) => Promise<{ success: boolean; confirmed?: boolean; error?: string }>;
-  };
-
-  // Builtin Tools APIs
-  builtinTools: {
-    execute: (
-      toolName: string,
-      args: any,
-    ) => Promise<{ success: boolean; data?: any; error?: string }>;
-    getAllTools: () => Promise<{
-      success: boolean;
-      data?: any[];
-      error?: string;
-    }>;
-    isBuiltinTool: (
-      toolName: string,
-    ) => Promise<{ success: boolean; data?: boolean; error?: string }>;
-  };
-
-  // Skills APIs
-  skills: {
     getSkillMarkdown: (
       skillName: string,
     ) => Promise<{ success: boolean; content?: string; error?: string }>;
@@ -799,29 +848,25 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
-  // Plugin management APIs
-  plugin: {
-    invoke: InvokeFn;
+  // Builtin Tools APIs
+  builtinTools: {
+    execute: (
+      toolName: string,
+      args: any,
+    ) => Promise<{ success: boolean; data?: any; error?: string }>;
+    getAllTools: () => Promise<{
+      success: boolean;
+      data?: any[];
+      error?: string;
+    }>;
+    isBuiltinTool: (
+      toolName: string,
+    ) => Promise<{ success: boolean; data?: boolean; error?: string }>;
   };
 
-  // Sub-Agent APIs
+  // Sub-Agent streaming APIs (ad-hoc runtime progress)
   subAgent: {
-    getAll: () => Promise<{ success: boolean; data?: any[]; error?: string }>;
-    add: (config: any) => Promise<{ success: boolean; error?: string }>;
-    update: (
-      name: string,
-      config: any,
-    ) => Promise<{ success: boolean; error?: string }>;
-    delete: (name: string) => Promise<{ success: boolean; error?: string }>;
-    /** Import a Claude Code .md file as a sub-agent */
-    importFromFile: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>;
-    /** Export a sub-agent as Claude Code standard format */
-    exportAsClaudeCode: (name: string) => Promise<{ success: boolean; data?: string; error?: string }>;
-    /** Open agent directory in system file explorer */
-    openInExplorer: (name: string) => Promise<{ success: boolean; error?: string }>;
-    /** Trigger file system scan and sync with profile index */
-    syncFromDisk: () => Promise<{ success: boolean; data?: any[]; error?: string }>;
-    /** Returns cleanup function to unsubscribe */
+    /** Subscribe to ad-hoc sub-agent runtime state updates. Returns cleanup function to unsubscribe */
     onStateUpdate: (callback: (state: any) => void) => () => void;
   };
 
@@ -871,6 +916,30 @@ export interface ElectronAPI {
       message: UserMessage,
       targetChatSessionId?: string,
     ) => Promise<{ success: boolean; data?: any[]; error?: string }>;
+    enqueueQueuedSteeringMessage: (
+      chatSessionId: string,
+      message: UserMessage,
+    ) => Promise<{ success: boolean; error?: string }>;
+    updateQueuedSteeringMessage: (
+      chatSessionId: string,
+      message: UserMessage,
+    ) => Promise<{ success: boolean; error?: string }>;
+    removeQueuedSteeringMessage: (
+      chatSessionId: string,
+      messageId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    setQueuedSteeringMessageEditing: (
+      chatSessionId: string,
+      messageId: string,
+      editing: boolean,
+    ) => Promise<{ success: boolean; error?: string }>;
+    steerQueuedSteeringMessage: (
+      chatSessionId: string,
+      messageId: string,
+    ) => Promise<{ success: boolean; data?: any[]; error?: string }>;
+    clearQueuedSteeringMessages: (
+      chatSessionId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
     // 🔥 Retry the last failed conversation
     retryChat: (chatSessionId: string) => Promise<{ success: boolean; data?: any[]; error?: string }>;
     canEditUserMessage: (
@@ -950,6 +1019,9 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void;
     onStreamingChunk: (callback: (chunk: any) => void) => () => void;
+    onQueuedSteeringMessageConsumed: (
+      callback: (data: { chatId: string; chatSessionId: string; messageId: string }) => void,
+    ) => () => void;
     // 🔥 New: IPC events required by agentChatSessionCacheManager
     onCurrentChatSessionIdChanged: (
       callback: (data: {
@@ -1247,84 +1319,9 @@ export interface ElectronAPI {
     openWindow: () => Promise<{ success: boolean; error?: string }>;
   };
 
-  // Update management
-  update: {
-    checkForUpdates: (
-      silent?: boolean,
-    ) => Promise<{ success: boolean; error?: string }>;
-    downloadUpdate: (
-      downloadUrl?: string,
-    ) => Promise<{ success: boolean; error?: string }>;
-    quitAndInstall: (filePath?: string) => void;
-    getVersion: () => Promise<string>;
-    skipVersion: (
-      version: string,
-    ) => Promise<{ success: boolean; error?: string }>;
-    getPreferences: () => Promise<{
-      success: boolean;
-      data?: any;
-      error?: string;
-    }>;
-    updatePreferences: (
-      preferences: any,
-    ) => Promise<{ success: boolean; error?: string }>;
-    onUpdateEvent: (
-      channel: string,
-      callback: (data?: any) => void,
-    ) => () => void;
-  };
-
-  // Startup Update - check and install library updates on startup
-  startupUpdate: {
-    checkAndInstallUpdates: () => Promise<{
-      success: boolean;
-      data?: {
-        success: boolean;
-        hasUpdates: boolean;
-        updatedMcpCount: number;
-        updatedSkillCount: number;
-        updatedAgentCount: number;
-        errors: string[];
-      };
-      error?: string;
-    }>;
-    onProgress: (callback: (progress: {
-      step: string;
-      message: string;
-      progress: number;
-      error?: string;
-    }) => void) => () => void;
-  };
-
-  // Quick Start Image Cache APIs
-  quickStartImageCache?: {
-    // Get or cache image (download and cache if not present)
-    getOrCache: (
-      agentName: string,
-      imageUrl: string,
-    ) => Promise<{
-      success: boolean;
-      cachedUrl?: string | null;
-      error?: string;
-    }>;
-    // Clear image cache for specified Agent
-    clearAgent: (
-      agentName: string,
-    ) => Promise<{ success: boolean; error?: string }>;
-    // Clear all image cache
-    clearAll: () => Promise<{ success: boolean; error?: string }>;
-  };
-
   // Screenshot APIs
   screenshot: {
     invoke: InvokeFn,
-  };
-
-  // Remote Channel APIs
-  remoteChannel: {
-    invoke: InvokeFn;
-    on: OnOff;
-    off: OnOff;
   };
 
   // External Agent APIs
@@ -1334,27 +1331,197 @@ export interface ElectronAPI {
     off: OnOff;
   };
 
+  // Whisper STT APIs (Voice Input)
+  whisper?: {
+    getAllModelStatus: () => Promise<{
+      success: boolean;
+      data?: Array<{
+        size: string;
+        downloaded: boolean;
+        path?: string;
+        actualSize?: number;
+      }>;
+      error?: string;
+    }>;
+    getModelStatus: (size: string) => Promise<{
+      success: boolean;
+      data?: {
+        size: string;
+        downloaded: boolean;
+        path?: string;
+        actualSize?: number;
+      };
+      error?: string;
+    }>;
+    getAllModelInfo: () => Promise<{
+      success: boolean;
+      data?: Array<{
+        size: string;
+        fileName: string;
+        fileSize: number;
+        fileSizeDisplay: string;
+        downloadUrl: string;
+        description: string;
+      }>;
+      error?: string;
+    }>;
+    downloadModel: (size: string) => Promise<{ success: boolean; error?: string }>;
+    cancelDownload: (size: string) => Promise<{
+      success: boolean;
+      data?: boolean;
+      error?: string;
+    }>;
+    deleteModel: (size: string) => Promise<{
+      success: boolean;
+      data?: boolean;
+      error?: string;
+    }>;
+    getModelPath: (size: string) => Promise<{
+      success: boolean;
+      data?: string;
+      error?: string;
+    }>;
+    isDownloading: () => Promise<{
+      success: boolean;
+      data?: {
+        isDownloading: boolean;
+        activeDownloads: string[];
+      };
+      error?: string;
+    }>;
+    onDownloadProgress: (callback: (progress: {
+      model: string;
+      downloaded: number;
+      total: number;
+      percent: number;
+    }) => void) => () => void;
+    onDownloadComplete: (callback: (data: {
+      model: string;
+      path: string;
+    }) => void) => () => void;
+    onDownloadError: (callback: (data: {
+      model: string;
+      error: string;
+    }) => void) => () => void;
+    onDownloadCancelled: (callback: (data: {
+      model: string;
+    }) => void) => () => void;
+    // Transcription APIs
+    transcribe: (pcmData: Float32Array, modelSize: string, options?: {
+      language?: string;
+      useGPU?: boolean;
+      enableVAD?: boolean;
+      threads?: number;
+      translate?: boolean;
+    }) => Promise<{
+      success: boolean;
+      data?: {
+        text: string;
+        segments?: Array<{
+          start: string;
+          end: string;
+          text: string;
+        }>;
+      };
+      error?: string;
+    }>;
+    isAvailable: () => Promise<{
+      success: boolean;
+      data?: boolean;
+      error?: string;
+    }>;
+    // Streaming transcription APIs
+    startStreaming: (modelSize: string, options?: {
+      language?: string;
+      useGPU?: boolean;
+      threads?: number;
+      translate?: boolean;
+      vadThreshold?: number;
+      silenceDuration?: number;
+      minSpeechDuration?: number;
+    }) => Promise<{
+      success: boolean;
+      data?: { sessionId: string };
+      error?: string;
+    }>;
+    processChunk: (sessionId: string, pcmData: Float32Array) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    stopStreaming: (sessionId: string) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    cancelStreaming: (sessionId: string) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    isStreamingActive: (sessionId: string) => Promise<{
+      success: boolean;
+      data?: boolean;
+      error?: string;
+    }>;
+    onStreamingUpdate: (callback: (update: {
+      sessionId: string;
+      type: 'interim' | 'final' | 'error' | 'started' | 'stopped';
+      text?: string;
+      segments?: Array<{ start: string; end: string; text: string }>;
+      error?: string;
+      duration?: number;
+    }) => void) => () => void;
+  };
+
+  // Voice Input Settings APIs
+  voiceInput?: {
+    getSettings: () => Promise<{
+      success: boolean;
+      data?: {
+        whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
+        language: string;
+      };
+      error?: string;
+    }>;
+    updateSettings: (settings: {
+      whisperModel?: 'tiny' | 'base' | 'small' | 'medium' | 'turbo';
+      language?: string;
+    }) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  // Native Module on-demand download management
+  nativeModule?: {
+    getStatus: (moduleKey: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+    ensureDownloaded: (moduleKey: string) => Promise<{ success: boolean; data?: { localPath: string }; error?: string }>;
+    cancelDownload: (moduleKey: string) => Promise<{ success: boolean; error?: string }>;
+    deleteModule: (moduleKey: string) => Promise<{ success: boolean; error?: string }>;
+    onDownloadStarted: (callback: (data: { packageName: string; url: string }) => void) => () => void;
+    onDownloadProgress: (callback: (data: { packageName: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => () => void;
+    onDownloadComplete: (callback: (data: { packageName: string; localPath: string }) => void) => () => void;
+    onDownloadCancelled: (callback: (data: { packageName: string }) => void) => () => void;
+    onDownloadError: (callback: (data: { packageName: string; error: string }) => void) => () => void;
+  };
 
   // 🆕 App global config management API (app.json read/write handled uniformly by AppCacheManager)
   appConfig: {
+    /** Synchronous startup seed injected via BrowserWindow additionalArguments before first renderer render. */
+    getInitialAppConfig: () => { appearance: { themeSource: 'light' | 'dark' | 'system' } } | undefined;
     /** Get current AppConfig (includes runtimeEnvironment, updaterVersion, etc.) */
-    getAppConfig: () => Promise<{ success: boolean; data?: any; error?: string }>;
+    getAppConfig: () => Promise<{ success: boolean; data?: any; revision?: number; error?: string }>;
     /** Update AppConfig (supports partial fields) */
-    updateAppConfig: (updates: any) => Promise<{ success: boolean; error?: string }>;
+    updateAppConfig: (updates: any) => Promise<{ success: boolean; revision?: number; error?: string }>;
     /** Listen to config change events pushed by appCacheManager, returns unsubscribe function */
-    onConfigUpdated: (callback: (data: { config: any; timestamp: number }) => void) => () => void;
+    onConfigUpdated: (callback: (data: { config: any; timestamp: number; revision?: number }) => void) => () => void;
   };
 
-  // Browser Control Settings and Management APIs
-  browserControl?: {
+  // Coding CLI selection (profile-level setting for the coding_agent built-in tool)
+  codingCli: {
     invoke: InvokeFn;
-    onPhaseChange: (callback: (phase: string, message?: string) => void) => () => void;
-    onDownloadProgress: (callback: (progress: { percent: number; transferred: string; total: string }) => void) => () => void;
-    onUpdatePhaseChange: (callback: (phase: string, message?: string) => void) => () => void;
-    onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: string; total: string }) => void) => () => void;
-    onShowBrowserInstallConfirm: (callback: (data: { requestId: string; browserName: string }) => void) => () => void;
-    onShowNativeServerDownloadConfirm: (callback: (data: { requestId: string }) => void) => () => void;
-    onShowBrowserRestartConfirm: (callback: (data: { requestId: string; browserName: string }) => void) => () => void;
+  };
+
+  // In-app browser side panel (opens chat-message links inside the app)
+  embeddedBrowser: {
+    invoke: InvokeFn;
+    on: OnOff;
+    off: OnOff;
   };
 
   // DevTools MCP APIs
@@ -1366,8 +1533,21 @@ export interface ElectronAPI {
     updateSettings: (settings: { browser?: 'chrome' | 'edge' }) => Promise<{ success: boolean; error?: string }>;
   };
 
+  // Memex Memory (per-agent Zettelkasten)
+  memex?: {
+    invoke: InvokeFn;
+    onCardsChanged: (
+      callback: (payload: MemexCardsChangedEvent) => void,
+    ) => VoidFunction;
+  };
+
   // Scheduler Management
   scheduler: {
+    invoke: InvokeFn;
+  };
+
+  // Agent Hooks Management
+  agentHooks: {
     invoke: InvokeFn;
   };
 
@@ -1376,6 +1556,21 @@ export interface ElectronAPI {
     invoke: InvokeFn;
     on: OnOff;
     off: OnOff;
+  };
+
+  // Sync Settings and Management APIs
+  sync?: {
+    getSettings: () => Promise<{ enabled: boolean; repoUrl: string; lastSyncTime: string | null }>;
+    setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+    setRepoUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+    validateRepoUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+    getStatus: (checkChanges?: boolean) => Promise<{ hasLocalChanges: boolean | null; hasRemoteChanges: boolean | null; isInitialized: boolean; currentBranch: string | null } | null>;
+    initialize: () => Promise<{ success: boolean; error?: string }>;
+    pull: (force: boolean) => Promise<{ success: boolean; error?: string }>;
+    push: (force: boolean, needCommit?: boolean) => Promise<{ success: boolean; error?: string }>;
+    merge: () => Promise<{ success: boolean; error?: string }>;
+    checkExternalKnowledgeBases: () => Promise<{ success: boolean; externalKnowledgeBases: { chatId: string; agentId: string; agentName: string; knowledgeBase: string }[]; error?: string }>;
+    copyKnowledgeBasesToProfile: (items: { chatId: string; agentId: string; knowledgeBase: string }[]) => Promise<{ success: boolean; error?: string }>;
   };
 
   mcpAuth: {
@@ -1395,17 +1590,30 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>;
   };
 
-  // Feedback / Bug Report
-  doctor: {
-    invoke: InvokeFn;
-    on: OnOff;
-    off: OnOff;
-  };
-
   // Generic event listening methods for main window IPC events
   on: (channel: string, callback: (data: any) => void) => () => void;
   off: (channel: string, callback: (data: any) => void) => void;
 }
+
+const EMBEDDED_BROWSER_EVENT_CHANNELS = new Set([
+  'embeddedBrowser:navStateChanged',
+  'embeddedBrowser:panelOpenRequested',
+]);
+const embeddedBrowserEventListeners = new WeakMap<Parameters<OnOff>[1], Parameters<OnOff>[1]>();
+
+const onEmbeddedBrowserEvent: OnOff = (channel, listener) => {
+  if (!EMBEDDED_BROWSER_EVENT_CHANNELS.has(channel)) throw new Error(`Channel "${channel}" is not allowed`);
+  const wrapped: Parameters<OnOff>[1] = (_event, ...args) => listener({} as any, ...args);
+  embeddedBrowserEventListeners.set(listener, wrapped);
+  ipcRenderer.on(channel, wrapped);
+};
+
+const offEmbeddedBrowserEvent: OnOff = (channel, listener) => {
+  if (!EMBEDDED_BROWSER_EVENT_CHANNELS.has(channel)) throw new Error(`Channel "${channel}" is not allowed`);
+  const wrapped = embeddedBrowserEventListeners.get(listener) ?? listener;
+  embeddedBrowserEventListeners.delete(listener);
+  ipcRenderer.off(channel, wrapped);
+};
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -1438,9 +1646,10 @@ export const electronAPI: ElectronAPI = {
 
   // 🆕 App global config management API implementation
   appConfig: {
+    getInitialAppConfig: () => getInitialAppConfigSeed(),
     getAppConfig: () => ipcRenderer.invoke('app:getAppConfig'),
     updateAppConfig: (updates: any) => ipcRenderer.invoke('app:updateAppConfig', updates),
-    onConfigUpdated: (callback: (data: { config: any; timestamp: number }) => void) => {
+    onConfigUpdated: (callback: (data: { config: any; timestamp: number; revision?: number }) => void) => {
       const listener = (event: any, data: any) => callback(data);
       ipcRenderer.on('app:configUpdated', listener);
       return () => ipcRenderer.removeListener('app:configUpdated', listener);
@@ -1475,6 +1684,14 @@ export const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('profile:getProfile', alias),
     updateConfirmationSettings: (alias: string, settings: any) =>
       ipcRenderer.invoke('profile:updateConfirmationSettings', alias, settings),
+    updateBrowserSettings: (alias: string, settings: any) =>
+      ipcRenderer.invoke('profile:updateBrowserSettings', alias, settings),
+    updateMemexSettings: (alias: string, settings: any) =>
+      ipcRenderer.invoke('profile:updateMemexSettings', alias, settings),
+    updateComputerUseSettings: (alias: string, settings: any) =>
+      ipcRenderer.invoke('profile:updateComputerUseSettings', alias, settings),
+    getComputerUseStatus: (prompt?: boolean) =>
+      ipcRenderer.invoke('computerUse:getPermissionStatus', prompt),
     getProfilesWithGhcAuth: () =>
       ipcRenderer.invoke('profile:getProfilesWithGhcAuth'),
     onCacheUpdated: (
@@ -1488,6 +1705,9 @@ export const electronAPI: ElectronAPI = {
       ipcRenderer.on('profile:cacheUpdated', listener);
       return () => ipcRenderer.removeListener('profile:cacheUpdated', listener);
     },
+    // Normalized sidecar caches (renderer normalization Phase 1). Impls live in
+    // ./profileSidecar/invoke to keep this namespace object small.
+    ...createProfileSidecarBridge(),
     // 🔥 New: auto-select ChatSession IPC event implementation
     onAutoSelectChatSession: (
       callback: (data: {
@@ -1658,14 +1878,25 @@ export const electronAPI: ElectronAPI = {
         chatId,
         fromMonthIndex,
       ),
+    getAllScheduledSessions: (
+      alias: string,
+      chatId: string,
+      options?: { limit?: number; offset?: number },
+    ) =>
+      ipcRenderer.invoke(
+        'profile:getAllScheduledSessions',
+        alias,
+        chatId,
+        options,
+      ),
     getChatSession: (chatId: string, sessionId: string) =>
       ipcRenderer.invoke('profile:getChatSession', chatId, sessionId),
     createChatSession: (chatId: string, title?: string) =>
       ipcRenderer.invoke('profile:createChatSession', chatId, title),
 
-    // Primary Agent operations
-    setPrimaryAgent: (agentName: string) =>
-      ipcRenderer.invoke('profile:setPrimaryAgent', agentName),
+    // Primary Chat operations
+    setPrimaryChat: (chatId: string) =>
+      ipcRenderer.invoke('profile:setPrimaryChat', chatId),
 
     // FRE (First Run Experience) operations
     updateFreDone: (alias: string, freDone: boolean) =>
@@ -1701,6 +1932,22 @@ export const electronAPI: ElectronAPI = {
       return () => ipcRenderer.removeListener('auth:authChanged', listener);
     },
 
+    // Legacy naming (backward compatible) - mapped to same IPC handlers
+    getLocalActiveSessions: () =>
+      ipcRenderer.invoke('auth:getLocalActiveSessions'),
+    setCurrentSession: (session: any) =>
+      ipcRenderer.invoke('auth:setCurrentSession', session),
+    getCurrentSession: () => ipcRenderer.invoke('auth:getCurrentSession'),
+    destroyCurrentSession: () =>
+      ipcRenderer.invoke('auth:destroyCurrentSession'),
+    getAccessToken: () => ipcRenderer.invoke('auth:getAccessToken'),
+    refreshCurrentSessionToken: () =>
+      ipcRenderer.invoke('auth:refreshCurrentSessionToken'),
+    onSessionChanged: (callback: (data: any) => void) => {
+      const listener = (event: any, data: any) => callback(data);
+      ipcRenderer.on('auth:sessionChanged', listener);
+      return () => ipcRenderer.removeListener('auth:sessionChanged', listener);
+    },
 
     // Token monitoring
     // Note: startTokenMonitoring has been removed - Token monitoring is now automatically started by setCurrentAuth()
@@ -1738,8 +1985,8 @@ export const electronAPI: ElectronAPI = {
     },
   },
   llm: {
-    improveSystemPrompt: (userInputPrompt: string) =>
-      ipcRenderer.invoke('llm:improveSystemPrompt', userInputPrompt),
+    improveSystemPrompt: (userInputPrompt: string, options?: { promptFile?: AgentSystemPromptFile }) =>
+      ipcRenderer.invoke('llm:improveSystemPrompt', userInputPrompt, options),
     formatMcpConfig: (userInputMcpConfig: string) =>
       ipcRenderer.invoke('llm:formatMcpConfig', userInputMcpConfig),
     generateChatTitle: (userMessage: string) =>
@@ -1823,15 +2070,12 @@ export const electronAPI: ElectronAPI = {
     resetOAuth: (serverName: string, scope: 'tokens' | 'all' = 'tokens') =>
       ipcRenderer.invoke('mcp:resetOAuth', serverName, scope),
   },
-  mcpLibrary: {
-    getLibraryData: () => ipcRenderer.invoke('mcpLibrary:getLibraryData'),
-    fetchAndUpdate: () => ipcRenderer.invoke('mcpLibrary:fetchAndUpdate'),
-  },
   // Runtime Environment Management
   runtime: {
     setMode: (mode: 'system' | 'internal') => ipcRenderer.invoke('runtime:set-mode', mode),
     install: (tool: 'bun' | 'uv', version: string) => ipcRenderer.invoke('runtime:install-component', tool, version),
     checkStatus: () => ipcRenderer.invoke('runtime:check-status'),
+    checkCore: () => ipcRenderer.invoke('runtime:check-core'),
     checkGitVersion: () => ipcRenderer.invoke('runtime:check-git-version'),
     listPythonVersions: () => ipcRenderer.invoke('runtime:list-python-versions'),
     /** Fast synchronous Python version scan - typically < 50ms, use for FRE */
@@ -1840,6 +2084,9 @@ export const electronAPI: ElectronAPI = {
     uninstallPythonVersion: (version: string) => ipcRenderer.invoke('runtime:uninstall-python-version', version),
     setPinnedPythonVersion: (version: string | null) => ipcRenderer.invoke('runtime:set-pinned-python-version', version),
     cleanUvCache: () => ipcRenderer.invoke('runtime:clean-uv-cache'),
+    listPythonPackages: () => ipcRenderer.invoke('runtime:list-python-packages'),
+    addPythonPackages: (packages: string[]) => ipcRenderer.invoke('runtime:add-python-packages', packages),
+    uninstallPythonPackage: (packageName: string) => ipcRenderer.invoke('runtime:uninstall-python-package', packageName),
   },
   openkosmos: {
     replacePlaceholders: (envObj: Record<string, string>) =>
@@ -1847,33 +2094,15 @@ export const electronAPI: ElectronAPI = {
     parseUserInputPlaceholders: (config: any) =>
       ipcRenderer.invoke('openkosmos:parseUserInputPlaceholders', config),
   },
-  skillLibrary: {
-    getLibraryData: () => ipcRenderer.invoke('skillLibrary:getLibraryData'),
-    validateSkill: (skillName: string) =>
-      ipcRenderer.invoke('skillLibrary:validateSkill', skillName),
-    addSkill: (skillName: string, options?: { overwrite?: boolean; chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) =>
-      ipcRenderer.invoke('skillLibrary:addSkill', skillName, options),
-    updateSkill: (skillName: string) =>
-      ipcRenderer.invoke('skillLibrary:updateSkill', skillName),
-    addSkillFromDevice: (selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) =>
-      ipcRenderer.invoke('skillLibrary:addSkillFromDevice', selectedPath, options),
-    installSkillFromFilePath: (filePath: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) =>
-      ipcRenderer.invoke('skillLibrary:installSkillFromFilePath', filePath, options),
-    updateSkillFromDevice: (skillName: string) =>
-      ipcRenderer.invoke('skillLibrary:updateSkillFromDevice', skillName),
-    applySkillToAgents: (skillName: string, targets: Array<{ chatId: string; agentName: string }>) =>
-      ipcRenderer.invoke('skillLibrary:applySkillToAgents', skillName, targets),
-    showOverwriteConfirmDialog: (skillName: string) =>
-      ipcRenderer.invoke('skillLibrary:showOverwriteConfirmDialog', skillName),
-  },
-  builtinTools: {
-    execute: (toolName: string, args: any) =>
-      ipcRenderer.invoke('builtinTools:execute', toolName, args),
-    getAllTools: () => ipcRenderer.invoke('builtinTools:getAllTools'),
-    isBuiltinTool: (toolName: string) =>
-      ipcRenderer.invoke('builtinTools:isBuiltinTool', toolName),
-  },
   skills: {
+    addSkillFromDevice: (selectedPath?: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string; selectionMode?: 'artifact' | 'folder' }) =>
+      ipcRenderer.invoke('skills:addSkillFromDevice', selectedPath, options),
+    installSkillFromFilePath: (filePath: string, options?: { chatId?: string; applyToCurrentAgent?: boolean; agentName?: string; requestSource?: string }) =>
+      ipcRenderer.invoke('skills:installSkillFromFilePath', filePath, options),
+    updateSkillFromDevice: (skillName: string) =>
+      ipcRenderer.invoke('skills:updateSkillFromDevice', skillName),
+    applySkillToAgents: (skillName: string, targets: Array<{ chatId: string; agentName: string }>) =>
+      ipcRenderer.invoke('skills:applySkillToAgents', skillName, targets),
     getSkillMarkdown: (skillName: string) =>
       ipcRenderer.invoke('skills:getSkillMarkdown', skillName),
     getSkillDirectoryContents: (skillName: string, relativePath: string = '') =>
@@ -1889,22 +2118,14 @@ export const electronAPI: ElectronAPI = {
     openSkillFolder: (skillName: string) =>
       ipcRenderer.invoke('skills:openSkillFolder', skillName),
   },
-  plugin: {
-    invoke: invokePlugin,
+  builtinTools: {
+    execute: (toolName: string, args: any) =>
+      ipcRenderer.invoke('builtinTools:execute', toolName, args),
+    getAllTools: () => ipcRenderer.invoke('builtinTools:getAllTools'),
+    isBuiltinTool: (toolName: string) =>
+      ipcRenderer.invoke('builtinTools:isBuiltinTool', toolName),
   },
   subAgent: {
-    getAll: () => ipcRenderer.invoke('subAgent:getAll'),
-    add: (config: any) => ipcRenderer.invoke('subAgent:add', config),
-    update: (name: string, config: any) =>
-      ipcRenderer.invoke('subAgent:update', name, config),
-    delete: (name: string) => ipcRenderer.invoke('subAgent:delete', name),
-    importFromFile: (filePath: string) =>
-      ipcRenderer.invoke('subAgent:importFromFile', filePath),
-    exportAsClaudeCode: (name: string) =>
-      ipcRenderer.invoke('subAgent:exportAsClaudeCode', name),
-    openInExplorer: (name: string) =>
-      ipcRenderer.invoke('subAgent:openInExplorer', name),
-    syncFromDisk: () => ipcRenderer.invoke('subAgent:syncFromDisk'),
     onStateUpdate: (callback: (state: any) => void) => {
       const listener = (_event: any, state: any) => callback(state);
       ipcRenderer.on('subAgent:stateUpdate', listener);
@@ -1954,6 +2175,18 @@ export const electronAPI: ElectronAPI = {
     ) => ipcRenderer.invoke('agentChat:startNewChatFor', chatId),
     streamMessage: (message: UserMessage, targetChatSessionId?: string) =>
       ipcRenderer.invoke('agentChat:streamMessage', message, targetChatSessionId),
+    enqueueQueuedSteeringMessage: (chatSessionId: string, message: UserMessage) =>
+      ipcRenderer.invoke('agentChat:enqueueQueuedSteeringMessage', chatSessionId, message),
+    updateQueuedSteeringMessage: (chatSessionId: string, message: UserMessage) =>
+      ipcRenderer.invoke('agentChat:updateQueuedSteeringMessage', chatSessionId, message),
+    removeQueuedSteeringMessage: (chatSessionId: string, messageId: string) =>
+      ipcRenderer.invoke('agentChat:removeQueuedSteeringMessage', chatSessionId, messageId),
+    setQueuedSteeringMessageEditing: (chatSessionId: string, messageId: string, editing: boolean) =>
+      ipcRenderer.invoke('agentChat:setQueuedSteeringMessageEditing', chatSessionId, messageId, editing),
+    steerQueuedSteeringMessage: (chatSessionId: string, messageId: string) =>
+      ipcRenderer.invoke('agentChat:steerQueuedSteeringMessage', chatSessionId, messageId),
+    clearQueuedSteeringMessages: (chatSessionId: string) =>
+      ipcRenderer.invoke('agentChat:clearQueuedSteeringMessages', chatSessionId),
     // 🔥 Retry the last failed conversation
     retryChat: (chatSessionId: string) =>
       ipcRenderer.invoke('agentChat:retryChat', chatSessionId),
@@ -2047,6 +2280,14 @@ export const electronAPI: ElectronAPI = {
       ipcRenderer.on('agentChat:streamingChunk', listener);
       return () =>
         ipcRenderer.removeListener('agentChat:streamingChunk', listener);
+    },
+    onQueuedSteeringMessageConsumed: (
+      callback: (data: { chatId: string; chatSessionId: string; messageId: string }) => void,
+    ) => {
+      const listener = (_event: any, data: { chatId: string; chatSessionId: string; messageId: string }) => callback(data);
+      ipcRenderer.on('agentChat:queuedSteeringMessageConsumed', listener);
+      return () =>
+        ipcRenderer.removeListener('agentChat:queuedSteeringMessageConsumed', listener);
     },
     // 🔥 New: IPC event implementation required by agentChatSessionCacheManager
     onCurrentChatSessionIdChanged: (
@@ -2214,49 +2455,6 @@ export const electronAPI: ElectronAPI = {
   debug: {
     openWindow: () => ipcRenderer.invoke('debug:openWindow'),
   },
-  update: {
-    checkForUpdates: (silent?: boolean) =>
-      ipcRenderer.invoke('update:checkForUpdates', silent),
-    downloadUpdate: (downloadUrl?: string) =>
-      ipcRenderer.invoke('update:downloadUpdate', downloadUrl),
-    quitAndInstall: (filePath?: string) => {
-      try {
-        // Synchronous call, no await needed since the app will exit immediately
-        const result = ipcRenderer.invoke('update:quitAndInstall', filePath);
-        return result;
-      } catch (error) {
-        throw error;
-      }
-    },
-    getVersion: () => ipcRenderer.invoke('update:getVersion'),
-    skipVersion: (version: string) =>
-      ipcRenderer.invoke('update:skipVersion', version),
-    getPreferences: () => ipcRenderer.invoke('update:getPreferences'),
-    updatePreferences: (preferences: any) =>
-      ipcRenderer.invoke('update:updatePreferences', preferences),
-
-    onUpdateEvent: (channel: string, callback: (data?: any) => void) => {
-      const fullChannel = `update:${channel}`;
-      const listener = (event: any, data: any) => callback(data);
-      ipcRenderer.on(fullChannel, listener);
-
-      // Return cleanup function
-      return () => {
-        ipcRenderer.removeListener(fullChannel, listener);
-      };
-    },
-  },
-  startupUpdate: {
-    checkAndInstallUpdates: () =>
-      ipcRenderer.invoke('startup:checkAndInstallUpdates'),
-    onProgress: (callback: (progress: any) => void) => {
-      const listener = (_event: any, progress: any) => callback(progress);
-      ipcRenderer.on('startup:updateProgress', listener);
-      return () => {
-        ipcRenderer.removeListener('startup:updateProgress', listener);
-      };
-    },
-  },
   chroma: {
     startServer: (userAlias: string) =>
       ipcRenderer.invoke('chroma:startServer', userAlias),
@@ -2323,26 +2521,9 @@ export const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('workspace:getDefaultWorkspacePath', alias, chatId),
   },
 
-  // Quick Start Image Cache management
-  quickStartImageCache: {
-    getOrCache: (agentName: string, imageUrl: string) =>
-      ipcRenderer.invoke('quickStartImageCache:getOrCache', agentName, imageUrl),
-    clearAgent: (agentName: string) =>
-      ipcRenderer.invoke('quickStartImageCache:clearAgent', agentName),
-    clearAll: () =>
-      ipcRenderer.invoke('quickStartImageCache:clearAll'),
-  },
-
   // Screenshot functionality
   screenshot: {
     invoke: invokeScreenshot,
-  },
-
-  // Remote Channel functionality
-  remoteChannel: {
-    invoke: invokeRemoteChannel,
-    on: ipcRenderer.on.bind(ipcRenderer),
-    off: ipcRenderer.off.bind(ipcRenderer),
   },
 
   // External Agent functionality
@@ -2352,45 +2533,131 @@ export const electronAPI: ElectronAPI = {
     off: ipcRenderer.off.bind(ipcRenderer),
   },
 
-  // Browser Control management
-  browserControl: {
-    invoke: invokeBrowserControl,
-    // Main → Renderer event listeners (to be migrated to connectMainToRender later)
-    onPhaseChange: (callback: (phase: string, message?: string) => void) => {
-      const listener = (_event: any, phase: string, message?: string) => callback(phase, message);
-      ipcRenderer.on('browserControl:phaseChange', listener);
-      return () => ipcRenderer.removeListener('browserControl:phaseChange', listener);
+  // Whisper STT functionality (Voice Input)
+  whisper: {
+    getAllModelStatus: () => ipcRenderer.invoke('whisper:getAllModelStatus'),
+    getModelStatus: (size: string) => ipcRenderer.invoke('whisper:getModelStatus', size),
+    getAllModelInfo: () => ipcRenderer.invoke('whisper:getAllModelInfo'),
+    downloadModel: (size: string) => ipcRenderer.invoke('whisper:downloadModel', size),
+    cancelDownload: (size: string) => ipcRenderer.invoke('whisper:cancelDownload', size),
+    deleteModel: (size: string) => ipcRenderer.invoke('whisper:deleteModel', size),
+    getModelPath: (size: string) => ipcRenderer.invoke('whisper:getModelPath', size),
+    isDownloading: () => ipcRenderer.invoke('whisper:isDownloading'),
+    // Transcription API
+    transcribe: (pcmData: Float32Array, modelSize: string, options?: {
+      language?: string;
+      useGPU?: boolean;
+      enableVAD?: boolean;
+      threads?: number;
+      translate?: boolean;
+    }) => ipcRenderer.invoke('whisper:transcribe', {
+      pcmData: Array.from(pcmData), // Convert Float32Array to regular array for IPC
+      modelSize,
+      options,
+    }),
+    isAvailable: () => ipcRenderer.invoke('whisper:isAvailable'),
+    onDownloadProgress: (callback: (progress: any) => void) => {
+      const listener = (event: any, progress: any) => callback(progress);
+      ipcRenderer.on('whisper:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('whisper:downloadProgress', listener);
     },
-    onDownloadProgress: (callback: (progress: { percent: number; transferred: string; total: string }) => void) => {
-      const listener = (_event: any, progress: any) => callback(progress);
-      ipcRenderer.on('browserControl:downloadProgress', listener);
-      return () => ipcRenderer.removeListener('browserControl:downloadProgress', listener);
+    onDownloadComplete: (callback: (data: any) => void) => {
+      const listener = (event: any, data: any) => callback(data);
+      ipcRenderer.on('whisper:downloadComplete', listener);
+      return () => ipcRenderer.removeListener('whisper:downloadComplete', listener);
     },
-    onUpdatePhaseChange: (callback: (phase: string, message?: string) => void) => {
-      const listener = (_event: any, phase: string, message?: string) => callback(phase, message);
-      ipcRenderer.on('browserControl:updatePhaseChange', listener);
-      return () => ipcRenderer.removeListener('browserControl:updatePhaseChange', listener);
+    onDownloadError: (callback: (data: any) => void) => {
+      const listener = (event: any, data: any) => callback(data);
+      ipcRenderer.on('whisper:downloadError', listener);
+      return () => ipcRenderer.removeListener('whisper:downloadError', listener);
     },
-    onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: string; total: string }) => void) => {
-      const listener = (_event: any, progress: any) => callback(progress);
-      ipcRenderer.on('browserControl:updateDownloadProgress', listener);
-      return () => ipcRenderer.removeListener('browserControl:updateDownloadProgress', listener);
+    onDownloadCancelled: (callback: (data: any) => void) => {
+      const listener = (event: any, data: any) => callback(data);
+      ipcRenderer.on('whisper:downloadCancelled', listener);
+      return () => ipcRenderer.removeListener('whisper:downloadCancelled', listener);
     },
-    onShowBrowserInstallConfirm: (callback: (data: { requestId: string; browserName: string }) => void) => {
+    // Streaming transcription APIs
+    startStreaming: (modelSize: string, options?: {
+      language?: string;
+      useGPU?: boolean;
+      threads?: number;
+      translate?: boolean;
+      vadThreshold?: number;
+      silenceDuration?: number;
+      minSpeechDuration?: number;
+    }) => ipcRenderer.invoke('whisper:startStreaming', { modelSize, options }),
+    processChunk: (sessionId: string, pcmData: Float32Array) => ipcRenderer.invoke('whisper:processChunk', {
+      sessionId,
+      pcmData: Array.from(pcmData), // Convert Float32Array to regular array for IPC
+    }),
+    stopStreaming: (sessionId: string) => ipcRenderer.invoke('whisper:stopStreaming', sessionId),
+    cancelStreaming: (sessionId: string) => ipcRenderer.invoke('whisper:cancelStreaming', sessionId),
+    isStreamingActive: (sessionId: string) => ipcRenderer.invoke('whisper:isStreamingActive', sessionId),
+    onStreamingUpdate: (callback: (update: {
+      sessionId: string;
+      type: 'interim' | 'final' | 'error' | 'started' | 'stopped';
+      text?: string;
+      segments?: Array<{ start: string; end: string; text: string }>;
+      error?: string;
+      duration?: number;
+    }) => void) => {
+      const listener = (event: any, update: any) => callback(update);
+      ipcRenderer.on('whisper:streamingUpdate', listener);
+      return () => ipcRenderer.removeListener('whisper:streamingUpdate', listener);
+    },
+  },
+
+  // Voice Input Settings
+  voiceInput: {
+    getSettings: () => ipcRenderer.invoke('voiceInput:getSettings'),
+    updateSettings: (settings: any) => ipcRenderer.invoke('voiceInput:updateSettings', settings),
+  },
+
+  // Native Module on-demand download management
+  // Manage on-demand downloadable large native modules (whisper-addon)
+  nativeModule: {
+    getStatus: (moduleKey: string) => ipcRenderer.invoke('native-module:getStatus', moduleKey),
+    ensureDownloaded: (moduleKey: string) => ipcRenderer.invoke('native-module:ensureDownloaded', moduleKey),
+    cancelDownload: (moduleKey: string) => ipcRenderer.invoke('native-module:cancelDownload', moduleKey),
+    deleteModule: (moduleKey: string) => ipcRenderer.invoke('native-module:delete', moduleKey),
+    // Push events from main process
+    onDownloadStarted: (callback: (data: { packageName: string; url: string }) => void) => {
       const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('browserControl:showBrowserInstallConfirm', listener);
-      return () => ipcRenderer.removeListener('browserControl:showBrowserInstallConfirm', listener);
+      ipcRenderer.on('native-module:downloadStarted', listener);
+      return () => ipcRenderer.removeListener('native-module:downloadStarted', listener);
     },
-    onShowNativeServerDownloadConfirm: (callback: (data: { requestId: string }) => void) => {
+    onDownloadProgress: (callback: (data: { packageName: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
       const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('browserControl:showNativeServerDownloadConfirm', listener);
-      return () => ipcRenderer.removeListener('browserControl:showNativeServerDownloadConfirm', listener);
+      ipcRenderer.on('native-module:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('native-module:downloadProgress', listener);
     },
-    onShowBrowserRestartConfirm: (callback: (data: { requestId: string; browserName: string }) => void) => {
+    onDownloadComplete: (callback: (data: { packageName: string; localPath: string }) => void) => {
       const listener = (_event: any, data: any) => callback(data);
-      ipcRenderer.on('browserControl:showBrowserRestartConfirm', listener);
-      return () => ipcRenderer.removeListener('browserControl:showBrowserRestartConfirm', listener);
+      ipcRenderer.on('native-module:downloadComplete', listener);
+      return () => ipcRenderer.removeListener('native-module:downloadComplete', listener);
     },
+    onDownloadCancelled: (callback: (data: { packageName: string }) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('native-module:downloadCancelled', listener);
+      return () => ipcRenderer.removeListener('native-module:downloadCancelled', listener);
+    },
+    onDownloadError: (callback: (data: { packageName: string; error: string }) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('native-module:downloadError', listener);
+      return () => ipcRenderer.removeListener('native-module:downloadError', listener);
+    },
+  },
+
+  // In-app browser side panel
+  embeddedBrowser: {
+    invoke: invokeEmbeddedBrowser,
+    on: onEmbeddedBrowserEvent,
+    off: offEmbeddedBrowserEvent,
+  },
+
+  // Coding CLI selection (profile-level setting for the coding_agent built-in tool)
+  codingCli: {
+    invoke: invokeCodingCli,
   },
 
   // DevTools MCP
@@ -2402,9 +2669,17 @@ export const electronAPI: ElectronAPI = {
     updateSettings: (settings: { browser?: 'chrome' | 'edge' }) => ipcRenderer.invoke('devToolsMcp:updateSettings', settings),
   },
 
+  // Memex Memory (per-agent Zettelkasten)
+  memex: createMemexPreloadApi(ipcRenderer),
+
   // Scheduler Management
   scheduler: {
     invoke: invokeScheduler,
+  },
+
+  // Agent Hooks Management
+  agentHooks: {
+    invoke: invokeAgentHooks,
   },
 
   // Buddy Companion
@@ -2412,6 +2687,21 @@ export const electronAPI: ElectronAPI = {
     invoke: invokeBuddy,
     on: ipcRenderer.on.bind(ipcRenderer),
     off: ipcRenderer.off.bind(ipcRenderer),
+  },
+
+  // Sync management
+  sync: {
+    getSettings: () => ipcRenderer.invoke('sync:getSettings'),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('sync:setEnabled', enabled),
+    setRepoUrl: (url: string) => ipcRenderer.invoke('sync:setRepoUrl', url),
+    validateRepoUrl: (url: string) => ipcRenderer.invoke('sync:validateRepoUrl', url),
+    getStatus: (checkChanges?: boolean) => ipcRenderer.invoke('sync:getStatus', checkChanges ?? true),
+    initialize: () => ipcRenderer.invoke('sync:initialize'),
+    pull: (force: boolean) => ipcRenderer.invoke('sync:pull', force),
+    push: (force: boolean, needCommit?: boolean) => ipcRenderer.invoke('sync:push', force, needCommit ?? true),
+    merge: () => ipcRenderer.invoke('sync:merge'),
+    checkExternalKnowledgeBases: () => ipcRenderer.invoke('sync:checkExternalKnowledgeBases'),
+    copyKnowledgeBasesToProfile: (items: { chatId: string; agentId: string; knowledgeBase: string }[]) => ipcRenderer.invoke('sync:copyKnowledgeBasesToProfile', items),
   },
 
   mcpAuth: {
@@ -2431,13 +2721,6 @@ export const electronAPI: ElectronAPI = {
       requestId: string,
       response: McpAuthClientIdResponse,
     ) => ipcRenderer.invoke('mcpAuth:respondClientId', requestId, response),
-  },
-
-  // Feedback / Bug Report
-  doctor: {
-    invoke: invokeDoctor,
-    on: ipcRenderer.on.bind(ipcRenderer),
-    off: ipcRenderer.off.bind(ipcRenderer),
   },
 
   // Generic event listening methods for main window IPC events

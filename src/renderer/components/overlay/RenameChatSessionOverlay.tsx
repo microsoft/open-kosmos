@@ -1,6 +1,18 @@
 import { atom } from '@/atom';
 import { profileDataManager } from '@renderer/lib/userData/profileDataManager';
 import { useToast, type ToastContextType } from '../ui/ToastProvider';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { translate, type TranslationKey, type TranslationParams } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n/useI18n';
+
+type TFunction = (key: TranslationKey, params?: TranslationParams) => string;
+const fallbackT: TFunction = (key, params) => translate('en', key, params);
 
 interface State {
   isOpen: boolean;
@@ -29,7 +41,7 @@ export const RenameChatSessionAtom = atom(zeroState, (get, set) => {
     set({ ...get(), newTitle });
   }
 
-  async function confirm(toast: ToastContextType) {
+  async function confirm(toast: ToastContextType, t: TFunction = fallbackT) {
     const { chatId, sessionId, newTitle } = get();
 
     if (!chatId || !sessionId || !newTitle.trim()) return;
@@ -39,7 +51,7 @@ export const RenameChatSessionAtom = atom(zeroState, (get, set) => {
       const alias = profileCache?.profile?.alias;
 
       if (!alias) {
-        toast.showError('User not authenticated');
+        toast.showError(t('overlay.rename.userNotAuthenticated'));
         return;
       }
 
@@ -51,12 +63,12 @@ export const RenameChatSessionAtom = atom(zeroState, (get, set) => {
       );
 
       if (result?.success) {
-        toast.showSuccess('Chat session renamed successfully');
+        toast.showSuccess(t('overlay.rename.success'));
       } else {
-        toast.showError(result?.error || 'Failed to rename chat session');
+        toast.showError(result?.error || t('overlay.rename.failed'));
       }
     } catch (error) {
-      toast.showError('Failed to rename chat session');
+      toast.showError(t('overlay.rename.failed'));
     } finally {
       set(zeroState);
     }
@@ -68,43 +80,45 @@ export const RenameChatSessionAtom = atom(zeroState, (get, set) => {
 export function RenameChatSessionOverlay() {
   const [state, actions] = RenameChatSessionAtom.use();
   const toast = useToast();
+  const { t } = useI18n();
 
   if (!state.isOpen) return null;
   return (
-    <div className="delete-confirm-overlay">
-      <div className="delete-confirm-modal duplicate-agent-modal">
-        <div className="modal-header">
-          <h2>Rename Chat Session</h2>
-        </div>
-        <div className="modal-content">
-          <p>Enter a new name for this chat session</p>
+    <Dialog open={state.isOpen} onOpenChange={() => actions.cancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('overlay.rename.title')}</DialogTitle>
+        </DialogHeader>
+        <div className="mt-2 space-y-3">
+          <p className="text-sm text-neutral-600">{t('overlay.rename.description')}</p>
           <input
             type="text"
-            className="duplicate-agent-input"
+            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/30"
             value={state.newTitle}
             onChange={(e) => actions.setNewTitle(e.target.value)}
-            placeholder="Enter session name"
+            placeholder={t('overlay.rename.placeholder')}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter' && state.newTitle.trim()) {
-                actions.confirm(toast);
+                actions.confirm(toast, t);
               }
             }}
           />
         </div>
-        <div className="modal-actions">
-          <button className="btn-cancel" onClick={actions.cancel}>
-            Cancel
+        <DialogFooter className="mt-6">
+          <button className="btn-secondary" onClick={actions.cancel} type="button">
+            {t('common.cancel')}
           </button>
           <button
             className="btn-primary"
-            onClick={() => actions.confirm(toast)}
+            onClick={() => actions.confirm(toast, t)}
             disabled={!state.newTitle.trim()}
+            type="button"
           >
-            Rename
+            {t('common.rename')}
           </button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -56,7 +56,7 @@ vi.mock('../userData/userDataProvider', () => ({
 // profileDataManager
 vi.mock('@renderer/lib/userData/profileDataManager', () => ({
   profileDataManager: {
-    getCache: vi.fn(() => ({ profile: { alias: 'test-user', primaryAgent: 'Kobi' }, chats: [] })),
+    getCache: vi.fn(() => ({ profile: { alias: 'test-user', primaryChat: 'chat-kobi' }, chats: [] })),
     refresh: vi.fn(() => Promise.resolve()),
     subscribe: vi.fn(() => vi.fn()),
     getChatConfigs: vi.fn(() => []),
@@ -135,7 +135,7 @@ describe('DeleteOverlay', () => {
   it('renders nothing when closed', () => {
     // atom starts with isOpen=false
     wrap(<DeleteOverlay />);
-    expect(screen.queryByText('Delete Agent')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
   });
 
   it('renders agent deletion dialog when opened via showAgent', async () => {
@@ -149,7 +149,7 @@ describe('DeleteOverlay', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('open-btn'));
     });
-    expect(screen.getByRole('heading', { name: 'Delete Agent' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Delete' })).toBeInTheDocument();
     expect(screen.getByText(/my-agent/)).toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe('DeleteOverlay', () => {
     await act(async () => {
       fireEvent.click(screen.getByText('Cancel'));
     });
-    expect(screen.queryByRole('heading', { name: 'Delete Agent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('renders chat-session deletion dialog with current-session warning', async () => {

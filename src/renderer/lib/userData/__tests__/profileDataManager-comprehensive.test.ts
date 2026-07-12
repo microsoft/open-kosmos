@@ -15,7 +15,6 @@ const profileEventMocks = {
   onChatSessionStoreSessionDeleted: vi.fn(),
 };
 
-const subAgentGetAllMock = vi.fn();
 
 const agentChatMocks = {
   onStreamingChunk: vi.fn(),
@@ -55,7 +54,6 @@ Object.defineProperty(window, 'electronAPI', {
     profile: profileEventMocks,
     mcp: { onServerStatesUpdated: vi.fn(() => vi.fn()) },
     agentChat: agentChatMocks,
-    subAgent: { getAll: subAgentGetAllMock },
   },
   writable: true,
   configurable: true,
@@ -65,6 +63,8 @@ import { ProfileDataManager } from '../profileDataManager';
 import type { ProfileV2 } from '../../../../main/lib/userDataADO/types/profile';
 import { agentChatSessionCacheManager } from '../../../lib/chat/agentChatSessionCacheManager';
 import { mcpClientCacheManager } from '../../../lib/mcp/mcpClientCacheManager';
+import { agentClientCacheManager } from '../../../lib/agent/agentClientCacheManager';
+import type { AgentConfig } from '../../../../main/lib/userDataADO/types/agentStore';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ function makeProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
     updatedAt: '2026-01-01T00:00:00.000Z',
     alias: 'testUser',
     freDone: true,
-    primaryAgent: 'Agent A',
+    primaryChat: 'chat-a',
     chats: [
       {
         chat_id: 'chat-1',
@@ -101,7 +101,6 @@ function makeProfile(overrides: Partial<ProfileV2> = {}): ProfileV2 {
       },
     ],
     skills: [],
-    sub_agents: [],
     mcp_servers: [],
     'starred-chat-sessions': [],
     ...overrides,
@@ -276,6 +275,79 @@ describe('ProfileDataManager - Comprehensive', () => {
     });
   });
 
+  // ── agent_ids-only chats (regression) ─────────────────────────────────────
+  // Reproduces the ModelSelector "Select Model" bug: after the read-flip,
+  // separated chats carry ONLY agent_ids (inline chat.agent stripped from the
+  // renderer push). The imperative readers must resolve the agent through the
+  // renderer agentClientCacheManager bridge (resolveChatAgent), NOT the
+  // main-process accessor whose agent_ids resolver is never installed in the
+  // renderer bundle (it defaults to () => [] there, so it returned undefined).
+  describe('agent_ids-only chats resolve via agentClientCacheManager', () => {
+    const AGENT_ID = 'agent_20260702000000_regress01';
+
+    function seedCachedAgent(overrides: Partial<AgentConfig> = {}): void {
+      const agent = {
+        id: AGENT_ID,
+        name: 'Cached Agent',
+        role: 'assistant',
+        emoji: '🧠',
+        avatar: '',
+        version: '1.0.0',
+        source: 'ON-DEVICE',
+        workspace: '',
+        mcp_servers: [],
+        skills: [],
+        model: 'claude-opus-4.8',
+        ...overrides,
+      } as unknown as AgentConfig;
+      (agentClientCacheManager as any).agents.set(agent.id, agent);
+    }
+
+    function initWithSeparatedChat(): void {
+      // A chat with ONLY agent_ids and no inline agent facade.
+      initManager(manager, 'testUser', {
+        chats: [
+          {
+            chat_id: 'chat-sep',
+            chat_type: 'single_agent',
+            agent_ids: [AGENT_ID],
+            chatSessions: [],
+          },
+        ],
+      } as unknown as Partial<ProfileV2>);
+    }
+
+    afterEach(() => {
+      (agentClientCacheManager as any).agents.clear();
+    });
+
+    it('getSelectedModel resolves the model from the agent store cache', () => {
+      seedCachedAgent();
+      initWithSeparatedChat();
+      expect(manager.getSelectedModel('chat-sep')).toBe('claude-opus-4.8');
+    });
+
+    it('getSelectedModel returns null when the agent is not cached', () => {
+      // No seedCachedAgent(): the id resolves to nothing in the renderer cache.
+      initWithSeparatedChat();
+      expect(manager.getSelectedModel('chat-sep')).toBeNull();
+    });
+
+    it('getCurrentAgent resolves the primary agent from the cache', () => {
+      seedCachedAgent();
+      initWithSeparatedChat();
+      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue('chat-sep');
+      expect(manager.getCurrentAgent()?.name).toBe('Cached Agent');
+      expect(manager.getCurrentModel()).toBe('claude-opus-4.8');
+    });
+
+    it('getReasoningEffort resolves the effort from the cached agent', () => {
+      seedCachedAgent({ reasoningEffort: 'HIGH' } as Partial<AgentConfig>);
+      initWithSeparatedChat();
+      expect(manager.getReasoningEffort('chat-sep')).toBe('high');
+    });
+  });
+
   // ── getAssignedMcpServers ─────────────────────────────────────────────────
 
   describe('getAssignedMcpServers()', () => {
@@ -288,55 +360,6 @@ describe('ProfileDataManager - Comprehensive', () => {
       initManager(manager);
       (manager as any).cache.chats[0].agent.mcp_servers = [{ name: 'server1', tools: [] }];
       expect(manager.getAssignedMcpServers()).toHaveLength(1);
-    });
-  });
-
-  // ── context enhancement / memory ─────────────────────────────────────────
-
-  describe('context enhancement', () => {
-    it('returns null context enhancement when no agent', () => {
-      expect(manager.getCurrentAgentContextEnhancement()).toBeNull();
-    });
-
-    it('returns false for memory search when not configured', () => {
-      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue(null as any);
-      initManager(manager);
-      expect(manager.isMemorySearchEnabled()).toBe(false);
-      expect(manager.isMemoryGenerationEnabled()).toBe(false);
-    });
-
-    it('returns true for memory search when enabled', () => {
-      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue(null as any);
-      initManager(manager);
-      (manager as any).cache.chats[0].agent.context_enhancement = {
-        search_memory: { enabled: true, semantic_similarity_threshold: 0.8, semantic_top_n: 10 },
-        generate_memory: { enabled: true },
-      };
-      expect(manager.isMemorySearchEnabled()).toBe(true);
-      expect(manager.isMemoryGenerationEnabled()).toBe(true);
-    });
-
-    it('getMemorySearchConfig returns defaults when no config', () => {
-      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue(null as any);
-      initManager(manager);
-      const cfg = manager.getMemorySearchConfig();
-      expect(cfg).toEqual({ enabled: false, semantic_similarity_threshold: 0.0, semantic_top_n: 5 });
-    });
-
-    it('getMemorySearchConfig returns configured values', () => {
-      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue(null as any);
-      initManager(manager);
-      (manager as any).cache.chats[0].agent.context_enhancement = {
-        search_memory: { enabled: true, semantic_similarity_threshold: 0.9, semantic_top_n: 20 },
-      };
-      const cfg = manager.getMemorySearchConfig();
-      expect(cfg).toEqual({ enabled: true, semantic_similarity_threshold: 0.9, semantic_top_n: 20 });
-    });
-
-    it('getMemoryGenerationConfig returns enabled:false without config', () => {
-      vi.mocked(agentChatSessionCacheManager.getCurrentChatId).mockReturnValue(null as any);
-      initManager(manager);
-      expect(manager.getMemoryGenerationConfig()).toEqual({ enabled: false });
     });
   });
 
@@ -645,21 +668,7 @@ describe('ProfileDataManager - Comprehensive', () => {
       expect(manager.getFreDone()).toBe(true); // unchanged
     });
 
-    it('clears chats/skills/subAgents when profile is null', () => {
-      initManager(manager);
-      (manager as any).cache.chats = [{ chat_id: 'x' }];
-
-      (manager as any).handleProfileCacheUpdate({
-        alias: 'testUser',
-        profile: null,
-        timestamp: Date.now() + 99999,
-      });
-
-      expect((manager as any).cache.chats).toEqual([]);
-      expect((manager as any).cache.skills).toEqual([]);
-      expect((manager as any).cache.subAgents).toEqual([]);
-    });
-
+    
     it('handles mcp_servers sync error gracefully', () => {
       vi.mocked(mcpClientCacheManager.updateServerConfigs).mockImplementationOnce(() => { throw new Error('mcp error'); });
 
@@ -674,44 +683,19 @@ describe('ProfileDataManager - Comprehensive', () => {
       }).not.toThrow();
     });
 
-    it('triggers fetchFullSubAgentConfigs when sub_agents present', async () => {
-      subAgentGetAllMock.mockResolvedValue({
-        success: true,
-        data: [{ name: 'sa-full', display_name: 'Full Agent' }],
-      });
-
-      initManager(manager);
-      (manager as any).cache.lastUpdated = 0;
+    
+    
+    it('refreshes MCP inventory when Computer Use enabled changes through cache updates', () => {
+      initManager(manager, 'testUser', { computerUse: { enabled: false, alwaysAllowedApps: [], requireConfirmation: true } });
+      vi.mocked(mcpClientCacheManager.refresh).mockClear();
 
       (manager as any).handleProfileCacheUpdate({
         alias: 'testUser',
-        profile: makeProfile({
-          sub_agents: [{ name: 'sa', version: '1.0.0', source: 'ON-DEVICE' }] as any,
-        }),
-        timestamp: Date.now(),
+        profile: makeProfile({ computerUse: { enabled: true, alwaysAllowedApps: [], requireConfirmation: true } }),
+        timestamp: Date.now() + 99999,
       });
 
-      // Wait for async fetch
-      await new Promise(r => setTimeout(r, 20));
-      expect(subAgentGetAllMock).toHaveBeenCalled();
-    });
-
-    it('handles fetchFullSubAgentConfigs failure gracefully', async () => {
-      subAgentGetAllMock.mockRejectedValue(new Error('fetch failed'));
-
-      initManager(manager);
-      (manager as any).cache.lastUpdated = 0;
-
-      (manager as any).handleProfileCacheUpdate({
-        alias: 'testUser',
-        profile: makeProfile({
-          sub_agents: [{ name: 'sa', version: '1.0.0', source: 'ON-DEVICE' }] as any,
-        }),
-        timestamp: Date.now(),
-      });
-
-      // Should not throw
-      await new Promise(r => setTimeout(r, 20));
+      expect(mcpClientCacheManager.refresh).toHaveBeenCalledTimes(1);
     });
   });
 

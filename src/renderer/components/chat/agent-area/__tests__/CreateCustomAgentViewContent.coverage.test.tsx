@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CreateCustomAgentViewContent from '../CreateCustomAgentViewContent';
 
 // ---- mock variables ----
@@ -43,6 +43,14 @@ const { mockProfileDataManager } = vi.hoisted(() => ({
   },
 }));
 
+const { mockChats } = vi.hoisted(() => ({
+  mockChats: [] as any[],
+}));
+
+const { mockUseStableChats } = vi.hoisted(() => ({
+  mockUseStableChats: { value: false },
+}));
+
 const mockUseScrollSelectedIntoView = vi.fn().mockReturnValue({ current: null });
 const mockUseFeatureFlag = vi.fn().mockReturnValue(false);
 
@@ -56,7 +64,7 @@ vi.mock('react-router-dom', async () => ({
 vi.mock('../../../userData/userDataProvider', () => ({
   useChats: () => ({
     addChat: mockAddChat,
-    chats: [],
+    chats: mockUseStableChats.value ? mockChats : [...mockChats],
   }),
 }));
 
@@ -113,9 +121,33 @@ vi.mock('../../../../lib/hooks/useScrollSelectedIntoView', () => ({
 
 // ---- tests ----
 
+beforeEach(() => {
+  mockUseStableChats.value = false;
+});
+
 describe('CreateCustomAgentViewContent - rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
+    mockGetDefaultModel.mockReturnValue('gpt-4.1');
+    mockGetAllOpenKosmosUsedModels.mockReturnValue([
+      {
+        id: 'gpt-4.1',
+        name: 'GPT-4.1',
+        capabilities: {
+          family: 'gpt4',
+          supports: { tool_calls: true, vision: true },
+        },
+      },
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        capabilities: {
+          family: 'gpt4',
+          supports: { tool_calls: false, vision: false },
+        },
+      },
+    ]);
     mockAddChat.mockResolvedValue({ success: true, data: { chat_id: 'new-chat-1' } });
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -153,11 +185,20 @@ describe('CreateCustomAgentViewContent - rendering', () => {
     render(<CreateCustomAgentViewContent />);
     expect(screen.getByRole('button', { name: /Create and Continue/ })).toBeDisabled();
   });
+
+  it('shows Select Model when the default model is unavailable', () => {
+    mockGetDefaultModel.mockReturnValueOnce('missing-model');
+
+    render(<CreateCustomAgentViewContent />);
+
+    expect(screen.getByText('Select Model')).toBeInTheDocument();
+  });
 });
 
 describe('CreateCustomAgentViewContent - name input', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
     mockAddChat.mockResolvedValue({ success: true, data: { chat_id: 'new-chat-1' } });
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -181,11 +222,25 @@ describe('CreateCustomAgentViewContent - name input', () => {
     });
     expect(screen.getByPlaceholderText('Enter agent name...')).toHaveValue('TestAgent');
   });
+
+  it('shows a duplicate-name warning while typing an existing agent name', async () => {
+    mockChats.push({ agent: { name: 'Duplicate Agent' } });
+
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'Duplicate Agent' },
+    });
+
+    expect(await screen.findByText('⚠️ This agent name already exists')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter agent name...')).toHaveClass('warning');
+    expect(screen.getByRole('button', { name: /Create and Continue/ })).toBeDisabled();
+  });
 });
 
 describe('CreateCustomAgentViewContent - emoji picker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
     mockUseFeatureFlag.mockReturnValue(false);
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -219,6 +274,7 @@ describe('CreateCustomAgentViewContent - emoji picker', () => {
 describe('CreateCustomAgentViewContent - model dropdown', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
     mockUseFeatureFlag.mockReturnValue(false);
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -249,11 +305,34 @@ describe('CreateCustomAgentViewContent - model dropdown', () => {
     fireEvent.mouseDown(document.body);
     expect(document.querySelector('.model-dropdown')).toBeNull();
   });
+
+  it('keeps dropdown open when clicking inside and renders reasoning badges', () => {
+    mockGetAllOpenKosmosUsedModels.mockReturnValueOnce([
+      {
+        id: 'gpt-4.1',
+        name: 'GPT-4.1',
+        capabilities: { family: 'gpt4', supports: { tool_calls: true, vision: true } },
+      },
+      {
+        id: 'o4-mini',
+        name: 'o4-mini',
+        capabilities: { family: 'o4', supports: { tool_calls: false, vision: false } },
+      },
+    ]);
+
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.click(document.querySelector('.model-button') as HTMLElement);
+    fireEvent.mouseDown(document.querySelector('.model-dropdown') as HTMLElement);
+
+    expect(document.querySelector('.model-dropdown')).toBeTruthy();
+    expect(screen.getByText('Reasoning')).toBeInTheDocument();
+  });
 });
 
 describe('CreateCustomAgentViewContent - agent source selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
     mockUseFeatureFlag.mockReturnValue(true);
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -286,10 +365,16 @@ describe('CreateCustomAgentViewContent - agent source selection', () => {
 describe('CreateCustomAgentViewContent - create flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
+    mockChats.length = 0;
     mockAddChat.mockResolvedValue({ success: true, data: { chat_id: 'new-chat-1' } });
     mockProfileDataManager.getChatConfigs.mockReturnValue([{ chat_id: 'new-chat-1' }]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
     mockUseFeatureFlag.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('does not call addChat when button is disabled', () => {
@@ -310,7 +395,30 @@ describe('CreateCustomAgentViewContent - create flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
     await waitFor(() => {
       expect(mockAddChat).toHaveBeenCalled();
+      expect(mockProfileDataManager.subscribe).not.toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/new-chat-1/settings/workspace');
+    });
+  });
+
+  it('creates an on-device agent with builtin tools and skills', async () => {
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'Local Agent' },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+
+    await waitFor(() => {
+      expect(mockAddChat).toHaveBeenCalledWith(expect.objectContaining({
+        agent: expect.objectContaining({
+          source: 'ON-DEVICE',
+          mcp_servers: [{ name: 'builtin-tools', tools: [] }],
+          skills: ['skill-a', 'skill-b'],
+        }),
+      }));
     });
   });
 
@@ -326,6 +434,23 @@ describe('CreateCustomAgentViewContent - create flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('DB error', 'error');
+    });
+  });
+
+  it('shows the default error toast when addChat fails without an error message', async () => {
+    mockAddChat.mockResolvedValueOnce({ success: false });
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'No Error Agent' },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Failed to create agent', 'error');
     });
   });
 
@@ -365,7 +490,34 @@ describe('CreateCustomAgentViewContent - create flow', () => {
     });
   });
 
-  it('navigates even when chat not in cache - still calls addChat', async () => {
+  it('navigates when the subscription reports the new chat in cache', async () => {
+    mockAddChat.mockResolvedValueOnce({ success: true, data: { chat_id: 'sub-chat' } });
+    mockProfileDataManager.getChatConfigs.mockReturnValue([]);
+    mockProfileDataManager.subscribe.mockImplementationOnce((callback) => {
+      const timer = setTimeout(() => callback({ chats: [{ chat_id: 'sub-chat' }] }), 0);
+      return () => clearTimeout(timer);
+    });
+
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'Subscribed Agent' },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Agent "Subscribed Agent" created successfully!', 'success');
+      expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/sub-chat/settings/workspace');
+    });
+  });
+
+  it('navigates anyway when the new chat never appears in cache', async () => {
+    const unsubscribe = vi.fn();
+    mockAddChat.mockResolvedValueOnce({ success: true, data: { chat_id: 'timeout-chat' } });
+    mockProfileDataManager.getChatConfigs.mockReturnValue([]);
+    mockProfileDataManager.subscribe.mockReturnValue(unsubscribe);
+
     render(<CreateCustomAgentViewContent />);
     fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
       target: { value: 'Timeout Agent' },
@@ -373,9 +525,66 @@ describe('CreateCustomAgentViewContent - create flow', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
     });
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    expect(mockAddChat).toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith('Agent "Timeout Agent" created successfully!', 'success');
+    expect(mockNavigate).toHaveBeenCalledWith('/agent/chat/timeout-chat/settings/workspace');
+  });
+
+  it('guards against a duplicate name added after the form becomes valid', async () => {
+    mockUseStableChats.value = true;
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'Concurrent Agent' },
+    });
     await waitFor(() => {
-      expect(mockAddChat).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
+    });
+    fireEvent.click(document.querySelector('.model-button') as HTMLElement);
+    fireEvent.click(screen.getByText('GPT-4o'));
+
+    mockChats.push({ agent: { name: 'Concurrent Agent' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+
+    expect(mockAddChat).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith('Agent name already exists. Please choose a different name.', 'error');
+  });
+
+  it('creates an external agent with external-only payload fields', async () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockAddChat.mockResolvedValueOnce({ success: true, data: { chat_id: 'external-chat' } });
+    mockProfileDataManager.getChatConfigs.mockReturnValue([{ chat_id: 'external-chat' }]);
+
+    render(<CreateCustomAgentViewContent />);
+    fireEvent.click(screen.getByText('🐾 External Agent'));
+    fireEvent.change(screen.getByPlaceholderText('Enter agent name...'), {
+      target: { value: 'External Agent Name' },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create and Continue/ })).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create and Continue/ }));
+
+    await waitFor(() => {
+      expect(mockAddChat).toHaveBeenCalledWith(expect.objectContaining({
+        agent: expect.objectContaining({
+          source: 'EXTERNAL',
+          mcp_servers: [],
+          skills: [],
+          authToken: expect.any(String),
+        }),
+      }));
+      expect(screen.queryByText('Agent Model')).toBeNull();
     });
   });
 });
@@ -383,6 +592,7 @@ describe('CreateCustomAgentViewContent - create flow', () => {
 describe('CreateCustomAgentViewContent - model cache update event', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChats.length = 0;
     mockUseFeatureFlag.mockReturnValue(false);
     mockProfileDataManager.getChatConfigs.mockReturnValue([]);
     mockProfileDataManager.subscribe.mockReturnValue(() => {});
@@ -398,7 +608,9 @@ describe('CreateCustomAgentViewContent - model cache update event', () => {
       },
     ];
     mockGetAllOpenKosmosUsedModels.mockReturnValueOnce(newModels);
-    window.dispatchEvent(new Event('modelCacheUpdated'));
+    act(() => {
+      window.dispatchEvent(new Event('modelCacheUpdated'));
+    });
     // Open dropdown to verify new model
     const modelBtn = document.querySelector('.model-button') as HTMLElement;
     fireEvent.click(modelBtn);

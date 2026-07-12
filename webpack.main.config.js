@@ -21,7 +21,6 @@ module.exports = (env, argv) => {
   entry: {
     main: './src/main/bootstrap.ts',
     preload: './src/preload/main.ts',
-    'preload.toolbar': './src/preload/toolbar.ts',
     'preload.screenshot': './src/preload/screenshot.ts',
   },
   output: {
@@ -76,23 +75,18 @@ module.exports = (env, argv) => {
       // Expose environment variables to main process
       // Use webpack's mode as fallback to ensure development mode is properly detected for electron-reload
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
-      'process.env.DEVELOPMENT_BASE_CDN_URL': JSON.stringify(process.env.DEVELOPMENT_BASE_CDN_URL || ''),
-      'process.env.PRODUCTION_BASE_CDN_URL': JSON.stringify(process.env.PRODUCTION_BASE_CDN_URL || ''),
-      'process.env.RELEASE_CDN_URL': JSON.stringify(process.env.RELEASE_CDN_URL || ''),
       'process.env.BRAND_CONFIG': JSON.stringify(appConfig),
       'process.env.BRAND_NAME': JSON.stringify(brandConfig.name),
       'process.env.APP_NAME': JSON.stringify(appConfig.productName),
       'process.env.APP_ID': JSON.stringify(appConfig.appId),
-      'process.env.DEVELOPMENT_RELAY_SERVICE_URL': JSON.stringify(process.env.DEVELOPMENT_RELAY_SERVICE_URL || ''),
-      'process.env.PRODUCTION_RELAY_SERVICE_URL': JSON.stringify(process.env.PRODUCTION_RELAY_SERVICE_URL || ''),
       'process.env.USER_DATA_NAME': JSON.stringify(appConfig.userDataName || appConfig.productName),
+      // OpenKosmos MCP credential placeholders
+      'process.env.REDDIT_CLIENT_ID': JSON.stringify(process.env.REDDIT_CLIENT_ID || ''),
+      'process.env.REDDIT_CLIENT_SECRET': JSON.stringify(process.env.REDDIT_CLIENT_SECRET || ''),
+      'process.env.DATA_AI_API_KEY': JSON.stringify(process.env.DATA_AI_API_KEY || ''),
+      'process.env.UNWRAP_ACCESS_TOKEN': JSON.stringify(process.env.UNWRAP_ACCESS_TOKEN || ''),
+      'process.env.TAVILY_API_KEY': JSON.stringify(process.env.TAVILY_API_KEY || ''),
       'process.env.HISTORY_PROMPT_QUEUE_SIZE': JSON.stringify(process.env.HISTORY_PROMPT_QUEUE_SIZE),
-      // Additional environment variables
-      'process.env.REDDIT_CLIENT_ID': JSON.stringify(process.env.REDDIT_CLIENT_ID),
-      'process.env.REDDIT_CLIENT_SECRET': JSON.stringify(process.env.REDDIT_CLIENT_SECRET),
-      'process.env.DATA_AI_API_KEY': JSON.stringify(process.env.DATA_AI_API_KEY),
-      'process.env.UNWRAP_ACCESS_TOKEN': JSON.stringify(process.env.UNWRAP_ACCESS_TOKEN),
-      'process.env.TAVILY_API_KEY': JSON.stringify(process.env.TAVILY_API_KEY),
     })
   ],
   node: {
@@ -114,8 +108,6 @@ module.exports = (env, argv) => {
         'sharp',
         'onnxruntime-node',
         'better-sqlite3',
-        'sqlite-vec',
-        '@xenova/transformers',
         'fsevents',
         'cpu-features',
         // Playwright and browser automation — MUST stay external.
@@ -128,13 +120,20 @@ module.exports = (env, argv) => {
         'chromium-bidi',
         'bufferutil',
         'utf-8-validate',
-        'selection-hook', // Add selection-hook to native modules
         // node-screenshots window detection native addon
         'node-screenshots',
+        // Computer Use synthetic-input driver (nut.js → libnut native .node via
+        // the `bindings` loader). Must stay external so `bindings` resolves the
+        // addon from node_modules at runtime; bundling it breaks libnut loading.
+        '@nut-tree-fork/nut-js',
+        '@nut-tree-fork',
+        // Whisper speech-to-text native addon
+        '@kutalia/whisper-node-addon',
         // Additional AI/ML modules that may contain native bindings
         '@google/generative-ai',
         'cohere-ai',
         'ollama',
+        'neo4j-driver',
       ];
 
       if (nativeModules.some((mod) => request.startsWith(mod))) {

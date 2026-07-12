@@ -237,6 +237,7 @@ function makeMockAgentChat(overrides: Record<string, any> = {}) {
     addStatusChangeListener: vi.fn(() => vi.fn()),
     hasEventSender: vi.fn(() => false),
     streamMessage: vi.fn().mockResolvedValue([]),
+    drainQueuedSteeringWhileIdle: vi.fn().mockResolvedValue([]),
     retryChat: vi.fn().mockResolvedValue([]),
     editUserMessage: vi.fn().mockResolvedValue([]),
     canEditUserMessage: vi.fn(() => ({ canEdit: true })),
@@ -459,7 +460,7 @@ describe('AgentChatManager (coverage supplement)', () => {
       expect(mockSessionCoordinator.clearPendingUnread).toHaveBeenCalledWith('sess-1');
     });
 
-    it('returns success with empty data on CancellationError', async () => {
+    it('returns success with empty data and cancelled flag on CancellationError', async () => {
       const manager = createFreshManager();
       const mockInstance = makeMockAgentChat({
         getChatStatus: vi.fn(() => 'idle'),
@@ -469,6 +470,7 @@ describe('AgentChatManager (coverage supplement)', () => {
       const result = await manager.streamMessage('sess-1', { id: 'm1', role: 'user', content: 'hi' } as any);
       expect(result.success).toBe(true);
       expect(result.data).toEqual([]);
+      expect(result.cancelled).toBe(true);
     });
 
     it('returns error with HTTP status code prefix when available', async () => {
@@ -494,6 +496,132 @@ describe('AgentChatManager (coverage supplement)', () => {
       const result = await manager.streamMessage('sess-1', { id: 'm1', role: 'user', content: 'hi' } as any);
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network failure');
+    });
+  });
+
+  // ── drainQueuedSteeringWhileIdle ─────────────────────────────────────────────
+
+  describe('drainQueuedSteeringWhileIdle', () => {
+    it('returns error when no agent instance', async () => {
+      const manager = createFreshManager();
+      mockRegistry.getInstance.mockReturnValue(null);
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No agent instance found');
+    });
+
+    it('is a no-op success when the session is not idle', async () => {
+      const manager = createFreshManager();
+      const drain = vi.fn().mockResolvedValue([{ id: 'r1' }]);
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'sending_response'),
+        drainQueuedSteeringWhileIdle: drain,
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result).toEqual({ success: true, data: [] });
+      // The running turn's own end-of-turn drain handles the queue; do not start a
+      // competing idle drain.
+      expect(drain).not.toHaveBeenCalled();
+    });
+
+    it('drains with the session cancellation token and clears the source', async () => {
+      const manager = createFreshManager();
+      const source = { token: { isCancellationRequested: false }, cancel: vi.fn() };
+      mockRegistry.getOrCreateCancellationSource.mockReturnValue(source);
+      const drain = vi.fn().mockResolvedValue([{ id: 'r1' }]);
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: drain,
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(drain).toHaveBeenCalledWith(source.token);
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(mockRegistry.clearCancellationSource).toHaveBeenCalledWith('sess-1');
+    });
+
+    it('marks unread when shouldMarkUnread is true', async () => {
+      const manager = createFreshManager();
+      await manager.initialize('alice');
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: vi.fn().mockResolvedValue([{ id: 'r1' }]),
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+      mockSessionCoordinator.shouldMarkUnreadAfterCompletion.mockReturnValue(true);
+      mockSessionCoordinator.isProtectedSession.mockReturnValue(false);
+      mockChatSessionStore.ensureLoaded.mockResolvedValue({ file: {}, metadata: {} });
+      mockChatSessionStore.setReadStatus.mockResolvedValue({ metadata: {} });
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result.success).toBe(true);
+      expect(mockSessionCoordinator.clearPendingUnread).toHaveBeenCalledWith('sess-1');
+    });
+
+    it('returns success with cancelled flag on CancellationError', async () => {
+      const manager = createFreshManager();
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: vi.fn().mockRejectedValue(new MockCancellationError()),
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(result.cancelled).toBe(true);
+      expect(mockRegistry.clearCancellationSource).toHaveBeenCalledWith('sess-1');
+    });
+
+    it('returns error with HTTP status code prefix when available', async () => {
+      const manager = createFreshManager();
+      const err = Object.assign(new Error('Rate limited'), { statusCode: 429 });
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: vi.fn().mockRejectedValue(err),
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('[HTTP 429]');
+    });
+
+    it('returns plain error message without status code', async () => {
+      const manager = createFreshManager();
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: vi.fn().mockRejectedValue(new Error('Network failure')),
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Network failure');
+    });
+
+    it('returns Unknown error when a non-Error is thrown', async () => {
+      const manager = createFreshManager();
+      const mockInstance = makeMockAgentChat({
+        getChatStatus: vi.fn(() => 'idle'),
+        drainQueuedSteeringWhileIdle: vi.fn().mockRejectedValue('boom'),
+      });
+      mockRegistry.getInstance.mockReturnValue(mockInstance);
+
+      const result = await manager.drainQueuedSteeringWhileIdle('sess-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Unknown error');
     });
   });
 

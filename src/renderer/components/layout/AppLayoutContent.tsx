@@ -20,6 +20,7 @@ import {
 import Buddy from '../buddy';
 import { UserMenu } from './UserMenu';
 import { DeleteOverlay } from '../overlay/DeleteOverlay';
+import { ArchiveOverlay } from '../overlay/ArchiveOverlay';
 import { DuplicateAgentOverlay } from '../overlay/DuplicateAgentOverlay';
 import { RenameChatSessionOverlay } from '../overlay/RenameChatSessionOverlay';
 
@@ -210,6 +211,9 @@ export const AppLayoutContent: React.FC<AppLayoutContentProps> = ({
 
         {/* Global delete confirmation dialog - floats at AppLayout level, visible in all views */}
         <DeleteOverlay />
+
+        {/* Global archive confirmation dialog */}
+        <ArchiveOverlay />
 
         {/* Global duplicate Agent dialog - floats at AppLayout level */}
         <DuplicateAgentOverlay />

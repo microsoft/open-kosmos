@@ -7,10 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { Button } from '../ui/button';
 import { APP_NAME } from '../../../shared/constants/branding';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const McpAuthConsentDialog: React.FC = () => {
+  const { t } = useI18n();
   const [state, setState] = useState<{
     isOpen: boolean;
     requestId: string;
@@ -49,20 +50,23 @@ const McpAuthConsentDialog: React.FC = () => {
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Allow sign-in to {state.providerLabel}?</DialogTitle>
+          <DialogTitle>{t('mcp.auth.allowSignInTitle', { provider: state.providerLabel })}</DialogTitle>
         </DialogHeader>
         <div className="py-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            <strong>{state.serverName}</strong> wants to sign in to {state.providerLabel}
+            {t('mcp.auth.serverWantsSignIn', {
+              serverName: state.serverName,
+              provider: state.providerLabel,
+            })}
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleResponse('cancel')}>
-            Not now
-          </Button>
-          <Button onClick={() => handleResponse('allow-this-time')}>
-            Allow
-          </Button>
+          <button className="btn-secondary" onClick={() => handleResponse('cancel')}>
+            {t('mcp.auth.notNow')}
+          </button>
+          <button className="btn-primary" onClick={() => handleResponse('allow-this-time')}>
+            {t('mcp.auth.allow')}
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

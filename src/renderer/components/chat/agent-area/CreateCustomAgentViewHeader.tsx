@@ -1,5 +1,6 @@
 import React from 'react'
 import '../../../styles/Header.css'
+import { useI18n } from '../../../lib/i18n/useI18n'
 
 // Back Arrow Icon Component
 const BackArrowIcon = () => (
@@ -31,6 +32,8 @@ interface CreateCustomAgentViewHeaderProps {
  * Layout: [Back button] "Create Custom Agent"
  */
 const CreateCustomAgentViewHeader: React.FC<CreateCustomAgentViewHeaderProps> = ({ onBack }) => {
+  const { t } = useI18n()
+
   return (
     <header className="unified-header">
       <div className="header-title">
@@ -39,12 +42,12 @@ const CreateCustomAgentViewHeader: React.FC<CreateCustomAgentViewHeaderProps> = 
             className="btn-action"
             onClick={onBack}
             type="button"
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <BackArrowIcon />
           </button>
         )}
-        <span className="header-name">Create Custom Agent</span>
+        <span className="header-name">{t('agent.create.createCustomAgent')}</span>
       </div>
       <div className="header-actions">
         {/* Reserved space for action buttons */}

@@ -5,15 +5,12 @@
  * Targets uncovered branches:
  * - empty state (no servers)
  * - Kobi agent with builtin-tools (checkbox disabled)
- * - plugin servers (toggle disabled, Plugin badge)
- * - server with update button (remoteVersion > version, source != ON-DEVICE)
  * - server with error state
  * - server with connecting/disconnecting state
  * - server expand/collapse (chevron click)
  * - tool toggle: partial/full/deselect
  * - tool conflict detection
  * - search filtering
- * - M365 badge (agency command match)
  * - handleUpdateMcp
  * - readOnly mode
  * - cachedData preference over agentData
@@ -122,7 +119,7 @@ function makeAgentData(overrides: Record<string, unknown> = {}): AgentConfig {
 function makeProps(overrides: Partial<TabComponentProps> = {}): TabComponentProps {
   return {
     mode: 'edit',
-    agentId: 'agent-1',
+    chatId: 'agent-1',
     agentData: makeAgentData(),
     onSave: vi.fn(),
     onDataChange: vi.fn(),
@@ -184,70 +181,6 @@ describe('AgentMcpServersTab - server states', () => {
     expect(screen.getByText('connecting')).toBeTruthy();
   });
 
-  it('shows M365 badge for agency command', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ command: '/usr/local/bin/agency' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.getByText('M365')).toBeTruthy();
-  });
-});
-
-describe('AgentMcpServersTab - plugin server', () => {
-  it('shows Plugin badge and disables checkbox for plugin servers', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ name: 'plugin--abc123--my-plugin', status: 'connected' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.getByText('Plugin')).toBeTruthy();
-    const checkbox = screen.getByRole('checkbox');
-    expect((checkbox as HTMLInputElement).disabled).toBe(true);
-  });
-
-  it('shows cleaned display name for plugin server', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ name: 'plugin--abc123--my-plugin', status: 'connected' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.getByText('my-plugin')).toBeTruthy();
-  });
-});
-
-describe('AgentMcpServersTab - update button', () => {
-  it('shows Update button when remoteVersion > version and source != ON-DEVICE', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '2.0.0' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.getByText('Update')).toBeTruthy();
-  });
-
-  it('does not show Update button for ON-DEVICE servers', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ source: 'ON-DEVICE', version: '1.0.0', remoteVersion: '2.0.0' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-    expect(screen.queryByText('Update')).toBeNull();
-  });
-
-  it('navigates to MCP library when Update button clicked', () => {
-    mockUseMCPServers.mockReturnValue({
-      servers: [makeServer({ name: 'my-server', source: 'IN-LIBRARY', version: '1.0.0', remoteVersion: '2.0.0' })],
-      isLoading: false,
-    });
-    render(<AgentMcpServersTab {...makeProps()} />);
-
-    fireEvent.click(screen.getByText('Update'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('my-server'),
-      expect.any(Object),
-    );
-  });
 });
 
 describe('AgentMcpServersTab - Kobi agent', () => {

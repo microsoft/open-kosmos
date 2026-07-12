@@ -29,22 +29,26 @@ describe('ExperimentTag', () => {
     expect(tag).toHaveAttribute('title', 'This is an experimental feature');
   });
 
-  it('applies experiment-tag class', () => {
+  it('applies base utility classes', () => {
     render(<ExperimentTag />);
     const tag = screen.getByText('Experiment');
     expect(tag).toHaveClass('experiment-tag');
+    expect(tag).toHaveClass('inline-flex');
+    expect(tag).toHaveClass('bg-primary-500');
   });
 
   it('applies size-specific class for normal', () => {
     render(<ExperimentTag size="normal" />);
     const tag = screen.getByText('Experiment');
-    expect(tag).toHaveClass('experiment-tag-normal');
+    expect(tag).toHaveClass('text-[11px]');
+    expect(tag).toHaveClass('px-2');
   });
 
   it('applies size-specific class for small', () => {
     render(<ExperimentTag size="small" />);
     const tag = screen.getByText('Exp');
-    expect(tag).toHaveClass('experiment-tag-small');
+    expect(tag).toHaveClass('text-[8px]');
+    expect(tag).toHaveClass('px-[3px]');
   });
 
   it('applies custom className', () => {

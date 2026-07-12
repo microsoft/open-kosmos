@@ -8,6 +8,7 @@ const mockHasTool = vi.hoisted(() => vi.fn());
 const mockExecuteTool = vi.hoisted(() => vi.fn());
 const mockGetExecutionContext = vi.hoisted(() => vi.fn());
 const mockGetInstance = vi.hoisted(() => vi.fn());
+const mockGetChatConfig = vi.hoisted(() => vi.fn());
 
 vi.mock('../builtinTools/builtinToolsManager', () => ({
   BuiltinToolsManager: class MockBuiltinToolsManager {
@@ -25,6 +26,12 @@ vi.mock('../unifiedLogger', () => ({
   createConsoleLogger: vi.fn(() => Promise.resolve({
     log: vi.fn(), info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(),
   })),
+}));
+
+vi.mock('../../userDataADO/profileCacheManager', () => ({
+  profileCacheManager: {
+    getChatConfig: mockGetChatConfig,
+  },
 }));
 
 import { BuiltinMcpClient, BUILTIN_SERVER_NAME } from '../builtinMcpClient';
@@ -51,6 +58,7 @@ describe('BuiltinMcpClient (coverage)', () => {
     vi.clearAllMocks();
     toolsManagerInstance = makeToolsManagerInstance();
     mockGetInstance.mockReturnValue(toolsManagerInstance);
+    mockGetChatConfig.mockReturnValue(undefined);
     mockGetExecutionContext.mockReturnValue(null);
     mockGetStats.mockReturnValue({ isInitialized: true });
     mockGetAllTools.mockReturnValue([]);
@@ -191,11 +199,19 @@ describe('BuiltinMcpClient (coverage)', () => {
 
     it('uses chatSessionId from execution context', async () => {
       await client.connectToServer();
-      mockGetExecutionContext.mockReturnValue({ chatSessionId: 'session-42' });
+      mockGetExecutionContext.mockReturnValue({ chatSessionId: 'session-42', userAlias: 'user', chatId: 'chat-42' });
+      mockGetChatConfig.mockReturnValue({ agent: { workspace: '/workspace/chat-42' } });
       mockExecuteTool.mockResolvedValue({ success: true, data: 'ok' });
       const result = await client.executeTool({ toolName: 'tool1', toolArgs: {} });
       expect(result).toBe('ok');
-      expect(mockExecuteTool).toHaveBeenCalledWith('tool1', {}, undefined, 'session-42');
+      expect(mockExecuteTool).toHaveBeenCalledWith(
+        'tool1',
+        {},
+        undefined,
+        'session-42',
+        { chatSessionId: 'session-42', userAlias: 'user', chatId: 'chat-42' },
+        '/workspace/chat-42',
+      );
     });
   });
 

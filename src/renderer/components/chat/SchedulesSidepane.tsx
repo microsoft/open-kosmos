@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlarmClock, MoreHorizontal, X, Settings } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlarmClock, X, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../../styles/Sidepane.css';
 import '../../styles/WorkspaceExplorerSidepane.css';
@@ -10,16 +10,16 @@ import {
   useCurrentChatId,
   useCurrentChatSessionId,
 } from '../../lib/chat/agentChatSessionCacheManager';
-import { useProfileData } from '../userData/userDataProvider';
-import { getScheduledSessionDisplayState } from './SchedulesSidepane.utils';
 import { ChatSessionMenuAtom } from '../menu/ChatSessionDropdownMenu';
 import { ScheduleSidepaneAtom } from './chat-side.atom';
+import ScheduleSessionListItem from './ScheduleSessionListItem';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface SchedulesSidepaneProps {
   onSelectSession?: (sessionId: string) => void | Promise<void>;
 }
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 20;
 const SCROLL_THRESHOLD_PX = 80;
 
 const isScheduledSession = (
@@ -56,96 +56,6 @@ const mergeSessions = (
   return sortSessionsByTimeDesc(Array.from(merged.values()));
 };
 
-const formatTime = (value: string): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString([], {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const ExecutingIcon: React.FC = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 20 20"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{
-      animation: 'spin 1s linear infinite',
-      display: 'block',
-    }}
-  >
-    <circle cx="10" cy="10" r="9" stroke="black" strokeOpacity="0.15" strokeWidth="2" />
-    <path
-      d="M19 10C19 12.3869 18.0518 14.6761 16.364 16.364C14.6761 18.0518 12.387 19 10 19"
-      stroke="#272320"
-      strokeWidth="2"
-      strokeLinecap="round"
-    />
-  </svg>
-);
-
-const CompletedIcon: React.FC = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 20 20"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{ display: 'block' }}
-  >
-    <path
-      d="M0 10C0 4.47715 4.47715 0 10 0C15.5228 0 20 4.47715 20 10C20 15.5228 15.5228 20 10 20C4.47715 20 0 15.5228 0 10Z"
-      fill="#272320"
-    />
-    <mask
-      id="schedule-sidepane-completed-icon-mask"
-      style={{ maskType: 'alpha' }}
-      maskUnits="userSpaceOnUse"
-      x="4"
-      y="4"
-      width="12"
-      height="12"
-    >
-      <path
-        d="M13.765 7.20474C14.0661 7.48915 14.0797 7.96383 13.7953 8.26497L9.54526 12.765C9.40613 12.9123 9.21332 12.997 9.01071 12.9999C8.8081 13.0028 8.61295 12.9236 8.46967 12.7803L6.21967 10.5303C5.92678 10.2374 5.92678 9.76257 6.21967 9.46967C6.51256 9.17678 6.98744 9.17678 7.28033 9.46967L8.98463 11.174L12.7047 7.23503C12.9891 6.9339 13.4638 6.92033 13.765 7.20474Z"
-        fill="#242424"
-      />
-    </mask>
-    <g mask="url(#schedule-sidepane-completed-icon-mask)">
-      <rect width="12" height="12" transform="translate(4 4)" fill="#E2DDD9" />
-    </g>
-  </svg>
-);
-
-const InterruptedIcon: React.FC = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 20 20"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{ display: 'block' }}
-  >
-    <circle cx="10" cy="10" r="9" fill="#FEF2F2" stroke="#DC2626" strokeWidth="2" />
-    <path
-      d="M10 5.75V10.25"
-      stroke="#B91C1C"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-    />
-    <circle cx="10" cy="13.5" r="1" fill="#B91C1C" />
-  </svg>
-);
-
 const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
   onSelectSession,
 }) => {
@@ -156,13 +66,13 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
   const userAlias = user?.login;
   const currentChatId = useCurrentChatId();
   const currentChatSessionId = useCurrentChatSessionId();
-  const { chats } = useProfileData();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [nextMonthIndex, setNextMonthIndex] = useState(0);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showAllLoadedHint, setShowAllLoadedHint] = useState(false);
 
@@ -170,21 +80,11 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
   const showAllLoadedHintTimerRef = useRef<NodeJS.Timeout | null>(null);
   const exhaustedBottomLatchRef = useRef(false);
 
-  const scheduledSessionsFromCache = useMemo(() => {
-    if (!currentChatId) {
-      return [];
-    }
-
-    const currentChat = chats.find((chat) => chat.chat_id === currentChatId);
-    return sortSessionsByTimeDesc(
-      (currentChat?.chatSessions || []).filter(isScheduledSession),
-    );
-  }, [chats, currentChatId]);
-
-  const displaySessions = useMemo(
-    () => mergeSessions(sessions, scheduledSessionsFromCache),
-    [sessions, scheduledSessionsFromCache],
-  );
+  // Note: We no longer use scheduledSessionsFromCache from profile cache.
+  // The sessions state is updated directly via:
+  // 1. getAllScheduledSessions API (paginated)
+  // 2. Real-time events (onChatSessionStoreSessionCreated, etc.)
+  // This avoids loading all sessions from cache which defeats pagination.
 
   const triggerAllLoadedHint = useCallback(() => {
     if (showAllLoadedHint) {
@@ -207,7 +107,7 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
     if (!userAlias || !currentChatId || !window.electronAPI?.profile) {
       setSessions([]);
       setHasMore(false);
-      setNextMonthIndex(0);
+      setTotal(0);
       return;
     }
 
@@ -220,44 +120,23 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
     setError(null);
 
     try {
-      const initialResult = await window.electronAPI.profile.getChatSessions(
+      const result = await window.electronAPI.profile.getAllScheduledSessions(
         userAlias,
         currentChatId,
+        { limit: PAGE_SIZE, offset: 0 },
       );
 
-      if (!initialResult?.success || !initialResult.data) {
-        throw new Error(initialResult?.error || 'Failed to load scheduled sessions');
+      if (!result?.success || !result.data) {
+        throw new Error(result?.error || 'Failed to load scheduled sessions');
       }
 
-      let collected = (initialResult.data.sessions || []).filter(isScheduledSession);
-      let currentNextMonthIndex = initialResult.data.nextMonthIndex || 0;
-      let currentHasMore = Boolean(initialResult.data.hasMore);
-
-      while (currentHasMore && collected.length < PAGE_SIZE) {
-        const moreResult = await window.electronAPI.profile.getMoreChatSessions(
-          userAlias,
-          currentChatId,
-          currentNextMonthIndex,
-        );
-
-        if (!moreResult?.success || !moreResult.data) {
-          throw new Error(moreResult?.error || 'Failed to load more scheduled sessions');
-        }
-
-        collected = collected.concat(
-          (moreResult.data.sessions || []).filter(isScheduledSession),
-        );
-        currentNextMonthIndex = moreResult.data.nextMonthIndex || 0;
-        currentHasMore = Boolean(moreResult.data.hasMore);
-      }
-
-      setSessions(sortSessionsByTimeDesc(collected));
-      setNextMonthIndex(currentNextMonthIndex);
-      setHasMore(currentHasMore);
+      setSessions(result.data.sessions as ChatSession[]);
+      setHasMore(result.data.hasMore);
+      setTotal(result.data.total);
     } catch (loadError) {
       setSessions([]);
       setHasMore(false);
-      setNextMonthIndex(0);
+      setTotal(0);
       setError(
         loadError instanceof Error
           ? loadError.message
@@ -290,33 +169,21 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
     setError(null);
 
     try {
-      let collected: ChatSession[] = [];
-      let currentNextMonthIndex = nextMonthIndex;
-      let currentHasMore: boolean = hasMore;
+      const result = await window.electronAPI.profile.getAllScheduledSessions(
+        userAlias,
+        currentChatId,
+        { limit: PAGE_SIZE, offset: sessions.length },
+      );
 
-      while (currentHasMore && collected.length < PAGE_SIZE) {
-        const moreResult = await window.electronAPI.profile.getMoreChatSessions(
-          userAlias,
-          currentChatId,
-          currentNextMonthIndex,
-        );
-
-        if (!moreResult?.success || !moreResult.data) {
-          throw new Error(moreResult?.error || 'Failed to load more scheduled sessions');
-        }
-
-        collected = collected.concat(
-          (moreResult.data.sessions || []).filter(isScheduledSession),
-        );
-        currentNextMonthIndex = moreResult.data.nextMonthIndex || 0;
-        currentHasMore = Boolean(moreResult.data.hasMore);
+      if (!result?.success || !result.data) {
+        throw new Error(result?.error || 'Failed to load more scheduled sessions');
       }
 
-      setSessions((prev) => mergeSessions(prev, collected));
-      setNextMonthIndex(currentNextMonthIndex);
-      setHasMore(currentHasMore);
+      setSessions((prev) => [...prev, ...(result.data!.sessions as ChatSession[])]);
+      setHasMore(result.data.hasMore);
+      setTotal(result.data.total);
 
-      if (!currentHasMore) {
+      if (!result.data.hasMore) {
         triggerAllLoadedHint();
       }
     } catch (loadError) {
@@ -329,7 +196,7 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [isVisible, userAlias, currentChatId, hasMore, nextMonthIndex, triggerAllLoadedHint]);
+  }, [isVisible, userAlias, currentChatId, hasMore, sessions.length, triggerAllLoadedHint]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -459,8 +326,8 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
       <div className="file-explorer-section schedule-sidepane-section">
         <div className="sidepane-section-header" style={{ cursor: 'default' }}>
           <div className="sidepane-section-header-title">
-            <AlarmClock size={16} color="#374151" />
-            <span className="sidepane-section-title-text">Scheduled runs</span>
+            <AlarmClock size={16} color="var(--color-neutral-700)" />
+            <span className="sidepane-section-title-text">{t('sidepane.schedules.title')}</span>
           </div>
           <div className="sidepane-section-header-actions">
             <button
@@ -470,8 +337,8 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
                   navigate(`/agent/chat/${currentChatId}/settings/schedules`);
                 }
               }}
-              title="Manage Schedules"
-              aria-label="Manage Schedules"
+              title={t('sidepane.schedules.manage')}
+              aria-label={t('sidepane.schedules.manage')}
               type="button"
             >
               <Settings size={14} />
@@ -479,8 +346,8 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
             <button
               className="sidepane-close-btn"
               onClick={onClose}
-              title="Close schedules"
-              aria-label="Close schedules"
+              title={t('sidepane.schedules.close')}
+              aria-label={t('sidepane.schedules.close')}
               type="button"
             >
               <X size={12} />
@@ -491,27 +358,27 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
         <div className="sidepane-body" onScroll={handleScroll}>
           {error && (
             <div className="empty-state">
-              <p>Failed to load scheduled runs</p>
+              <p>{t('sidepane.schedules.loadFailed')}</p>
               <small>{error}</small>
             </div>
           )}
 
-          {!error && displaySessions.length === 0 && isLoading && (
+          {!error && sessions.length === 0 && isLoading && (
             <div className="loading-state">
               <AlarmClock className="loading-spinner" size={32} />
-              <p>Loading scheduled runs</p>
+              <p>{t('sidepane.schedules.loading')}</p>
             </div>
           )}
 
-          {!error && displaySessions.length === 0 && !isLoading && (
+          {!error && sessions.length === 0 && !isLoading && (
             <div className="empty-state">
               <AlarmClock className="empty-icon" size={32} />
-              <p>No scheduled runs yet</p>
-              <small>Triggered scheduled runs will appear here.</small>
+              <p>{t('sidepane.schedules.empty')}</p>
+              <small>{t('sidepane.schedules.emptyDescription')}</small>
             </div>
           )}
 
-          {displaySessions.length > 0 && (
+          {sessions.length > 0 && (
             <div
               style={{
                 display: 'flex',
@@ -520,145 +387,38 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
                 padding: '8px 0',
               }}
             >
-              {displaySessions.map((session) => {
+              {sessions.map((session) => {
                 const isActive = currentChatSessionId === session.chatSession_id;
-                const executionState = getScheduledSessionDisplayState(session);
-                const isExecuting = executionState === 'running';
-                const isFailed = executionState === 'failed';
-                const isInterrupted = executionState === 'interrupted';
                 const isUnread = session.readStatus !== 'read' && !isActive;
-                const titleColor = isUnread ? '#272320' : '#6C6C70';
-                const titleFontWeight = isUnread ? 600 : 410;
 
                 return (
-                  <button
+                  <ScheduleSessionListItem
                     key={session.chatSession_id}
-                    type="button"
-                    onClick={() => {
-                      onSelectSession?.(session.chatSession_id);
-                    }}
-                    title={session.title}
-                    className={openMenuChatSessionId === session.chatSession_id ? 'chat-session-item menu-open' : 'chat-session-item'}
-                    style={{
-                      width: '100%',
-                      border: 'none',
-                      borderRadius: '12px',
-                      padding: '12px',
-                      background: isActive ? 'rgba(0, 0, 0, 0.06)' : '#FFFFFF',
-                      cursor: 'pointer',
-                      opacity: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      gap: '6px',
-                      boxSizing: 'border-box',
-                      textAlign: 'left',
-                      position: 'relative',
-                    }}
-                    data-read-status={session.readStatus || 'read'}
-                    onMouseEnter={(event) => {
-                      if (!isActive) {
-                        event.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+                    session={session}
+                    isActive={isActive}
+                    isUnread={isUnread}
+                    isMenuOpen={openMenuChatSessionId === session.chatSession_id}
+                    onSelectSession={onSelectSession}
+                    onOpenMenu={(selectedSession, trigger) => {
+                      if (!currentChatId) {
+                        return;
                       }
-                      const moreBtn = event.currentTarget.querySelector('.chat-session-more-btn') as HTMLElement;
-                      if (moreBtn) {
-                        moreBtn.style.opacity = '1';
-                      }
+                      trigger.dataset.chatSessionMenuSource = 'schedule';
+                      chatSessionMenuActions.toggle(
+                        currentChatId,
+                        selectedSession.chatSession_id,
+                        selectedSession.title,
+                        trigger,
+                      );
                     }}
-                    onMouseLeave={(event) => {
-                      if (!isActive) {
-                        event.currentTarget.style.backgroundColor = '#FFFFFF';
-                      }
-                      if (openMenuChatSessionId !== session.chatSession_id) {
-                        const moreBtn = event.currentTarget.querySelector('.chat-session-more-btn') as HTMLElement;
-                        if (moreBtn) {
-                          moreBtn.style.opacity = '0';
-                        }
-                      }
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '20px',
-                          height: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isExecuting ? <ExecutingIcon /> : isInterrupted ? <InterruptedIcon /> : <CompletedIcon />}
-                      </div>
-                      <span
-                        style={{
-                          minWidth: 0,
-                          flex: 1,
-                          fontSize: '14px',
-                          fontWeight: titleFontWeight,
-                          color: titleColor,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {session.title}
-                      </span>
-                      <div
-                        className="chat-session-more-btn"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (currentChatId) {
-                            const trigger = event.currentTarget as HTMLDivElement;
-                            trigger.dataset.chatSessionMenuSource = 'schedule';
-                            chatSessionMenuActions.toggle(
-                              currentChatId,
-                              session.chatSession_id,
-                              session.title,
-                              trigger,
-                            );
-                          }
-                        }}
-                        style={{
-                          opacity: openMenuChatSessionId === session.chatSession_id ? '1' : '0',
-                          marginLeft: 'auto',
-                        }}
-                        title="More options"
-                      >
-                        <MoreHorizontal size={20} strokeWidth={1.5} />
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        fontSize: '12px',
-                        color: isFailed || isInterrupted ? '#B91C1C' : isUnread ? '#374151' : '#6B7280',
-                        paddingLeft: '28px',
-                        fontWeight: isUnread ? 600 : 400,
-                      }}
-                    >
-                      {isExecuting
-                        ? formatTime(session.last_updated)
-                        : isInterrupted
-                          ? `Interrupted${session.schedulerCompletedAt ? ` · ${formatTime(session.schedulerCompletedAt)}` : ''}`
-                        : isFailed
-                          ? `Failed${session.schedulerError ? ` · ${session.schedulerError}` : ''}`
-                          : formatTime(session.last_updated)}
-                    </span>
-                  </button>
+                  />
                 );
               })}
 
               {isLoading && (
                 <div className="loading-state" style={{ padding: '20px 12px' }}>
                   <AlarmClock className="loading-spinner" size={24} />
-                  <p>Loading more</p>
+                  <p>{t('settings.schedules.loadingMore')}</p>
                 </div>
               )}
 
@@ -669,11 +429,11 @@ const SchedulesSidepane: React.FC<SchedulesSidepaneProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '8px 12px 12px',
-                    color: '#9E9E9E',
+                    color: 'var(--color-neutral-400)',
                     fontSize: '12px',
                   }}
                 >
-                  All scheduled runs loaded
+                  {t('settings.schedules.allLoaded')}
                 </div>
               )}
             </div>

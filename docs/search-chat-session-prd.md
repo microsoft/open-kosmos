@@ -53,7 +53,7 @@ The current navigation model is browse-first, not find-first.
 ### 4.1 Primary Users
 
 - Heavy daily users with tens to hundreds of sessions
-- OpenKosmos users who split work by topic or branch
+- OpenKosmos / OpenKosmos users who split work by topic or branch
 - Users revisiting earlier research, debugging, or planning threads
 
 ### 4.2 Core Scenarios
@@ -342,7 +342,7 @@ For query `auth`:
 - `Auth token refresh failure`
 - `Auth retry design`
 - `Fix browser auth window`
-- `M365 Agent` sessions if title is weak but agent name matches
+- `Support Agent` sessions if title is weak but agent name matches
 
 ### 10.3 Highlighting
 

@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-29 -->
+<!-- Last verified: 2026-07-11 (Removed the unconsumed tenant messaging/email feature flag; definitions and the FeatureFlagName union now contain only live capabilities.) -->
 # Feature Flags
 
 > Main-process singleton that defines, resolves, and serves feature flag values to both the main process and renderer via IPC.
@@ -27,7 +27,7 @@
 ## Common Changes
 | Scenario | Files to Modify | Notes |
 |----------|----------------|-------|
-| Add a new flag | 1. `types.ts` (`FeatureFlagName` union) → 2. `featureFlagDefinitions.ts` (add `FeatureFlagConfig` entry) | Naming convention: `openkosmosFeatureXXXXX`; exception: `browserControl` (legacy) |
+| Add a new flag | 1. `types.ts` (`FeatureFlagName` union) → 2. `featureFlagDefinitions.ts` (add `FeatureFlagConfig` entry) | Use the `openkosmosFeatureXXXXX` naming convention |
 | Change a flag's default logic | `featureFlagDefinitions.ts` — edit `defaultValue` | Use `(ctx) => ...` for env/brand/platform conditions |
 | Enable a flag for testing | Launch with `--enable-features=flagName`; no code change needed | CLI source overrides any `defaultValue` |
 | Consume a flag in main process | `import { isFeatureEnabled } from './lib/featureFlags'` | Manager must be initialized first |
@@ -54,7 +54,6 @@
 
 ## Gotchas
 - ⚠️ `isDev` is resolved once at `initialize()` time. If `--dev` is not in `process.argv` and `NODE_ENV` is not `'development'`, all `(ctx) => ctx.isDev` flags default to `false` in production builds.
-- ⚠️ `browserControl` does not follow the `openkosmosFeature` naming convention — it is a legacy name; do not use it as a template.
 - ⚠️ If the renderer's IPC call fails (e.g., during cold start), `featureFlagCacheManager` silently falls back to `localStorage`. A stale cache could serve outdated values until the next successful sync.
 - ⚠️ `CURRENT_CACHE_VERSION` in the renderer cache manager is hardcoded to `'1.0'`. If you add flags that change the shape of `FeatureFlagsValues`, bump this constant to force a cache refresh.
 

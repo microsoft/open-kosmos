@@ -2,12 +2,14 @@
  * Set Primary Agent Tool
  * Sets the primary agent
  *
- * Sets the primaryAgent property via ProfileCacheManager.
- * The primaryAgent is displayed first in the AgentChatList and is the agent used after app startup.
+ * Sets the primary chat mapping via ProfileCacheManager, resolving the given
+ * agent name to its owning chat. The primary chat is displayed first in the
+ * AgentChatList and is the chat opened after app startup.
  */
 
 import { BuiltinToolDefinition } from './types';
 import { profileCacheManager } from '../../userDataADO';
+import { getChatAgents, getChatPrimaryAgent } from '../../userDataADO/agentAccessor';
 
 /**
  * Tool input arguments interface
@@ -105,13 +107,30 @@ export class SetPrimaryAgentTool {
         };
       }
 
-      // Read the current primaryAgent property
-      const previousPrimaryAgent = typeof profile.primaryAgent === 'string'
-        ? profile.primaryAgent
-        : 'Kobi';
+      // The cached profile stores chats as agent_ids only; use the hydrated chat
+      // configs so each chat's inline agent (and its name) is resolvable.
+      const chats = profileCacheManager.getAllChatConfigs(currentUserAlias);
 
-      // If already the primary agent, return success immediately
-      if (previousPrimaryAgent === agentName) {
+      // Resolve the current primary chat's agent name for reporting.
+      const previousChat = chats.find((c) => c.chat_id === profile.primaryChat);
+      const previousPrimaryAgent = getChatPrimaryAgent(previousChat)?.name ?? '';
+
+      // Resolve the chat that owns the requested agent — the primary chat is keyed
+      // by chat_id, so the agent name is mapped to its owning chat here.
+      const targetChat = chats.find((c) =>
+        getChatAgents(c).some(agent => agent?.name === agentName)
+      );
+      if (!targetChat) {
+        return {
+          success: false,
+          primaryAgent: previousPrimaryAgent,
+          previousPrimaryAgent,
+          message: `Agent "${agentName}" was not found in your profile. Use list_agents to see available agent names.`
+        };
+      }
+
+      // If already the primary chat, return success immediately
+      if (profile.primaryChat === targetChat.chat_id) {
         return {
           success: true,
           primaryAgent: agentName,
@@ -120,10 +139,10 @@ export class SetPrimaryAgentTool {
         };
       }
 
-      // Invoke ProfileCacheManager to update primaryAgent
-      const updateSuccess = await profileCacheManager.updatePrimaryAgent(
+      // Invoke ProfileCacheManager to update the primary chat mapping
+      const updateSuccess = await profileCacheManager.updatePrimaryChat(
         currentUserAlias,
-        agentName
+        targetChat.chat_id
       );
 
       if (!updateSuccess) {

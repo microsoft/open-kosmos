@@ -3,12 +3,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(__dirname, 'file-length-allowlist.json');
 const CODE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const IGNORE_DIRS = new Set(['node_modules', 'dist', 'dist-vite', '.webpack', 'out', 'build', 'release', '.git', 'browser-control']);
+const IGNORE_DIRS = new Set(['node_modules', 'dist', 'dist-vite', '.webpack', 'out', 'build', 'release', '.git']);
 
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 const DEFAULT_MAX_LINES = config.rules.default;
@@ -26,8 +26,8 @@ function normalizePath(p) {
   return p.replace(/\\/g, '/');
 }
 
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+function defaultRunGit(gitArgs) {
+  return execFileSync('git', gitArgs, { encoding: 'utf8' });
 }
 
 function readArgValue(argv, index, flagName) {
@@ -114,8 +114,8 @@ function walkDir(dir) {
   return results;
 }
 
-function getStagedFiles() {
-  const output = execSync('git diff --cached --name-only --diff-filter=ACM', { encoding: 'utf8' });
+function getStagedFiles(runGit = defaultRunGit) {
+  const output = runGit(['diff', '--cached', '--name-only', '--diff-filter=ACM']);
   return output
     .split('\n')
     .map(s => s.trim())
@@ -146,24 +146,58 @@ function parseNumstatLine(line) {
   return { file: normalizePath(fileRaw), added, deleted };
 }
 
-function getDiffStats(args) {
-  let cmd = null;
+function getDiffStats(args, runGit = defaultRunGit) {
+  let gitArgs = null;
 
   if (args.baseRef && args.headRef) {
-    cmd = `git diff --numstat --diff-filter=ACM ${shellQuote(`${args.baseRef}...${args.headRef}`)}`;
+    gitArgs = ['diff', '--numstat', '--diff-filter=ACM', `${args.baseRef}...${args.headRef}`];
   } else if (args.stagedOnly) {
-    cmd = 'git diff --cached --numstat --diff-filter=ACM';
+    gitArgs = ['diff', '--cached', '--numstat', '--diff-filter=ACM'];
   }
 
-  if (!cmd) return [];
+  if (!gitArgs) return [];
 
-  const output = execSync(cmd, { encoding: 'utf8' });
+  const output = runGit(gitArgs);
   return output
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean)
     .map(parseNumstatLine)
     .filter(Boolean);
+}
+
+function readBaseFile(args, relPath, runGit = defaultRunGit) {
+  if (args.baseRef && args.headRef) {
+    return runGit(['show', `${args.baseRef}:${relPath}`]);
+  }
+  if (args.stagedOnly) {
+    return runGit(['show', `HEAD:${relPath}`]);
+  }
+  return null;
+}
+
+function flattenFileLengthAllowlist(rawConfig) {
+  const entries = new Set((rawConfig.allowlist ?? []).map(normalizePath));
+  for (const override of rawConfig.overrides ?? []) {
+    for (const file of override.allowlist ?? []) {
+      entries.add(normalizePath(file));
+    }
+  }
+  return entries;
+}
+
+function getAddedAllowlistEntries(args, runGit = defaultRunGit) {
+  let baseRaw;
+  try {
+    baseRaw = readBaseFile(args, 'scripts/file-length-allowlist.json', runGit);
+  } catch {
+    baseRaw = '{}';
+  }
+  if (!baseRaw) return [];
+
+  const baseEntries = flattenFileLengthAllowlist(JSON.parse(baseRaw));
+  const currentEntries = flattenFileLengthAllowlist(config);
+  return [...currentEntries].filter(file => !baseEntries.has(file)).sort();
 }
 
 function formatTable(rows, headers) {
@@ -183,8 +217,9 @@ function growthIcon(netGrowth, limit) {
 function buildMarkdownReport(data) {
   const hardCount = data.hardViolations.length;
   const growthCount = data.allowlistedGrowthViolations.length;
-  const failed = hardCount > 0 || growthCount > 0;
-  const totalViolations = hardCount + growthCount;
+  const allowlistAdditionCount = data.allowlistAdditions.length;
+  const failed = hardCount > 0 || growthCount > 0 || allowlistAdditionCount > 0;
+  const totalViolations = hardCount + growthCount + allowlistAdditionCount;
 
   // --- Title ---
   const title = failed
@@ -197,7 +232,7 @@ function buildMarkdownReport(data) {
     : '';
   const summary = [
     `> Hard limit: code files ≤ **${DEFAULT_MAX_LINES}** lines${overrideSummary} | Allowlisted growth: net ≤ **+${MAX_ALLOWLIST_NET_GROWTH}** lines per PR`,
-    `> Violations: hard-limit **${hardCount}**, allowlisted-growth **${growthCount}**`
+    `> Violations: hard-limit **${hardCount}**, allowlisted-growth **${growthCount}**, new allowlist entries **${allowlistAdditionCount}**`
   ].join('\n');
 
   // --- Hard-limit violation table ---
@@ -224,13 +259,21 @@ function buildMarkdownReport(data) {
     growthIcon(v.netGrowth, MAX_ALLOWLIST_NET_GROWTH)
   ]);
 
+  const allowlistAdditionRows = data.allowlistAdditions.map(file => [`\`${file}\``]);
+
   // --- Assemble report ---
   let md = `${title}\n\n${summary}\n\n`;
+
+  if (allowlistAdditionRows.length) {
+    md += '### 🔴 Forbidden file-length allowlist additions\n\n';
+    md += `${formatTable(allowlistAdditionRows, ['File'])}\n\n`;
+    md += '> **Action required:** remove these allowlist additions and split, extract, or reduce the oversized files instead.\n\n';
+  }
 
   if (hardRows.length) {
     md += '### 🔴 Hard limit violations\n\n';
     md += `${formatTable(hardRows, ['File', 'Lines', 'Limit', 'Status'])}\n\n`;
-    md += `> **Action required:** refactor these files to stay under their respective limits, or add to \`scripts/file-length-allowlist.json\` if splitting is not feasible.\n\n`;
+    md += '> **Action required:** refactor these files to stay under their respective limits. Do not add files to the file-length allowlist to bypass this gate.\n\n';
   }
 
   if (growthRows.length) {
@@ -263,6 +306,14 @@ function buildMarkdownReport(data) {
 }
 
 function printConsoleFailure(data) {
+  if (data.allowlistAdditions.length) {
+    console.error('');
+    console.error('FILE LENGTH CHECK FAILED: new allowlist entries are forbidden');
+    for (const file of data.allowlistAdditions) {
+      console.error(`  ${file}`);
+    }
+  }
+
   if (data.hardViolations.length) {
     console.error('');
     console.error('FILE LENGTH CHECK FAILED: hard limit violations');
@@ -311,6 +362,7 @@ function main() {
   const diffStats = getDiffStats(args);
   const allowlistedGrowthViolations = [];
   const allowlistedGrowthWithinLimit = [];
+  const allowlistAdditions = getAddedAllowlistEntries(args);
 
   for (const item of diffStats) {
     if (!CODE_EXTENSIONS.has(path.extname(item.file))) continue;
@@ -333,10 +385,11 @@ function main() {
   const result = {
     hardViolations,
     allowlistedGrowthViolations,
-    allowlistedGrowthWithinLimit
+    allowlistedGrowthWithinLimit,
+    allowlistAdditions
   };
 
-  const failed = hardViolations.length > 0 || allowlistedGrowthViolations.length > 0;
+  const failed = hardViolations.length > 0 || allowlistedGrowthViolations.length > 0 || allowlistAdditions.length > 0;
 
   if (args.outputPath) {
     const report = buildMarkdownReport(result);
@@ -355,4 +408,26 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  normalizePath,
+  defaultRunGit,
+  parseArgs,
+  globToRegex,
+  matchGlob,
+  isExempt,
+  getMaxLinesFor,
+  isAllowlisted,
+  getOverrideAllowlistEntry,
+  getStagedFiles,
+  countLines,
+  parseNumstatLine,
+  getDiffStats,
+  readBaseFile,
+  flattenFileLengthAllowlist,
+  getAddedAllowlistEntries,
+  buildMarkdownReport,
+};

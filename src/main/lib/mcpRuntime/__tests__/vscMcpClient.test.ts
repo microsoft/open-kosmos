@@ -62,6 +62,13 @@ describe('VscMcpClient', () => {
       );
     });
 
+    it('does not override control request timeout with the old 1-hour tool cap', () => {
+      new VscMcpClient(makeConfig());
+      expect(mockVscodeMcpClientConstructor).toHaveBeenCalledWith(
+        expect.not.objectContaining({ timeout: 3600000 })
+      );
+    });
+
     it('maps transport sse to type sse', () => {
       new VscMcpClient(makeConfig({ transport: 'sse', url: 'http://localhost/sse' }));
       expect(mockVscodeMcpClientConstructor).toHaveBeenCalledWith(
@@ -384,10 +391,10 @@ describe('VscMcpClient', () => {
       expect(mockDisconnect).toHaveBeenCalled();
     });
 
-    it('does not disconnect when never connected', async () => {
+    it('disconnects even when never connected to stop starting/error transports', async () => {
       const client = new VscMcpClient(makeConfig());
       await client.cleanup();
-      expect(mockDisconnect).not.toHaveBeenCalled();
+      expect(mockDisconnect).toHaveBeenCalled();
     });
 
     it('clears state after cleanup', async () => {

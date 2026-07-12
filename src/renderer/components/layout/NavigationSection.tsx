@@ -7,7 +7,8 @@ import Divider from '../ui/Divider';
 import { useToast } from '../ui/ToastProvider';
 import { agentChatSessionCacheManager } from '../../lib/chat/agentChatSessionCacheManager';
 import { isBuiltinAgent } from '../../lib/userData/types';
-import { BRAND_NAME } from '@shared/constants/branding';
+import { useChatAgentMap } from '../../lib/agent';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 const PlusIcon = () => (
   <svg
@@ -28,11 +29,11 @@ const PlusIcon = () => (
     >
       <path
         d="M12 3.25C12.4142 3.25 12.75 3.58579 12.75 4V11.25H20C20.4142 11.25 20.75 11.5858 20.75 12C20.75 12.4142 20.4142 12.75 20 12.75H12.75V20C12.75 20.4142 12.4142 20.75 12 20.75C11.5858 20.75 11.25 20.4142 11.25 20V12.75H4C3.58579 12.75 3.25 12.4142 3.25 12C3.25 11.5858 3.58579 11.25 4 11.25H11.25V4C11.25 3.58579 11.5858 3.25 12 3.25Z"
-        fill="#242424"
+        fill="currentColor"
       />
     </mask>
     <g mask="url(#mask0_322_2677)">
-      <rect width="24" height="24" fill="#272320" />
+      <rect width="24" height="24" fill="currentColor" />
     </g>
   </svg>
 );
@@ -40,9 +41,11 @@ const PlusIcon = () => (
 
 
 const NavigationSection: React.FC = () => {
+  const { t } = useI18n();
   const [isAgentSearchActive, setIsAgentSearchActive] = useState(false);
 
   const { chats, data } = useProfileData();
+  const chatAgentMap = useChatAgentMap(chats);
   const { showSuccess, showError } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,15 +58,6 @@ const NavigationSection: React.FC = () => {
     string | null
   >(agentChatSessionCacheManager.getCurrentChatSessionId());
 
-  /**
-   * 🔄 chatStatusVersion: version counter used to trigger builtinChats useMemo recalculation
-   *
-   * Background: builtinChats computation depends on session state in agentChatSessionCacheManager,
-   * but useMemo cannot directly observe external manager state changes.
-   *
-   * Solution: listen for onChatStatusChanged events and increment the version counter on each change;
-   * include the version counter as a useMemo dependency to trigger recalculation.
-   */
   // 🔥 Listen for changes to agentChatSessionCacheManager's currentChatSessionId and sync local state
   useEffect(() => {
     const unsubscribe =
@@ -90,10 +84,10 @@ const NavigationSection: React.FC = () => {
     });
   };
 
-  // 🔥 Handle New Agent: navigate to the creation page
+  // Handle New Agent: navigate to the creation page.
   const handleNewAgent = () => {
     if (isAgentCreationView) {
-      // If already in Agent Creation view, force refresh to default state
+      // If already in Agent Creation view, force refresh to default state.
       navigate('/agent/chat/creation', { replace: true, state: { refresh: Date.now() } });
     } else {
       navigate('/agent/chat/creation');
@@ -142,8 +136,8 @@ const NavigationSection: React.FC = () => {
     }
   };
 
-  // 🔥 Get primaryAgent config
-  const primaryAgent = data?.profile?.primaryAgent || 'Kobi';
+  // 🔥 Get the primary chat id (falls back to first chat when unset)
+  const primaryChat = data?.profile?.primaryChat || '';
 
   // 🔥 Extract chatId from URL (supports /agent/chat/:chatId and /agent/chat/:chatId/settings routes)
   const urlChatId = useMemo(() => {
@@ -151,22 +145,19 @@ const NavigationSection: React.FC = () => {
     return match ? match[1] : null;
   }, [location.pathname]);
 
+  // URL chat ID takes priority so browser navigation and selected state stay in sync.
+  const displayCurrentChatId = urlChatId || currentChatId;
+
   // 🔥 Determine whether currently in settings view
   const isSettingsView = location.pathname.includes('/settings');
 
   // 🔥 Determine whether currently in Agent Creation view (including sub-routes)
   const isAgentCreationView = location.pathname.startsWith('/agent/chat/creation');
 
-  // 🔥 Determine the actually displayed currentChatId (URL chatId takes priority)
-  const displayCurrentChatId = urlChatId || currentChatId;
-
-  /**
-   * 🔥 Calculate the list of Built-in Agents to display below the Divider
-   * All built-in agents for the current branding are always visible.
-   */
+  /** Built-in agents are pinned below the divider. */
   const builtinChats = useMemo(() => {
-    return chats.filter(chat => isBuiltinAgent(chat.agent?.name, BRAND_NAME));
-  }, [chats]);
+    return chats.filter(chat => isBuiltinAgent(chatAgentMap.get(chat.chat_id)?.name));
+  }, [chats, chatAgentMap]);
 
   // 🔥 Determine whether to show Built-in Agents below the Divider
   // Show as long as any built-in agent exists (regardless of whether it is primary)
@@ -175,14 +166,14 @@ const NavigationSection: React.FC = () => {
   }, [builtinChats]);
 
   const visibleSearchSourceChats = useMemo(() => {
-    const regularChats = chats.filter(chat => !isBuiltinAgent(chat.agent?.name, BRAND_NAME));
+    const regularChats = chats.filter(chat => !isBuiltinAgent(chatAgentMap.get(chat.chat_id)?.name));
     return [...regularChats, ...builtinChats];
-  }, [builtinChats, chats]);
+  }, [builtinChats, chats, chatAgentMap]);
 
   const chatProps = useMemo(
     () => ({
       chats,
-      primaryAgent, // 🔥 Added: get primaryAgent from profile data
+      primaryChat, // 🔥 primary chat id from profile data
       excludeBuiltinAgents: true, // 🔥 Modified: main list excludes all built-in agents (they are shown separately below the Divider)
       currentChatId: displayCurrentChatId, // 🔥 Modified: use displayCurrentChatId
       onSelectChat: handleSelectChat,
@@ -198,7 +189,7 @@ const NavigationSection: React.FC = () => {
     }),
     [
       chats,
-      primaryAgent,
+      primaryChat,
       displayCurrentChatId,
       location.pathname,
       isSettingsView,
@@ -210,7 +201,7 @@ const NavigationSection: React.FC = () => {
   const builtinChatProps = useMemo(
     () => ({
       chats: builtinChats,
-      primaryAgent, // 🔥 Pass primaryAgent so built-in agents can also show the Primary badge (badge rendering is independent)
+      primaryChat, // 🔥 Pass primaryChat so built-in agents can also show the Primary badge (badge rendering is independent)
       excludeBuiltinAgents: false, // Do not exclude; this list is specifically for built-in agents
       currentChatId: displayCurrentChatId, // 🔥 Modified: use displayCurrentChatId
       onSelectChat: handleSelectChat,
@@ -225,7 +216,7 @@ const NavigationSection: React.FC = () => {
     }),
     [
       builtinChats,
-      primaryAgent,
+      primaryChat,
       displayCurrentChatId,
       location.pathname,
       isSettingsView,
@@ -251,9 +242,9 @@ const NavigationSection: React.FC = () => {
       {/* New Agent Button - pinned at the top */}
       <NavItem
         icon={<PlusIcon />}
-        label="New Agent"
+        label={t('agent.create.newAgent')}
         onClick={handleNewAgent}
-        title="Create a new agent"
+        title={t('agent.create.newAgentTitle')}
         role="button"
         tabIndex={0}
         isActive={isAgentCreationView}
@@ -281,7 +272,7 @@ const NavigationSection: React.FC = () => {
         <AgentList
           chats={chatProps.chats}
           searchSourceChats={visibleSearchSourceChats}
-          primaryAgent={chatProps.primaryAgent}
+          primaryChat={chatProps.primaryChat}
           excludeBuiltinAgents={chatProps.excludeBuiltinAgents}
           showSearch={true}
           currentChatId={chatProps.currentChatId}
@@ -308,7 +299,7 @@ const NavigationSection: React.FC = () => {
         >
           <AgentList
             chats={builtinChatProps.chats}
-            primaryAgent={builtinChatProps.primaryAgent}
+            primaryChat={builtinChatProps.primaryChat}
             excludeBuiltinAgents={builtinChatProps.excludeBuiltinAgents}
             showSearch={false}
             currentChatId={builtinChatProps.currentChatId}
@@ -322,7 +313,7 @@ const NavigationSection: React.FC = () => {
         </div>
       )}
 
-      {/* Function List - Chat, MCP - migrated to settings page */}
+      {/* Function List - Chat, MCP, Memory - migrated to settings page */}
     </div>
   );
 };

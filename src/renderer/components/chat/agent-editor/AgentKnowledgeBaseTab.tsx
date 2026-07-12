@@ -40,6 +40,7 @@ import {
 import { usePasteToWorkspace } from '../workspace/PasteToWorkspaceProvider';
 import { createLogger } from '../../../lib/utilities/logger';
 import { FileTreeNodeMenuAtom } from '@renderer/components/menu/FileTreeNodeContextMenu';
+import { useI18n } from '../../../lib/i18n/useI18n';
 const logger = createLogger('[AgentKnowledgeBaseTab]');
 
 // Shared ignore directory patterns for all features
@@ -67,7 +68,7 @@ const isImageFile = (filename: string): boolean => {
  */
 
 // File icon component - consistent with SkillFolderExplorer
-const FileIcon: React.FC<{ extension: string | null; fileName?: string }> = ({ extension, fileName: _fileName }) => {
+const FileIcon: React.FC<{ extension: string | null; fileName?: string }> = ({ extension, fileName }) => {
   const ext = extension?.toLowerCase();
   switch (ext) {
     case 'ts':
@@ -96,22 +97,26 @@ const FileIcon: React.FC<{ extension: string | null; fileName?: string }> = ({ e
 };
 
 // Loading animation component - consistent with SkillFolderExplorer
-const LoadingSpinner = () => (
-  <div className="skill-folder-loading">
-    <svg
-      width="32"
-      height="32"
-      viewBox="0 0 32 32"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <circle cx="16" cy="16" r="14" stroke="#e0e0e0" strokeWidth="2"/>
-      <path d="M30 16C30 23.732 23.732 30 16 30" stroke="#272320" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-    <span>Loading directory...</span>
-  </div>
-);
+const LoadingSpinner = () => {
+  const { t } = useI18n();
+
+  return (
+    <div className="skill-folder-loading">
+      <svg
+        width="32"
+        height="32"
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ animation: 'spin 1s linear infinite' }}
+      >
+        <circle cx="16" cy="16" r="14" stroke="var(--color-neutral-200)" strokeWidth="2"/>
+        <path d="M30 16C30 23.732 23.732 30 16 30" stroke="var(--color-warm-900)" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      <span>{t('agent.knowledge.loadingDirectory')}</span>
+    </div>
+  );
+};
 
 // Format file size - consistent with SkillFolderExplorer
 function formatFileSize(bytes: number): string {
@@ -124,18 +129,15 @@ function formatFileSize(bytes: number): string {
 
 const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
   mode,
-  agentId,
+  chatId,
   agentData,
   onSave,
   onDataChange,
   cachedData,
   readOnly = false,
-  isFromLibrary = false,
 }) => {
-  // IN-LIBRARY agent edit permissions:
-  // - knowledgeBase path selection: not editable
-  // - File management (Add/Delete): editable
-  const isWorkspacePathDisabled = readOnly || isFromLibrary
+  const { t } = useI18n();
+  const isWorkspacePathDisabled = readOnly
 
   const [workspacePath, setWorkspacePath] = useState<string>('');
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -665,7 +667,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
         logger.error('[AgentKnowledgeBaseTab] Failed to refresh file tree:', error);
       }
     }
-  }, [readOnly, workspacePath, directoryStack, reloadExplorer]);
+  }, [readOnly, workspacePath, directoryStack, reloadExplorer, t]);
 
   // ========== Add Files feature ==========
 
@@ -685,7 +687,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
     try {
       // Show file selection dialog, supports multiple files and directories
       const result = await window.electronAPI?.fs?.selectFiles?.({
-        title: 'Select Files or Folders to Add',
+        title: t('workspace.explorer.selectFilesTitle'),
         allowMultiple: true,
       });
 
@@ -811,10 +813,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
     const pathsToDelete = currentItems.map(item => item.path);
     const itemCount = pathsToDelete.length;
 
-    // Use system confirmation dialog
-    const confirmMessage = `Are you sure you want to clear all ${itemCount} items in the current folder?\n\nThis action cannot be undone.`;
-
-    const confirmed = window.confirm(confirmMessage);
+    const confirmed = window.confirm(t('agent.knowledge.clearCurrentFolderConfirm', { count: itemCount }));
 
     if (!confirmed) {
       return;
@@ -843,7 +842,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
     } catch (error) {
       logger.error('[AgentKnowledgeBaseTab] Error clearing folder:', error);
     }
-  }, [readOnly, currentItems, workspacePath, reloadExplorer]);
+  }, [readOnly, currentItems, workspacePath, reloadExplorer, t]);
 
   // ========== Item context menu (... button) ==========
 
@@ -883,12 +882,11 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
   const getEmptyStateMessage = useCallback(() => {
     const agentName = agentData?.name || 'Agent';
 
-    // OpenKosmos or default
     return {
-      title: 'Add documents, code files, images, and more.',
-      subtitle: `${agentName} can use them as references when you chat.`
+      title: t('agent.knowledge.emptyDefaultTitle'),
+      subtitle: t('agent.knowledge.emptySubtitle', { name: agentName })
     };
-  }, [agentData?.name]);
+  }, [agentData?.name, t]);
 
   const emptyMessage = getEmptyStateMessage();
 
@@ -906,7 +904,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
         <div className="workspace-drop-overlay">
           <div className="workspace-drop-overlay-content">
             <div className="workspace-drop-icon">📁</div>
-            <p>Drop files or folders here to add to Knowledge Base</p>
+            <p>{t('agent.knowledge.dropToAdd')}</p>
           </div>
         </div>
       )}
@@ -915,14 +913,14 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
       <div className="tab-body workspace-tab-body">
         {/* Knowledge Base Path Selector */}
         <div className="workspace-path-section">
-          <label className="section-label">Knowledge Base Path</label>
+          <label className="section-label">{t('agent.knowledge.pathLabel')}</label>
           <div className="workspace-path-row">
             <input
               type="text"
               className="workspace-path-input"
               value={workspacePath}
               onChange={(e) => !isWorkspacePathDisabled && setWorkspacePath(e.target.value)}
-              placeholder="Select or enter knowledge base path..."
+              placeholder={t('agent.knowledge.pathPlaceholder')}
               disabled={isWorkspacePathDisabled}
               readOnly
             />
@@ -931,10 +929,10 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
               className="select-path-btn"
               onClick={handleSelectWorkspace}
               disabled={isWorkspacePathDisabled}
-              title={isFromLibrary ? "Library Agent's knowledge base path cannot be modified" : "Select knowledge base folder"}
+              title={t('agent.knowledge.selectFolderTitle')}
             >
               <FolderOpen size={16} />
-              <span>Select Path</span>
+              <span>{t('agent.knowledge.selectPath')}</span>
             </button>
           </div>
         </div>
@@ -949,7 +947,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                 <button
                   className="skill-folder-back-btn"
                   onClick={handleBack}
-                  title="Go back"
+                  title={t('agent.knowledge.goBack')}
                 >
                   <ChevronLeft size={20} strokeWidth={2} />
                 </button>
@@ -978,11 +976,11 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                   {hasUnsavedWorkspacePath && (
                     <span className="workspace-unsaved-hint" style={{
                       fontSize: '12px',
-                      color: '#dc2626',
+                      color: 'var(--color-danger-600)',
                       marginRight: '8px',
                       whiteSpace: 'nowrap'
                     }}>
-                      Save to enable file management
+                      {t('agent.knowledge.saveToManage')}
                     </span>
                   )}
 
@@ -993,12 +991,12 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                       onClick={handleClearCurrentFolder}
                       disabled={hasUnsavedWorkspacePath}
                       title={hasUnsavedWorkspacePath
-                        ? 'Save knowledge base path first to enable clear'
-                        : 'Clear all items in current folder'}
+                        ? t('agent.knowledge.saveBeforeClear')
+                        : t('agent.knowledge.clearCurrentFolderTitle')}
                       style={hasUnsavedWorkspacePath ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                     >
                       <Trash2 size={16} />
-                      <span>Clear Current Folder</span>
+                      <span>{t('agent.knowledge.clearCurrentFolder')}</span>
                     </button>
                   )}
 
@@ -1009,12 +1007,12 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                       onClick={() => !hasUnsavedWorkspacePath && setShowAddMenu(!showAddMenu)}
                       disabled={hasUnsavedWorkspacePath}
                       title={hasUnsavedWorkspacePath
-                        ? 'Save knowledge base path first to add files'
-                        : 'Add files or folders'}
+                        ? t('agent.knowledge.saveBeforeAdd')
+                        : t('agent.knowledge.addFilesOrFolders')}
                       style={hasUnsavedWorkspacePath ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                     >
                       <Plus size={16} />
-                      <span>Add</span>
+                      <span>{t('agent.knowledge.add')}</span>
                       <ChevronDown size={14} className={`workspace-add-chevron ${showAddMenu ? 'open' : ''}`} />
                     </button>
 
@@ -1025,21 +1023,21 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                           onClick={handleAddFiles}
                         >
                           <File size={16} />
-                          <span>Add Files</span>
+                          <span>{t('agent.knowledge.addFiles')}</span>
                         </button>
                         <button
                           className="workspace-add-dropdown-item"
                           onClick={handleAddFolder}
                         >
                           <FolderPlus size={16} />
-                          <span>Add Folder</span>
+                          <span>{t('agent.knowledge.addFolder')}</span>
                         </button>
                         <button
                           className="workspace-add-dropdown-item"
                           onClick={handleOpenPasteDialog}
                         >
                           <Clipboard size={16} />
-                          <span>Paste Text</span>
+                          <span>{t('agent.knowledge.pasteText')}</span>
                         </button>
                       </div>
                     )}
@@ -1085,7 +1083,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                         <button
                           className="skill-folder-item-more-btn"
                           onClick={(e) => handleItemMoreMenu(e, item)}
-                          title="More options"
+                          title={t('agent.knowledge.moreOptions')}
                         >
                           <MoreHorizontal size={16} />
                         </button>
@@ -1106,11 +1104,11 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                     {!readOnly && hasUnsavedWorkspacePath && (
                       <p style={{
                         fontSize: '13px',
-                        color: '#dc2626',
+                        color: 'var(--color-danger-600)',
                         marginTop: '12px',
                         marginBottom: '8px'
                       }}>
-                        Save knowledge base path first to manage files
+                        {t('agent.knowledge.saveBeforeManage')}
                       </p>
                     )}
                     {!readOnly && !hasUnsavedWorkspacePath && (
@@ -1120,21 +1118,21 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                           onClick={handleAddFiles}
                         >
                           <File size={18} />
-                          <span>Add Files</span>
+                          <span>{t('agent.knowledge.addFiles')}</span>
                         </button>
                         <button
                           className="workspace-folder-empty-btn secondary"
                           onClick={handleAddFolder}
                         >
                           <FolderPlus size={18} />
-                          <span>Add Folder</span>
+                          <span>{t('agent.knowledge.addFolder')}</span>
                         </button>
                         <button
                           className="workspace-folder-empty-btn secondary"
                           onClick={handleOpenPasteDialog}
                         >
                           <Clipboard size={18} />
-                          <span>Paste Text</span>
+                          <span>{t('agent.knowledge.pasteText')}</span>
                         </button>
                       </div>
                     )}
@@ -1157,7 +1155,7 @@ const AgentKnowledgeBaseTab: React.FC<TabComponentProps> = ({
                 onClick={handleSelectWorkspace}
               >
                 <FolderOpen size={16} />
-                <span>Select Knowledge Base Folder</span>
+                <span>{t('agent.knowledge.selectFolder')}</span>
               </button>
             )}
           </div>

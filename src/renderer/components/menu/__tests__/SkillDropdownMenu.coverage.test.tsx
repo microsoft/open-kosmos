@@ -56,43 +56,15 @@ describe('SkillDropdownMenu', () => {
       value: {
         isDev: vi.fn().mockResolvedValue(false),
         platform: 'darwin',
-        skillLibrary: {
-          updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }),
-        },
         skills: {
+          updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }),
           openSkillFolder: vi.fn().mockResolvedValue({ success: true }),
         },
       },
     });
   });
 
-  it('returns null for plugin skills', async () => {
-    mockSkills.mockReturnValue([{ name: 'plugin--foo', source: 'PLUGIN' }]);
-    const SkillDropdownMenu = await importComp();
-    const { container } = render(
-      <SkillDropdownMenu
-        skillMenuRef={createRef<HTMLDivElement>()}
-        skillName="plugin--foo"
-        position={defaultPosition}
-        onClose={vi.fn()}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
 
-  it('returns null for skills with plugin-- prefix', async () => {
-    mockSkills.mockReturnValue([]);
-    const SkillDropdownMenu = await importComp();
-    const { container } = render(
-      <SkillDropdownMenu
-        skillMenuRef={createRef<HTMLDivElement>()}
-        skillName="plugin--myskill"
-        position={defaultPosition}
-        onClose={vi.fn()}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
 
   it('does not show Delete button for builtin skills', async () => {
     mockSkills.mockReturnValue([{ name: 'builtin-skill', source: 'SOME_SOURCE' }]);
@@ -121,7 +93,7 @@ describe('SkillDropdownMenu', () => {
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
 
-  it('shows Update from Device only for ON-DEVICE source', async () => {
+  it('shows Update from Device for non-builtin skills', async () => {
     const SkillDropdownMenu = await importComp();
     render(
       <SkillDropdownMenu
@@ -134,7 +106,7 @@ describe('SkillDropdownMenu', () => {
     expect(screen.getByText('Update from Device...')).toBeInTheDocument();
   });
 
-  it('does not show Update from Device for IN-LIBRARY source', async () => {
+  it('treats legacy source metadata as local for updates', async () => {
     mockSkills.mockReturnValue([{ name: 'web', source: 'IN-LIBRARY' }]);
     const SkillDropdownMenu = await importComp();
     render(
@@ -145,7 +117,7 @@ describe('SkillDropdownMenu', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.queryByText('Update from Device...')).not.toBeInTheDocument();
+    expect(screen.getByText('Update from Device...')).toBeInTheDocument();
   });
 
   it('dispatches skill:delete event and calls onClose when Delete is clicked', async () => {
@@ -199,7 +171,7 @@ describe('SkillDropdownMenu', () => {
   it('shows error when updateSkillFromDevice API is not available', async () => {
     Object.defineProperty(window, 'electronAPI', {
       writable: true, configurable: true,
-      value: { isDev: vi.fn().mockResolvedValue(false), platform: 'darwin', skillLibrary: {}, skills: {} },
+      value: { isDev: vi.fn().mockResolvedValue(false), platform: 'darwin', skills: {}, skills: {} },
     });
     const onClose = vi.fn();
     const SkillDropdownMenu = await importComp();
@@ -223,7 +195,7 @@ describe('SkillDropdownMenu', () => {
   });
 
   it('shows no toast when user cancels file selection', async () => {
-    (window.electronAPI.skillLibrary.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (window.electronAPI.skills.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false, error: 'File selection canceled',
     });
     const SkillDropdownMenu = await importComp();
@@ -249,7 +221,7 @@ describe('SkillDropdownMenu', () => {
   });
 
   it('shows persistent toast on validation error from updateSkillFromDevice', async () => {
-    (window.electronAPI.skillLibrary.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (window.electronAPI.skills.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false, error: 'Validation failed: bad schema',
     });
     const SkillDropdownMenu = await importComp();
@@ -278,7 +250,7 @@ describe('SkillDropdownMenu', () => {
   });
 
   it('shows error when updateSkillFromDevice throws', async () => {
-    (window.electronAPI.skillLibrary.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (window.electronAPI.skills.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Network error'),
     );
     const SkillDropdownMenu = await importComp();
@@ -325,8 +297,10 @@ describe('SkillDropdownMenu', () => {
       value: {
         isDev: vi.fn().mockResolvedValue(true),
         platform: 'win32',
-        skillLibrary: { updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }) },
-        skills: { openSkillFolder: vi.fn().mockResolvedValue({ success: true }) },
+        skills: {
+          updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }),
+          openSkillFolder: vi.fn().mockResolvedValue({ success: true }),
+        },
       },
     });
     const SkillDropdownMenu = await importComp();
@@ -351,8 +325,10 @@ describe('SkillDropdownMenu', () => {
       value: {
         isDev: vi.fn().mockResolvedValue(true),
         platform: 'linux',
-        skillLibrary: { updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }) },
-        skills: { openSkillFolder: vi.fn().mockResolvedValue({ success: true }) },
+        skills: {
+          updateSkillFromDevice: vi.fn().mockResolvedValue({ success: true, skillName: 'pdf' }),
+          openSkillFolder: vi.fn().mockResolvedValue({ success: true }),
+        },
       },
     });
     const SkillDropdownMenu = await importComp();
@@ -401,7 +377,7 @@ describe('SkillDropdownMenu', () => {
       value: {
         isDev: vi.fn().mockResolvedValue(true),
         platform: 'darwin',
-        skillLibrary: { updateSkillFromDevice: vi.fn() },
+        skills: { updateSkillFromDevice: vi.fn() },
         skills: {},
       },
     });
@@ -491,5 +467,134 @@ describe('SkillDropdownMenu', () => {
     });
 
     expect(screen.queryByText('Open in Finder')).not.toBeInTheDocument();
+  });
+
+  it('runs deferred skills refresh and folder-explorer refresh after a successful update', async () => {
+    vi.useFakeTimers();
+    try {
+      mockRefresh.mockRejectedValueOnce(new Error('refresh failed'));
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+      const SkillDropdownMenu = await importComp();
+
+      await act(async () => {
+        render(
+          <SkillDropdownMenu
+            skillMenuRef={createRef<HTMLDivElement>()}
+            skillName="pdf"
+            position={defaultPosition}
+            onClose={vi.fn()}
+          />,
+        );
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Update from Device...'));
+      });
+
+      // The success path schedules two timers (500ms refresh, 600ms folder-explorer
+      // refresh); advance past both so the deferred callbacks execute.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(700);
+      });
+
+      expect(mockRefresh).toHaveBeenCalled();
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'skills:refreshFolderExplorer' }),
+      );
+      dispatchSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to darwin platform and skips dev detection when electronAPI lacks isDev/platform', async () => {
+    Object.defineProperty(window, 'electronAPI', {
+      writable: true, configurable: true,
+      value: { skills: {}, skills: {} },
+    });
+    const SkillDropdownMenu = await importComp();
+
+    await act(async () => {
+      render(
+        <SkillDropdownMenu
+          skillMenuRef={createRef<HTMLDivElement>()}
+          skillName="pdf"
+          position={defaultPosition}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    // isDev stays false (no isDev API) so no Open button; Update still shows for ON-DEVICE skill.
+    expect(screen.queryByText('Open in Finder')).not.toBeInTheDocument();
+    expect(screen.getByText('Update from Device...')).toBeInTheDocument();
+  });
+
+  it('shows generic error when updateSkillFromDevice rejects with a non-Error value', async () => {
+    (window.electronAPI.skills.updateSkillFromDevice as ReturnType<typeof vi.fn>).mockRejectedValue('boom');
+    const SkillDropdownMenu = await importComp();
+
+    await act(async () => {
+      render(
+        <SkillDropdownMenu
+          skillMenuRef={createRef<HTMLDivElement>()}
+          skillName="pdf"
+          position={defaultPosition}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Update from Device...'));
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'));
+  });
+
+  it('shows generic error when openSkillFolder fails without an error message', async () => {
+    (window.electronAPI.isDev as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (window.electronAPI.skills.openSkillFolder as ReturnType<typeof vi.fn>).mockResolvedValue({ success: false });
+    const SkillDropdownMenu = await importComp();
+
+    await act(async () => {
+      render(
+        <SkillDropdownMenu
+          skillMenuRef={createRef<HTMLDivElement>()}
+          skillName="pdf"
+          position={defaultPosition}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Open in Finder'));
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'));
+  });
+
+  it('shows generic error when openSkillFolder rejects with a non-Error value', async () => {
+    (window.electronAPI.isDev as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (window.electronAPI.skills.openSkillFolder as ReturnType<typeof vi.fn>).mockRejectedValue('boom');
+    const SkillDropdownMenu = await importComp();
+
+    await act(async () => {
+      render(
+        <SkillDropdownMenu
+          skillMenuRef={createRef<HTMLDivElement>()}
+          skillName="pdf"
+          position={defaultPosition}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Open in Finder'));
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('Unknown error'));
   });
 });

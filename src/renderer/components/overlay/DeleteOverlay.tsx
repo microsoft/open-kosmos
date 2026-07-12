@@ -8,7 +8,19 @@ import { createLogger } from '@renderer/lib/utilities/logger';
 
 const logger = createLogger('[DeleteOverlay]');
 import { useToast, type ToastContextType } from '../ui/ToastProvider';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { type NavigateFunction, useNavigate, useLocation } from 'react-router-dom';
+import { translate, type TranslationKey, type TranslationParams } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n/useI18n';
+
+type TFunction = (key: TranslationKey, params?: TranslationParams) => string;
+const fallbackT: TFunction = (key, params) => translate('en', key, params);
 
 interface State {
   isOpen: boolean;
@@ -39,7 +51,12 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
     set({ isOpen: true, type: 'chat-session', id, name, isCurrentSession });
   }
 
-  async function confirm(toast: ToastContextType, navigate: NavigateFunction, currentPath: string) {
+  async function confirm(
+    toast: ToastContextType,
+    navigate: NavigateFunction,
+    currentPath: string,
+    t: TFunction = fallbackT,
+  ) {
     const { type, id, name, isCurrentSession } = get();
     if (!id) return;
 
@@ -82,32 +99,30 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
         if (result.success) {
           // Step 3: If switch needed, switch to Primary Agent
           if (needsSwitch) {
-            // Get Primary Agent (from profile data)
+            // Get the primary chat (from profile data)
             // Fix: refresh profile data to get the latest chats list
             await profileDataManager.refresh();
             const profileCache = profileDataManager.getCache();
-            const primaryAgentName = profileCache?.profile?.primaryAgent || 'Kobi';
+            const primaryChatId = profileCache?.profile?.primaryChat;
 
             // Fix: get chats from the latest profileCache, not from stale closure chats
             const latestChats = profileCache?.chats || [];
+            // Resolve the primary chat by its stable chat_id; fall back to the first chat.
             const primaryAgentChat = latestChats.find(
-              (c: any) => c.agent?.name === primaryAgentName,
-            );
+              (c: any) => c.chat_id === primaryChatId,
+            ) ?? latestChats[0];
             const primaryAgentChatId = primaryAgentChat?.chat_id;
 
             logger.debug('Delete agent - switching to Primary Agent:', {
               deletedChatId: id,
-              primaryAgentName,
+              primaryChatId,
               primaryAgentChatId,
               latestChatsCount: latestChats.length,
             });
 
             if (primaryAgentChatId) {
               // Fix: use startNewChatFor to switch to Primary Agent (unified API)
-              const result = await startNewChatFor(
-                primaryAgentChatId,
-                undefined,
-              );
+              const result = await startNewChatFor(primaryAgentChatId);
               logger.debug('startNewChatFor result:', result);
 
               if (result.success && result.chatSessionId) {
@@ -122,24 +137,24 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
               }
             } else {
               logger.error('Primary Agent not found:', {
-                primaryAgentName,
-                availableAgents: latestChats.map((c: any) => c.agent?.name),
+                primaryChatId,
+                availableChatIds: latestChats.map((c: any) => c.chat_id),
               });
             }
           }
           // Fix: show success message after deletion
           showSuccess(
-            `Agent "${name}" deleted successfully`,
+            t('overlay.delete.agentSuccess', { name }),
           );
         } else {
           showError(
-            `Failed to delete agent: ${result.error || 'Unknown error'}`,
+            t('overlay.delete.failed', { error: result.error || t('common.unknownError') }),
           );
         }
       } else if (type === 'chat-session') {
         const currentChatId = agentChatSessionCacheManager.getCurrentChatId();
         if (!currentChatId) {
-          showError('No current agent chat available');
+          showError(t('overlay.delete.noCurrentAgentChat'));
           return;
         }
 
@@ -147,7 +162,7 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
         const profileAlias = profileCache?.profile?.alias;
 
         if (!profileAlias) {
-          showError('No profile alias available');
+          showError(t('overlay.delete.noProfileAlias'));
           return;
         }
 
@@ -161,10 +176,7 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
           // Note: must use startNewChatFor(chatId) not startNewChat()
           // startNewChat() only resets the current instance, does not create a new ChatSession
           if (currentChatId) {
-            await startNewChatFor(
-              currentChatId,
-              undefined,
-            );
+            await startNewChatFor(currentChatId);
             // 3c. AgentChatManager.switchToChatSession will automatically call notifyCurrentChatSessionIdChanged
             //     The renderer's agentChatSessionCacheManager listens to the IPC event and auto-syncs currentChatId/currentChatSessionId
             // 3d. The renderer UI auto-renders via the useCurrentChatSessionId hook when data changes
@@ -184,7 +196,7 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
           id,
         );
         if (!deleteResult.success) {
-          showError(`Failed to delete session: ${deleteResult.error}`);
+          showError(t('overlay.delete.sessionFailed', { error: deleteResult.error || t('common.unknownError') }));
           return;
         }
 
@@ -192,13 +204,13 @@ export const DeleteConfirmAtom = atom(zeroState, (get, set) => {
         await profileDataManager.refresh();
 
         showSuccess(
-          `Session "${name}" deleted successfully`,
+          t('overlay.delete.sessionSuccess', { name }),
         );
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'An unknown error occurred';
-      showError(`Failed to delete: ${errorMessage}`);
+      showError(t('overlay.delete.failed', { error: errorMessage }));
     } finally {
       set(zeroState);
     }
@@ -212,38 +224,43 @@ export function DeleteOverlay() {
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
 
-  if (!deleteConfirmState.isOpen) return null;
   return (
-    <div className="delete-confirm-overlay">
-      <div className="delete-confirm-modal">
-        <div className="modal-header">
-          <h2>
-            {deleteConfirmState.type === 'agent' ? 'Delete Agent' : 'Delete Chat Session'}
-          </h2>
-        </div>
-        <div className="modal-content">
-          <p>Are you sure you want to delete <strong>{deleteConfirmState.name}</strong>?</p>
-          <p className="warning-text">
+    <Dialog
+      open={deleteConfirmState.isOpen}
+      onOpenChange={() => actions.cancel()}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {deleteConfirmState.type === 'agent' ? t('overlay.delete.title') : t('overlay.delete.chatSessionTitle')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="mt-2 space-y-2 text-sm text-neutral-600">
+          <p>
+            {t('overlay.delete.confirm')}{' '}
+            <strong className="font-semibold text-neutral-900">{deleteConfirmState.name}</strong>?
+          </p>
+          <p className="text-neutral-500">
             {deleteConfirmState.type === 'chat-session' && deleteConfirmState.isCurrentSession
-              ? "This is the currently selected session. After deletion, it will switch to a new conversation. This action cannot be undone and all chat history will be permanently deleted."
-              : "This action cannot be undone. All chat history will be permanently deleted."
-            }
+              ? t('overlay.delete.currentSessionWarning')
+              : t('overlay.delete.warning')}
           </p>
         </div>
-        <div className="modal-actions">
-          <button className="btn-cancel" onClick={actions.cancel}>
-            Cancel
+        <DialogFooter className="mt-6">
+          <button className="btn-secondary" onClick={actions.cancel} type="button">
+            {t('common.cancel')}
           </button>
           <button
-            className="btn-delete"
-            onClick={() => actions.confirm(toast, navigate, location.pathname)}
+            className="btn-danger"
+            onClick={() => actions.confirm(toast, navigate, location.pathname, t)}
+            type="button"
           >
-            {deleteConfirmState.type === 'agent' ? 'Delete Agent' : 'Delete'}
+            {t('common.delete')}
           </button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
-

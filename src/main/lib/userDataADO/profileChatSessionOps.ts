@@ -113,7 +113,7 @@ export async function deleteChatSession(
 }
 
 /**
- * Get chat sessions synchronously.
+ * @deprecated Use getChatSessionsAsync instead
  */
 export function getChatSessions(alias: string, chatId: string): ChatSession[] {
   logger.warn('[ProfileChatSessionOps] getChatSessions is deprecated, use getChatSessionsAsync instead', 'getChatSessions', {

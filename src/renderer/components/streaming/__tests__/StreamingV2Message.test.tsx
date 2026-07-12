@@ -59,6 +59,25 @@ vi.mock('../../../lib/streaming/compatibilityLayer', () => ({
   },
 }));
 
+vi.mock('../../browser/embeddedBrowser.atom', () => ({
+  EmbeddedBrowserAtom: {
+    useChange: () => ({ open: vi.fn() }),
+  },
+}));
+vi.mock('../../../lib/chat/agentChatSessionCacheManager', () => ({
+  useCurrentChatSessionId: () => 'session-test',
+}));
+vi.mock('../../../lib/chat/filePathUtils', () => ({
+  linkifyFilePaths: (text: string) => text,
+  isLocalFilePath: (href: string) => /^\/[^/]/.test(href) || /^[A-Za-z]:[\\/]/.test(href) || /^file:\/\/\//i.test(href),
+  isFilePathString: () => false,
+  getFileName: (p: string) => p.split(/[/\\]/).pop() || p,
+  stripFileScheme: (p: string) => p,
+}));
+vi.mock('../../../lib/userData/useEmbeddedBrowserEnabled', () => ({
+  useEmbeddedBrowserEnabled: () => true,
+}));
+
 import { StreamingV2Message, StreamingScrollManager } from '../StreamingV2Message';
 import type { StreamingMetrics } from '../StreamingV2Message';
 
@@ -310,26 +329,78 @@ describe('StreamingV2Message', () => {
     expect(link).toBeTruthy();
   });
 
-  it('renders external links with target=_blank', () => {
+  it('renders external links that open in the in-app browser (no target=_blank)', () => {
     const content = '[external](https://example.com)';
     const { container } = render(
       <StreamingV2Message message={makeMessage(content)} isStreaming={false} />
     );
-    const link = container.querySelector('a[target="_blank"]');
+    // External links now open in the embedded browser side panel, so they must
+    // NOT use target="_blank" (which would route to the system browser).
+    expect(container.querySelector('a[target="_blank"]')).toBeNull();
+    const link = container.querySelector('a[href="https://example.com"]');
     expect(link).toBeTruthy();
   });
 
-  it('clicking local file link calls electronAPI.workspace.openPath', () => {
+  it('routes HTTPS deep links through the embedded browser', () => {
+    const content = '[meeting](https://conference.example.com/meet/abc)';
+    const { container } = render(
+      <StreamingV2Message message={makeMessage(content)} isStreaming={false} />
+    );
+    const link = container.querySelector('a[href="https://conference.example.com/meet/abc"]');
+    expect(link).toBeTruthy();
+    expect(link!.getAttribute('target')).toBeNull();
+    expect(link!.getAttribute('rel')).toBeNull();
+  });
+
+  it('clicking local file link calls electronAPI.workspace.openPath for non-previewable files', () => {
     const openPath = vi.fn();
     (window as any).electronAPI = { workspace: { openPath } };
 
+    const content = '[doc](/some/path/file.docx)';
+    const { container } = render(
+      <StreamingV2Message message={makeMessage(content)} isStreaming={false} />
+    );
+    const link = container.querySelector('a[href="#"]') as HTMLElement;
+    fireEvent.click(link);
+    expect(openPath).toHaveBeenCalledWith('/some/path/file.docx');
+  });
+
+  it('clicking local previewable file link dispatches fileViewer:open event', () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
     const content = '[doc](/some/path/file.md)';
     const { container } = render(
       <StreamingV2Message message={makeMessage(content)} isStreaming={false} />
     );
     const link = container.querySelector('a[href="#"]') as HTMLElement;
     fireEvent.click(link);
-    expect(openPath).toHaveBeenCalledWith('/some/path/file.md');
+    const fileViewerEvent = dispatchSpy.mock.calls.find(
+      ([event]) => (event as CustomEvent).type === 'fileViewer:open'
+    );
+    expect(fileViewerEvent).toBeDefined();
+    const detail = (fileViewerEvent![0] as CustomEvent).detail;
+    expect(detail.file.url).toBe('/some/path/file.md');
+    expect(detail.file.name).toBe('file.md');
+    dispatchSpy.mockRestore();
+  });
+
+  it('clicking Windows backslash previewable link extracts filename correctly', () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    const content = '[doc](C:\\Users\\test\\report.md)';
+    const { container } = render(
+      <StreamingV2Message message={makeMessage(content)} isStreaming={false} />
+    );
+    const link = container.querySelector('a[href="#"]') as HTMLElement;
+    if (link) {
+      fireEvent.click(link);
+      const fileViewerEvent = dispatchSpy.mock.calls.find(
+        ([event]) => (event as CustomEvent).type === 'fileViewer:open'
+      );
+      if (fileViewerEvent) {
+        const detail = (fileViewerEvent[0] as CustomEvent).detail;
+        expect(detail.file.name).toBe('report.md');
+      }
+    }
+    dispatchSpy.mockRestore();
   });
 
   it('does not throw when electronAPI is undefined on local link click', () => {

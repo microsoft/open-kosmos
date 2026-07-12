@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   padding: 24px 24px;
-  background: #FFFFFF;
+  background: var(--color-surface-default);
   height: 100%;
   overflow: auto;
 }
@@ -12,7 +12,7 @@
 /* ChatContentView specific wrapper - supports sidepane layout */
 .chat-content-wrapper {
   padding: 0;
-  background: #FFFFFF;
+  background: var(--color-surface-default);
   height: 100%;
   display: flex;
   flex-direction: row; /* Changed to horizontal layout to support sidepane */
@@ -51,9 +51,9 @@
 .chat-content-wrapper .chat-content .chat-session-transition-copy {
   padding: 18px 24px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(241, 245, 249, 0.98) 100%);
-  color: #475569;
+  color: var(--color-neutral-600);
   font-size: 14px;
   line-height: 1.5;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
@@ -99,7 +99,7 @@
 /* McpContentView */
 .mcp-content-view {
   padding: 24px 24px;
-  background: #FFFFFF;
+  background: var(--color-surface-default);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -111,7 +111,7 @@
 /* MemoryContentView - applies to sidepane-content */
 .sidepane-content {
   padding: 24px 24px;
-  background: #FFFFFF;
+  background: var(--color-surface-default);
   height: 100%;
   overflow-y: auto;
 }

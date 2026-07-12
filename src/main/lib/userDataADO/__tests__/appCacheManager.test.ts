@@ -22,6 +22,14 @@ const mockBrowserWindow = vi.hoisted(() => ({
   getAllWindows: vi.fn(() => []),
 }));
 
+const mockNativeTheme = vi.hoisted(() => ({
+  themeSource: 'system',
+}));
+
+const mockEmbeddedBrowserManager = vi.hoisted(() => ({
+  destroyAll: vi.fn(),
+}));
+
 // ── module mocks ──────────────────────────────────────────────────────────────
 
 vi.mock('fs', () => mockFs);
@@ -32,6 +40,10 @@ vi.mock('path', async () => {
 vi.mock('electron', () => ({
   app: mockApp,
   BrowserWindow: mockBrowserWindow,
+  nativeTheme: mockNativeTheme,
+}));
+vi.mock('../../embeddedBrowser/EmbeddedBrowserManager', () => ({
+  getEmbeddedBrowserManager: () => mockEmbeddedBrowserManager,
 }));
 vi.mock('../unifiedLogger', () => ({
   createConsoleLogger: vi.fn(() => ({
@@ -49,7 +61,10 @@ import {
   DEFAULT_RUNTIME_ENVIRONMENT,
   DEFAULT_VOICE_INPUT_CONFIG,
   DEFAULT_SCREENSHOT_SETTINGS,
-  DEFAULT_APP_CONFIG,
+  DEFAULT_APPEARANCE_CONFIG,
+} from '../appCacheManager';
+import {
+  DEFAULT_UI_LANGUAGE,
 } from '../types/app';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -69,17 +84,32 @@ function makeMockWindow(destroyed = false) {
   };
 }
 
+function makeDeferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('AppCacheManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockEmbeddedBrowserManager.destroyAll.mockClear();
     (AppCacheManager as any).instance = undefined;
+    delete (global as any).electron;
+    delete (mockNativeTheme as any).shouldUseDarkColors;
+    delete (mockNativeTheme as any).on;
     // Reset fs defaults
     mockFs.existsSync.mockReturnValue(false);
     mockFs.readFileSync.mockReturnValue('{}');
     mockFs.readdirSync.mockReturnValue([]);
     mockFs.promises.writeFile.mockResolvedValue(undefined);
+    mockNativeTheme.themeSource = 'system';
   });
 
   // ── singleton ──────────────────────────────────────────────────────────────
@@ -93,6 +123,29 @@ describe('AppCacheManager', () => {
     });
   });
 
+  describe('readStartupThemeSourceSync', () => {
+    it('reads the persisted startup theme source without initializing cache or writing migrations', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ appearance: { themeSource: 'dark' } }));
+
+      const mgr = getInstance();
+
+      expect(mgr.readStartupThemeSourceSync()).toBe('dark');
+      expect(mgr.getConfig()).toEqual({});
+      expect(mockFs.promises.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the default theme source when startup appearance is missing or invalid', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ appearance: { themeSource: 'sepia' } }));
+
+      expect(getInstance().readStartupThemeSourceSync()).toBe(DEFAULT_APPEARANCE_CONFIG.themeSource);
+
+      mockFs.existsSync.mockReturnValue(false);
+      expect(getInstance().readStartupThemeSourceSync()).toBe(DEFAULT_APPEARANCE_CONFIG.themeSource);
+    });
+  });
+
   // ── initialize ─────────────────────────────────────────────────────────────
 
   describe('initialize', () => {
@@ -101,7 +154,11 @@ describe('AppCacheManager', () => {
       const mgr = getInstance();
       await mgr.initialize();
       const cfg = mgr.getConfig();
+      expect(cfg.uiLanguage).toBe(DEFAULT_UI_LANGUAGE);
       expect(cfg.runtimeEnvironment).toBeDefined();
+      expect(cfg.voiceInput).toBeDefined();
+      expect(cfg.appearance).toEqual(DEFAULT_APPEARANCE_CONFIG);
+      expect(mockNativeTheme.themeSource).toBe('light');
     });
 
     it('reads app.json when it exists', async () => {
@@ -117,6 +174,54 @@ describe('AppCacheManager', () => {
       const cfg = mgr.getConfig();
       expect(cfg.runtimeEnvironment?.mode).toBe('system');
       expect(cfg.runtimeEnvironment?.bunVersion).toBe('2.0.0');
+    });
+
+    it('reads supported uiLanguage from app.json', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockReturnValue({ size: 100 });
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ uiLanguage: 'zh-CN' }));
+      const mgr = getInstance();
+      await mgr.initialize();
+      expect(mgr.getConfig().uiLanguage).toBe('zh-CN');
+    });
+
+    it('strips legacy Microsoft configuration without invoking external services', async () => {
+      mockFs.existsSync.mockImplementation((p: string) => p.endsWith('app.json'));
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({
+        microsoft: {
+          authMode: 'azure-ad-app',
+          graphClientId: 'legacy-client-id',
+          alwaysAllowM365AuthRequest: true,
+        },
+      }));
+
+      const mgr = getInstance();
+      await mgr.initialize();
+
+      expect(mgr.getConfig()).not.toHaveProperty('microsoft');
+      expect(mockFs.promises.writeFile).toHaveBeenCalledWith(
+        expect.stringContaining('app.json'),
+        expect.not.stringContaining('legacy-client-id'),
+        'utf-8',
+      );
+    });
+
+    it('strips the obsolete native server version during local config migration', async () => {
+      mockFs.existsSync.mockImplementation((p: string) => p.endsWith('app.json'));
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({
+        nativeServerVersion: '1.0.0',
+        uiLanguage: 'en',
+      }));
+
+      const mgr = getInstance();
+      await mgr.initialize();
+
+      expect(mgr.getConfig()).not.toHaveProperty('nativeServerVersion');
+      expect(mockFs.promises.writeFile).toHaveBeenCalledWith(
+        expect.stringContaining('app.json'),
+        expect.not.stringContaining('nativeServerVersion'),
+        'utf-8',
+      );
     });
 
     it('skips second initialize call', async () => {
@@ -152,6 +257,43 @@ describe('AppCacheManager', () => {
       await expect(mgr.initialize()).resolves.toBeUndefined();
     });
 
+    it('migrates runtimeEnvironment from legacy runtimeConfig.json', async () => {
+      // app.json exists but has no runtimeEnvironment
+      mockFs.existsSync.mockImplementation((p: string) => {
+        if (p.endsWith('app.json')) return true;
+        if (p.endsWith('runtimeConfig.json')) return true;
+        return false;
+      });
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p.endsWith('app.json')) return JSON.stringify({});
+        if (p.endsWith('runtimeConfig.json'))
+          return JSON.stringify({ mode: 'system', bunVersion: '3.0.0', uvVersion: '0.5.0' });
+        return '{}';
+      });
+      const mgr = getInstance();
+      await mgr.initialize();
+      const cfg = mgr.getConfig();
+      expect(cfg.runtimeEnvironment?.mode).toBe('system');
+    });
+
+    it('migrates screenshotSettings from first profile', async () => {
+      const profileDirEntry = { name: 'profile-abc', isDirectory: () => true, startsWith: (s: string) => false } as any;
+      mockFs.existsSync.mockImplementation((p: string) => {
+        if (p.endsWith('profiles')) return true;
+        if (p.includes('profile.json')) return true;
+        return false;
+      });
+      mockFs.readdirSync.mockReturnValue([profileDirEntry]);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p.includes('profile.json'))
+          return JSON.stringify({ screenshotSettings: { enabled: false, shortcut: 'Ctrl+P', shortcutEnabled: true, savePath: '/tmp', freRejected: true } });
+        return '{}';
+      });
+      const mgr = getInstance();
+      await mgr.initialize();
+      const cfg = mgr.getConfig();
+      expect(cfg.screenshotSettings?.shortcut).toBe('Ctrl+P');
+    });
   });
 
   // ── integrityEnsure edge cases ─────────────────────────────────────────────
@@ -162,6 +304,14 @@ describe('AppCacheManager', () => {
       const mgr = getInstance();
       await mgr.initialize();
       expect(typeof mgr.getConfig().leftSidebarCollapsed).toBe('boolean');
+    });
+
+    it('fills uiLanguage default when missing or invalid', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ uiLanguage: 'fr' }));
+      const mgr = getInstance();
+      await mgr.initialize();
+      expect(mgr.getConfig().uiLanguage).toBe(DEFAULT_UI_LANGUAGE);
     });
 
     it('fills leftSidebarWidth default when missing', async () => {
@@ -210,6 +360,16 @@ describe('AppCacheManager', () => {
       expect(typeof mgr.getConfig().mainWindowMaximized).toBe('boolean');
     });
 
+    it('merges existing voiceInput sub-fields with defaults', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ voiceInput: { voiceInputEnabled: true } })
+      );
+      const mgr = getInstance();
+      await mgr.initialize();
+      expect(mgr.getConfig().voiceInput?.voiceInputEnabled).toBe(true);
+    });
+
     it('merges existing screenshotSettings sub-fields with defaults', async () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
@@ -218,6 +378,28 @@ describe('AppCacheManager', () => {
       const mgr = getInstance();
       await mgr.initialize();
       expect(mgr.getConfig().screenshotSettings?.enabled).toBe(false);
+    });
+
+    it('merges existing appearance sub-fields with defaults and syncs nativeTheme', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ appearance: { themeSource: 'dark' } })
+      );
+      const mgr = getInstance();
+      await mgr.initialize();
+      expect(mgr.getConfig().appearance?.themeSource).toBe('dark');
+      expect(mockNativeTheme.themeSource).toBe('dark');
+    });
+
+    it('sanitizes invalid persisted appearance themeSource to default', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ appearance: { themeSource: 'sepia' } })
+      );
+      const mgr = getInstance();
+      await mgr.initialize();
+      expect(mgr.getConfig().appearance).toEqual(DEFAULT_APPEARANCE_CONFIG);
+      expect(mockNativeTheme.themeSource).toBe(DEFAULT_APPEARANCE_CONFIG.themeSource);
     });
 
     it('handles migrateScreenshotFromFirstProfile failure gracefully', async () => {
@@ -292,12 +474,64 @@ describe('AppCacheManager', () => {
       expect(mgr.getConfig().runtimeEnvironment?.bunVersion).toBeTruthy();
     });
 
+    it('deep-merges voiceInput', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({ voiceInput: { voiceInputEnabled: true } as any });
+      expect(mgr.getConfig().voiceInput?.voiceInputEnabled).toBe(true);
+    });
+
     it('deep-merges screenshotSettings', async () => {
       mockFs.existsSync.mockReturnValue(false);
       const mgr = getInstance();
       await mgr.initialize();
       await mgr.updateConfig({ screenshotSettings: { savePath: '/new/path' } as any });
       expect(mgr.getConfig().screenshotSettings?.savePath).toBe('/new/path');
+    });
+
+    it('deep-merges appearance and syncs nativeTheme', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({ appearance: { themeSource: 'system' } });
+      expect(mgr.getConfig().appearance?.themeSource).toBe('system');
+      expect(mockNativeTheme.themeSource).toBe('system');
+    });
+
+    it('preserves app-level layout and window fields when updating appearance', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          appearance: { themeSource: 'light' },
+          leftSidebarCollapsed: true,
+          leftSidebarWidth: 344,
+          zoomLevel: 1.5,
+          mainWindowMaximized: true,
+        }),
+      );
+
+      const mgr = getInstance();
+      await mgr.initialize();
+      mockFs.promises.writeFile.mockClear();
+
+      await mgr.updateConfig({ appearance: { themeSource: 'dark' } });
+
+      const cfg = mgr.getConfig();
+      expect(cfg.appearance?.themeSource).toBe('dark');
+      expect(cfg.leftSidebarCollapsed).toBe(true);
+      expect(cfg.leftSidebarWidth).toBe(344);
+      expect(cfg.zoomLevel).toBe(1.5);
+      expect(cfg.mainWindowMaximized).toBe(true);
+
+      const persisted = JSON.parse(mockFs.promises.writeFile.mock.calls.at(-1)?.[1] as string);
+      expect(persisted).toMatchObject({
+        appearance: { themeSource: 'dark' },
+        leftSidebarCollapsed: true,
+        leftSidebarWidth: 344,
+        zoomLevel: 1.5,
+        mainWindowMaximized: true,
+      });
     });
 
     it('updates zoomLevel scalar', async () => {
@@ -315,6 +549,115 @@ describe('AppCacheManager', () => {
       await mgr.updateConfig({ mainWindowMaximized: true });
       expect(mgr.getConfig().mainWindowMaximized).toBe(true);
     });
+
+    it('updates uiLanguage and persists it', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      mockFs.promises.writeFile.mockClear();
+
+      await mgr.updateConfig({ uiLanguage: 'zh-CN' });
+
+      expect(mgr.getConfig().uiLanguage).toBe('zh-CN');
+      const persisted = JSON.parse(mockFs.promises.writeFile.mock.calls.at(-1)?.[1] ?? '{}');
+      expect(persisted.uiLanguage).toBe('zh-CN');
+    });
+
+    it('returns a monotonic revision and includes it in frontend notifications', async () => {
+      vi.useFakeTimers();
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      const win = makeMockWindow(false);
+      mgr.setMainWindow(win as any);
+      win.webContents.send.mockClear();
+
+      const result = await mgr.updateConfig({ uiLanguage: 'zh-CN' });
+      expect(result.revision).toBe(1);
+      expect(mgr.getConfigRevision()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(151);
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        'app:configUpdated',
+        expect.objectContaining({
+          config: expect.objectContaining({ uiLanguage: 'zh-CN' }),
+          revision: 1,
+        }),
+      );
+    });
+
+    it('serializes concurrent updates so a slower older write cannot overwrite a newer language', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      mockFs.promises.writeFile.mockClear();
+
+      const firstWrite = makeDeferred<void>();
+      const secondWrite = makeDeferred<void>();
+      mockFs.promises.writeFile
+        .mockReturnValueOnce(firstWrite.promise)
+        .mockReturnValueOnce(secondWrite.promise);
+
+      const firstUpdate = mgr.updateConfig({ updaterVersion: 'older-write' });
+      const secondUpdate = mgr.updateConfig({ uiLanguage: 'zh-CN' });
+      await Promise.resolve();
+
+      expect(mockFs.promises.writeFile).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(mockFs.promises.writeFile.mock.calls[0][1]).uiLanguage).toBe('en');
+
+      firstWrite.resolve();
+      await firstUpdate;
+      await Promise.resolve();
+
+      expect(mockFs.promises.writeFile).toHaveBeenCalledTimes(2);
+      const secondPayload = JSON.parse(mockFs.promises.writeFile.mock.calls[1][1]);
+      expect(secondPayload.updaterVersion).toBe('older-write');
+      expect(secondPayload.uiLanguage).toBe('zh-CN');
+
+      secondWrite.resolve();
+      await secondUpdate;
+
+      expect(mgr.getConfig().updaterVersion).toBe('older-write');
+      expect(mgr.getConfig().uiLanguage).toBe('zh-CN');
+    });
+
+    it('deep-merges every nested field onto an empty cache using DEFAULTs (pre-initialize)', async () => {
+      // No initialize() → cache is {}. Each deep-merge branch takes the
+      // `updates.X || this.cache.X` true side (updates provided) while the inner
+      // `this.cache.X ?? DEFAULT_X` falls back to the DEFAULT (cache side undefined).
+      const mgr = getInstance();
+      await mgr.updateConfig({
+        runtimeEnvironment: { mode: 'system' } as any,
+        voiceInput: { voiceInputEnabled: true } as any,
+        screenshotSettings: { savePath: '/merged' } as any,
+        appearance: { themeSource: 'dark' } as any,
+      });
+      const cfg = mgr.getConfig();
+      // runtimeEnvironment merged onto DEFAULT keeps the other default sub-fields
+      expect(cfg.runtimeEnvironment?.mode).toBe('system');
+      expect(cfg.runtimeEnvironment?.bunVersion).toBe(DEFAULT_RUNTIME_ENVIRONMENT.bunVersion);
+      // voiceInput merged onto DEFAULT
+      expect(cfg.voiceInput?.voiceInputEnabled).toBe(true);
+      expect(cfg.voiceInput?.whisperModelSelected).toBe(DEFAULT_VOICE_INPUT_CONFIG.whisperModelSelected);
+      // screenshotSettings merged onto DEFAULT
+      expect(cfg.screenshotSettings?.savePath).toBe('/merged');
+      expect(cfg.screenshotSettings?.shortcut).toBe(DEFAULT_SCREENSHOT_SETTINGS.shortcut);
+      // appearance merged onto DEFAULT
+      expect(cfg.appearance?.themeSource).toBe('dark');
+    });
+
+    it('leaves every nested field undefined when neither updates nor cache provide it', async () => {
+      // Empty cache (no initialize) + a scalar-only update means each deep-merge
+      // guard `updates.X || this.cache.X` is falsy → the `: undefined` else-branch.
+      const mgr = getInstance();
+      await mgr.updateConfig({ updaterVersion: '9.9.9' });
+      const cfg = mgr.getConfig();
+      expect(cfg.updaterVersion).toBe('9.9.9');
+      expect(cfg.runtimeEnvironment).toBeUndefined();
+      expect(cfg.voiceInput).toBeUndefined();
+      expect(cfg.screenshotSettings).toBeUndefined();
+      expect(cfg.appearance).toBeUndefined();
+    });
   });
 
   // ── appConfigSanitize (via updateConfig) ───────────────────────────────────
@@ -326,6 +669,14 @@ describe('AppCacheManager', () => {
       await mgr.initialize();
       await mgr.updateConfig({ runtimeEnvironment: { mode: 'bad' as any, bunVersion: '', uvVersion: '' } });
       expect(mgr.getConfig().runtimeEnvironment?.mode).toBe(DEFAULT_RUNTIME_ENVIRONMENT.mode);
+    });
+
+    it('sanitizes invalid uiLanguage to default', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({ uiLanguage: 'fr' as any });
+      expect(mgr.getConfig().uiLanguage).toBe(DEFAULT_UI_LANGUAGE);
     });
 
     it('sanitizes leftSidebarWidth to [288, 400]', async () => {
@@ -370,11 +721,128 @@ describe('AppCacheManager', () => {
       });
       expect(mgr.getConfig().screenshotSettings?.shortcut).toBe('Ctrl+S');
     });
+
+    it('sanitizes invalid appearance themeSource to default', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({ appearance: { themeSource: 'sepia' as any } });
+      expect(mgr.getConfig().appearance?.themeSource).toBe(DEFAULT_APPEARANCE_CONFIG.themeSource);
+      expect(mockNativeTheme.themeSource).toBe(DEFAULT_APPEARANCE_CONFIG.themeSource);
+    });
+
+    it('coerces malformed voiceInput sub-fields back to defaults', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      // Every field has the wrong type → each ternary takes its DEFAULT else-branch.
+      await mgr.updateConfig({
+        voiceInput: {
+          voiceInputEnabled: 'nope' as any,
+          whisperModelSelected: 123 as any,
+          recognitionLanguage: 456 as any,
+          gpuAcceleration: 'sure' as any,
+        },
+      });
+      const vi = mgr.getConfig().voiceInput!;
+      expect(vi.voiceInputEnabled).toBe(DEFAULT_VOICE_INPUT_CONFIG.voiceInputEnabled);
+      expect(vi.whisperModelSelected).toBe(DEFAULT_VOICE_INPUT_CONFIG.whisperModelSelected);
+      expect(vi.recognitionLanguage).toBe(DEFAULT_VOICE_INPUT_CONFIG.recognitionLanguage);
+      expect(vi.gpuAcceleration).toBe(DEFAULT_VOICE_INPUT_CONFIG.gpuAcceleration);
+    });
+
+    it('coerces malformed screenshot sub-fields back to defaults', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({
+        screenshotSettings: {
+          enabled: 'x' as any,
+          shortcut: 1 as any,
+          shortcutEnabled: 'x' as any,
+          savePath: 2 as any,
+          freRejected: 'x' as any,
+        },
+      });
+      const ss = mgr.getConfig().screenshotSettings!;
+      expect(ss.enabled).toBe(DEFAULT_SCREENSHOT_SETTINGS.enabled);
+      expect(ss.shortcut).toBe(DEFAULT_SCREENSHOT_SETTINGS.shortcut);
+      expect(ss.shortcutEnabled).toBe(DEFAULT_SCREENSHOT_SETTINGS.shortcutEnabled);
+      expect(ss.savePath).toBe(DEFAULT_SCREENSHOT_SETTINGS.savePath);
+      expect(ss.freRejected).toBe(DEFAULT_SCREENSHOT_SETTINGS.freRejected);
+    });
+
+    it('falls back pinnedPythonVersion to default when it is a non-string, non-null value', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      await mgr.updateConfig({
+        runtimeEnvironment: {
+          mode: 'internal',
+          bunVersion: '',
+          uvVersion: '',
+          pinnedPythonVersion: 42 as any,
+        },
+      });
+      // Non-string & non-null → default-fallback else-branch (?? '3.10.12').
+      expect(typeof mgr.getConfig().runtimeEnvironment?.pinnedPythonVersion).toBe('string');
+    });
   });
 
   // ── setMainWindow & sendConfigToFrontend ──────────────────────────────────
 
   describe('setMainWindow', () => {
+    it('uses global electron app fallback when present', async () => {
+      const globalApp = { getPath: vi.fn(() => '/global/userData') };
+      (global as any).electron = { app: globalApp };
+
+      const mgr = getInstance();
+      await mgr.initialize();
+
+      expect(globalApp.getPath).toHaveBeenCalledWith('userData');
+    });
+
+    it('applies the dark window background for persisted dark appearance', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ appearance: { themeSource: 'dark' } }),
+      );
+
+      const mgr = getInstance();
+      await mgr.initialize();
+      const win = {
+        isDestroyed: vi.fn(() => false),
+        setBackgroundColor: vi.fn(),
+        webContents: { send: vi.fn() },
+      };
+
+      mgr.setMainWindow(win as any);
+
+      expect(win.setBackgroundColor).toHaveBeenCalledWith('#111318');
+    });
+
+    it('uses native dark colors when appearance follows system mode', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ appearance: { themeSource: 'system' } }),
+      );
+      mockNativeTheme.shouldUseDarkColors = true;
+      mockNativeTheme.on = vi.fn();
+
+      const mgr = getInstance();
+      await mgr.initialize();
+      const win = {
+        isDestroyed: vi.fn(() => false),
+        setBackgroundColor: vi.fn(),
+        webContents: { send: vi.fn() },
+      };
+
+      mgr.setMainWindow(win as any);
+
+      expect(mockNativeTheme.on).toHaveBeenCalledWith('updated', expect.any(Function));
+      expect(win.setBackgroundColor).toHaveBeenCalledWith('#111318');
+    });
+
     it('sends config to window on setMainWindow', async () => {
       mockFs.existsSync.mockReturnValue(false);
       const mgr = getInstance();
@@ -396,6 +864,22 @@ describe('AppCacheManager', () => {
       expect(validWin.webContents.send).toHaveBeenCalled();
     });
 
+    it('broadcasts config updates to every live renderer window', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const mgr = getInstance();
+      await mgr.initialize();
+      const mainWin = makeMockWindow(false);
+      const screenshotWin = makeMockWindow(false);
+      const destroyedWin = makeMockWindow(true);
+      mockBrowserWindow.getAllWindows.mockReturnValue([mainWin, screenshotWin, destroyedWin]);
+
+      mgr.setMainWindow(mainWin as any);
+
+      expect(mainWin.webContents.send).toHaveBeenCalledWith('app:configUpdated', expect.objectContaining({ config: expect.any(Object) }));
+      expect(screenshotWin.webContents.send).toHaveBeenCalledWith('app:configUpdated', expect.objectContaining({ config: expect.any(Object) }));
+      expect(destroyedWin.webContents.send).not.toHaveBeenCalled();
+    });
+
     it('logs warning when no window is available for notification', async () => {
       mockFs.existsSync.mockReturnValue(false);
       const mgr = getInstance();
@@ -407,7 +891,7 @@ describe('AppCacheManager', () => {
       // No error thrown
     });
 
-    it('handles send throwing gracefully', async () => {
+    it('continues notifying other windows when one send throws', async () => {
       mockFs.existsSync.mockReturnValue(false);
       const mgr = getInstance();
       await mgr.initialize();
@@ -415,9 +899,11 @@ describe('AppCacheManager', () => {
         isDestroyed: vi.fn(() => false),
         webContents: { send: vi.fn(() => { throw new Error('ipc error'); }) },
       };
-      mockBrowserWindow.getAllWindows.mockReturnValue([errWin]);
+      const validWin = makeMockWindow(false);
+      mockBrowserWindow.getAllWindows.mockReturnValue([errWin, validWin]);
       const destroyedWin = makeMockWindow(true);
       expect(() => mgr.setMainWindow(destroyedWin as any)).not.toThrow();
+      expect(validWin.webContents.send).toHaveBeenCalledWith('app:configUpdated', expect.objectContaining({ config: expect.any(Object) }));
     });
   });
 

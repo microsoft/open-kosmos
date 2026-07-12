@@ -55,6 +55,7 @@ vi.mock('../../userDataADO/userInputPlaceholderParser', async () => ({
   UserInputField: class UserInputField {},
 }));
 
+
 vi.mock('../../llm/chatSessionTitleLlmSummarizer', async () => ({
   ChatSessionTitleLlmSummarizer: class ChatSessionTitleLlmSummarizer {},
 }));
@@ -149,121 +150,6 @@ function textMsg(text: string, role: 'user' | 'assistant', id: string, timestamp
     content: [{ type: 'text', text }],
   } as any;
 }
-
-// ─── getMessageTimestampMs ────────────────────────────────────────────────────
-
-describe('AgentChat.getMessageTimestampMs', () => {
-  let agent: AgentChat;
-  beforeEach(() => { agent = createAgentChat(); });
-
-  it('returns a numeric timestamp directly when it is finite', () => {
-    const msg = textMsg('hi', 'user', 'u1', 1_700_000_000_000);
-    const ts = (agent as any).getMessageTimestampMs(msg);
-    expect(ts).toBe(1_700_000_000_000);
-  });
-
-  it('parses an ISO string timestamp', () => {
-    const msg = textMsg('hi', 'user', 'u1', '2024-01-15T12:00:00.000Z');
-    const ts = (agent as any).getMessageTimestampMs(msg);
-    expect(ts).toBe(Date.parse('2024-01-15T12:00:00.000Z'));
-  });
-
-  it('falls back to Date.now() for invalid string timestamps', () => {
-    const before = Date.now();
-    const msg = textMsg('hi', 'user', 'u1', 'not-a-date');
-    const ts = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(ts).toBeGreaterThanOrEqual(before);
-    expect(ts).toBeLessThanOrEqual(after);
-  });
-
-  it('falls back to Date.now() for Infinity', () => {
-    const before = Date.now();
-    const msg = textMsg('hi', 'user', 'u1', Infinity);
-    const ts = (agent as any).getMessageTimestampMs(msg);
-    const after = Date.now();
-    expect(ts).toBeGreaterThanOrEqual(before);
-    expect(ts).toBeLessThanOrEqual(after);
-  });
-});
-
-// ─── getAnalyticsDayKey ───────────────────────────────────────────────────────
-
-describe('AgentChat.getAnalyticsDayKey', () => {
-  let agent: AgentChat;
-  beforeEach(() => { agent = createAgentChat(); });
-
-  it('produces YYYY-MM-DD in UTC+8 from a UTC timestamp', () => {
-    // 2024-01-15T16:00:00Z  →  2024-01-16T00:00:00+08  →  day key = 2024-01-16
-    const ts = Date.parse('2024-01-15T16:00:00.000Z');
-    const key = (agent as any).getAnalyticsDayKey(ts);
-    expect(key).toBe('2024-01-16');
-  });
-
-  it('pads month and day with leading zero', () => {
-    // 2024-03-05T00:00:00+08  →  UTC = 2024-03-04T16:00:00Z
-    const ts = Date.parse('2024-03-04T16:00:00.000Z');
-    const key = (agent as any).getAnalyticsDayKey(ts);
-    expect(key).toBe('2024-03-05');
-  });
-});
-
-// ─── shouldTrackChatSessionActivatedForUserMessage ────────────────────────────
-
-describe('AgentChat.shouldTrackChatSessionActivatedForUserMessage', () => {
-  it('returns true for the first user message on a given day (empty history)', () => {
-    const agent = createAgentChat();
-    const msg = textMsg('hello', 'user', 'u1', Date.now());
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(msg)).toBe(true);
-  });
-
-  it('returns false for non-user messages', () => {
-    const agent = createAgentChat();
-    const msg = textMsg('reply', 'assistant', 'a1', Date.now());
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(msg)).toBe(false);
-  });
-
-  it('returns false when a user message already exists on the same day', () => {
-    const agent = createAgentChat();
-    const ts = Date.parse('2024-06-01T08:00:00.000Z');
-    // Seed chat history with an existing user message on the same UTC+8 day
-    (agent as any).currentChatSession.chat_history.push(textMsg('earlier', 'user', 'u0', ts));
-    const msg = textMsg('later', 'user', 'u1', ts + 1000);
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(msg)).toBe(false);
-  });
-
-  it('returns true when the existing message is on a different day', () => {
-    const agent = createAgentChat();
-    const dayOneMidnight = Date.parse('2024-06-01T00:00:00.000Z'); // UTC+8 day: 2024-06-01
-    const dayTwoMorning = Date.parse('2024-06-02T01:00:00.000Z');   // UTC+8 day: 2024-06-02
-    (agent as any).currentChatSession.chat_history.push(textMsg('day1', 'user', 'u0', dayOneMidnight));
-    const msg = textMsg('day2', 'user', 'u1', dayTwoMorning);
-    expect((agent as any).shouldTrackChatSessionActivatedForUserMessage(msg)).toBe(true);
-  });
-});
-
-// ─── getChatSessionEntryTypeForUserMessage ────────────────────────────────────
-
-describe('AgentChat.getChatSessionEntryTypeForUserMessage', () => {
-  it("returns 'new' when chat history is empty and message is a user message", () => {
-    const agent = createAgentChat();
-    const msg = textMsg('first', 'user', 'u1');
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(msg)).toBe('new');
-  });
-
-  it("returns 'continued' when chat history already has messages", () => {
-    const agent = createAgentChat();
-    (agent as any).currentChatSession.chat_history.push(textMsg('earlier', 'user', 'u0'));
-    const msg = textMsg('second', 'user', 'u1');
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(msg)).toBe('continued');
-  });
-
-  it("returns 'continued' for an assistant message even in an empty history", () => {
-    const agent = createAgentChat();
-    const msg = textMsg('reply', 'assistant', 'a1');
-    expect((agent as any).getChatSessionEntryTypeForUserMessage(msg)).toBe('continued');
-  });
-});
 
 // ─── updateSessionTitle ───────────────────────────────────────────────────────
 

@@ -4,8 +4,6 @@
  * Tests the pure helper functions extracted from SubAgentManager:
  * - resolveSubAgentModel
  * - getParentAgentConfig
- * - resolveInheritedConfig
- * - validateToolAvailability
  * - deriveDeliverablesPath
  * - sanitizeSubAgentResult
  */
@@ -43,18 +41,6 @@ vi.mock('../../userDataADO/profileCacheManager', async () => ({
   },
 }));
 
-const mockGetAllMcpServerRuntimeStates = vi.fn();
-vi.mock('../../mcpRuntime/mcpClientManager', async () => ({
-  mcpClientManager: {
-    getAllMcpServerRuntimeStates: (...args: any[]) => mockGetAllMcpServerRuntimeStates(...args),
-  },
-}));
-
-const mockExistsSync = vi.fn();
-vi.mock('fs', async () => ({
-  existsSync: (...args: any[]) => mockExistsSync(...args),
-}));
-
 vi.mock('../../userDataADO/pathUtils', async () => ({
   extractMonthFromChatSessionId: vi.fn((id: string) => {
     const match = id.match(/chatSession_(\d{6})/);
@@ -68,11 +54,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   resolveSubAgentModel,
   getParentAgentConfig,
-  resolveInheritedConfig,
-  validateToolAvailability,
   deriveDeliverablesPath,
   sanitizeSubAgentResult,
 } from '../subAgentConfigResolver';
+import { setAccessorAgentResolver } from '../../userDataADO/agentAccessor';
 import type { SubAgentConfig } from '../../userDataADO/types/profile';
 
 // ─── Helpers ───
@@ -80,14 +65,13 @@ import type { SubAgentConfig } from '../../userDataADO/types/profile';
 function makeConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
   return {
     name: 'test-agent',
+    description: 'A test sub-agent',
+    system_prompt: 'You are a test sub-agent.',
     model: '',
-    context_access: 'isolated',
-    mcpServers: [],
-    skills: [],
+    mcp_servers: [],
     builtin_tools: [],
-    knowledgeBase: '',
     ...overrides,
-  } as SubAgentConfig;
+  };
 }
 
 // ─── Tests ───
@@ -157,132 +141,23 @@ describe('SubAgentConfigResolver', () => {
       const result = getParentAgentConfig('chat-1', 'alice');
       expect(result).toBeUndefined();
     });
-  });
 
-  // ─── resolveInheritedConfig ───
-
-  describe('resolveInheritedConfig', () => {
-    it('returns only child servers when no parent config', () => {
-      const config = makeConfig({ mcpServers: [{ name: 'child-s', tools: ['t1'] }] });
-      const result = resolveInheritedConfig(config, undefined);
-      expect(result.resolvedMcpServers).toHaveLength(1);
-      expect(result.resolvedMcpServers[0].inherited).toBe(false);
-    });
-
-    it('merges parent servers that are not in child', () => {
-      const config = makeConfig({ mcpServers: [{ name: 'child-s', tools: [] }] });
-      const parent = { mcpServers: [{ name: 'parent-s', tools: ['t2'] }] };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedMcpServers).toHaveLength(2);
-      const parentServer = result.resolvedMcpServers.find(s => s.name === 'parent-s');
-      expect(parentServer!.inherited).toBe(true);
-    });
-
-    it('child server overrides parent with same name', () => {
-      const config = makeConfig({ mcpServers: [{ name: 'shared', tools: ['child-tool'] }] });
-      const parent = { mcpServers: [{ name: 'shared', tools: ['parent-tool'] }] };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedMcpServers).toHaveLength(1);
-      expect(result.resolvedMcpServers[0].inherited).toBe(false);
-    });
-
-    it('does not inherit when inherit_mcp_servers is false', () => {
-      const config = makeConfig({
-        mcpServers: [{ name: 'child-s', tools: [] }],
-        inherit_mcp_servers: false,
-      });
-      const parent = { mcp_servers: [{ name: 'parent-s', tools: [] }] };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedMcpServers).toHaveLength(1);
-    });
-
-    it('merges skills from parent', () => {
-      const config = makeConfig({ skills: ['child-skill'] });
-      const parent = { mcpServers: [], skills: ['parent-skill'] };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedSkills).toHaveLength(2);
-    });
-
-    it('does not duplicate skills with same name', () => {
-      const config = makeConfig({ skills: ['shared-skill'] });
-      const parent = { mcpServers: [], skills: ['shared-skill'] };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedSkills).toHaveLength(1);
-    });
-
-    it('inherits knowledgeBase from parent when child has none', () => {
-      const config = makeConfig();
-      const parent = { mcpServers: [], knowledgeBase: '/data/kb' };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedKnowledgeBase).toBe('/data/kb');
-    });
-
-    it('child knowledgeBase takes priority over parent', () => {
-      const config = makeConfig({ knowledgeBase: '/child/kb' });
-      const parent = { mcpServers: [], knowledgeBase: '/parent/kb' };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedKnowledgeBase).toBe('/child/kb');
-    });
-
-    it('does not inherit knowledgeBase when inherit_knowledge_base is false', () => {
-      const config = makeConfig({ inherit_knowledge_base: false });
-      const parent = { mcpServers: [], knowledgeBase: '/parent/kb' };
-      const result = resolveInheritedConfig(config, parent as any);
-      expect(result.resolvedKnowledgeBase).toBeUndefined();
-    });
-  });
-
-  // ─── validateToolAvailability ───
-
-  describe('validateToolAvailability', () => {
-    it('returns empty warnings when all servers are connected', () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([
-        { serverName: 'server-a', status: 'connected' },
-      ]);
-      mockExistsSync.mockReturnValue(true);
-
-      const result = validateToolAvailability(
-        { resolvedMcpServers: [{ name: 'server-a', connected: false, tools: [], inherited: false }], resolvedSkills: [] },
-        'alice'
+    it('resolves a separated (agent_ids-only) parent chat via the store resolver', () => {
+      // Post-separation getAllChatConfigs returns agent_ids-only cache chats with
+      // no inline `.agent`. Reading `.agent` directly would yield undefined and the
+      // sub-agent would stop inheriting the parent's MCP tools; getChatPrimaryAgent
+      // resolves the id through the accessor resolver instead.
+      setAccessorAgentResolver((ids: string[]) =>
+        ids.map((id) => ({ name: id, model: 'm', source: 'ON-DEVICE', mcp_servers: [{ name: 'inherited-server', tools: [] }] })) as never
       );
-      expect(result).toHaveLength(0);
-    });
-
-    it('warns when MCP server is not connected', () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([
-        { serverName: 'server-a', status: 'disconnected' },
-      ]);
-
-      const result = validateToolAvailability(
-        { resolvedMcpServers: [{ name: 'server-a', connected: false, tools: [], inherited: false }], resolvedSkills: [] },
-        'alice'
-      );
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('not connected');
-    });
-
-    it('warns when skill directory does not exist', () => {
-      mockGetAllMcpServerRuntimeStates.mockReturnValue([]);
-      mockExistsSync.mockReturnValue(false);
-
-      const result = validateToolAvailability(
-        { resolvedMcpServers: [], resolvedSkills: [{ name: 'missing-skill', installed: false, inherited: false }] },
-        'alice'
-      );
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('not installed');
-    });
-
-    it('handles MCP runtime state check failure gracefully', () => {
-      mockGetAllMcpServerRuntimeStates.mockImplementation(() => { throw new Error('Runtime error'); });
-      mockExistsSync.mockReturnValue(true);
-
-      const result = validateToolAvailability(
-        { resolvedMcpServers: [{ name: 's', connected: false, tools: [], inherited: false }], resolvedSkills: [] },
-        'alice'
-      );
-      // Should not throw, returns empty (error swallowed)
-      expect(result).toHaveLength(0);
+      try {
+        mockGetAllChatConfigs.mockReturnValue([{ chat_id: 'chat-1', agent_ids: ['agent-x'] }]);
+        const result = getParentAgentConfig('chat-1', 'alice');
+        expect(result).toBeDefined();
+        expect(result!.mcp_servers).toEqual([{ name: 'inherited-server', tools: [] }]);
+      } finally {
+        setAccessorAgentResolver(null);
+      }
     });
   });
 
@@ -331,6 +206,28 @@ describe('SubAgentConfigResolver', () => {
         'chatSession_20260301120000', 'chat-x', 'alice', 'agent', 'task'
       );
       expect(result).toBeUndefined();
+    });
+
+    it('uses a backslash separator for Windows-style workspace paths', () => {
+      mockGetAllChatConfigs.mockReturnValue([
+        { chat_id: 'chat-1', agent: { workspace: 'C:\\workspace\\proj' } },
+      ]);
+
+      const result = deriveDeliverablesPath(
+        'chatSession_20260301120000', 'chat-1', 'alice', 'research-agent', 'sa_1234567890_abc'
+      );
+      expect(result).toBe('C:\\workspace\\proj\\202603\\chatSession_20260301120000\\research-agent-sa_123456789');
+    });
+
+    it('uses a backslash separator without year-month for non-standard session IDs', () => {
+      mockGetAllChatConfigs.mockReturnValue([
+        { chat_id: 'chat-1', agent: { workspace: 'C:\\workspace\\proj' } },
+      ]);
+
+      const result = deriveDeliverablesPath(
+        'random_session', 'chat-1', 'alice', 'agent-x', 'sa_task123'
+      );
+      expect(result).toBe('C:\\workspace\\proj\\agent-x-sa_task123');
     });
   });
 
