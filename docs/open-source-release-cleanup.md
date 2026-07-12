@@ -411,7 +411,7 @@ embedded browser and public Bing/Edge integrations remain.
 - [x] Remove `.github/workflows/pr-events-notify-kosmos-dev-for-luna.yml`; it targets a named internal account and a private team Discord webhook/channel.
 - [x] Remove internal repository targets and instructions from `.github/prompts/issue.prompt.md`, architecture docs, workflow docs, and secrets setup docs.
 - [x] Remove or rewrite Teams/Outlook workflow prompts and update `.github/prompts/kosmos-review.prompt.md` so it no longer requires checks for deleted product modules.
-- [x] Remove or sanitize Microsoft employee aliases and email addresses outside the approved README team section, plus tenant IDs, client IDs, subscription IDs, resource groups, App Service names, SharePoint sharing links, and private repository names.
+- [x] Retain reviewed public contact and team email addresses while removing internal aliases, tenant IDs, client IDs, subscription IDs, resource groups, App Service names, SharePoint sharing links, and private repository names.
 - [x] Sanitize internal MCP examples such as `api.microsoft.ai` and `edge-growth-brain-staging.azurewebsites.net`, even when they appear only in tests or documentation.
 - [x] Review `resources/examples/agent/`, `resources/examples/mcp_lib/`, `resources/examples/skills_lib/`, and `resources/examples/app.json` for Microsoft-specific agents, servers, contacts, URLs, and credentials.
 - [x] Review `_microsoft` alias defaults and examples in Sync settings. User-configured public GitHub sync may remain, but internal account naming conventions must not be the default.
@@ -599,12 +599,12 @@ starting the next row.
 - [x] No `azurewebsites.net`, `applicationinsights.azure.com`, Azure OpenAI endpoint, embedded App Insights connection string, Azure tenant/subscription/resource identifier, or Azure deployment workflow remains.
 - [x] No Remote Channel relay, Teams bot, relay credential, `remoteChannels` profile field, remote-session source, scheduler remote notification, configurable relay mode, or dormant Remote Channel contract remains.
 - [x] No Doctor module, route, menu item, state, IPC/preload contract, diagnostic tool, issue-submission flow, test, or documentation remains.
-- [x] No `gim-home/Kosmos`, `ai-microsoft/Kosmos.app`, internal SharePoint sharing URL, Microsoft employee email outside the approved README team section, or internal ACL/compliance identity remains.
+- [x] No `gim-home/Kosmos`, `ai-microsoft/Kosmos.app`, internal SharePoint sharing URL, or internal ACL/compliance identity remains.
 - [x] No Azure CLI manager, built-in tool, runtime status, installer, Settings row, or IPC method remains.
 - [x] No `llm:callAzureOpenAI`, `AzureOpenAIModelApi`, or `PRESET_MODEL_GPT*` Azure preset remains.
 - [x] No remote Agent/Skill/MCP catalog route, menu, fetcher, built-in tool, startup updater, or cache remains.
 - [x] No configurable CDN/catalog URL, CDN helper, optional marketplace mode, catalog fixture, or dormant remote-catalog compatibility layer remains.
-- [x] No internal hostname, tenant identifier, organization name, email address, access token, client secret, certificate, or private package feed remains.
+- [x] No internal hostname, tenant identifier, organization name, access token, client secret, certificate, or private package feed remains.
 - [ ] No stale KOSMOS/Kosmos product identity remains in application IDs, paths, native hosts, package metadata, installers, logs, assets, generated output, or publishable history.
 - [x] No internal CHANGELOG, sample profile/chat/evaluation data, private automation prompt, architecture export, or generated artifact remains.
 - [ ] Open-source license, notice, security, support, conduct, contribution, and issue-reporting documents are complete and contain no unresolved template TODOs.
@@ -618,11 +618,11 @@ azurewebsites\.net|applicationinsights|APPINSIGHTS|PRESET_MODEL_GPT|RELAY_SERVIC
 graph\.microsoft\.com|login\.(microsoftonline|windows)\.(com|net)
 teams\.microsoft\.com|teams\.cloud\.microsoft|chatsvc|api\.spaces\.skype\.com|substrate\.office\.com
 sharepoint\.com|dev\.azure\.com|api\.microsoft\.ai
-gim-home/Kosmos|ai-microsoft/Kosmos\.app|@microsoft\.com|_microsoft
+gim-home/Kosmos|ai-microsoft/Kosmos\.app|_microsoft
 AgencyCLI|agency_cli|remoteChannels|manage_remote_channel|llm:callAzureOpenAI|Doctor|create_github_issue
 ```
 
-Every match must be deleted, replaced with a neutral public example, or recorded in a reviewed exclusions manifest with an owner and justification. The approved README team section is an explicit identity exception. Do not treat comments, tests, snapshots, prompts, documentation, source maps, generated bundles, or Git history as harmless matches.
+Every match must be deleted, replaced with a neutral public example, or recorded in a reviewed exclusions manifest with an owner and justification. Microsoft contact email addresses are not prohibited. Do not treat comments, tests, snapshots, prompts, documentation, source maps, generated bundles, or Git history as harmless matches.
 
 ### Behavioral checks
 

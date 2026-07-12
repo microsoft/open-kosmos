@@ -106,8 +106,8 @@ describe('public release static gate', () => {
     ]);
   });
 
-  it('allows reviewed governance text and inert persisted metadata only in owned paths', () => {
-    expect(scanContent('README.md', 'Contact: owner@microsoft.com', [])).toEqual([]);
+  it('allows Microsoft contact emails and inert persisted metadata', () => {
+    expect(scanContent('src/example.ts', 'Contact: owner@microsoft.com', [])).toEqual([]);
     expect(scanContent(
       'src/main/lib/userDataADO/profileSanitizer.ts',
       "source: value.source === 'IN-LIBRARY' ? 'IN-LIBRARY' : 'ON-DEVICE'",

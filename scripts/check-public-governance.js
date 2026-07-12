@@ -181,7 +181,6 @@ const forbiddenText = [
   /cdn\.kosmos-ai\.com/i,
   /sharepoint\.com/i,
   /dev\.azure\.com/i,
-  /\b[\w.+-]+@microsoft\.com\b/i,
   /_microsoft\b/i,
 ]
 

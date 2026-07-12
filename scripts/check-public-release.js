@@ -101,7 +101,7 @@ const PATTERN_FAMILIES = [
   {
     id: 'PRIVATE_IDENTITY',
     description: 'Private repositories and internal identity defaults',
-    pattern: /gim-home\/kosmos|ai-microsoft\/kosmos\.app|@microsoft\.com|_microsoft/gi,
+    pattern: /gim-home\/kosmos|ai-microsoft\/kosmos\.app|_microsoft/gi,
   },
   {
     id: 'LEGACY_BRAND',
