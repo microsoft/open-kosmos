@@ -146,7 +146,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "cohere-ai": "^7.19.0",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "cross-env": "^7.0.3",
     "crypto-browserify": "^3.12.1",
     "css-loader": "^6.11.0",
